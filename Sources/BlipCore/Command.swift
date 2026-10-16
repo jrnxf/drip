@@ -180,7 +180,7 @@ public struct RenderCommand: ParsableCommand {
 
     public static let configuration = CommandConfiguration(
         commandName: "blip __render",
-        abstract: "Draw a card offscreen into a PNG.",
+        abstract: "Draw a card offscreen into a PNG at 2x.",
         usage: "blip __render --out <file.png> [KIND] [TITLE] [options]"
     )
 
@@ -194,16 +194,7 @@ public struct RenderCommand: ParsableCommand {
     @Option(help: "light or dark.")
     public var appearance: Appearance = .light
 
-    @Option(help: "Pixels per point.")
-    public var scale: Double = 2
-
     public init() {}
-
-    public func validate() throws {
-        guard scale >= 1, scale <= 4 else {
-            throw ValidationError("--scale must be between 1 and 4.")
-        }
-    }
 }
 
 /// What the command line asks blip to do.

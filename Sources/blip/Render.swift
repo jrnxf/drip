@@ -4,7 +4,7 @@ import BlipCore
 
 extension HUDDisplay {
     func render(
-        _ card: Card, appearance: RenderCommand.Appearance, scale: Double, to path: String, console: Console
+        _ card: Card, appearance: RenderCommand.Appearance, to path: String, console: Console
     ) -> Int32 {
         guard let nsAppearance = NSAppearance(named: appearance == .dark ? .darkAqua : .aqua) else {
             console.error("cannot load the \(appearance.rawValue) appearance")
@@ -12,7 +12,7 @@ extension HUDDisplay {
         }
         var png: Data?
         nsAppearance.performAsCurrentDrawingAppearance {
-            png = CardRenderer.png(for: card, appearance: nsAppearance, scale: CGFloat(scale), console: console)
+            png = CardRenderer.png(for: card, appearance: nsAppearance, console: console)
         }
         guard let png else {
             console.error("cannot render the card")
@@ -32,11 +32,14 @@ extension HUDDisplay {
 /// draw the HUD material and a layer's border, so the renderer paints those itself: the window
 /// background color in place of the material, and the border stroked from the layer's own values.
 enum CardRenderer {
-    static func png(for card: Card, appearance: NSAppearance, scale: CGFloat, console: Console) -> Data? {
+    /// Pixels per point.
+    static let scale: CGFloat = 2
+
+    static func png(for card: Card, appearance: NSAppearance, console: Console) -> Data? {
         let view = CardViewBuilder.makeView(for: card, appearance: appearance, console: console)
         let bounds = view.bounds
-        guard let content = bitmap(size: bounds.size, scale: scale),
-              let output = bitmap(size: bounds.size, scale: scale),
+        guard let content = bitmap(size: bounds.size),
+              let output = bitmap(size: bounds.size),
               let context = NSGraphicsContext(bitmapImageRep: output)
         else { return nil }
 
@@ -71,7 +74,7 @@ enum CardRenderer {
         return output.representation(using: .png, properties: [:])
     }
 
-    private static func bitmap(size: NSSize, scale: CGFloat) -> NSBitmapImageRep? {
+    private static func bitmap(size: NSSize) -> NSBitmapImageRep? {
         let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: Int((size.width * scale).rounded()),

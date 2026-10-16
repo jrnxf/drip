@@ -8,7 +8,7 @@ protocol CardDisplay {
 
     /// Draws the card offscreen into a PNG file.
     func render(
-        _ card: Card, appearance: RenderCommand.Appearance, scale: Double, to path: String, console: Console
+        _ card: Card, appearance: RenderCommand.Appearance, to path: String, console: Console
     ) -> Int32
 }
 
@@ -98,8 +98,7 @@ struct BlipCLI {
         let console = Console(quiet: flags.quiet)
         do {
             let card = try makeResolver(console).resolve(kind: command.kind, title: command.title, flags: flags)
-            return display.render(
-                card, appearance: command.appearance, scale: command.scale, to: command.out, console: console)
+            return display.render(card, appearance: command.appearance, to: command.out, console: console)
         } catch {
             return report(error, console)
         }
@@ -133,7 +132,7 @@ struct UnavailableDisplay: CardDisplay {
     }
 
     func render(
-        _ card: Card, appearance: RenderCommand.Appearance, scale: Double, to path: String, console: Console
+        _ card: Card, appearance: RenderCommand.Appearance, to path: String, console: Console
     ) -> Int32 {
         console.error("no GUI session: blip renders cards only on macOS")
         return ExitStatus.noGUISession

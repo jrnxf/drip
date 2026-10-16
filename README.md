@@ -101,6 +101,11 @@ Each setting comes from the first of: flags, the environment (`BLIP_SECONDS`, `B
 A custom preset starts from `info` and replaces what it sets. Its name must match `[a-z][a-z0-9-]*`
 and must not be `run`. Unknown keys print a warning; wrong types exit 4.
 
+The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
+such as `[preset.ok]`, and values that are single-line strings, decimal integers, floats or
+booleans. Any other TOML syntax, such as arrays, inline tables, dotted keys or multi-line strings,
+exits 4 with the line.
+
 ## Development
 
 ```sh

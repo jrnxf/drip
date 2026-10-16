@@ -129,7 +129,6 @@ final class CommandTests: XCTestCase {
         else { return XCTFail() }
         XCTAssertEqual(command.out, "card.png")
         XCTAssertEqual(command.appearance, .dark)
-        XCTAssertEqual(command.scale, 2)
         XCTAssertEqual(command.kind, "fail")
         XCTAssertEqual(command.title, "nope")
         XCTAssertEqual(command.options.flags, CardFlags(detail: "exit 1", size: .large))

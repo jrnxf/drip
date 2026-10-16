@@ -71,7 +71,7 @@ final class ConfigTests: XCTestCase {
     }
 
     func testIntegerSecondsAndIconNone() throws {
-        let file = try ConfigLoader.parse("seconds = 3\npreset.ok.icon = \"none\"", path: path)
+        let file = try ConfigLoader.parse("seconds = 3\n[preset.ok]\nicon = \"none\"", path: path)
         XCTAssertEqual(file.config.seconds, 3)
         XCTAssertEqual(file.config.presets["ok"]?.icon, Icon.none)
     }
@@ -98,11 +98,10 @@ final class ConfigTests: XCTestCase {
         assertError("preset = 1", line: 1, key: "preset", message: "expected a table, got an integer")
         assertError("[preset]\nok = \"x\"", line: 2, key: "preset.ok", message: "expected a table, got a string")
         assertError("[preset.ok]\nicon = 1", line: 2, key: "preset.ok.icon", message: "expected a string, got an integer")
-        assertError("[preset.ok]\n\nseconds = 1979-05-27", line: 3, key: "preset.ok.seconds",
-                    message: "expected a number, got a date-time")
+        assertError("[preset.ok]\n\nseconds = true", line: 3, key: "preset.ok.seconds",
+                    message: "expected a number, got a boolean")
         assertError("[preset.ok]\nsound = 1", line: 2, key: "preset.ok.sound",
                     message: "expected a sound name, a path, \"none\" or false, got an integer")
-        assertError("[[preset]]", line: 1, key: "preset", message: "expected a table, got an array")
     }
 
     func testInvalidValuesNameTheKeyAndLine() {
@@ -119,14 +118,17 @@ final class ConfigTests: XCTestCase {
         for name in ["deploy", "a", "ci-2", "x9"] {
             XCTAssertNotNil(try ConfigLoader.parse("[preset.\(name)]\nicon = \"star\"", path: path).config.presets[name])
         }
-        for name in ["run", "Deploy", "2fa", "-x", "a_b", "\"has space\"", "\"é\""] {
-            let key = "preset." + name.replacingOccurrences(of: "\"", with: "")
-            assertError("\n[preset.\(name)]", line: 2, key: key, message: "a custom preset name must match")
+        for name in ["run", "Deploy", "2fa", "-x", "a_b"] {
+            assertError("\n[preset.\(name)]", line: 2, key: "preset.\(name)", message: "a custom preset name must match")
         }
     }
 
     func testSyntaxErrorsNameTheLine() {
         assertError("seconds = 4.5\nposition = ", line: 2, key: nil, message: "expected a value")
+        assertError("[preset.ok]\nsound = \"Hero\"\n[[preset]]", line: 3, key: nil,
+                    message: "arrays of tables are not supported")
+        assertError("seconds = 3\npreset.ok.icon = \"star\"", line: 2, key: nil,
+                    message: "dotted keys are not supported")
     }
 
     func testPath() {
