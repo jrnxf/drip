@@ -1,5 +1,49 @@
 /// Text helpers shared by the CLI and the renderer.
 public enum CardText {
+    /// Collapses every run of whitespace, line breaks included, to one space, drops other control
+    /// characters, and trims both ends.
+    public static func normalize(_ text: String) -> String {
+        var result = ""
+        var pendingSpace = false
+        for character in text {
+            if character.isWhitespace {
+                pendingSpace = true
+            } else if !character.unicodeScalars.allSatisfy({ $0.properties.generalCategory == .control }) {
+                if pendingSpace, !result.isEmpty { result.append(" ") }
+                pendingSpace = false
+                result.append(character)
+            }
+        }
+        return result
+    }
+
+    /// Cuts `text` to at most `limit` user-perceived characters, ending in a single ellipsis when
+    /// it was cut. Emoji, flags and combining sequences are never split.
+    public static func truncate(_ text: String, limit: Int) -> String {
+        guard text.count > limit else { return text }
+        guard limit > 1 else { return String(text.prefix(limit)) }
+        var kept = text.prefix(limit - 1)
+        while kept.last?.isWhitespace == true { kept.removeLast() }
+        return String(kept) + "…"
+    }
+
+    /// Normalizes and truncates a card's line; nil when nothing is left.
+    public static func line(_ text: String?, limit: Int) -> String? {
+        guard let text else { return nil }
+        let line = truncate(normalize(text), limit: limit)
+        return line.isEmpty ? nil : line
+    }
+
+    /// Splits text read from stdin: the first non-empty line is the title and the remaining lines,
+    /// joined with a space, are the detail.
+    public static func splitStandardInput(_ text: String) -> (title: String?, detail: String?) {
+        let lines = text.split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .filter { !normalize($0).isEmpty }
+        let detail = lines.dropFirst().joined(separator: " ")
+        return (lines.first, detail.isEmpty ? nil : detail)
+    }
+
     /// True when the first strongly directional character of `text` belongs to a right-to-left
     /// script (Hebrew, Arabic and their neighbors), so the line should be right-aligned.
     public static func isRightToLeft(_ text: String) -> Bool {

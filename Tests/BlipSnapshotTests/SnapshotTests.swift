@@ -23,6 +23,24 @@ final class SnapshotTests: XCTestCase {
         })
     }
 
+    func testSizes() throws {
+        try assertSnapshots(["compact", "large"].flatMap { size in
+            appearances("ok-\(size)-two-lines", ["ok", "Build finished", "--detail", "blip: 42 tests passed in 3.1s",
+                                                  "--size", size])
+        })
+    }
+
+    func testLongTextIsCappedAt640Points() throws {
+        let long = String(repeating: "A very long title that keeps going ", count: 9)
+        try assertSnapshots(appearances("long-text", ["fail", long, "--detail", long]))
+    }
+
+    func testScripts() throws {
+        try assertSnapshots([
+            Snapshot(name: "scripts-light", arguments: ["info", "ビルド完了 🎉", "--detail", "שלום עולם: مرحبا بالعالم"]),
+        ])
+    }
+
     private static let presets: [(kind: String, title: String, detail: String)] = [
         ("ok", "Build finished", "blip: 42 tests passed in 3.1s"),
         ("warn", "Claude needs you", "blip"),

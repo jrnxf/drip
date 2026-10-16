@@ -40,25 +40,61 @@ struct BlipCLI {
             }
             return status
         case let .invocation(.show(command)):
-            let console = Console()
-            guard let card = resolve(kind: command.kind, title: command.title, options: command.options, console)
-            else { return ExitStatus.usage }
-            return display.show(card, console: console)
+            return show(command)
+        case let .invocation(.run(command)):
+            return run(command)
         case let .invocation(.render(command)):
-            let console = Console()
-            guard let card = resolve(kind: command.kind, title: command.title, options: command.options, console)
-            else { return ExitStatus.usage }
-            return display.render(
-                card, appearance: command.appearance, scale: command.scale, to: command.out, console: console)
+            return render(command)
         }
     }
 
-    private func resolve(kind: String?, title: String?, options: CardOptions, _ console: Console) -> Card? {
+    /// `--wait` needs no handling yet: the card is shown in-process, so blip always returns once
+    /// it has faded out.
+    private func show(_ command: BlipCommand) -> Int32 {
+        let flags = command.options.flags
+        let console = Console(quiet: flags.quiet)
         do {
-            return try CardResolver().resolve(kind: kind, title: title, flags: options.flags)
+            let card = try CardResolver().resolve(
+                kind: command.kind, title: command.title, flags: flags, standardInput: StandardInput.read)
+            return display.show(card, console: console)
         } catch {
             console.error("\(error)")
-            return nil
+            return ExitStatus.usage
+        }
+    }
+
+    /// Runs the command first, whatever happens to the card after, and exits with its code.
+    private func run(_ command: RunCommand) -> Int32 {
+        let flags = command.options.flags
+        let console = Console(quiet: flags.quiet)
+        let clock = ContinuousClock()
+        let start = clock.now
+        let outcome = CommandRunner.run(command.command)
+        let elapsed = clock.now - start
+        if let error = outcome.error {
+            console.error(error)
+        }
+        let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        do {
+            let card = try CardResolver().resolveRun(
+                command: command.command, status: outcome.status, seconds: seconds, flags: flags)
+            _ = display.show(card, console: console)
+        } catch {
+            console.error("\(error)")
+        }
+        return outcome.status
+    }
+
+    private func render(_ command: RenderCommand) -> Int32 {
+        let flags = command.options.flags
+        let console = Console(quiet: flags.quiet)
+        do {
+            let card = try CardResolver().resolve(kind: command.kind, title: command.title, flags: flags)
+            return display.render(
+                card, appearance: command.appearance, scale: command.scale, to: command.out, console: console)
+        } catch {
+            console.error("\(error)")
+            return ExitStatus.usage
         }
     }
 }
