@@ -1,4 +1,7 @@
 import BlipCore
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 import Foundation
 import XCTest
 

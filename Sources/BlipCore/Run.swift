@@ -3,6 +3,7 @@ import Darwin
 #elseif canImport(Glibc)
 import Glibc
 #endif
+import Foundation
 
 /// The card `blip run` shows for a finished command.
 public enum RunSummary {
@@ -71,9 +72,13 @@ public enum CommandRunner {
 
         var arguments: [UnsafeMutablePointer<CChar>?] = command.map { strdup($0) } + [nil]
         defer { arguments.forEach { free($0) } }
+        // Built from ProcessInfo because Darwin does not expose `environ` to Swift.
+        var environment: [UnsafeMutablePointer<CChar>?] =
+            ProcessInfo.processInfo.environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
+        defer { environment.forEach { free($0) } }
 
         var pid = pid_t()
-        let spawned = posix_spawnp(&pid, command[0], nil, &attributes, &arguments, environment())
+        let spawned = posix_spawnp(&pid, command[0], nil, &attributes, &arguments, &environment)
         guard spawned == 0 else {
             let reason = spawned == ENOENT ? "command not found" : String(cString: strerror(spawned))
             return Outcome(status: spawned == ENOENT ? 127 : 126, error: "\(command[0]): \(reason)")
@@ -84,15 +89,8 @@ public enum CommandRunner {
             guard errno == EINTR else { return Outcome(status: 1, error: "waitpid failed") }
         }
         // The W* macros are not available in Swift: the low 7 bits hold the signal, if any.
-        let signal = status & 0x7F
-        return Outcome(status: signal == 0 ? (status >> 8) & 0xFF : 128 + signal, error: nil)
-    }
-
-    private static func environment() -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>? {
-        #if canImport(Darwin)
-        return _NSGetEnviron().pointee
-        #else
-        return environ
-        #endif
+        let terminatingSignal = status & 0x7F
+        return Outcome(
+            status: terminatingSignal == 0 ? (status >> 8) & 0xFF : 128 + terminatingSignal, error: nil)
     }
 }

@@ -1,3 +1,8 @@
+#if canImport(CoreGraphics)
+// On Darwin, Foundation does not bring in the CoreGraphics overlay that gives CGRect, CGSize and
+// CGPoint their Swift initializers, members and Equatable conformance.
+import CoreGraphics
+#endif
 import Foundation
 
 /// The rendering numbers from the spec, scaled for a card size.

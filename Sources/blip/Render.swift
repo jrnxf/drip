@@ -59,7 +59,7 @@ enum CardRenderer {
         NSColor.windowBackgroundColor.setFill()
         shape.fill()
         shape.addClip()
-        content.draw(
+        _ = content.draw(
             in: bounds, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
         if let borderColor, borderWidth > 0 {
             // A layer border lies inside the bounds and follows the rounded corners.

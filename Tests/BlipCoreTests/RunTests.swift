@@ -53,6 +53,12 @@ final class RunTests: XCTestCase {
         XCTAssertEqual(outcome.error, "blip-test-no-such-command: command not found")
     }
 
+    func testRunnerPassesTheEnvironment() {
+        setenv("BLIP_RUN_TEST", "passed through", 1)
+        defer { unsetenv("BLIP_RUN_TEST") }
+        XCTAssertEqual(CommandRunner.run(["sh", "-c", "test \"$BLIP_RUN_TEST\" = 'passed through'"]).status, 0)
+    }
+
     func testRunnerPassesArgumentsVerbatim() throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("blip-run-\(getpid())")
         defer { try? FileManager.default.removeItem(at: file) }

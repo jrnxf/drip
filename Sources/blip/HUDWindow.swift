@@ -1,6 +1,7 @@
 #if canImport(AppKit)
 import AppKit
 import BlipCore
+import QuartzCore
 
 extension CardColor {
     var nsColor: NSColor {
