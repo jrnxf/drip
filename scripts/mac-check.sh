@@ -23,10 +23,18 @@ if [ -n "$new" ]; then
     echo "$new"
 fi
 
-# Show the presets with the built-in defaults, whatever the local config says.
+# Show the presets with the built-in defaults, whatever the local config says, plus a custom
+# preset from a config file.
 config=$(mktemp -d)
 trap 'rm -rf "$config"' EXIT
-for kind in ok warn fail info; do
+mkdir "$config/blip"
+cat > "$config/blip/config.toml" <<'TOML'
+[preset.deploy]
+icon  = "paperplane.fill"
+color = "#a78bfa"
+sound = "Submarine"
+TOML
+for kind in ok warn fail info deploy; do
     echo "Showing the $kind card"
     env -u BLIP_SECONDS -u BLIP_POSITION -u BLIP_SIZE -u BLIP_SOUND XDG_CONFIG_HOME="$config" \
         .build/debug/blip "$kind" "blip $kind" --detail "mac-check: the $kind preset"

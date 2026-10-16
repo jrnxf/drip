@@ -10,11 +10,19 @@ public struct UsageError: Error, Equatable, CustomStringConvertible {
 }
 
 /// Turns parsed arguments into a finished card.
+///
+/// Each setting comes from the first of: flags, BLIP_* environment variables, the config file,
+/// built-in defaults. Within the config file, a preset's own value beats the global one:
+/// `[preset.deploy] seconds = 6` beats a top-level `seconds = 3`.
 public struct CardResolver {
     public var presets: [String: Preset]
+    public var config: Config
+    public var environment: EnvironmentSettings
 
-    public init(presets: [Preset] = Preset.builtIn) {
-        self.presets = Dictionary(presets.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
+    public init(config: Config = Config(), environment: EnvironmentSettings = EnvironmentSettings()) {
+        presets = Dictionary(config.allPresets.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
+        self.config = config
+        self.environment = environment
     }
 
     /// Resolves `blip [KIND] [TITLE] [options]` into a card.
@@ -50,17 +58,18 @@ public struct CardResolver {
     }
 
     private func card(preset: Preset, title: String, detail: String?, flags: CardFlags) -> Card {
-        Card(
+        let presetSound = config.sound == false ? Sound.none : preset.sound
+        return Card(
             kind: preset.name,
             title: title,
             detail: CardText.line(detail, limit: Defaults.detailLimit),
             icon: flags.icon ?? preset.icon,
             fallbackIcon: preset.icon,
             color: flags.color ?? preset.color,
-            sound: flags.sound ?? preset.sound,
-            seconds: flags.seconds ?? preset.seconds ?? Defaults.seconds,
-            position: flags.position ?? Defaults.position,
-            size: flags.size ?? Defaults.size
+            sound: flags.sound ?? environment.sound ?? presetSound,
+            seconds: flags.seconds ?? environment.seconds ?? preset.seconds ?? config.seconds ?? Defaults.seconds,
+            position: flags.position ?? environment.position ?? config.position ?? Defaults.position,
+            size: flags.size ?? environment.size ?? config.size ?? Defaults.size
         )
     }
 

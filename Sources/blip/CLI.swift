@@ -54,33 +54,41 @@ struct BlipCLI {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         do {
-            let card = try CardResolver().resolve(
+            let card = try makeResolver(console).resolve(
                 kind: command.kind, title: command.title, flags: flags, standardInput: StandardInput.read)
             return display.show(card, console: console)
         } catch {
-            console.error("\(error)")
-            return ExitStatus.usage
+            return report(error, console)
         }
     }
 
-    /// Runs the command first, whatever happens to the card after, and exits with its code.
+    /// Runs the command first, whatever happens to the card after, and exits with its code. A bad
+    /// config or environment still gets reported, and the card falls back to the defaults.
     private func run(_ command: RunCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        let resolver: CardResolver
+        do {
+            resolver = try makeResolver(console)
+        } catch {
+            _ = report(error, console)
+            resolver = CardResolver()
+        }
+
         let clock = ContinuousClock()
         let start = clock.now
         let outcome = CommandRunner.run(command.command)
-        let elapsed = clock.now - start
+        let elapsed = (clock.now - start).components
         if let error = outcome.error {
             console.error(error)
         }
-        let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        let seconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
         do {
-            let card = try CardResolver().resolveRun(
+            let card = try resolver.resolveRun(
                 command: command.command, status: outcome.status, seconds: seconds, flags: flags)
             _ = display.show(card, console: console)
         } catch {
-            console.error("\(error)")
+            _ = report(error, console)
         }
         return outcome.status
     }
@@ -89,13 +97,30 @@ struct BlipCLI {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         do {
-            let card = try CardResolver().resolve(kind: command.kind, title: command.title, flags: flags)
+            let card = try makeResolver(console).resolve(kind: command.kind, title: command.title, flags: flags)
             return display.render(
                 card, appearance: command.appearance, scale: command.scale, to: command.out, console: console)
         } catch {
-            console.error("\(error)")
-            return ExitStatus.usage
+            return report(error, console)
         }
+    }
+
+    /// Reads the config file and environment, printing the config's warnings.
+    private func makeResolver(_ console: Console) throws -> CardResolver {
+        let environment = ProcessInfo.processInfo.environment
+        let file = try ConfigLoader.load(environment: environment)
+        file.warnings.forEach(console.warn)
+        return CardResolver(config: file.config, environment: try EnvironmentSettings(environment: environment))
+    }
+
+    /// Prints an error and returns its exit status.
+    private func report(_ error: Error, _ console: Console) -> Int32 {
+        if let error = error as? ConfigError {
+            console.error("invalid config: \(error)")
+            return ExitStatus.invalidConfig
+        }
+        console.error("\(error)")
+        return ExitStatus.usage
     }
 }
 

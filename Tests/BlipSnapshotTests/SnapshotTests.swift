@@ -35,6 +35,11 @@ final class SnapshotTests: XCTestCase {
         try assertSnapshots(appearances("long-text", ["fail", long, "--detail", long]))
     }
 
+    func testCustomIconAndColor() throws {
+        try assertSnapshots(appearances(
+            "custom-icon-color", ["shipped", "--icon", "paperplane.fill", "--color", "#a78bfa"]))
+    }
+
     func testScripts() throws {
         try assertSnapshots([
             Snapshot(name: "scripts-light", arguments: ["info", "ビルド完了 🎉", "--detail", "שלום עולם: مرحبا بالعالم"]),
