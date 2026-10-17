@@ -28,14 +28,13 @@ public struct Config: Equatable {
     /// False mutes every preset.
     public var sound: Bool?
     public var style: CardStyle?
-    public var notch: NotchMotion?
     public var motion: Motion?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
 
     public init(
         seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Bool? = nil,
-        style: CardStyle? = nil, notch: NotchMotion? = nil, motion: Motion? = nil,
+        style: CardStyle? = nil, motion: Motion? = nil,
         presets: [String: PresetOverride] = [:]
     ) {
         self.seconds = seconds
@@ -43,7 +42,6 @@ public struct Config: Equatable {
         self.size = size
         self.sound = sound
         self.style = style
-        self.notch = notch
         self.motion = motion
         self.presets = presets
     }
@@ -159,7 +157,9 @@ private struct ConfigReader {
             case "size": config.size = try choice(item, key: key, CardSize.self)
             case "sound": config.sound = try boolean(item, key: key)
             case "style": config.style = try choice(item, key: key, CardStyle.self)
-            case "notch": config.notch = try choice(item, key: key, NotchMotion.self)
+            // droplet is the only notch motion now, so an old `notch` setting is ignored, not an error.
+            case "notch":
+                warnings.append("\(path):\(item.line): 'notch' is no longer used; droplet is the only notch motion")
             case "motion": config.motion = try choice(item, key: key, Motion.self)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
@@ -295,24 +295,22 @@ public struct EnvironmentSettings: Equatable {
     public var size: CardSize?
     public var sound: Sound?
     public var style: CardStyle?
-    public var notch: NotchMotion?
     public var motion: Motion?
 
     public init(
         seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Sound? = nil,
-        style: CardStyle? = nil, notch: NotchMotion? = nil, motion: Motion? = nil
+        style: CardStyle? = nil, motion: Motion? = nil
     ) {
         self.seconds = seconds
         self.position = position
         self.size = size
         self.sound = sound
         self.style = style
-        self.notch = notch
         self.motion = motion
     }
 
-    /// Reads BLIP_SECONDS, BLIP_POSITION, BLIP_SIZE, BLIP_SOUND, BLIP_STYLE, BLIP_NOTCH and
-    /// BLIP_MOTION. Empty values are ignored; invalid ones are usage errors.
+    /// Reads BLIP_SECONDS, BLIP_POSITION, BLIP_SIZE, BLIP_SOUND, BLIP_STYLE and BLIP_MOTION. Empty
+    /// values are ignored; invalid ones are usage errors.
     public init(environment: [String: String]) throws {
         func value(_ name: String) -> String? {
             environment[name].flatMap { $0.isEmpty ? nil : $0 }
@@ -334,7 +332,6 @@ public struct EnvironmentSettings: Equatable {
         position = try choice("BLIP_POSITION", Position.self)
         size = try choice("BLIP_SIZE", CardSize.self)
         style = try choice("BLIP_STYLE", CardStyle.self)
-        notch = try choice("BLIP_NOTCH", NotchMotion.self)
         motion = try choice("BLIP_MOTION", Motion.self)
         sound = value("BLIP_SOUND").map(Sound.init(parsing:))
     }

@@ -47,6 +47,107 @@ public enum CardText {
         return cut(low)
     }
 
+    /// Breaks `text` into at most `maxLines` lines, each no wider than `width` points. Text that fits
+    /// on one line comes back whole, so the wrap starts exactly where `fit` would cut. When text is
+    /// left over for the last line, it is cut with `fit` and ends in an ellipsis. The spaces at a
+    /// break are dropped.
+    ///
+    /// - Parameters:
+    ///   - measure: A string's drawn width.
+    ///   - lineBreak: How many characters of a text too wide for the line go on it, such as a
+    ///     typesetter's choice. A choice that does not fit by `measure` is shortened to the last
+    ///     break before it. Without one, lines break after spaces and next to ideographs, and inside
+    ///     a word too long for a line.
+    public static func wrap(
+        _ text: String, width: Double, maxLines: Int, measure: (String) -> Double,
+        lineBreak: ((String) -> Int)? = nil
+    ) -> [String] {
+        let maxLines = max(maxLines, 1)
+        var lines: [String] = []
+        var rest = Substring(text)
+        while lines.count < maxLines {
+            rest = rest.drop(while: \.isWhitespace)
+            let remaining = String(rest)
+            if remaining.isEmpty, !lines.isEmpty { break }
+            if lines.count == maxLines - 1 || measure(remaining) <= width {
+                lines.append(fit(remaining, width: width, measure: measure))
+                break
+            }
+            let characters = Array(remaining)
+            var count = min(max(lineBreak?(remaining) ?? widestBreak(characters, width: width, measure: measure), 1),
+                            characters.count)
+            while count > 1, measure(prefix(characters, count)) > width {
+                count = (1..<count).last { canBreak(characters, before: $0) } ?? count - 1
+            }
+            lines.append(prefix(characters, count))
+            rest = rest.dropFirst(count)
+        }
+        return lines
+    }
+
+    /// The most characters of `characters` that fit in `width`, ending at the last break inside
+    /// them; inside a word when the first word alone is too wide.
+    private static func widestBreak(_ characters: [Character], width: Double, measure: (String) -> Double) -> Int {
+        var low = 1, high = characters.count
+        while low < high {
+            let middle = (low + high + 1) / 2
+            if measure(prefix(characters, middle)) <= width { low = middle } else { high = middle - 1 }
+        }
+        if low < characters.count, canBreak(characters, before: low) { return low }
+        return (1..<low).last { canBreak(characters, before: $0) } ?? low
+    }
+
+    /// The first `count` characters as a line, without the spaces it ends in.
+    private static func prefix(_ characters: [Character], _ count: Int) -> String {
+        var kept = characters[..<count]
+        while kept.last?.isWhitespace == true { kept.removeLast() }
+        return String(kept)
+    }
+
+    /// Whether a line may end before `characters[index]`: after a space, or next to an ideograph or
+    /// kana, though never before closing punctuation or after opening punctuation.
+    static func canBreak(_ characters: [Character], before index: Int) -> Bool {
+        guard index > 0, index < characters.count else { return false }
+        let before = characters[index - 1], after = characters[index]
+        if before.isWhitespace { return !after.isWhitespace }
+        if after.isWhitespace { return false }
+        let closing: Set<Unicode.GeneralCategory> = [.closePunctuation, .finalPunctuation, .otherPunctuation]
+        let opening: Set<Unicode.GeneralCategory> = [.openPunctuation, .initialPunctuation]
+        if let first = after.unicodeScalars.first, closing.contains(first.properties.generalCategory) { return false }
+        if let last = before.unicodeScalars.last, opening.contains(last.properties.generalCategory) { return false }
+        return isIdeographic(before) || isIdeographic(after)
+    }
+
+    /// Han ideographs and Japanese kana, which break between any two of them.
+    private static func isIdeographic(_ character: Character) -> Bool {
+        guard let scalar = character.unicodeScalars.first else { return false }
+        switch scalar.value {
+        case 0x3040...0x30FF, // Hiragana, Katakana
+             0x31F0...0x31FF, // Katakana phonetic extensions
+             0xFF66...0xFF9F: // Halfwidth Katakana
+            return true
+        default:
+            return scalar.properties.isIdeographic
+        }
+    }
+
+    /// How many whole characters of `text` lie within its first `utf16Length` UTF-16 code units, as
+    /// Core Text counts.
+    public static func characterCount(_ text: String, utf16Length: Int) -> Int {
+        var count = 0, length = 0
+        for character in text {
+            length += character.utf16.count
+            if length > utf16Length { break }
+            count += 1
+        }
+        return count
+    }
+
+    /// What VoiceOver reads for a card: the whole title, then the whole detail, however they wrap.
+    public static func spoken(title: String, detail: String?) -> String {
+        [title, detail].compactMap { $0 }.joined(separator: ", ")
+    }
+
     /// Normalizes and truncates a card's line; nil when nothing is left.
     public static func line(_ text: String?, limit: Int) -> String? {
         guard let text else { return nil }

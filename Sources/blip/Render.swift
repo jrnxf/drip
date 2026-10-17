@@ -131,7 +131,7 @@ enum IslandRenderer {
     ///   - time: Seconds into the entrance, or the exit when `leaving`; nil draws the card fully open.
     static func png(for card: Card, at time: Double?, leaving: Bool, console: Console) -> Data? {
         let layers = IslandLayers(card: card, notch: notch, scale: renderScale, console: console)
-        var animator = IslandAnimator(motion: card.notch, metrics: layers.metrics)
+        var animator = IslandAnimator(metrics: layers.metrics)
         if let time, leaving {
             animator.open()
             let cues = animator.exit(at: 0)

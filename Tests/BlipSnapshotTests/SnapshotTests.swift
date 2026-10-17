@@ -31,19 +31,56 @@ struct SnapshotTests {
         })
     }
 
-    @Test func longTextIsCappedAt640Points() throws {
+    /// Text past the character limits: the title wraps to two lines and the detail to two, in a card
+    /// no wider than 640 points.
+    @Test func longTextWrapsWithin640Points() throws {
         let long = String(repeating: "A very long title that keeps going ", count: 9)
         try assertSnapshots(appearances("long-text", ["fail", long, "--detail", long]))
     }
 
-    /// A title wider than the island's text column used to keep the island from showing at all.
-    /// These references guard the layout only, not the live panel.
+    /// A title wider than the island's text column used to keep the island from showing at all; each
+    /// line now gets its own layer, fitted to it. These references guard the layout only, not the
+    /// live panel.
     @Test func longTextAtTheNotch() throws {
         let word = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
         let spaced = String(repeating: "A very long title that keeps going ", count: 3)
-        try assertSnapshots(["droplet", "snap", "ears"].map { motion in
-            Snapshot(name: "notch-long-text-\(motion)", arguments: ["ok", word, "--detail", spaced, "--position", "notch", "--notch", motion])
-        })
+        try assertSnapshots([
+            Snapshot(name: "notch-long-text", arguments: ["ok", word, "--detail", spaced, "--position", "notch"]),
+        ])
+    }
+
+    /// Titles wrap to two lines and details to three, the last ending in an ellipsis when the text
+    /// runs on: in Latin, Japanese (which breaks between characters) and right-to-left text (which
+    /// hugs the right edge), in the panel and at the notch, and in the middle of the notch's exit.
+    @Test func wrapping() throws {
+        let latinDetail: String = "blip: every suite ran on macOS 13, 14 and 15; the slowest was the snapshot suite "
+            + "at 2m 41s, and nothing flaked"
+        let latin = ["ok", "Nightly build finished: 1,284 tests passed, 3 skipped, coverage report is ready",
+                     "--detail", latinDetail]
+        let japaneseTitle: String = "夜間ビルドが完了しました。すべてのテストに合格し、カバレッジレポートの準備もできています。"
+            + "次のリリース候補をいつでも作成してチームに配布できる状態になりました"
+        let japaneseDetail: String = "ユニットテスト一二八四件、スナップショットテスト四十八件、統合テスト十二件がすべて成功しました。"
+            + "最も時間がかかったのはスナップショットテストで、二分四十一秒でした。不安定なテストはひとつもありませんでした。"
+        let japanese = ["info", japaneseTitle, "--detail", japaneseDetail]
+        let arabicDetail: String = "اكتملت جميع الاختبارات على ثلاثة إصدارات من النظام، وكانت أبطأ مجموعة هي "
+            + "اختبارات اللقطات بدقيقتين وإحدى وأربعين ثانية"
+        let rightToLeft = ["warn", "הבנייה הלילית הסתיימה: כל הבדיקות עברו בהצלחה ודוח הכיסוי מוכן לעיון",
+                           "--detail", arabicDetail]
+        let notch = ["--position", "notch"]
+        try assertSnapshots(
+            appearances("wrap", latin)
+            + [
+                Snapshot(name: "wrap-terminal", arguments: latin + ["--style", "terminal"]),
+                Snapshot(name: "wrap-cjk-light", arguments: japanese),
+                Snapshot(name: "wrap-rtl-light", arguments: rightToLeft),
+                Snapshot(name: "notch-wrap", arguments: latin + notch),
+                Snapshot(name: "notch-wrap-cjk", arguments: japanese + notch),
+                Snapshot(name: "notch-wrap-rtl", arguments: rightToLeft + notch),
+                Snapshot(name: "notch-wrap-button", arguments: latin + notch + ["--open", "https://example.com",
+                                                                                 "--button", "View the coverage"]),
+                // The tall capsule gathering back into a drop.
+                Snapshot(name: "notch-wrap-leaving", arguments: latin + notch + ["--at", "0.12", "--leaving"]),
+            ])
     }
 
     @Test func customIconAndColor() throws {
@@ -72,15 +109,11 @@ struct SnapshotTests {
 
     @Test func notch() throws {
         let card = ["ok", "Build finished", "--detail", "blip: 42 tests passed in 3.1s", "--position", "notch"]
-        try assertSnapshots(["droplet", "snap", "ears"].map { motion in
-            Snapshot(name: "notch-\(motion)", arguments: card + ["--notch", motion])
-        } + [
-            // Mid-entrance: the droplet hanging on its neck, and snap halfway open; mid-exit: the
-            // droplet merging back into the notch.
-            Snapshot(name: "notch-droplet-falling", arguments: card + ["--notch", "droplet", "--at", "0.2"]),
-            Snapshot(
-                name: "notch-droplet-merging", arguments: card + ["--notch", "droplet", "--at", "0.34", "--leaving"]),
-            Snapshot(name: "notch-snap-opening", arguments: card + ["--notch", "snap", "--at", "0.08"]),
+        try assertSnapshots([
+            Snapshot(name: "notch", arguments: card),
+            // Mid-entrance: the drop hanging on its neck; mid-exit: the drop merging back into the notch.
+            Snapshot(name: "notch-falling", arguments: card + ["--at", "0.2"]),
+            Snapshot(name: "notch-merging", arguments: card + ["--at", "0.34", "--leaving"]),
         ])
     }
 
@@ -93,8 +126,7 @@ struct SnapshotTests {
                                                            "--style", "wash"]),
             Snapshot(name: "button-terminal", arguments: card + ["--style", "terminal"]),
             Snapshot(name: "button-default-label-light", arguments: ["ok", "Build passed", "--open", "https://example.com"]),
-            Snapshot(name: "notch-droplet-button", arguments: card + ["--position", "notch", "--notch", "droplet"]),
-            Snapshot(name: "notch-snap-button", arguments: card + ["--position", "notch", "--notch", "snap"]),
+            Snapshot(name: "notch-button", arguments: card + ["--position", "notch"]),
         ])
     }
 
