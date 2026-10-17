@@ -96,6 +96,12 @@ final class IslandLayers {
         size = CGSize(width: ceil(metrics.maxWidth) + 40, height: ceil(metrics.maxHeight))
         iconSide = 28 * sizeScale
         ringSide = buttonSize?.width ?? 22 * sizeScale
+        console.debug([
+            "island text: title \(card.title.count) characters, \(titleText.length) shown, title \(titleSize), ",
+            "detail \(detailSize), block \(textSize); card \(metrics.cardWidth) x \(metrics.cardHeight), ",
+            "pill \(metrics.pillWidth) x \(metrics.pillHeight), ears \(metrics.leftEar) + \(metrics.rightEar), ",
+            "window \(size)"
+        ].joined())
 
         root.frame = CGRect(origin: .zero, size: size)
         root.isGeometryFlipped = true
@@ -432,19 +438,23 @@ final class IslandPresenter: CardPresenting {
         panel.contentView = view
         panel.setFrame(frame, display: false)
         self.panel = panel
+        console.debug("island panel: asked for \(frame), got \(panel.frame), scale \(scale)")
 
         var animator = IslandAnimator(motion: card.notch, metrics: layers.metrics)
         layers.apply(layers.frame(animator.shape(at: 0), layout: animator.content(for: animator.shape(at: 0))))
         panel.orderFrontRegardless()
         sound = CardSound(card.sound, console: console)
+        trace("ordered front")
 
         let motion = CardPresenters.motion(for: card)
+        console.debug("motion \(motion.rawValue), notch motion \(card.notch.rawValue)")
         guard motion == .full else {
             sound?.play()
             animator.open()
             let open = animator.shape(at: 0)
             layers.apply(layers.frame(open, layout: animator.content(for: open)))
             layers.showContent()
+            trace("opened without motion")
             panel.alphaValue = motion == .none ? 1 : 0
             fadePanel(to: 1, duration: motion == .none ? 0 : 0.15)
             departure = { [self] in
@@ -457,16 +467,23 @@ final class IslandPresenter: CardPresenting {
         // One clock for the whole card: each new target springs from wherever the last one left things.
         // It starts once the keyframes are built, when the animations really begin.
         let enterCues = animator.enter(at: 0)
+        let building = CACurrentMediaTime()
         play(animator, from: 0, layers: layers)
         let started = CACurrentMediaTime()
+        console.debug([
+            "entrance: \(String(format: "%.3f", animator.end)) s of keyframes built in ",
+            "\(String(format: "%.3f", started - building)) s, cues \(enterCues)"
+        ].joined())
         // The sound lands as the island first shows: the droplet starts hidden in the notch.
         let audible = card.notch == .droplet ? 0.05 : 0
         DispatchQueue.main.asyncAfter(deadline: .now() + audible) { [self] in sound?.play() }
         fade(enterCues, into: true, layers: layers)
         let visible = (enterCues.title ?? 0) + 0.25
         drain(after: visible, layers: layers)
+        DispatchQueue.main.asyncAfter(deadline: .now() + visible) { [self] in trace("entrance done") }
         departure = { [self] in
             let now = CACurrentMediaTime() - started
+            console.debug("exit at \(String(format: "%.3f", now)) s")
             let exitCues = animator.exit(at: now)
             play(animator, from: now, layers: layers)
             fade(exitCues, into: false, layers: layers)
@@ -553,7 +570,24 @@ final class IslandPresenter: CardPresenting {
         }
     }
 
+    /// With BLIP_DEBUG=1, prints where the island is and what it shows.
+    private func trace(_ moment: String) {
+        guard Console.debugging, let panel, let layers else { return }
+        let shape = layers.shape.presentation() ?? layers.shape
+        let title = layers.title.presentation() ?? layers.title
+        let text = layers.text.presentation() ?? layers.text
+        console.debug([
+            "island \(moment): frame \(panel.frame), visible \(panel.isVisible), window \(panel.windowNumber), ",
+            "on screen \(panel.occlusionState.contains(.visible)), alpha \(panel.alphaValue), ",
+            "screen \(panel.screen.map { "\($0.frame)" } ?? "none"), ",
+            "shape \(shape.path?.boundingBoxOfPath ?? .null), ",
+            "title \(title.frame) in text at \(text.position) opacity \(title.opacity), ",
+            "root \(layers.root.bounds) in \(layers.root.superlayer.map { "\($0.bounds)" } ?? "nothing")"
+        ].joined())
+    }
+
     private func finish(_ onFinish: @escaping (Bool) -> Void) {
+        console.debug("island gone")
         panel?.orderOut(nil)
         sound?.waitUntilDone { onFinish(true) }
     }

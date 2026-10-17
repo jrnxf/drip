@@ -39,6 +39,17 @@ struct Console {
     func error(_ message: String) {
         FileHandle.standardError.write(Data("blip: \(message)\n".utf8))
     }
+
+    /// Whether BLIP_DEBUG=1 asks for a trace of how cards are shown.
+    static let debugging = ProcessInfo.processInfo.environment["BLIP_DEBUG"] == "1"
+
+    /// Prints a trace line when BLIP_DEBUG=1, whatever --quiet says. A background blip has nowhere
+    /// to print, so trace with --wait.
+    func debug(_ message: @autoclosure () -> String) {
+        guard Self.debugging else { return }
+        let time = String(format: "%.3f", ProcessInfo.processInfo.systemUptime)
+        FileHandle.standardError.write(Data("blip[\(getpid())] \(time) debug: \(message())\n".utf8))
+    }
 }
 
 /// The command-line entry point, independent of how cards are drawn.
@@ -73,6 +84,11 @@ struct BlipCLI {
         do {
             let card = try makeResolver(console).resolve(
                 kind: command.kind, title: command.title, flags: flags, standardInput: StandardInput.read)
+            console.debug([
+                "card \(card.kind): title \(card.title.count) characters, detail \(card.detail?.count ?? 0), ",
+                "position \(card.position.rawValue), notch \(card.notch.rawValue), style \(card.style.rawValue), ",
+                "motion \(card.motion.rawValue), size \(card.size.rawValue)"
+            ].joined())
             return deliver([card], wait: flags.wait, console: console)
         } catch {
             return report(error, console)
@@ -82,7 +98,9 @@ struct BlipCLI {
     /// Everything that can fail is checked here, before the cards are handed off.
     private func deliver(_ cards: [Card], wait: Bool, console: Console) -> Int32 {
         let cards = display.prepare(cards, console: console)
-        switch Delivery.choose(for: cards, wait: wait) {
+        let delivery = Delivery.choose(for: cards, wait: wait)
+        console.debug("delivery: \(delivery)")
+        switch delivery {
         case .background: return display.showInBackground(cards, console: console)
         case .wait: return display.show(cards, console: console)
         }

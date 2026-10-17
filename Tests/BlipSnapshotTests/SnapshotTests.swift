@@ -41,7 +41,7 @@ struct SnapshotTests {
         let word = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
         let spaced = String(repeating: "A very long title that keeps going ", count: 3)
         try assertSnapshots(["droplet", "snap", "ears"].map { motion in
-            Snapshot(name: "notch-long-text-\(motion)", arguments: ["ok", word, "--detail", spaced, "--notch", motion])
+            Snapshot(name: "notch-long-text-\(motion)", arguments: ["ok", word, "--detail", spaced, "--position", "notch", "--notch", motion])
         })
     }
 
