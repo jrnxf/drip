@@ -20,14 +20,7 @@ struct HUDDisplay: CardDisplay {
             console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")
             return ExitStatus.noGUISession
         }
-        console.debug("GUI session found; waiting for this blip's turn in the card queue")
         CardQueue.waitForTurn()
-        console.debug("this blip's turn: showing \(cards.count) card(s)")
-        if Console.debugging {
-            // AppKit logs and swallows an exception raised while the run loop draws; crash instead,
-            // so the trace ends with the exception that stopped a card.
-            UserDefaults.standard.register(defaults: ["NSApplicationCrashOnExceptions": true])
-        }
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
@@ -38,7 +31,6 @@ struct HUDDisplay: CardDisplay {
             let presenter = CardPresenters.make(for: card, console: console)
             // The presenter keeps itself alive through the timers and animations it schedules.
             presenter.start { ok in
-                console.debug("card finished: \(ok ? "shown" : "no screen")")
                 failed = failed || !ok
                 next()
             }
@@ -146,23 +138,9 @@ protocol CardPresenting: AnyObject {
 enum CardPresenters {
     /// An island at the notch when the card asks for one and the screen has a notch; a panel otherwise.
     static func make(for card: Card, console: Console) -> CardPresenting {
-        let screen = targetScreen()
-        if let screen {
-            console.debug([
-                "target screen \(screen.localizedName): frame \(screen.frame), visible \(screen.visibleFrame), ",
-                "safe area top \(screen.safeAreaInsets.top), ",
-                "top left area \(screen.auxiliaryTopLeftArea.map { "\($0)" } ?? "none"), ",
-                "top right area \(screen.auxiliaryTopRightArea.map { "\($0)" } ?? "none"), ",
-                "scale \(screen.backingScaleFactor), screens \(NSScreen.screens.count)"
-            ].joined())
-        } else {
-            console.debug("no target screen")
-        }
-        if card.position == .notch, let screen, let notch = NotchGeometry(screen: screen) {
-            console.debug("island presenter: notch \(notch.width) x \(notch.height) at x \(notch.midX), top \(notch.top)")
+        if card.position == .notch, let screen = targetScreen(), let notch = NotchGeometry(screen: screen) {
             return IslandPresenter(card: card, notch: notch, console: console)
         }
-        console.debug("panel presenter at \(card.position.rawValue)")
         return CardPresenter(card: card, console: console)
     }
 
@@ -284,10 +262,6 @@ final class CardPresenter: CardPresenting {
         // Never makeKey or activate: the frontmost app keeps focus.
         panel.orderFrontRegardless()
         panel.invalidateShadow()
-        console.debug([
-            "panel: content \(built.size), frame \(panel.frame), visible \(panel.isVisible), ",
-            "window \(panel.windowNumber), on screen \(panel.occlusionState.contains(.visible))"
-        ].joined())
         sound = CardSound(card.sound, console: console)
         sound?.play()
 
