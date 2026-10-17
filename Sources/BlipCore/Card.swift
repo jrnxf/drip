@@ -154,7 +154,7 @@ public struct Preset: Equatable, Sendable {
 public enum Defaults {
     public static let seconds = 4.5
     public static let secondsRange: ClosedRange<Double> = 0.5...60
-    public static let position = Position.bottom
+    public static let position = Position.notch
     public static let size = CardSize.regular
     /// The style when nothing sets one and the display has no better default.
     public static let style = CardStyle.hud

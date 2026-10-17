@@ -1,7 +1,7 @@
 # blip
 
-A HUD from the shell for macOS: one command shows a brief native card near the bottom of the
-screen, or growing out of the camera notch, with an icon, a title, an optional detail line, a
+A HUD from the shell for macOS: one command shows a brief native card growing out of the camera
+notch, or near the top of a screen without one, with an icon, a title, an optional detail line, a
 colored accent and a system sound, then takes it away again. A glance tells you what finished and
 how it went: a build, a deploy, a test run, a backup, a script, an agent. blip returns at once, so
 it never slows the script that calls it.
@@ -47,7 +47,7 @@ blip --version | --help
 | `--sound NAME\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. | the preset's |
 | `--icon SYMBOL\|none` | An SF Symbol name. Unknown names fall back to the preset's icon with a warning. | the preset's |
 | `--color HEX\|NAME` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
-| `--position bottom\|center\|top\|notch` | Where the card sits. `notch` grows it out of the camera notch, and falls back to `top` on a screen without one. | `bottom` |
+| `--position bottom\|center\|top\|notch` | Where the card sits. `notch` grows it out of the camera notch, and falls back to `top` on a screen without one. | `notch` |
 | `--size compact\|regular\|large` | Scales fonts, icon and padding by 0.85, 1.0 or 1.25. | `regular` |
 | `--style hud\|glass\|wash\|terminal` | How the card is drawn; see [Styles](#styles). | `glass` on macOS 26, `hud` before |
 | `--notch droplet\|snap\|ears` | How a `notch` card appears; see [Styles](#styles). | `droplet` |
@@ -72,8 +72,8 @@ unless `--detail` is given. With a title on the command line, stdin is left alon
 detail at most 120, counted as user-perceived characters so emoji are never split, and cut with a
 single ellipsis. The card is never wider than 640 points.
 
-**blip demo** plays every style at your configured position, then, on a screen with a notch, every
-notch motion, two seconds each unless `--seconds`, `BLIP_SECONDS` or the config's `seconds` say
+**blip demo** plays every style at your configured position (the bottom when that is the notch), then,
+on a screen with a notch, every notch motion, two seconds each unless `--seconds`, `BLIP_SECONDS` or the config's `seconds` say
 otherwise, and silent unless `--sound` or `BLIP_SOUND` is given. Options apply to every card, so
 `blip demo --style wash` shows only wash, and `blip demo --notch ears` only that notch motion.
 
@@ -192,7 +192,7 @@ optional, and a missing file is fine.
 
 ```toml
 seconds  = 4.5
-position = "bottom"          # bottom | center | top | notch
+position = "notch"           # bottom | center | top | notch
 size     = "regular"         # compact | regular | large
 sound    = true              # false mutes every preset
 style    = "glass"           # hud | glass | wash | terminal (default: glass on macOS 26, hud before)
