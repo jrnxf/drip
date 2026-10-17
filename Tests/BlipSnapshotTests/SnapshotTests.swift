@@ -74,6 +74,20 @@ struct SnapshotTests {
         ])
     }
 
+    @Test func buttons() throws {
+        let card = ["ok", "Deploy finished", "--detail", "api · 2m 14s", "--open", "https://example.com",
+                    "--button", "View run"]
+        try assertSnapshots(appearances("button-hud", card + ["--style", "hud"]) + [
+            Snapshot(name: "button-wash-fail", arguments: ["fail", "Tests failed", "--detail", "3 of 142 · auth",
+                                                           "--open", "/tmp/test.log", "--button", "Open log",
+                                                           "--style", "wash"]),
+            Snapshot(name: "button-terminal", arguments: card + ["--style", "terminal"]),
+            Snapshot(name: "button-default-label-light", arguments: ["ok", "Build passed", "--open", "https://example.com"]),
+            Snapshot(name: "notch-droplet-button", arguments: card + ["--position", "notch", "--notch", "droplet"]),
+            Snapshot(name: "notch-snap-button", arguments: card + ["--position", "notch", "--notch", "snap"]),
+        ])
+    }
+
     private static let presets: [(kind: String, title: String, detail: String)] = [
         ("ok", "Build finished", "blip: 42 tests passed in 3.1s"),
         ("warn", "Claude needs you", "blip"),

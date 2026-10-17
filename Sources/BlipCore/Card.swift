@@ -1,10 +1,10 @@
 /// The eight named system colors `--color` accepts.
-public enum SystemColor: String, CaseIterable, Sendable {
+public enum SystemColor: String, CaseIterable, Sendable, Codable {
     case green, orange, red, blue, purple, pink, yellow, gray
 }
 
 /// A card's accent color: a system color that adapts to light and dark, or a fixed sRGB value.
-public enum CardColor: Equatable, Sendable {
+public enum CardColor: Equatable, Sendable, Codable {
     case system(SystemColor)
     case rgb(red: UInt8, green: UInt8, blue: UInt8)
 
@@ -28,7 +28,7 @@ public enum CardColor: Equatable, Sendable {
 }
 
 /// An SF Symbol, or no icon at all.
-public enum Icon: Equatable, Sendable {
+public enum Icon: Equatable, Sendable, Codable {
     case none
     case symbol(String)
 
@@ -39,7 +39,7 @@ public enum Icon: Equatable, Sendable {
 }
 
 /// A system sound from /System/Library/Sounds, a sound file, or silence.
-public enum Sound: Equatable, Sendable {
+public enum Sound: Equatable, Sendable, Codable {
     case none
     case named(String)
     case file(String)
@@ -60,12 +60,12 @@ public enum Sound: Equatable, Sendable {
 
 /// Where the card sits on the screen. `notch` grows the card out of the camera notch, and falls back
 /// to `top` on a screen without one.
-public enum Position: String, CaseIterable, Sendable {
+public enum Position: String, CaseIterable, Sendable, Codable {
     case bottom, center, top, notch
 }
 
 /// How the card is drawn.
-public enum CardStyle: String, CaseIterable, Sendable {
+public enum CardStyle: String, CaseIterable, Sendable, Codable {
     /// The dark HUD material with an accent hairline.
     case hud
     /// The system glass on macOS 26; `hud` on earlier versions.
@@ -77,7 +77,7 @@ public enum CardStyle: String, CaseIterable, Sendable {
 }
 
 /// How a card at `position = notch` leaves the notch.
-public enum NotchMotion: String, CaseIterable, Sendable {
+public enum NotchMotion: String, CaseIterable, Sendable, Codable {
     /// A drop forms under the notch, breaks free on a neck and floats below the menu bar.
     case droplet
     /// One quick move from the notch into the card, without bounce.
@@ -87,7 +87,7 @@ public enum NotchMotion: String, CaseIterable, Sendable {
 }
 
 /// How much a card moves. Reduce Motion in System Settings caps this at `subtle`.
-public enum Motion: String, CaseIterable, Sendable {
+public enum Motion: String, CaseIterable, Sendable, Codable {
     /// Each style's own entrance and exit.
     case full
     /// Fades only.
@@ -102,7 +102,7 @@ public enum Motion: String, CaseIterable, Sendable {
 }
 
 /// Scales fonts, icon and padding.
-public enum CardSize: String, CaseIterable, Sendable {
+public enum CardSize: String, CaseIterable, Sendable, Codable {
     case compact, regular, large
 
     public var scale: Double {
@@ -162,10 +162,24 @@ public enum Defaults {
     public static let motion = Motion.full
     public static let titleLimit = 80
     public static let detailLimit = 120
+    /// The longest button label, in characters.
+    public static let buttonLimit = 24
+}
+
+/// A button on the card. A click opens `open` when it is set and dismisses the card; a blip that
+/// waits for the card exits 0 when the button was clicked and 5 when it was not.
+public struct CardAction: Equatable, Sendable, Codable {
+    public var label: String
+    public var open: String?
+
+    public init(label: String, open: String?) {
+        self.label = label
+        self.open = open
+    }
 }
 
 /// A fully resolved card, ready to render.
-public struct Card: Equatable, Sendable {
+public struct Card: Equatable, Sendable, Codable {
     /// The preset name the card was built from.
     public var kind: String
     public var title: String
@@ -181,6 +195,8 @@ public struct Card: Equatable, Sendable {
     public var style: CardStyle
     public var notch: NotchMotion
     public var motion: Motion
+    /// A button on the card; nil for none.
+    public var action: CardAction?
 
     public init(
         kind: String,

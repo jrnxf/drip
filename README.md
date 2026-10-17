@@ -2,7 +2,9 @@
 
 A HUD from the shell for macOS: one command shows a brief native card near the bottom of the
 screen, or growing out of the camera notch, with an icon, a title, an optional detail line, a
-colored accent and a system sound, then takes it away again.
+colored accent and a system sound, then takes it away again. A glance tells you what finished and
+how it went: a build, a deploy, a test run, a backup, a script, an agent. blip returns at once, so
+it never slows the script that calls it.
 
 ```sh
 blip "build finished"
@@ -10,6 +12,8 @@ blip ok "dotfiles up to date" -d "pulled 1 commit: feat(nvim): show hidden files
 blip fail "deploy failed" -d "$err" --seconds 8
 git log -1 --format='%s%n%an' | blip ok
 blip run -- make test
+blip run --open "$CI_URL" --button "View run" -- ./deploy.sh
+blip warn "staging is ready" --button "Promote" && ./promote.sh
 blip ok "shipped" --position notch --style glass
 blip demo                     # every style and notch motion, to pick by feel
 ```
@@ -48,7 +52,9 @@ blip --version | --help
 | `--style hud\|glass\|wash\|terminal` | How the card is drawn; see [Styles](#styles). | `glass` on macOS 26, `hud` before |
 | `--notch droplet\|snap\|ears` | How a `notch` card appears; see [Styles](#styles). | `droplet` |
 | `--motion full\|subtle\|none` | `full` plays each style's entrance and exit, `subtle` only fades, `none` neither. Reduce Motion in System Settings caps it at `subtle`. | `full` |
-| `--wait` | Block until the card has faded out. blip shows the card in its own process for now, so it always waits. | off |
+| `--open URL\|PATH` | Adds a button that opens a URL or a file; see [Buttons](#buttons). | none |
+| `--button LABEL` | The button's label, up to 24 characters. Without `--open`, blip waits for the card and reports the click in its exit status. | `Open` |
+| `--wait` | Wait until the card has gone before exiting. | off |
 | `--quiet` | Never print warnings. | off |
 
 | Preset | Icon | Color | Sound |
@@ -71,15 +77,56 @@ notch motion, two seconds each unless `--seconds`, `BLIP_SECONDS` or the config'
 otherwise, and silent unless `--sound` or `BLIP_SOUND` is given. Options apply to every card, so
 `blip demo --style wash` shows only wash, and `blip demo --notch ears` only that notch motion.
 
+**Returning at once.** blip checks everything first (flags, config, stdin, sounds and icons), so a
+mistake still prints its message and exit status. Then it hands the card to a background blip and
+exits. Cards from every blip queue up and show one after another, in the order they were sent.
+`--wait` keeps blip running until its card has gone, still in its turn.
+
+### Buttons
+
+`--open` adds a button that opens a URL or a file, such as a CI run, a pull request or a log.
+`--button` names it. Hovering over the card holds it, and the countdown ring of a notch card stops;
+moving away gives it another 1.5 seconds. A click on the button opens the target and takes the card
+away; a click anywhere else on the card just takes it away. Clicking never takes focus from the app
+you are in. On a `ears` notch card there is no room for a button, so the whole island is one.
+
+`--button` without `--open` asks a question: blip waits and exits 0 if the button was clicked and 5
+if it was not, so the script decides what happens:
+
+```sh
+blip warn "staging is ready" -d "api 1.4.2" --button "Promote" --seconds 10 && ./promote.sh
+```
+
 **blip run** runs the command with blip's stdin, stdout and stderr, then shows `ok` with the title
 `<command> finished` on exit 0, or `fail` with `<command> failed (exit N)` otherwise. The detail is
 how long it took, such as `3m 12s`. Options before `--` apply as usual.
 
-### With coding agents
+### Recipes
 
-Point an agent's hooks at blip to see a card when it needs you or has finished.
+Builds and tests, with how long they took:
 
-**Claude Code**, in `~/.claude/settings.json` (`async` keeps Claude from waiting for the card):
+```sh
+blip run -- make test
+blip run --position notch -- npm run build
+```
+
+A deploy that links to its run, and a backup:
+
+```sh
+blip run --open "https://github.com/me/app/actions" --button "View run" -- ./deploy.sh
+blip run -- restic backup ~/Documents
+```
+
+A git hook, such as `.git/hooks/post-merge`, which blip never slows down:
+
+```sh
+#!/bin/sh
+blip info "pulled $(git log -1 --format='%h %s')"
+```
+
+**Coding agents.** Point an agent's hooks at blip to see a card when it needs you or has finished.
+
+**Claude Code**, in `~/.claude/settings.json`:
 
 ```json
 {
@@ -87,12 +134,12 @@ Point an agent's hooks at blip to see a card when it needs you or has finished.
     "Notification": [
       {
         "matcher": "permission_prompt|idle_prompt|elicitation_dialog",
-        "hooks": [{ "type": "command", "command": "blip warn 'Claude needs you' --position notch", "async": true }]
+        "hooks": [{ "type": "command", "command": "blip warn 'Claude needs you' --position notch" }]
       }
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "blip ok 'Claude is done' --position notch", "async": true }]
+        "hooks": [{ "type": "command", "command": "blip ok 'Claude is done' --position notch" }]
       }
     ]
   }
@@ -105,11 +152,7 @@ Point an agent's hooks at blip to see a card when it needs you or has finished.
 notify = ["sh", "-c", "blip ok 'Codex is done' --position notch", "codex-notify"]
 ```
 
-**Anything else**: wrap the command, and the card says how it ended and how long it took.
-
-```sh
-blip run -- ./scripts/agent-task.sh
-```
+Any other agent or tool: wrap what it runs in `blip run`, or call blip from its hooks.
 
 ### Styles
 
@@ -137,8 +180,10 @@ draining over `--seconds`, and one of three motions:
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh. |
 | 4 | The config file is invalid; the message names the key and line. |
+| 5 | The card had a button and blip waited, but the button was not clicked. |
 
-`blip run` always exits with the wrapped command's exit code.
+Without `--wait`, 0 means the card was handed off to be shown. `blip run` always exits with the
+wrapped command's exit code, as soon as the command ends.
 
 ## Config
 

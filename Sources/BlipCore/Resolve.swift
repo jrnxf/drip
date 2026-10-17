@@ -65,7 +65,7 @@ public struct CardResolver {
 
     private func card(preset: Preset, title: String, detail: String?, flags: CardFlags) -> Card {
         let presetSound = config.sound == false ? Sound.none : preset.sound
-        return Card(
+        var card = Card(
             kind: preset.name,
             title: title,
             detail: CardText.line(detail, limit: Defaults.detailLimit),
@@ -80,6 +80,11 @@ public struct CardResolver {
             notch: flags.notch ?? environment.notch ?? config.notch ?? Defaults.notch,
             motion: flags.motion ?? environment.motion ?? config.motion ?? Defaults.motion
         )
+        if flags.open != nil || flags.button != nil {
+            card.action = CardAction(
+                label: CardText.line(flags.button, limit: Defaults.buttonLimit) ?? "Open", open: flags.open)
+        }
+        return card
     }
 
     private func presetAndTitle(kind: String?, title: String?) throws -> (Preset, String?) {

@@ -47,6 +47,7 @@ final class IslandLayers {
     /// Holds the icon, ring and text; for `droplet` it clips them to the drop.
     let content = CALayer()
     let icon = CALayer()
+    /// The countdown ring, or a button in its place.
     let ring = CALayer()
     let ringProgress = CAShapeLayer()
     let text = CALayer()
@@ -78,13 +79,22 @@ final class IslandLayers {
         textSize = CGSize(
             width: max(titleSize.width, detailSize.width), height: titleSize.height + spacing + detailSize.height)
         let image = CardViewBuilder.symbolImage(for: card, pointSize: 28 * sizeScale, console: console)
+        // ears has no room for a button; the whole island is clickable there instead.
+        let buttonLabel = card.notch == .ears ? nil : card.action.map {
+            NSAttributedString(string: $0.label, attributes: [
+                .font: NSFont.systemFont(ofSize: 12.5 * sizeScale, weight: .semibold),
+                .foregroundColor: NSColor.white,
+            ])
+        }
+        let buttonSize = buttonLabel.map { CGSize(width: ceil($0.size().width) + 24 * sizeScale, height: 26 * sizeScale) }
         metrics = IslandMetrics(
             notchWidth: Double(notch.width), notchHeight: Double(notch.height), scale: Double(sizeScale),
             textWidth: Double(textSize.width), textHeight: Double(textSize.height),
-            compactTitleWidth: Double(titleSize.width), hasIcon: image != nil)
+            compactTitleWidth: Double(titleSize.width), hasIcon: image != nil,
+            actionWidth: Double(buttonSize?.width ?? 0))
         size = CGSize(width: ceil(metrics.maxWidth) + 40, height: ceil(metrics.maxHeight))
         iconSide = 28 * sizeScale
-        ringSide = 22 * sizeScale
+        ringSide = buttonSize?.width ?? 22 * sizeScale
 
         root.frame = CGRect(origin: .zero, size: size)
         root.isGeometryFlipped = true
@@ -111,28 +121,11 @@ final class IslandLayers {
         icon.opacity = 0
         content.addSublayer(icon)
 
-        ring.bounds = CGRect(x: 0, y: 0, width: ringSide, height: ringSide)
-        let circle = CGPath(
-            ellipseIn: CGRect(x: 0, y: 0, width: ringSide, height: ringSide).insetBy(dx: 1.6, dy: 1.6),
-            transform: nil)
-        let track = CAShapeLayer()
-        track.path = circle
-        track.fillColor = nil
-        track.strokeColor = accent.withAlphaComponent(0.28).cgColor
-        track.lineWidth = 2.4 * sizeScale
-        track.contentsScale = scale
-        ringProgress.path = circle
-        ringProgress.fillColor = nil
-        ringProgress.strokeColor = accent.cgColor
-        ringProgress.lineWidth = 2.4 * sizeScale
-        ringProgress.lineCap = .round
-        ringProgress.contentsScale = scale
-        // Start at twelve o'clock and drain clockwise.
-        ringProgress.frame = ring.bounds
-        ringProgress.transform = CATransform3DMakeRotation(-.pi / 2, 0, 0, 1)
-        track.frame = ring.bounds
-        ring.addSublayer(track)
-        ring.addSublayer(ringProgress)
+        if let buttonLabel, let buttonSize {
+            makeButton(buttonLabel, size: buttonSize, accent: accent, scale: scale)
+        } else {
+            makeRing(accent: accent, lineWidth: 2.4 * sizeScale, scale: scale)
+        }
         ring.opacity = 0
         content.addSublayer(ring)
 
@@ -153,6 +146,52 @@ final class IslandLayers {
             text.addSublayer(detail)
         }
         content.addSublayer(text)
+    }
+
+    /// The button that stands where the ring would: a capsule in the darkened accent.
+    private func makeButton(_ label: NSAttributedString, size: CGSize, accent: NSColor, scale: CGFloat) {
+        ring.bounds = CGRect(origin: .zero, size: size)
+        let fill = CAShapeLayer()
+        fill.path = CGPath(
+            roundedRect: ring.bounds, cornerWidth: size.height / 2, cornerHeight: size.height / 2, transform: nil)
+        let rgb = accent.rgb(in: NSAppearance(named: .aqua) ?? .currentDrawing())
+        fill.fillColor = NSColor(WashPalette(accent: rgb).top).cgColor
+        fill.contentsScale = scale
+        ring.addSublayer(fill)
+        let text = CATextLayer()
+        text.string = label
+        let textSize = label.size()
+        text.frame = CGRect(
+            x: (size.width - ceil(textSize.width)) / 2, y: (size.height - ceil(textSize.height)) / 2,
+            width: ceil(textSize.width), height: ceil(textSize.height))
+        text.contentsScale = scale
+        ring.addSublayer(text)
+    }
+
+    /// The countdown ring: a faint track and the accent arc that drains.
+    private func makeRing(accent: NSColor, lineWidth: CGFloat, scale: CGFloat) {
+        ring.bounds = CGRect(x: 0, y: 0, width: ringSide, height: ringSide)
+        let circle = CGPath(
+            ellipseIn: CGRect(x: 0, y: 0, width: ringSide, height: ringSide).insetBy(dx: 1.6, dy: 1.6),
+            transform: nil)
+        let track = CAShapeLayer()
+        track.path = circle
+        track.fillColor = nil
+        track.strokeColor = accent.withAlphaComponent(0.28).cgColor
+        track.lineWidth = lineWidth
+        track.contentsScale = scale
+        ringProgress.path = circle
+        ringProgress.fillColor = nil
+        ringProgress.strokeColor = accent.cgColor
+        ringProgress.lineWidth = lineWidth
+        ringProgress.lineCap = .round
+        ringProgress.contentsScale = scale
+        // Start at twelve o'clock and drain clockwise.
+        ringProgress.frame = ring.bounds
+        ringProgress.transform = CATransform3DMakeRotation(-.pi / 2, 0, 0, 1)
+        track.frame = ring.bounds
+        ring.addSublayer(track)
+        ring.addSublayer(ringProgress)
     }
 
     private static func measure(_ text: NSAttributedString, maxWidth: CGFloat) -> CGSize {
@@ -307,6 +346,24 @@ enum IslandPath {
     }
 }
 
+/// The island's view: reports the pointer and clicks, without ever taking focus.
+final class IslandView: NSView {
+    var onMove: ((CGPoint) -> Void)?
+    var onClick: ((CGPoint) -> Void)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseMoved(with event: NSEvent) { onMove?(convert(event.locationInWindow, from: nil)) }
+    override func mouseExited(with event: NSEvent) { onMove?(CGPoint(x: -1, y: -1)) }
+    override func mouseUp(with event: NSEvent) { onClick?(convert(event.locationInWindow, from: nil)) }
+}
+
 /// A panel AppKit lets cover the menu bar: windows are normally pushed below it.
 final class IslandPanel: NSPanel {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
@@ -346,14 +403,20 @@ final class IslandPresenter: CardPresenting {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        panel.ignoresMouseEvents = true
+        // With an action, keep AppKit's default: clicks on the island's transparent surroundings
+        // still reach the menu bar beneath.
+        if card.action == nil { panel.ignoresMouseEvents = true }
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .none
         // A sublayer of AppKit's backing layer, so AppKit can't reset the root's flipped geometry.
-        let view = NSView(frame: NSRect(origin: .zero, size: frame.size))
+        let view = IslandView(frame: NSRect(origin: .zero, size: frame.size))
         view.wantsLayer = true
+        if card.action != nil {
+            view.onMove = { [weak self] point in self?.pointer(at: point) }
+            view.onClick = { [weak self] point in self?.click(at: point) }
+        }
         view.layer?.addSublayer(layers.root)
         panel.contentView = view
         panel.setFrame(frame, display: false)
@@ -363,30 +426,35 @@ final class IslandPresenter: CardPresenting {
         layers.apply(layers.frame(animator.shape(at: 0), layout: animator.content(for: animator.shape(at: 0))))
         panel.orderFrontRegardless()
         sound = CardSound(card.sound, console: console)
-        sound?.play()
 
         let motion = CardPresenters.motion(for: card)
         guard motion == .full else {
+            sound?.play()
             animator.open()
             let open = animator.shape(at: 0)
             layers.apply(layers.frame(open, layout: animator.content(for: open)))
             layers.showContent()
             panel.alphaValue = motion == .none ? 1 : 0
             fadePanel(to: 1, duration: motion == .none ? 0 : 0.15)
-            hold(from: 0.15) { [self] in
+            departure = { [self] in
                 fadePanel(to: 0, duration: motion == .none ? 0 : 0.25) { [self] in finish(onFinish) }
             }
+            schedule(after: 0.15 + card.seconds)
             return
         }
 
         // One clock for the whole card: each new target springs from wherever the last one left things.
-        let started = CACurrentMediaTime()
+        // It starts once the keyframes are built, when the animations really begin.
         let enterCues = animator.enter(at: 0)
         play(animator, from: 0, layers: layers)
+        let started = CACurrentMediaTime()
+        // The sound lands as the island first shows: the droplet starts hidden in the notch.
+        let audible = card.notch == .droplet ? 0.05 : 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + audible) { [self] in sound?.play() }
         fade(enterCues, into: true, layers: layers)
         let visible = (enterCues.title ?? 0) + 0.25
         drain(after: visible, layers: layers)
-        hold(from: visible) { [self] in
+        departure = { [self] in
             let now = CACurrentMediaTime() - started
             let exitCues = animator.exit(at: now)
             play(animator, from: now, layers: layers)
@@ -395,16 +463,88 @@ final class IslandPresenter: CardPresenting {
                 finish(onFinish)
             }
         }
+        schedule(after: visible + card.seconds)
+    }
+
+    // MARK: Clicks and hovering, for a card with an action.
+
+    /// Runs the exit once; nil after that.
+    private var departure: (() -> Void)?
+    private var pending: DispatchWorkItem?
+    private var hovering = false
+
+    private func schedule(after seconds: Double) {
+        pending?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.leave(clicked: false) }
+        pending = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    private func leave(clicked: Bool) {
+        guard let departure else { return }
+        self.departure = nil
+        pending?.cancel()
+        if card.action != nil, !clicked { CardActions.missed = true }
+        panel?.ignoresMouseEvents = true
+        departure()
+    }
+
+    /// Whether a point in the view is on the island as it is drawn right now.
+    private func onIsland(_ point: CGPoint) -> Bool {
+        guard let layers, let path = (layers.shape.presentation() ?? layers.shape).path else { return false }
+        return path.contains(CGPoint(x: point.x, y: layers.size.height - point.y))
+    }
+
+    /// Whether a point in the view is on the button as it is drawn right now.
+    private func onButton(_ point: CGPoint) -> Bool {
+        // ears has no room for a button: the whole island is one.
+        guard card.notch != .ears else { return onIsland(point) }
+        guard let layers else { return false }
+        let shown = layers.ring.presentation() ?? layers.ring
+        let rect = (layers.root.presentation() ?? layers.root).convert(shown.bounds, from: shown)
+        return rect.insetBy(dx: -4, dy: -4).contains(CGPoint(x: point.x, y: layers.size.height - point.y))
+    }
+
+    private func pointer(at point: CGPoint) {
+        guard departure != nil else { return }
+        let inside = onIsland(point)
+        guard inside != hovering else { return }
+        hovering = inside
+        if inside {
+            // Hold the card and freeze the ring.
+            pending?.cancel()
+            pause(layers?.ringProgress, paused: true)
+        } else {
+            pause(layers?.ringProgress, paused: false)
+            schedule(after: 1.5)
+        }
+    }
+
+    private func click(at point: CGPoint) {
+        guard departure != nil, let action = card.action, onIsland(point) else { return }
+        let clicked = onButton(point)
+        if clicked { CardActions.perform(action, console: console) }
+        leave(clicked: clicked)
+    }
+
+    private func pause(_ layer: CALayer?, paused: Bool) {
+        guard let layer else { return }
+        if paused {
+            let time = layer.convertTime(CACurrentMediaTime(), from: nil)
+            layer.speed = 0
+            layer.timeOffset = time
+        } else {
+            let offset = layer.timeOffset
+            layer.speed = 1
+            layer.timeOffset = 0
+            layer.beginTime = 0
+            layer.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) - offset
+        }
     }
 
     private func finish(_ onFinish: @escaping (Bool) -> Void) {
         panel?.orderOut(nil)
         sound?.waitUntilDone { onFinish(true) }
-    }
-
-    /// Waits until `start` plus the card's seconds, then runs `exit`.
-    private func hold(from start: Double, then exit: @escaping () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + start + card.seconds, execute: exit)
     }
 
     /// Samples every spring from `start` until they settle into keyframe animations.
