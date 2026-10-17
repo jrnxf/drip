@@ -56,6 +56,51 @@ struct TextTests {
         #expect(CardText.truncate("hello world", limit: 7) == "hello…")
     }
 
+    /// A width close to the 14-point semibold system font's.
+    private static func measure(_ text: String) -> Double {
+        Double(text.count) * 7.5
+    }
+
+    @Test func fitLeavesTextThatFitsAlone() {
+        let alphabet = "abcdefghijklmnopqrstuvwxyz"
+        #expect(CardText.fit(alphabet, width: 500, measure: Self.measure) == alphabet)
+        #expect(CardText.fit("", width: 500, measure: Self.measure) == "")
+    }
+
+    /// The owner's title: one word, three alphabets long, wider than the island's 500-point column.
+    @Test func fitCutsALongWordToTheLine() {
+        let word = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
+        #expect(Self.measure(word) > 500)
+        let fitted = CardText.fit(word, width: 500, measure: Self.measure)
+        #expect(fitted == String(word.prefix(65)) + "…")
+        #expect(Self.measure(fitted) <= 500)
+    }
+
+    @Test func fitCutsSpacedTextWithoutATrailingSpace() {
+        let spaced = String(repeating: "A very long title that keeps going ", count: 3)
+        let fitted = CardText.fit(spaced, width: 500, measure: Self.measure)
+        #expect(Self.measure(fitted) <= 500)
+        #expect(fitted.hasSuffix("…"))
+        #expect(!fitted.dropLast().hasSuffix(" "))
+        #expect(spaced.hasPrefix(fitted.dropLast()))
+    }
+
+    @Test func fitCutsVeryLongTextWithAndWithoutSpaces() {
+        for text in [String(repeating: "x", count: 2000), String(repeating: "word ", count: 400)] {
+            let fitted = CardText.fit(text, width: 500, measure: Self.measure)
+            #expect(Self.measure(fitted) <= 500)
+            #expect(Self.measure(fitted) > 480)
+            #expect(fitted.hasSuffix("…"))
+        }
+    }
+
+    @Test func fitNeverSplitsEmojiAndKeepsTheEllipsisWhenNothingElseFits() {
+        let family = "👨‍👩‍👧‍👦"
+        #expect(CardText.fit(String(repeating: family, count: 10), width: 30, measure: Self.measure)
+            == family + family + family + "…")
+        #expect(CardText.fit("abc", width: 10, measure: Self.measure) == "…")
+    }
+
     @Test func titleAndDetailLimits() {
         #expect(Defaults.titleLimit == 80)
         #expect(Defaults.detailLimit == 120)

@@ -65,14 +65,15 @@ final class IslandLayers {
         let detailFont = NSFont.systemFont(ofSize: 12 * sizeScale, weight: .regular)
         let compactFont = NSFont.systemFont(ofSize: 12.5 * sizeScale, weight: .semibold)
         let compact = card.notch == .ears
-        let titleText = NSAttributedString(
-            string: card.title, attributes: [.font: compact ? compactFont : titleFont, .foregroundColor: NSColor.white])
-        let detailText = card.detail.map {
-            NSAttributedString(
-                string: $0,
-                attributes: [.font: detailFont, .foregroundColor: NSColor(white: 0.62, alpha: 1)])
-        }
         let maxText = CardMetrics.maxWidth - 140 * sizeScale
+        // The ears title sits in the right ear, which stops at half the widest card.
+        let titleText = Self.line(
+            card.title, attributes: [.font: compact ? compactFont : titleFont, .foregroundColor: NSColor.white],
+            width: compact ? CardMetrics.maxWidth / 2 - 26 * sizeScale : maxText)
+        let detailText = card.detail.map {
+            Self.line(
+                $0, attributes: [.font: detailFont, .foregroundColor: NSColor(white: 0.62, alpha: 1)], width: maxText)
+        }
         let titleSize = Self.measure(titleText, maxWidth: maxText)
         let detailSize = compact ? .zero : detailText.map { Self.measure($0, maxWidth: maxText) } ?? .zero
         let spacing = detailText == nil || compact ? 0 : 3 * sizeScale
@@ -192,6 +193,17 @@ final class IslandLayers {
         track.frame = ring.bounds
         ring.addSublayer(track)
         ring.addSublayer(ringProgress)
+    }
+
+    /// One line of text cut to fit `width` with an ellipsis. The island never leaves the cut to its
+    /// text layers: with a line wider than the layer, the island did not show at all.
+    private static func line(
+        _ text: String, attributes: [NSAttributedString.Key: Any], width: CGFloat
+    ) -> NSAttributedString {
+        let fitted = CardText.fit(text, width: Double(width)) {
+            Double(ceil(NSAttributedString(string: $0, attributes: attributes).size().width))
+        }
+        return NSAttributedString(string: fitted, attributes: attributes)
     }
 
     private static func measure(_ text: NSAttributedString, maxWidth: CGFloat) -> CGSize {
