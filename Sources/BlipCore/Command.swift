@@ -60,7 +60,7 @@ public struct CardOptions: ParsableArguments {
     var color: CardColor?
 
     @Option(help: ArgumentHelp(
-        "bottom, center, top or notch. notch falls back to top without a notch. (default: bottom)",
+        "bottom, center, top or notch. notch falls back to top without a notch. (default: notch)",
         valueName: "position"))
     var position: Position?
 

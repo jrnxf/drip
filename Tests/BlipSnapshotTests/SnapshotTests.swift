@@ -96,7 +96,8 @@ struct SnapshotTests {
     ]
 }
 
-/// One rendering to compare: a reference name and the arguments after `blip __render`.
+/// One rendering to compare: a reference name and the arguments after `blip __render`. Without
+/// `--position` it renders at the bottom, so card references do not follow the default position.
 struct Snapshot {
     var name: String
     var arguments: [String]
@@ -179,7 +180,8 @@ private func render(
 
     let process = Process()
     process.executableURL = blip
-    process.arguments = ["__render", "--out", output.path] + arguments
+    let position = arguments.contains("--position") ? [] : ["--position", "bottom"]
+    process.arguments = ["__render", "--out", output.path] + position + arguments
     process.environment = environment
     let errors = Pipe()
     process.standardError = errors

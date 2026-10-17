@@ -200,7 +200,7 @@ struct PrecedenceTests {
     @Test func defaultsWhenNothingIsSet() throws {
         let card = try CardResolver().resolve(kind: "ok", title: "t", flags: CardFlags())
         #expect(card.seconds == 4.5)
-        #expect(card.position == .bottom)
+        #expect(card.position == .notch)
         #expect(card.size == .regular)
         #expect(card.sound == .named("Glass"))
     }

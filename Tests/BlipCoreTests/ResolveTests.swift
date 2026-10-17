@@ -41,7 +41,7 @@ struct ResolveTests {
         #expect(card.sound == .named("Purr"))
         #expect(card.icon == .symbol("exclamationmark.circle.fill"))
         #expect(card.color == .system(.orange))
-        #expect(card.position == .bottom)
+        #expect(card.position == .notch)
         #expect(card.size == .regular)
     }
 
