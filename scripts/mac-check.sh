@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds and tests blip on a Mac, records any missing snapshot references, then shows each preset
-# card on screen once.
+# card on screen once and plays every style and notch motion with blip demo.
 #
 # Existing references are never overwritten: to regenerate one on purpose, delete its PNG in
 # Tests/Snapshots and run this script again.
@@ -13,8 +13,19 @@ if [ "$(uname -s)" != Darwin ]; then
     exit 1
 fi
 
+# Swift Testing is built for macOS 14, so the tests are too; blip itself targets macOS 13 below.
+set -- -Xswiftc -target -Xswiftc "$(uname -m)-apple-macosx14.0"
+# With only the Command Line Tools, SwiftPM does not find Swift Testing on its own.
+developer=$(xcode-select -p)
+case $developer in
+*/CommandLineTools)
+    testing="$developer/Library/Developer"
+    set -- "$@" -Xswiftc -F -Xswiftc "$testing/Frameworks" \
+        -Xlinker -rpath -Xlinker "$testing/Frameworks" -Xlinker -rpath -Xlinker "$testing/usr/lib"
+    ;;
+esac
+BLIP_RECORD_SNAPSHOTS=1 swift test "$@"
 swift build
-BLIP_RECORD_SNAPSHOTS=1 swift test
 
 new=$(git status --porcelain --untracked-files=all -- Tests/Snapshots)
 if [ -n "$new" ]; then
@@ -34,8 +45,11 @@ icon  = "paperplane.fill"
 color = "#a78bfa"
 sound = "Submarine"
 TOML
+unset BLIP_SECONDS BLIP_POSITION BLIP_SIZE BLIP_SOUND BLIP_STYLE BLIP_NOTCH BLIP_MOTION
 for kind in ok warn fail info deploy; do
     echo "Showing the $kind card"
-    env -u BLIP_SECONDS -u BLIP_POSITION -u BLIP_SIZE -u BLIP_SOUND XDG_CONFIG_HOME="$config" \
-        .build/debug/blip "$kind" "blip $kind" --detail "mac-check: the $kind preset"
+    XDG_CONFIG_HOME="$config" .build/debug/blip "$kind" "blip $kind" --detail "mac-check: the $kind preset"
 done
+
+echo "Playing blip demo"
+XDG_CONFIG_HOME="$config" .build/debug/blip demo

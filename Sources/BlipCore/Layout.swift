@@ -35,12 +35,26 @@ public struct CardMetrics: Equatable, Sendable {
     public var detailSpacing: CGFloat { 1 * scale }
 }
 
+extension CardStyle {
+    /// The card's corner radius, before size scaling.
+    public var cornerRadius: CGFloat {
+        switch self {
+        case .hud: return CardMetrics.cornerRadius
+        case .glass: return 20
+        case .wash: return 16
+        case .terminal: return 10
+        }
+    }
+}
+
 /// Frames for every element of a card, in a bottom-left-origin coordinate space (AppKit's).
 public struct CardLayout: Equatable, Sendable {
     public var size: CGSize
     public var iconFrame: CGRect?
     public var titleFrame: CGRect
     public var detailFrame: CGRect?
+    /// The small label above the title (the `terminal` style's kind).
+    public var eyebrowFrame: CGRect?
 
     /// Lays out a card from the measured sizes of its labels.
     ///
@@ -48,17 +62,25 @@ public struct CardLayout: Equatable, Sendable {
     ///   - titleSize: The title label's own fitting size.
     ///   - detailSize: The detail label's own fitting size, or nil for a one-line card.
     ///   - hasIcon: False when the card shows no icon.
-    public init(metrics: CardMetrics, titleSize: CGSize, detailSize: CGSize?, hasIcon: Bool) {
-        let textX = metrics.leadingPadding + (hasIcon ? metrics.iconSize + metrics.iconGap : 0)
+    ///   - eyebrowSize: A small label above the title, if any.
+    ///   - leadingInset: Extra room before the content, such as the `terminal` style's stripe.
+    public init(
+        metrics: CardMetrics, titleSize: CGSize, detailSize: CGSize?, hasIcon: Bool, eyebrowSize: CGSize? = nil,
+        leadingInset: CGFloat = 0
+    ) {
+        let textX = leadingInset + metrics.leadingPadding + (hasIcon ? metrics.iconSize + metrics.iconGap : 0)
         // Without an icon there is nothing round to balance, so both sides get the leading padding.
         let trailing = hasIcon ? metrics.trailingPadding : metrics.leadingPadding
         let maxTextWidth = CardMetrics.maxWidth - textX - trailing
-        let textWidth = min((max(titleSize.width, detailSize?.width ?? 0)).rounded(.up), maxTextWidth)
+        let widest = max(titleSize.width, detailSize?.width ?? 0, eyebrowSize?.width ?? 0)
+        let textWidth = min(widest.rounded(.up), maxTextWidth)
         let width = min((textX + textWidth + trailing).rounded(.up), CardMetrics.maxWidth)
         // The text column takes any fraction of a point the width was rounded up by.
         let columnWidth = width - textX - trailing
 
-        let textHeight = titleSize.height + (detailSize.map { metrics.detailSpacing + $0.height } ?? 0)
+        let eyebrowHeight = eyebrowSize.map { $0.height + metrics.detailSpacing } ?? 0
+        let textHeight = eyebrowHeight + titleSize.height
+            + (detailSize.map { metrics.detailSpacing + $0.height } ?? 0)
         let contentHeight = max(textHeight, metrics.iconSize)
         let height = (contentHeight + 2 * metrics.verticalPadding).rounded(.up)
         let textY = ((height - textHeight) / 2).rounded()
@@ -82,6 +104,9 @@ public struct CardLayout: Equatable, Sendable {
             detailFrame = nil
             titleFrame = CGRect(x: textX, y: textY, width: columnWidth, height: titleSize.height)
         }
+        eyebrowFrame = eyebrowSize.map {
+            CGRect(x: textX, y: titleFrame.maxY + metrics.detailSpacing, width: columnWidth, height: $0.height)
+        }
     }
 
     /// The card's window origin on a screen, rounded to whole points.
@@ -94,7 +119,8 @@ public struct CardLayout: Equatable, Sendable {
         switch position {
         case .bottom: y = visibleFrame.minY + inset
         case .center: y = visibleFrame.midY - size.height / 2
-        case .top: y = visibleFrame.maxY - inset - size.height
+        // A notch card is drawn as an island; this is where it goes on a screen without a notch.
+        case .top, .notch: y = visibleFrame.maxY - inset - size.height
         }
         return CGPoint(x: x.rounded(), y: y.rounded())
     }

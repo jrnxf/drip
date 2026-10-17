@@ -1,5 +1,5 @@
 import Foundation
-import XCTest
+import Testing
 #if canImport(AppKit)
 import CoreGraphics
 import ImageIO
@@ -7,42 +7,70 @@ import ImageIO
 
 /// Renders cards with `blip __render` and compares them with the PNGs in Tests/Snapshots.
 ///
-/// A card without a reference is skipped. With `BLIP_RECORD_SNAPSHOTS=1` its rendering is saved as
-/// the new reference instead; existing references are never overwritten. To regenerate one on
+/// A card without a reference is cancelled. With `BLIP_RECORD_SNAPSHOTS=1` its rendering is saved
+/// as the new reference instead; existing references are never overwritten. To regenerate one on
 /// purpose, delete it and run scripts/mac-check.sh.
-final class SnapshotTests: XCTestCase {
-    func testPresetsOneLine() throws {
+#if canImport(AppKit)
+struct SnapshotTests {
+    @Test func presetsOneLine() throws {
         try assertSnapshots(Self.presets.flatMap { preset in
             appearances("\(preset.kind)-one-line", [preset.kind, preset.title])
         })
     }
 
-    func testPresetsTwoLines() throws {
+    @Test func presetsTwoLines() throws {
         try assertSnapshots(Self.presets.flatMap { preset in
             appearances("\(preset.kind)-two-lines", [preset.kind, preset.title, "--detail", preset.detail])
         })
     }
 
-    func testSizes() throws {
+    @Test func sizes() throws {
         try assertSnapshots(["compact", "large"].flatMap { size in
             appearances("ok-\(size)-two-lines", ["ok", "Build finished", "--detail", "blip: 42 tests passed in 3.1s",
                                                   "--size", size])
         })
     }
 
-    func testLongTextIsCappedAt640Points() throws {
+    @Test func longTextIsCappedAt640Points() throws {
         let long = String(repeating: "A very long title that keeps going ", count: 9)
         try assertSnapshots(appearances("long-text", ["fail", long, "--detail", long]))
     }
 
-    func testCustomIconAndColor() throws {
+    @Test func customIconAndColor() throws {
         try assertSnapshots(appearances(
             "custom-icon-color", ["shipped", "--icon", "paperplane.fill", "--color", "#a78bfa"]))
     }
 
-    func testScripts() throws {
+    @Test func scripts() throws {
         try assertSnapshots([
             Snapshot(name: "scripts-light", arguments: ["info", "ビルド完了 🎉", "--detail", "שלום עולם: مرحبا بالعالم"]),
+        ])
+    }
+
+    @Test func styles() throws {
+        let two = ["--detail", "blip: 42 tests passed in 3.1s"]
+        try assertSnapshots(
+            appearances("glass", ["ok", "Build finished", "--style", "glass"] + two)
+            + Self.presets.map { preset in
+                Snapshot(name: "wash-\(preset.kind)", arguments: [preset.kind, preset.title, "--detail", preset.detail,
+                                                                 "--style", "wash"])
+            }
+            + ["ok", "fail"].map { kind in
+                Snapshot(name: "terminal-\(kind)", arguments: [kind, "Build finished", "--style", "terminal"] + two)
+            })
+    }
+
+    @Test func notch() throws {
+        let card = ["ok", "Build finished", "--detail", "blip: 42 tests passed in 3.1s", "--position", "notch"]
+        try assertSnapshots(["droplet", "snap", "ears"].map { motion in
+            Snapshot(name: "notch-\(motion)", arguments: card + ["--notch", motion])
+        } + [
+            // Mid-entrance: the droplet hanging on its neck, and snap halfway open; mid-exit: the
+            // droplet merging back into the notch.
+            Snapshot(name: "notch-droplet-falling", arguments: card + ["--notch", "droplet", "--at", "0.2"]),
+            Snapshot(
+                name: "notch-droplet-merging", arguments: card + ["--notch", "droplet", "--at", "0.27", "--leaving"]),
+            Snapshot(name: "notch-snap-opening", arguments: card + ["--notch", "snap", "--at", "0.08"]),
         ])
     }
 
@@ -65,53 +93,47 @@ func appearances(_ name: String, _ arguments: [String]) -> [Snapshot] {
     ["light", "dark"].map { Snapshot(name: "\(name)-\($0)", arguments: arguments + ["--appearance", $0]) }
 }
 
-extension XCTestCase {
-    func assertSnapshots(_ snapshots: [Snapshot], file: StaticString = #filePath, line: UInt = #line) throws {
-        #if canImport(AppKit)
-        let paths = SnapshotPaths()
-        let blip = paths.products.appendingPathComponent("blip")
-        guard FileManager.default.isExecutableFile(atPath: blip.path) else {
-            XCTFail("\(blip.path) is missing; run swift build first", file: file, line: line)
-            return
-        }
-        let record = ProcessInfo.processInfo.environment["BLIP_RECORD_SNAPSHOTS"] == "1"
-        var missing: [String] = []
-        var recorded: [String] = []
-        for snapshot in snapshots {
-            let rendered = paths.scratch.appendingPathComponent("\(snapshot.name).png")
-            try render(blip, snapshot.arguments, to: rendered, paths: paths, file: file, line: line)
-            let reference = paths.references.appendingPathComponent("\(snapshot.name).png")
-            guard FileManager.default.fileExists(atPath: reference.path) else {
-                if record {
-                    try FileManager.default.createDirectory(at: paths.references, withIntermediateDirectories: true)
-                    try FileManager.default.copyItem(at: rendered, to: reference)
-                    recorded.append(snapshot.name)
-                } else {
-                    missing.append(snapshot.name)
-                }
-                continue
+func assertSnapshots(_ snapshots: [Snapshot], sourceLocation: SourceLocation = #_sourceLocation) throws {
+    let paths = SnapshotPaths()
+    let blip = paths.products.appendingPathComponent("blip")
+    guard FileManager.default.isExecutableFile(atPath: blip.path) else {
+        Issue.record("\(blip.path) is missing; run swift build first", sourceLocation: sourceLocation)
+        return
+    }
+    let record = ProcessInfo.processInfo.environment["BLIP_RECORD_SNAPSHOTS"] == "1"
+    var missing: [String] = []
+    var recorded: [String] = []
+    for snapshot in snapshots {
+        let rendered = paths.scratch.appendingPathComponent("\(snapshot.name).png")
+        try render(blip, snapshot.arguments, to: rendered, paths: paths, sourceLocation: sourceLocation)
+        let reference = paths.references.appendingPathComponent("\(snapshot.name).png")
+        guard FileManager.default.fileExists(atPath: reference.path) else {
+            if record {
+                try FileManager.default.createDirectory(at: paths.references, withIntermediateDirectories: true)
+                try FileManager.default.copyItem(at: rendered, to: reference)
+                recorded.append(snapshot.name)
+            } else {
+                missing.append(snapshot.name)
             }
-            if let difference = imageDifference(reference: reference, rendered: rendered) {
-                let failure = paths.failures.appendingPathComponent("\(snapshot.name).png")
-                try FileManager.default.createDirectory(at: paths.failures, withIntermediateDirectories: true)
-                try? FileManager.default.removeItem(at: failure)
-                try FileManager.default.copyItem(at: rendered, to: failure)
-                XCTFail("\(snapshot.name): \(difference); rendered at \(failure.path)", file: file, line: line)
-            }
+            continue
         }
-        if !recorded.isEmpty {
-            throw XCTSkip("recorded new references: \(recorded.joined(separator: ", "))")
+        if let difference = imageDifference(reference: reference, rendered: rendered) {
+            let failure = paths.failures.appendingPathComponent("\(snapshot.name).png")
+            try FileManager.default.createDirectory(at: paths.failures, withIntermediateDirectories: true)
+            try? FileManager.default.removeItem(at: failure)
+            try FileManager.default.copyItem(at: rendered, to: failure)
+            Issue.record("\(snapshot.name): \(difference); rendered at \(failure.path)", sourceLocation: sourceLocation)
         }
-        if !missing.isEmpty {
-            throw XCTSkip("no reference for \(missing.joined(separator: ", ")); run scripts/mac-check.sh")
-        }
-        #else
-        throw XCTSkip("snapshot tests run on macOS")
-        #endif
+    }
+    if !recorded.isEmpty {
+        try Test.cancel("recorded new references: \(recorded.joined(separator: ", "))", sourceLocation: sourceLocation)
+    }
+    if !missing.isEmpty {
+        try Test.cancel(
+            "no reference for \(missing.joined(separator: ", ")); run scripts/mac-check.sh", sourceLocation: sourceLocation)
     }
 }
 
-#if canImport(AppKit)
 struct SnapshotPaths {
     /// Where SwiftPM put the test bundle and the blip binary.
     var products: URL
@@ -135,7 +157,7 @@ struct SnapshotPaths {
 }
 
 private func render(
-    _ blip: URL, _ arguments: [String], to output: URL, paths: SnapshotPaths, file: StaticString, line: UInt
+    _ blip: URL, _ arguments: [String], to output: URL, paths: SnapshotPaths, sourceLocation: SourceLocation
 ) throws {
     try FileManager.default.createDirectory(at: paths.config, withIntermediateDirectories: true)
     var environment = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("BLIP_") }
@@ -151,7 +173,8 @@ private func render(
     let message = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
     process.waitUntilExit()
     if process.terminationStatus != 0 {
-        XCTFail("blip __render \(arguments) exited \(process.terminationStatus): \(message)", file: file, line: line)
+        Issue.record(
+            "blip __render \(arguments) exited \(process.terminationStatus): \(message)", sourceLocation: sourceLocation)
     }
 }
 

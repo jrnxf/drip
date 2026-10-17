@@ -3,131 +3,18 @@ import AppKit
 import BlipCore
 import QuartzCore
 
-extension CardColor {
-    var nsColor: NSColor {
-        switch self {
-        case let .system(name):
-            switch name {
-            case .green: return .systemGreen
-            case .orange: return .systemOrange
-            case .red: return .systemRed
-            case .blue: return .systemBlue
-            case .purple: return .systemPurple
-            case .pink: return .systemPink
-            case .yellow: return .systemYellow
-            case .gray: return .systemGray
-            }
-        case let .rgb(red, green, blue):
-            return NSColor(
-                srgbRed: CGFloat(red) / 255, green: CGFloat(green) / 255, blue: CGFloat(blue) / 255, alpha: 1)
-        }
-    }
-}
-
-/// The card's background: the HUD material with rounded corners and the accent border.
-final class CardBackgroundView: NSVisualEffectView {
-    var accent: NSColor = .clear {
-        didSet { updateBorderColor() }
-    }
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        material = .hudWindow
-        blendingMode = .behindWindow
-        state = .active
-        wantsLayer = true
-        layer?.cornerRadius = CardMetrics.cornerRadius
-        layer?.masksToBounds = true
-        layer?.borderWidth = CardMetrics.borderWidth
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        updateBorderColor()
-    }
-
-    /// A layer's CGColor does not follow appearance changes, so resolve it for the current one.
-    private func updateBorderColor() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            self.layer?.borderColor = self.accent.withAlphaComponent(CardMetrics.borderAlpha).cgColor
-        }
-    }
-}
-
-/// Builds the view tree for a card, laid out by `CardLayout`.
-enum CardViewBuilder {
-    /// - Parameter appearance: Forces light or dark; nil follows the system.
-    static func makeView(for card: Card, appearance: NSAppearance?, console: Console) -> CardBackgroundView {
-        let metrics = CardMetrics(size: card.size)
-        let accent = card.color.nsColor
-
-        let title = makeLabel(
-            card.title, font: .systemFont(ofSize: metrics.titleFontSize, weight: .semibold), color: .labelColor)
-        let detail = card.detail.map {
-            makeLabel($0, font: .systemFont(ofSize: metrics.detailFontSize, weight: .regular),
-                      color: .secondaryLabelColor)
-        }
-        let icon = symbolImage(for: card, pointSize: metrics.iconSize, console: console)
-        // Measure with each label's own fitting size so the text sits exactly where it is drawn.
-        let layout = CardLayout(
-            metrics: metrics, titleSize: title.fittingSize, detailSize: detail?.fittingSize, hasIcon: icon != nil)
-
-        let background = CardBackgroundView(frame: NSRect(origin: .zero, size: layout.size))
-        background.appearance = appearance
-        background.accent = accent
-
-        if let icon, let iconFrame = layout.iconFrame {
-            let iconView = NSImageView(frame: iconFrame)
-            iconView.image = icon
-            iconView.imageScaling = .scaleProportionallyDown
-            iconView.contentTintColor = accent
-            background.addSubview(iconView)
-        }
-        title.frame = layout.titleFrame
-        background.addSubview(title)
-        if let detail, let detailFrame = layout.detailFrame {
-            detail.frame = detailFrame
-            background.addSubview(detail)
-        }
-        return background
-    }
-
-    private static func makeLabel(_ text: String, font: NSFont, color: NSColor) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = font
-        label.textColor = color
-        label.usesSingleLineMode = true
-        label.maximumNumberOfLines = 1
-        label.lineBreakMode = .byTruncatingTail
-        // Right-to-left text hugs the right edge of the text column; the icon stays put.
-        label.alignment = CardText.isRightToLeft(text) ? .right : .left
-        return label
-    }
-
-    /// The card's symbol at the spec's size and weight. An unknown symbol name falls back to the
-    /// preset's icon with a warning.
-    private static func symbolImage(for card: Card, pointSize: CGFloat, console: Console) -> NSImage? {
-        let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
-        func image(_ icon: Icon) -> NSImage? {
-            guard case let .symbol(name) = icon else { return nil }
-            return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-                .withSymbolConfiguration(configuration)
-        }
-        guard case let .symbol(name) = card.icon else { return nil }
-        if let found = image(card.icon) { return found }
-        console.warn("unknown SF Symbol '\(name)'; using the preset's icon")
-        return image(card.fallbackIcon)
-    }
-}
-
-/// Shows cards in a borderless, non-activating panel.
+/// Shows cards in borderless, non-activating panels.
 struct HUDDisplay: CardDisplay {
-    func show(_ card: Card, console: Console) -> Int32 {
+    var automaticStyle: CardStyle {
+        GlassSupport.isAvailable ? .glass : .hud
+    }
+
+    var hasNotch: Bool {
+        CardPresenters.targetScreen().flatMap(NotchGeometry.init(screen:)) != nil
+    }
+
+    /// Shows the cards one after another and returns once the last has gone.
+    func show(_ cards: [Card], console: Console) -> Int32 {
         // Without a GUI session, touching NSApplication can abort or hang, so check first.
         guard CGSessionCopyCurrentDictionary() != nil else {
             console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")
@@ -136,13 +23,21 @@ struct HUDDisplay: CardDisplay {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
-        let presenter = CardPresenter(card: card, console: console)
-        // Start once the run loop is running, after the application has finished launching.
-        DispatchQueue.main.async {
-            presenter.start(onFinish: stopApplication)
+        var failed = false
+        var remaining = cards[...]
+        func next() {
+            guard let card = remaining.popFirst() else { return stopApplication() }
+            let presenter = CardPresenters.make(for: card, console: console)
+            // The presenter keeps itself alive through the timers and animations it schedules.
+            presenter.start { ok in
+                failed = failed || !ok
+                next()
+            }
         }
+        // Start once the run loop is running, after the application has finished launching.
+        DispatchQueue.main.async(execute: next)
         app.run()
-        return presenter.failed ? ExitStatus.noGUISession : ExitStatus.shown
+        return failed ? ExitStatus.noGUISession : ExitStatus.shown
     }
 
     /// Ends `NSApplication.run()`. `stop` takes effect only after the next event, so post one.
@@ -157,35 +52,110 @@ struct HUDDisplay: CardDisplay {
     }
 }
 
-/// Fades one card in, holds it, fades it out, and lets its sound finish.
-final class CardPresenter {
+/// Shows one card and reports when it is gone.
+protocol CardPresenting: AnyObject {
+    /// Calls `onFinish` once the card has gone, with false when there was no screen for it.
+    func start(onFinish: @escaping (Bool) -> Void)
+}
+
+enum CardPresenters {
+    /// An island at the notch when the card asks for one and the screen has a notch; a panel otherwise.
+    static func make(for card: Card, console: Console) -> CardPresenting {
+        if card.position == .notch, let screen = targetScreen(), let notch = NotchGeometry(screen: screen) {
+            return IslandPresenter(card: card, notch: notch, console: console)
+        }
+        return CardPresenter(card: card, console: console)
+    }
+
+    /// The screen with the pointer, falling back to the main screen.
+    static func targetScreen() -> NSScreen? {
+        let pointer = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+    }
+
+    /// The card's motion setting, capped by Reduce Motion.
+    static func motion(for card: Card) -> Motion {
+        card.motion.capped(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    }
+
+    /// The strong ease-out every entrance and exit uses.
+    static let easeOut = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
+
+    /// Animates window changes, then runs `next` on a timer. Animation completion handlers never
+    /// fire while the display sleeps or the screen is locked, and blip must still exit then.
+    static func animate(duration: TimeInterval, _ changes: () -> Void, then next: (() -> Void)? = nil) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = easeOut
+            changes()
+        }
+        guard let next else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: next)
+    }
+}
+
+/// Plays a card's sound and keeps the process alive until it has finished.
+final class CardSound {
+    private var sound: NSSound?
+
+    init(_ sound: Sound, console: Console) {
+        switch sound {
+        case .none:
+            break
+        case let .named(name):
+            self.sound = NSSound(named: NSSound.Name(name))
+            if self.sound == nil { console.warn("unknown sound '\(name)'; system sounds are in /System/Library/Sounds") }
+        case let .file(path):
+            let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+            self.sound = NSSound(contentsOf: url, byReference: true)
+            if self.sound == nil { console.warn("cannot play sound file '\(path)'") }
+        }
+    }
+
+    func play() {
+        sound?.play()
+    }
+
+    /// Exiting would cut the sound off, so wait for it when it outlasts the card.
+    func waitUntilDone(then finish: @escaping () -> Void) {
+        guard let sound, sound.isPlaying else {
+            finish()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [self] in
+            waitUntilDone(then: finish)
+        }
+    }
+}
+
+/// Brings one card in, holds it, takes it out, and lets its sound finish.
+///
+/// With `motion = full` the card rises 10 points into place from the edge it sits on while it fades
+/// in, and drifts back 6 points as it fades out; a `wash` card for `fail` shakes once.
+final class CardPresenter: CardPresenting {
     private let card: Card
     private let console: Console
     private var panel: NSPanel?
-    private var sound: NSSound?
-    /// True when there was no screen to show the card on.
-    private(set) var failed = false
+    private var sound: CardSound?
 
     init(card: Card, console: Console) {
         self.card = card
         self.console = console
     }
 
-    /// Shows the card and calls `onFinish` once it is gone, or at once when there is no screen.
-    func start(onFinish: @escaping () -> Void) {
-        guard let screen = Self.targetScreen() else {
+    func start(onFinish: @escaping (Bool) -> Void) {
+        guard let screen = CardPresenters.targetScreen() else {
             console.error("no GUI session: no screen to show the card on")
-            failed = true
-            onFinish()
+            onFinish(false)
             return
         }
-        let content = CardViewBuilder.makeView(for: card, appearance: nil, console: console)
-        let origin = CardLayout.origin(for: content.frame.size, in: screen.visibleFrame, position: card.position)
+        let built = CardViewBuilder.make(for: card, appearance: nil, console: console)
+        let origin = CardLayout.origin(for: built.size, in: screen.visibleFrame, position: card.position)
+        let frame = NSRect(origin: origin, size: built.size)
         let panel = NSPanel(
-            contentRect: NSRect(origin: origin, size: content.frame.size),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false)
+            contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .statusBar
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -195,76 +165,78 @@ final class CardPresenter {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .none
-        panel.contentView = content
+        panel.contentView = built.root
         self.panel = panel
 
-        let animated = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        panel.alphaValue = animated ? 0 : 1
+        let motion = CardPresenters.motion(for: card)
+        // Rise from the edge the card sits on; a centered card rises from below.
+        let travel: CGFloat = card.position == .top || card.position == .notch ? 1 : -1
+        panel.alphaValue = motion == .none ? 1 : 0
+        if motion == .full { panel.setFrameOrigin(NSPoint(x: frame.minX, y: frame.minY + travel * 10)) }
         // Never makeKey or activate: the frontmost app keeps focus.
         panel.orderFrontRegardless()
         panel.invalidateShadow()
-        sound = makeSound(card.sound)
+        sound = CardSound(card.sound, console: console)
         sound?.play()
 
-        fade(to: 1, duration: CardMetrics.fadeInDuration, timing: .easeOut, animated: animated) { [self] in
+        enter(frame: frame, motion: motion) { [self] in
             DispatchQueue.main.asyncAfter(deadline: .now() + card.seconds) { [self] in
-                fade(to: 0, duration: CardMetrics.fadeOutDuration, timing: .easeIn, animated: animated) { [self] in
+                exit(frame: frame, travel: travel, motion: motion) { [self] in
                     panel.orderOut(nil)
-                    waitForSound(then: onFinish)
+                    sound?.waitUntilDone { onFinish(true) }
                 }
             }
         }
     }
 
-    /// The screen with the pointer, falling back to the main screen.
-    private static func targetScreen() -> NSScreen? {
-        let pointer = NSEvent.mouseLocation
-        return NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
-            ?? NSScreen.main
-            ?? NSScreen.screens.first
-    }
-
-    private func fade(
-        to alpha: CGFloat, duration: TimeInterval, timing: CAMediaTimingFunctionName, animated: Bool,
-        completion: @escaping () -> Void
-    ) {
+    private func enter(frame: NSRect, motion: Motion, completion: @escaping () -> Void) {
         guard let panel else { return }
-        guard animated else {
-            panel.alphaValue = alpha
-            completion()
-            return
-        }
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = duration
-            context.timingFunction = CAMediaTimingFunction(name: timing)
-            panel.animator().alphaValue = alpha
-        }, completionHandler: completion)
-    }
-
-    private func makeSound(_ sound: Sound) -> NSSound? {
-        switch sound {
+        switch motion {
         case .none:
-            return nil
-        case let .named(name):
-            if let found = NSSound(named: NSSound.Name(name)) { return found }
-            console.warn("unknown sound '\(name)'; system sounds are in /System/Library/Sounds")
-        case let .file(path):
-            let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
-            if let found = NSSound(contentsOf: url, byReference: true) { return found }
-            console.warn("cannot play sound file '\(path)'")
+            completion()
+        case .subtle:
+            animate(duration: 0.15, { panel.animator().alphaValue = 1 }, completion: completion)
+        case .full:
+            animate(duration: 0.35, {
+                panel.animator().alphaValue = 1
+                panel.animator().setFrame(frame, display: true)
+            }) { [self] in
+                if card.style == .wash, card.kind == Preset.fail.name {
+                    shake(frame: frame, offsets: [-8, 7, -5, 3, 0], completion: completion)
+                } else {
+                    completion()
+                }
+            }
         }
-        return nil
     }
 
-    /// Exiting would cut the sound off, so wait for it when it outlasts the card.
-    private func waitForSound(then finish: @escaping () -> Void) {
-        guard let sound, sound.isPlaying else {
-            finish()
-            return
+    private func exit(frame: NSRect, travel: CGFloat, motion: Motion, completion: @escaping () -> Void) {
+        guard let panel else { return }
+        switch motion {
+        case .none:
+            completion()
+        case .subtle:
+            animate(duration: 0.25, { panel.animator().alphaValue = 0 }, completion: completion)
+        case .full:
+            let away = frame.offsetBy(dx: 0, dy: travel * 6)
+            animate(duration: 0.2, {
+                panel.animator().alphaValue = 0
+                panel.animator().setFrame(away, display: true)
+            }, completion: completion)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [self] in
-            waitForSound(then: finish)
+    }
+
+    /// The wrong-password shake: quick steps through `offsets`, in points from the resting frame.
+    private func shake(frame: NSRect, offsets: [CGFloat], completion: @escaping () -> Void) {
+        guard let panel, let offset = offsets.first else { return completion() }
+        animate(duration: 0.07, { panel.animator().setFrame(frame.offsetBy(dx: offset, dy: 0), display: true) }) {
+            [self] in
+            shake(frame: frame, offsets: Array(offsets.dropFirst()), completion: completion)
         }
+    }
+
+    private func animate(duration: TimeInterval, _ changes: () -> Void, completion: (() -> Void)? = nil) {
+        CardPresenters.animate(duration: duration, changes, then: completion)
     }
 }
 #endif

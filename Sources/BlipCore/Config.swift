@@ -6,12 +6,17 @@ public struct PresetOverride: Equatable {
     public var color: CardColor?
     public var sound: Sound?
     public var seconds: Double?
+    public var style: CardStyle?
 
-    public init(icon: Icon? = nil, color: CardColor? = nil, sound: Sound? = nil, seconds: Double? = nil) {
+    public init(
+        icon: Icon? = nil, color: CardColor? = nil, sound: Sound? = nil, seconds: Double? = nil,
+        style: CardStyle? = nil
+    ) {
         self.icon = icon
         self.color = color
         self.sound = sound
         self.seconds = seconds
+        self.style = style
     }
 }
 
@@ -22,17 +27,24 @@ public struct Config: Equatable {
     public var size: CardSize?
     /// False mutes every preset.
     public var sound: Bool?
+    public var style: CardStyle?
+    public var notch: NotchMotion?
+    public var motion: Motion?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
 
     public init(
         seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Bool? = nil,
+        style: CardStyle? = nil, notch: NotchMotion? = nil, motion: Motion? = nil,
         presets: [String: PresetOverride] = [:]
     ) {
         self.seconds = seconds
         self.position = position
         self.size = size
         self.sound = sound
+        self.style = style
+        self.notch = notch
+        self.motion = motion
         self.presets = presets
     }
 
@@ -50,6 +62,7 @@ public struct Config: Equatable {
             preset.color = change.color ?? preset.color
             preset.sound = change.sound ?? preset.sound
             preset.seconds = change.seconds ?? preset.seconds
+            preset.style = change.style ?? preset.style
             return preset
         }
     }
@@ -145,6 +158,9 @@ private struct ConfigReader {
             case "position": config.position = try choice(item, key: key, Position.self)
             case "size": config.size = try choice(item, key: key, CardSize.self)
             case "sound": config.sound = try boolean(item, key: key)
+            case "style": config.style = try choice(item, key: key, CardStyle.self)
+            case "notch": config.notch = try choice(item, key: key, NotchMotion.self)
+            case "motion": config.motion = try choice(item, key: key, Motion.self)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
             }
@@ -167,7 +183,7 @@ private struct ConfigReader {
             if !builtInNames.contains(name), !Self.isValidPresetName(name) {
                 throw ConfigError(
                     path: path, line: presetItem.line, key: key,
-                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run")
+                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run or demo")
             }
             presets[name] = try preset(fields, key: key)
         }
@@ -199,6 +215,8 @@ private struct ConfigReader {
                 }
             case "seconds":
                 preset.seconds = try seconds(item, key: key)
+            case "style":
+                preset.style = try choice(item, key: key, CardStyle.self)
             default:
                 warnUnknown(key, line: item.line)
             }
@@ -207,7 +225,9 @@ private struct ConfigReader {
     }
 
     static func isValidPresetName(_ name: String) -> Bool {
-        guard name != "run", let first = name.unicodeScalars.first, ("a"..."z").contains(first) else { return false }
+        // run and demo are subcommands.
+        guard !["run", "demo"].contains(name), let first = name.unicodeScalars.first, ("a"..."z").contains(first)
+        else { return false }
         return name.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "-" }
     }
 
@@ -254,8 +274,15 @@ private struct ConfigReader {
         warnings.append("\(path):\(line): unknown key '\(key)'")
     }
 
-    /// `a, b or c`.
     private static func list(_ items: [String]) -> String {
+        ChoiceList.or(items)
+    }
+}
+
+/// Lists choices in messages and help.
+public enum ChoiceList {
+    /// `a, b or c`.
+    public static func or(_ items: [String]) -> String {
         guard items.count > 1 else { return items.joined() }
         return items.dropLast().joined(separator: ", ") + " or " + items[items.count - 1]
     }
@@ -267,16 +294,25 @@ public struct EnvironmentSettings: Equatable {
     public var position: Position?
     public var size: CardSize?
     public var sound: Sound?
+    public var style: CardStyle?
+    public var notch: NotchMotion?
+    public var motion: Motion?
 
-    public init(seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Sound? = nil) {
+    public init(
+        seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Sound? = nil,
+        style: CardStyle? = nil, notch: NotchMotion? = nil, motion: Motion? = nil
+    ) {
         self.seconds = seconds
         self.position = position
         self.size = size
         self.sound = sound
+        self.style = style
+        self.notch = notch
+        self.motion = motion
     }
 
-    /// Reads BLIP_SECONDS, BLIP_POSITION, BLIP_SIZE and BLIP_SOUND. Empty values are ignored;
-    /// invalid ones are usage errors.
+    /// Reads BLIP_SECONDS, BLIP_POSITION, BLIP_SIZE, BLIP_SOUND, BLIP_STYLE, BLIP_NOTCH and
+    /// BLIP_MOTION. Empty values are ignored; invalid ones are usage errors.
     public init(environment: [String: String]) throws {
         func value(_ name: String) -> String? {
             environment[name].flatMap { $0.isEmpty ? nil : $0 }
@@ -287,18 +323,19 @@ public struct EnvironmentSettings: Equatable {
             }
             self.seconds = seconds
         }
-        if let text = value("BLIP_POSITION") {
-            guard let position = Position(rawValue: text) else {
-                throw UsageError("BLIP_POSITION must be bottom, center or top, not '\(text)'")
+        func choice<Choice: RawRepresentable & CaseIterable>(_ name: String, _: Choice.Type) throws -> Choice?
+        where Choice.RawValue == String {
+            guard let text = value(name) else { return nil }
+            guard let choice = Choice(rawValue: text) else {
+                throw UsageError("\(name) must be \(ChoiceList.or(Choice.allCases.map(\.rawValue))), not '\(text)'")
             }
-            self.position = position
+            return choice
         }
-        if let text = value("BLIP_SIZE") {
-            guard let size = CardSize(rawValue: text) else {
-                throw UsageError("BLIP_SIZE must be compact, regular or large, not '\(text)'")
-            }
-            self.size = size
-        }
+        position = try choice("BLIP_POSITION", Position.self)
+        size = try choice("BLIP_SIZE", CardSize.self)
+        style = try choice("BLIP_STYLE", CardStyle.self)
+        notch = try choice("BLIP_NOTCH", NotchMotion.self)
+        motion = try choice("BLIP_MOTION", Motion.self)
         sound = value("BLIP_SOUND").map(Sound.init(parsing:))
     }
 }

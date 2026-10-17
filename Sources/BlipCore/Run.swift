@@ -45,7 +45,7 @@ public enum CommandRunner {
     ///
     /// Like a shell running a foreground job, blip ignores SIGINT and SIGQUIT while the command
     /// runs, so Ctrl-C stops the command and blip still reports how it ended. The command gets
-    /// the default handlers back.
+    /// the default handlers back, and no blocked signals whatever thread spawns it.
     public static func run(_ command: [String]) -> Outcome {
         precondition(!command.isEmpty, "the command must not be empty")
 
@@ -68,7 +68,10 @@ public enum CommandRunner {
         sigaddset(&defaults, SIGINT)
         sigaddset(&defaults, SIGQUIT)
         posix_spawnattr_setsigdefault(&attributes, &defaults)
-        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSIGDEF))
+        var unblocked = sigset_t()
+        sigemptyset(&unblocked)
+        posix_spawnattr_setsigmask(&attributes, &unblocked)
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK))
 
         var arguments: [UnsafeMutablePointer<CChar>?] = command.map { strdup($0) } + [nil]
         defer { arguments.forEach { free($0) } }

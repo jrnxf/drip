@@ -3,12 +3,21 @@ import Foundation
 
 /// Shows and renders cards. The macOS implementation is in HUDWindow.swift and Render.swift.
 protocol CardDisplay {
-    /// Shows the card and returns once it has faded out, with the exit status to report.
-    func show(_ card: Card, console: Console) -> Int32
+    /// The style for cards that set none: `glass` where the system has it.
+    var automaticStyle: CardStyle { get }
 
-    /// Draws the card offscreen into a PNG file.
+    /// Whether the screen a card would appear on has a camera notch.
+    var hasNotch: Bool { get }
+
+    /// Shows the cards one after another and returns once the last has gone, with the exit status
+    /// to report.
+    func show(_ cards: [Card], console: Console) -> Int32
+
+    /// Draws the card offscreen into a PNG file; a notch card `at` seconds into its entrance, or
+    /// its exit when `leaving`.
     func render(
-        _ card: Card, appearance: RenderCommand.Appearance, to path: String, console: Console
+        _ card: Card, appearance: RenderCommand.Appearance, at time: Double?, leaving: Bool, to path: String,
+        console: Console
     ) -> Int32
 }
 
@@ -43,6 +52,8 @@ struct BlipCLI {
             return show(command)
         case let .invocation(.run(command)):
             return run(command)
+        case let .invocation(.demo(command)):
+            return demo(command)
         case let .invocation(.render(command)):
             return render(command)
         }
@@ -56,7 +67,7 @@ struct BlipCLI {
         do {
             let card = try makeResolver(console).resolve(
                 kind: command.kind, title: command.title, flags: flags, standardInput: StandardInput.read)
-            return display.show(card, console: console)
+            return display.show([card], console: console)
         } catch {
             return report(error, console)
         }
@@ -86,30 +97,75 @@ struct BlipCLI {
         do {
             let card = try resolver.resolveRun(
                 command: command.command, status: outcome.status, seconds: seconds, flags: flags)
-            _ = display.show(card, console: console)
+            _ = display.show([card], console: console)
         } catch {
             _ = report(error, console)
         }
         return outcome.status
     }
 
+    /// Every style at the configured position (bottom when that is the notch), then every notch
+    /// motion when the screen has a notch. Silent unless --sound or BLIP_SOUND is given.
+    private func demo(_ command: DemoCommand) -> Int32 {
+        var flags = command.options.flags
+        let console = Console(quiet: flags.quiet)
+        do {
+            let resolver = try makeResolver(console)
+            // Short and silent, unless a flag, the environment or the config says otherwise.
+            if flags.seconds == nil, resolver.environment.seconds == nil, resolver.config.seconds == nil {
+                flags.seconds = 2
+            }
+            if flags.sound == nil, resolver.environment.sound == nil { flags.sound = Sound.none }
+            let presets = Preset.builtIn.map(\.name)
+            var cards: [Card] = []
+            for (index, style) in CardStyle.allCases.enumerated() where flags.style == nil || flags.style == style {
+                var styleFlags = flags
+                styleFlags.style = style
+                styleFlags.detail = flags.detail ?? "style = \"\(style.rawValue)\""
+                var card = try resolver.resolve(
+                    kind: presets[index % presets.count], title: "blip demo: \(style.rawValue)", flags: styleFlags)
+                if card.position == .notch { card.position = .bottom }
+                cards.append(card)
+            }
+            if display.hasNotch {
+                for (index, notch) in NotchMotion.allCases.enumerated() where flags.notch == nil || flags.notch == notch {
+                    var notchFlags = flags
+                    notchFlags.position = .notch
+                    notchFlags.notch = notch
+                    notchFlags.detail = flags.detail ?? "notch = \"\(notch.rawValue)\""
+                    cards.append(try resolver.resolve(
+                        kind: presets[index % presets.count], title: "blip demo: \(notch.rawValue)", flags: notchFlags))
+                }
+            } else {
+                console.warn("this screen has no notch, so the notch motions are skipped")
+            }
+            return display.show(cards, console: console)
+        } catch {
+            return report(error, console)
+        }
+    }
+
     private func render(_ command: RenderCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         do {
-            let card = try makeResolver(console).resolve(kind: command.kind, title: command.title, flags: flags)
-            return display.render(card, appearance: command.appearance, to: command.out, console: console)
+            // Renderings must not depend on the machine, so the automatic style is always hud here.
+            let card = try makeResolver(console, automaticStyle: .hud)
+                .resolve(kind: command.kind, title: command.title, flags: flags)
+            return display.render(card, appearance: command.appearance, at: command.at, leaving: command.leaving, to: command.out, console: console)
         } catch {
             return report(error, console)
         }
     }
 
     /// Reads the config file and environment, printing the config's warnings.
-    private func makeResolver(_ console: Console) throws -> CardResolver {
+    private func makeResolver(_ console: Console, automaticStyle: CardStyle? = nil) throws -> CardResolver {
         let environment = ProcessInfo.processInfo.environment
         let file = try ConfigLoader.load(environment: environment)
         file.warnings.forEach(console.warn)
-        return CardResolver(config: file.config, environment: try EnvironmentSettings(environment: environment))
+        return CardResolver(
+            config: file.config, environment: try EnvironmentSettings(environment: environment),
+            automaticStyle: automaticStyle ?? display.automaticStyle)
     }
 
     /// Prints an error and returns its exit status.
@@ -126,13 +182,17 @@ struct BlipCLI {
 #if !canImport(AppKit)
 /// Used where AppKit is missing: every card fails as if there were no GUI session.
 struct UnavailableDisplay: CardDisplay {
-    func show(_ card: Card, console: Console) -> Int32 {
+    var automaticStyle: CardStyle { Defaults.style }
+    var hasNotch: Bool { false }
+
+    func show(_ cards: [Card], console: Console) -> Int32 {
         console.error("no GUI session: blip shows cards only on macOS")
         return ExitStatus.noGUISession
     }
 
     func render(
-        _ card: Card, appearance: RenderCommand.Appearance, to path: String, console: Console
+        _ card: Card, appearance: RenderCommand.Appearance, at time: Double?, leaving: Bool, to path: String,
+        console: Console
     ) -> Int32 {
         console.error("no GUI session: blip renders cards only on macOS")
         return ExitStatus.noGUISession
