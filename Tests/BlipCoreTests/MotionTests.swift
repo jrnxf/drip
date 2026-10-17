@@ -131,6 +131,10 @@ struct IslandTests {
 
     /// The loops traced below the notch: one while the drop hangs from it, two once it has broken free.
     private func loopsBelowNotch(_ shape: IslandShape) -> Int {
+        loopsBelowNotch(shape, metrics: metrics)
+    }
+
+    private func loopsBelowNotch(_ shape: IslandShape, metrics: IslandMetrics) -> Int {
         let field = DropletField(metrics: metrics, shape: shape)
         guard field.touchesNotch else { return shape.pillTop > metrics.notchHeight ? 2 : 1 }
         return field.outline(above: metrics.notchHeight - 4, cell: 0.5).count
@@ -158,6 +162,41 @@ struct IslandTests {
         let merged = loops.firstIndex(of: 1)
         #expect(merged != nil)
         #expect(!loops[(merged ?? 0)...].contains(2), "once merged, the drop never breaks away again")
+    }
+
+    @Test func theIconLeavesOnlyOnceTheRoundDropRisesAndIsGoneBeforeItMerges() throws {
+        let wide = IslandMetrics(
+            notchWidth: 200, notchHeight: 37, scale: 1.2, textWidth: 520, textHeight: 34, compactTitleWidth: 90)
+        for metrics in [self.metrics, wide] {
+            var animator = IslandAnimator(motion: .droplet, metrics: metrics)
+            animator.open()
+            let open = animator.shape(at: 0)
+            let cues = animator.exit(at: 0)
+            func icon(at time: Double) -> Double {
+                IslandCues.opacity(leaving: cues.icon, over: cues.iconFadeOut, at: time)
+            }
+            let times = Array(stride(from: 0.0, to: animator.end, by: 0.002))
+            for time in times {
+                let shape = animator.shape(at: time)
+                let center = shape.pillTop + shape.pillHeight / 2
+                let openCenter = open.pillTop + open.pillHeight / 2
+                if center >= openCenter - 1e-6 {
+                    // Still gathering where the capsule was: the icon shows in full.
+                    #expect(icon(at: time) >= 0.999, "\(metrics.textWidth) at \(time)")
+                }
+                if icon(at: time) < 0.999 {
+                    // Fading: the drop is round and on its way up.
+                    #expect(shape.pillWidth <= metrics.dropSize + 2 * metrics.scale, "\(metrics.textWidth) at \(time)")
+                    #expect(center < openCenter, "\(metrics.textWidth) at \(time)")
+                }
+                if center < openCenter, loopsBelowNotch(shape, metrics: metrics) == 1 {
+                    #expect(icon(at: time) == 0, "\(metrics.textWidth) at \(time): merged with the icon showing")
+                }
+            }
+            // It does fade, and only after the capsule has gathered into a drop.
+            let fading = try #require(times.first { icon(at: $0) < 1 })
+            #expect(fading > 0.2, "\(metrics.textWidth)")
+        }
     }
 
     @Test func theFallingDropOutgrowsItsNeck() throws {

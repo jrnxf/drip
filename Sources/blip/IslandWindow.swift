@@ -260,13 +260,12 @@ final class IslandLayers {
 
     /// Sets the content's opacity as the exit fades leave it `time` seconds in.
     func hideContent(at time: Double, cues: IslandCues) {
-        func faded(_ cue: Double?) -> Float {
-            guard let cue else { return 0 }
-            return Float(1 - min(max((time - cue) / 0.12, 0), 1))
+        func faded(_ cue: Double?, over duration: Double = IslandCues.fadeOut) -> Float {
+            Float(IslandCues.opacity(leaving: cue, over: duration, at: time))
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        icon.opacity = metrics.hasIcon ? faded(cues.icon) : 0
+        icon.opacity = metrics.hasIcon ? faded(cues.icon, over: cues.iconFadeOut) : 0
         ring.opacity = card.notch == .ears ? 0 : faded(cues.ring)
         title.opacity = faded(cues.title)
         detail.opacity = faded(cues.detail)
@@ -580,7 +579,8 @@ final class IslandPresenter: CardPresenting {
         layers.text.add(keyframes("position", frames.map { NSValue(point: $0.textPosition) }), forKey: "island")
     }
 
-    /// Fades the content in or out at the cues: 180 ms in with a 4-point rise for text, 120 ms out.
+    /// Fades the content in or out at the cues: 180 ms in with a 4-point rise for text, 120 ms out
+    /// unless the cues time the icon's exit fade.
     private func fade(_ cues: IslandCues, into visible: Bool, layers: IslandLayers) {
         let parts: [(CALayer, Double?, Bool)] = [
             (layers.icon, layers.metrics.hasIcon ? cues.icon : nil, false), (layers.ring, cues.ring, false),
@@ -589,7 +589,8 @@ final class IslandPresenter: CardPresenting {
         let now = CACurrentMediaTime()
         for (layer, cue, isText) in parts {
             guard let cue else { continue }
-            let duration = visible ? (isText ? 0.25 : 0.18) : 0.12
+            let fadeOut = layer === layers.icon ? cues.iconFadeOut : IslandCues.fadeOut
+            let duration = visible ? (isText ? 0.25 : 0.18) : fadeOut
             let opacity = CABasicAnimation(keyPath: "opacity")
             opacity.fromValue = visible ? 0 : 1
             opacity.toValue = visible ? 1 : 0

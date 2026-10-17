@@ -69,7 +69,7 @@ struct SnapshotTests {
             // droplet merging back into the notch.
             Snapshot(name: "notch-droplet-falling", arguments: card + ["--notch", "droplet", "--at", "0.2"]),
             Snapshot(
-                name: "notch-droplet-merging", arguments: card + ["--notch", "droplet", "--at", "0.27", "--leaving"]),
+                name: "notch-droplet-merging", arguments: card + ["--notch", "droplet", "--at", "0.34", "--leaving"]),
             Snapshot(name: "notch-snap-opening", arguments: card + ["--notch", "snap", "--at", "0.08"]),
         ])
     }

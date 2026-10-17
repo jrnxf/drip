@@ -160,6 +160,18 @@ public struct IslandCues: Equatable, Sendable {
     public var ring: Double?
     public var title: Double?
     public var detail: Double?
+    /// How long the icon takes to fade out on the exit; the other parts take `fadeOut`.
+    public var iconFadeOut = IslandCues.fadeOut
+
+    /// How long a part takes to fade out on the exit.
+    public static let fadeOut = 0.12
+
+    /// How visible a part cued at `cue` is `time` seconds into the exit, fading linearly over `duration`.
+    public static func opacity(leaving cue: Double?, over duration: Double = fadeOut, at time: Double) -> Double {
+        guard let cue else { return 0 }
+        guard duration > 0 else { return time < cue ? 1 : 0 }
+        return 1 - min(max((time - cue) / duration, 0), 1)
+    }
 }
 
 /// Moves the island through its entrance and exit with springs.
@@ -232,18 +244,31 @@ public struct IslandAnimator: Sendable {
         let m = metrics
         switch motion {
         case .droplet:
-            // The capsule gathers back into a drop, which rises; the notch reaches for it, they merge
-            // and the notch swallows it.
-            let shrink = Spring(duration: 0.26)
-            pillWidth.animate(to: m.dropSize, with: shrink, at: time + 0.03)
-            pillHeight.animate(to: m.dropSize, with: shrink, at: time + 0.03)
-            progress.animate(to: 0, with: shrink, at: time + 0.03)
-            let rise = time + 0.2
+            // The capsule gathers back into a round drop, which only then rises; the notch reaches for
+            // it, they merge and the notch swallows it.
+            let shrink = Spring(duration: 0.22)
+            let gather = time + 0.03
+            pillWidth.animate(to: m.dropSize, with: shrink, at: gather)
+            pillHeight.animate(to: m.dropSize, with: shrink, at: gather)
+            progress.animate(to: 0, with: shrink, at: gather)
+            // Round to the eye once both sides are within 2 points of the drop's.
+            let (width, tall) = (pillWidth, pillHeight)
+            let rise = Self.firstTime(after: gather) { t in
+                max(abs(width.value(at: t) - m.dropSize), abs(tall.value(at: t) - m.dropSize)) <= 2 * m.scale
+            }
             blend.animate(to: m.blend, with: Spring(duration: 0.3), at: rise)
             // Aimed past its resting place, so it is swallowed at speed instead of easing in, and the
             // notch's bulge goes flat as quickly as liquid would.
             dropCenter.animate(to: m.dropTop + m.dropSize / 2 - m.dropSize, with: Spring(duration: 0.4), at: rise)
-            return IslandCues(icon: 0.14, ring: 0, title: 0, detail: 0)
+            // The icon stays until the round drop starts to rise and is gone before it melts into the
+            // notch, which happens when the gap closes to a third of the blend. That moment is found
+            // to the millisecond, so the fade ends the millisecond before.
+            let merged = Self.firstTime(after: rise) { t in
+                let shape = self.shape(at: t)
+                return shape.pillTop < m.notchHeight + shape.blend / 3
+            }
+            return IslandCues(
+                icon: rise - time, ring: 0, title: 0, detail: 0, iconFadeOut: max(merged - 0.001 - rise, 0.01))
         case .snap:
             let snap = Spring(duration: 0.2)
             left.animate(to: -m.notchWidth / 2, with: snap, at: time + 0.04)
