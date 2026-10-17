@@ -36,6 +36,16 @@ struct SnapshotTests {
         try assertSnapshots(appearances("long-text", ["fail", long, "--detail", long]))
     }
 
+    /// A title wider than the island's text column used to keep the island from showing at all.
+    /// These references guard the layout only, not the live panel.
+    @Test func longTextAtTheNotch() throws {
+        let word = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
+        let spaced = String(repeating: "A very long title that keeps going ", count: 3)
+        try assertSnapshots(["droplet", "snap", "ears"].map { motion in
+            Snapshot(name: "notch-long-text-\(motion)", arguments: ["ok", word, "--detail", spaced, "--position", "notch", "--notch", motion])
+        })
+    }
+
     @Test func customIconAndColor() throws {
         try assertSnapshots(appearances(
             "custom-icon-color", ["shipped", "--icon", "paperplane.fill", "--color", "#a78bfa"]))

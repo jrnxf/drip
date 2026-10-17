@@ -27,6 +27,26 @@ public enum CardText {
         return String(kept) + "…"
     }
 
+    /// Cuts `text` to the most user-perceived characters that fit in `width` points with a single
+    /// ellipsis after them, or returns it whole when it fits. A word too long for the line is cut
+    /// inside, like any other text. `measure` gives a string's drawn width.
+    public static func fit(_ text: String, width: Double, measure: (String) -> Double) -> String {
+        guard measure(text) > width else { return text }
+        let characters = Array(text)
+        func cut(_ count: Int) -> String {
+            var kept = characters[..<count]
+            while kept.last?.isWhitespace == true { kept.removeLast() }
+            return String(kept) + "…"
+        }
+        // The most characters that still fit with the ellipsis; the ellipsis alone if none do.
+        var low = 0, high = characters.count - 1
+        while low < high {
+            let middle = (low + high + 1) / 2
+            if measure(cut(middle)) <= width { low = middle } else { high = middle - 1 }
+        }
+        return cut(low)
+    }
+
     /// Normalizes and truncates a card's line; nil when nothing is left.
     public static func line(_ text: String?, limit: Int) -> String? {
         guard let text else { return nil }
