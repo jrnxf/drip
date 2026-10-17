@@ -72,10 +72,11 @@ unless `--detail` is given. With a title on the command line, stdin is left alon
 detail at most 120, counted as user-perceived characters so emoji are never split, and cut with a
 single ellipsis. The card is never wider than 640 points.
 
-**blip demo** plays every style at your configured position (the bottom when that is the notch), then,
-on a screen with a notch, every notch motion, two seconds each unless `--seconds`, `BLIP_SECONDS` or the config's `seconds` say
-otherwise, and silent unless `--sound` or `BLIP_SOUND` is given. Options apply to every card, so
-`blip demo --style wash` shows only wash, and `blip demo --notch ears` only that notch motion.
+**blip demo** plays every style at your configured position (the bottom when that is the notch),
+then, on a screen with a notch, every notch motion, two seconds each unless `--seconds`,
+`BLIP_SECONDS` or the config's `seconds` say otherwise, and silent unless `--sound` or `BLIP_SOUND`
+is given. Options apply to every card, so `blip demo --style wash` shows only wash, and
+`blip demo --notch ears` only that notch motion.
 
 **Returning at once.** blip checks everything first (flags, config, stdin, sounds and icons), so a
 mistake still prints its message and exit status. Then it hands the card to a background blip and
