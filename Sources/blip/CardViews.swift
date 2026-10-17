@@ -64,6 +64,7 @@ struct CardContent {
     var backdrop: CardBackdrop
     var cornerRadius: CGFloat
     var size: CGSize
+    var button: ActionButtonView?
 }
 
 /// The card's background for `hud`: the HUD material with rounded corners and the accent border.
@@ -146,9 +147,21 @@ enum CardViewBuilder {
         let layout = CardLayout(
             metrics: metrics, titleSize: title.fittingSize, detailSize: detail?.fittingSize, hasIcon: icon != nil,
             eyebrowSize: eyebrow?.fittingSize, leadingInset: stripeWidth)
-        let bounds = NSRect(origin: .zero, size: layout.size)
+        // A button takes the trailing padding's place and brings its own.
+        var button: ActionButtonView?
+        var size = layout.size
+        if let action = card.action {
+            let view = ActionButtonView(
+                label: action.label, look: ActionButtonView.look(for: style, accent: accent, scale: metrics.scale))
+            let x = size.width - metrics.trailingPadding + 14 * metrics.scale
+            view.setFrameOrigin(NSPoint(x: x, y: ((size.height - view.frame.height) / 2).rounded()))
+            size.width = x + view.frame.width + 12 * metrics.scale
+            button = view
+        }
+        let bounds = NSRect(origin: .zero, size: size)
 
         let content = NSView(frame: bounds)
+        if let button { content.addSubview(button) }
         if let icon, let iconFrame = layout.iconFrame {
             let iconView = NSImageView(frame: iconFrame)
             iconView.image = icon
@@ -190,7 +203,8 @@ enum CardViewBuilder {
         case .terminal: root.appearance = NSAppearance(named: .darkAqua)
         case .hud, .glass: root.appearance = appearance
         }
-        return CardContent(root: root, content: content, backdrop: backdrop, cornerRadius: radius, size: layout.size)
+        return CardContent(
+            root: root, content: content, backdrop: backdrop, cornerRadius: radius, size: size, button: button)
     }
 
     /// `glass` needs macOS 26 and a compiler that knows it; elsewhere it is `hud`.

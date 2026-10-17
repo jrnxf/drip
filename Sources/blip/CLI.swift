@@ -9,9 +9,15 @@ protocol CardDisplay {
     /// Whether the screen a card would appear on has a camera notch.
     var hasNotch: Bool { get }
 
-    /// Shows the cards one after another and returns once the last has gone, with the exit status
-    /// to report.
+    /// Shows the cards one after another, after any other blip's, and returns once the last has
+    /// gone, with the exit status to report.
     func show(_ cards: [Card], console: Console) -> Int32
+
+    /// Hands the cards to a background blip and returns at once, or shows them here when it cannot.
+    func showInBackground(_ cards: [Card], console: Console) -> Int32
+
+    /// Checks the cards' sounds and icons, warning about and replacing any that cannot load.
+    func prepare(_ cards: [Card], console: Console) -> [Card]
 
     /// Draws the card offscreen into a PNG file; a notch card `at` seconds into its entrance, or
     /// its exit when `leaving`.
@@ -56,21 +62,44 @@ struct BlipCLI {
             return demo(command)
         case let .invocation(.render(command)):
             return render(command)
+        case .invocation(.background):
+            return background()
         }
     }
 
-    /// `--wait` needs no handling yet: the card is shown in-process, so blip always returns once
-    /// it has faded out.
     private func show(_ command: BlipCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         do {
             let card = try makeResolver(console).resolve(
                 kind: command.kind, title: command.title, flags: flags, standardInput: StandardInput.read)
-            return display.show([card], console: console)
+            return deliver([card], wait: flags.wait, console: console)
         } catch {
             return report(error, console)
         }
+    }
+
+    /// Everything that can fail is checked here, before the cards are handed off.
+    private func deliver(_ cards: [Card], wait: Bool, console: Console) -> Int32 {
+        let cards = display.prepare(cards, console: console)
+        switch Delivery.choose(for: cards, wait: wait) {
+        case .background: return display.showInBackground(cards, console: console)
+        case .wait: return display.show(cards, console: console)
+        }
+    }
+
+    /// The background blip a foreground one started: shows the cards from standard input, with
+    /// nowhere to print to.
+    private func background() -> Int32 {
+        #if canImport(AppKit)
+        guard let request = BackgroundBlip.readRequest() else { return ExitStatus.usage }
+        // However long the cards are held, a background blip never outlives them by much.
+        let longest = request.cards.reduce(0) { $0 + $1.seconds } + CardQueue.patience + 600
+        DispatchQueue.global().asyncAfter(deadline: .now() + longest) { exit(ExitStatus.shown) }
+        return display.show(request.cards, console: Console(quiet: true))
+        #else
+        return ExitStatus.noGUISession
+        #endif
     }
 
     /// Runs the command first, whatever happens to the card after, and exits with its code. A bad
@@ -97,7 +126,7 @@ struct BlipCLI {
         do {
             let card = try resolver.resolveRun(
                 command: command.command, status: outcome.status, seconds: seconds, flags: flags)
-            _ = display.show([card], console: console)
+            _ = deliver([card], wait: flags.wait, console: console)
         } catch {
             _ = report(error, console)
         }
@@ -139,7 +168,7 @@ struct BlipCLI {
             } else {
                 console.warn("this screen has no notch, so the notch motions are skipped")
             }
-            return display.show(cards, console: console)
+            return display.show(display.prepare(cards, console: console), console: console)
         } catch {
             return report(error, console)
         }
@@ -188,6 +217,14 @@ struct UnavailableDisplay: CardDisplay {
     func show(_ cards: [Card], console: Console) -> Int32 {
         console.error("no GUI session: blip shows cards only on macOS")
         return ExitStatus.noGUISession
+    }
+
+    func showInBackground(_ cards: [Card], console: Console) -> Int32 {
+        show(cards, console: console)
+    }
+
+    func prepare(_ cards: [Card], console: Console) -> [Card] {
+        cards
     }
 
     func render(

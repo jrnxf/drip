@@ -1,4 +1,5 @@
 import ArgumentParser
+import Foundation
 
 /// Process exit codes. `blip run` exits with the wrapped command's code instead.
 public enum ExitStatus {
@@ -6,6 +7,8 @@ public enum ExitStatus {
     public static let usage: Int32 = 2
     public static let noGUISession: Int32 = 3
     public static let invalidConfig: Int32 = 4
+    /// The card had a button and it was not clicked.
+    public static let notClicked: Int32 = 5
 }
 
 extension Position: ExpressibleByArgument {}
@@ -77,7 +80,16 @@ public struct CardOptions: ParsableArguments {
         valueName: "amount"))
     var motion: Motion?
 
-    @Flag(help: "Block until the card has faded out.")
+    @Option(help: ArgumentHelp(
+        "Add a button that opens this URL or path. Hovering holds the card.", valueName: "url|path"))
+    var open: String?
+
+    @Option(help: ArgumentHelp(
+        "The button's label. Without --open, blip waits and exits 0 if it was clicked, 5 if not. (default: Open)",
+        valueName: "label"))
+    var button: String?
+
+    @Flag(help: "Wait until the card has gone before exiting. Without it, blip returns at once.")
     var wait = false
 
     @Flag(help: "Never print warnings.")
@@ -89,13 +101,28 @@ public struct CardOptions: ParsableArguments {
         if let seconds, !Defaults.secondsRange.contains(seconds) {
             throw ValidationError("--seconds must be between 0.5 and 60.")
         }
+        if let open, open.trimmingCharacters(in: .whitespaces).isEmpty {
+            throw ValidationError("--open needs a URL or a path.")
+        }
+        if let open, let separator = open.range(of: "://") {
+            // A URL needs a scheme such as https before its "://"; a path never contains one.
+            let scheme = open[..<separator.lowerBound]
+            let valid = scheme.first?.isLetter == true
+                && scheme.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "+-.".contains($0)) }
+                && URL(string: open) != nil
+            if !valid { throw ValidationError("--open: '\(open)' is not a valid URL.") }
+        }
+        if let button, CardText.line(button, limit: Defaults.buttonLimit) == nil {
+            throw ValidationError("--button needs a label.")
+        }
     }
 
     /// The parsed values, as a plain value.
     public var flags: CardFlags {
         CardFlags(
             detail: detail, seconds: seconds, sound: sound, icon: icon, color: color, position: position,
-            size: size, style: style, notch: notch, motion: motion, wait: wait, quiet: quiet)
+            size: size, style: style, notch: notch, motion: motion, wait: wait, quiet: quiet, open: open,
+            button: button)
     }
 }
 
@@ -113,12 +140,17 @@ public struct CardFlags: Equatable {
     public var motion: Motion?
     public var wait: Bool
     public var quiet: Bool
+    public var open: String?
+    public var button: String?
 
     public init(
         detail: String? = nil, seconds: Double? = nil, sound: Sound? = nil, icon: Icon? = nil,
         color: CardColor? = nil, position: Position? = nil, size: CardSize? = nil, style: CardStyle? = nil,
-        notch: NotchMotion? = nil, motion: Motion? = nil, wait: Bool = false, quiet: Bool = false
+        notch: NotchMotion? = nil, motion: Motion? = nil, wait: Bool = false, quiet: Bool = false,
+        open: String? = nil, button: String? = nil
     ) {
+        self.open = open
+        self.button = button
         self.detail = detail
         self.seconds = seconds
         self.sound = sound
@@ -254,6 +286,8 @@ public enum Invocation {
     case run(RunCommand)
     case demo(DemoCommand)
     case render(RenderCommand)
+    /// The background blip: shows the cards it reads from standard input.
+    case background
 }
 
 /// The outcome of parsing a command line.
@@ -276,6 +310,8 @@ public enum CommandLineParser {
             return parse(DemoCommand.self, Array(arguments.dropFirst())).map(Invocation.demo)
         case "__render":
             return parse(RenderCommand.self, Array(arguments.dropFirst())).map(Invocation.render)
+        case "__background":
+            return .invocation(.background)
         default:
             return parse(BlipCommand.self, arguments).map(Invocation.show)
         }

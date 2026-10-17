@@ -15,11 +15,14 @@ public struct IslandMetrics: Equatable, Sendable {
     /// The title alone in the compact font, for `ears`.
     public var compactTitleWidth: Double
     public var hasIcon: Bool
+    /// A button's width, which takes the countdown ring's place; 0 without one.
+    public var actionWidth: Double
 
     public init(
         notchWidth: Double, notchHeight: Double, scale: Double = 1, textWidth: Double, textHeight: Double,
-        compactTitleWidth: Double, hasIcon: Bool = true
+        compactTitleWidth: Double, hasIcon: Bool = true, actionWidth: Double = 0
     ) {
+        self.actionWidth = actionWidth
         self.notchWidth = notchWidth
         self.notchHeight = notchHeight
         self.scale = scale
@@ -31,7 +34,7 @@ public struct IslandMetrics: Equatable, Sendable {
 
     // The expanded card (`snap`).
     var cardIcon: Double { hasIcon ? 28 * scale : 0 }
-    var cardRing: Double { 22 * scale }
+    var cardRing: Double { actionWidth > 0 ? actionWidth : 22 * scale }
     var cardPadding: Double { 16 * scale }
     var cardGap: Double { 12 * scale }
     var cardTextX: Double { cardPadding + (hasIcon ? cardIcon + cardGap : 0) }
@@ -46,7 +49,7 @@ public struct IslandMetrics: Equatable, Sendable {
 
     // The free-floating capsule (`droplet`).
     var pillIcon: Double { hasIcon ? 24 * scale : 0 }
-    var pillRing: Double { 20 * scale }
+    var pillRing: Double { actionWidth > 0 ? actionWidth : 20 * scale }
     var pillPadding: Double { 14 * scale }
     var pillGap: Double { 10 * scale }
     var pillTextX: Double { pillPadding + (hasIcon ? pillIcon + pillGap : 0) }

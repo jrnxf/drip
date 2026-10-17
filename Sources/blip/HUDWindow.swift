@@ -20,6 +20,7 @@ struct HUDDisplay: CardDisplay {
             console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")
             return ExitStatus.noGUISession
         }
+        CardQueue.waitForTurn()
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
@@ -37,7 +38,51 @@ struct HUDDisplay: CardDisplay {
         // Start once the run loop is running, after the application has finished launching.
         DispatchQueue.main.async(execute: next)
         app.run()
-        return failed ? ExitStatus.noGUISession : ExitStatus.shown
+        if failed { return ExitStatus.noGUISession }
+        return CardActions.missed ? ExitStatus.notClicked : ExitStatus.shown
+    }
+
+    func showInBackground(_ cards: [Card], console: Console) -> Int32 {
+        guard CGSessionCopyCurrentDictionary() != nil else {
+            console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")
+            return ExitStatus.noGUISession
+        }
+        if BackgroundBlip.start(BackgroundRequest(cards: cards)) { return ExitStatus.shown }
+        console.warn("cannot start a background blip; showing the card here instead")
+        return show(cards, console: console)
+    }
+
+    /// Loads each card's sound and icon now, so a problem is reported before blip returns: a sound
+    /// that cannot play is dropped, and an unknown symbol falls back to the preset's icon.
+    func prepare(_ cards: [Card], console: Console) -> [Card] {
+        cards.map { card in
+            var card = card
+            switch card.sound {
+            case .none:
+                break
+            case let .named(name):
+                if NSSound(named: NSSound.Name(name)) == nil {
+                    console.warn("unknown sound '\(name)'; system sounds are in /System/Library/Sounds")
+                    card.sound = .none
+                }
+            case let .file(path):
+                let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+                if NSSound(contentsOf: url, byReference: true) == nil {
+                    console.warn("cannot play sound file '\(path)'")
+                    card.sound = .none
+                }
+            }
+            if let target = card.action?.open, !target.contains("://"),
+               !FileManager.default.fileExists(atPath: (target as NSString).expandingTildeInPath)
+            {
+                console.warn("'\(target)' does not exist yet; the button opens it if it does by then")
+            }
+            if case let .symbol(name) = card.icon, NSImage(systemSymbolName: name, accessibilityDescription: nil) == nil {
+                console.warn("unknown SF Symbol '\(name)'; using the preset's icon")
+                card.icon = card.fallbackIcon
+            }
+            return card
+        }
     }
 
     /// Ends `NSApplication.run()`. `stop` takes effect only after the next event, so post one.
@@ -50,6 +95,38 @@ struct HUDDisplay: CardDisplay {
             NSApp.postEvent(event, atStart: false)
         }
     }
+}
+
+/// Covers a clickable card to hold it while hovered and to dismiss it on a click off the button.
+final class HoverView: NSView {
+    var onEnter: (() -> Void)?
+    var onExit: (() -> Void)?
+    var onClick: (() -> Void)?
+    /// Gets its own clicks; everything else on the card is this view's.
+    weak var button: NSView?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if let button, let superview, button.convert(button.bounds, to: superview).contains(point) {
+            return button
+        }
+        return super.hitTest(point)
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseEntered(with event: NSEvent) { onEnter?() }
+    override func mouseExited(with event: NSEvent) { onExit?() }
+    override func mouseUp(with event: NSEvent) { onClick?() }
 }
 
 /// Shows one card and reports when it is gone.
@@ -139,6 +216,14 @@ final class CardPresenter: CardPresenting {
     private let console: Console
     private var panel: NSPanel?
     private var sound: CardSound?
+    private var frame = NSRect.zero
+    private var travel: CGFloat = 0
+    private var motionAmount = Motion.full
+    private var onFinish: ((Bool) -> Void)?
+    /// The pending exit; hovering cancels it and leaving schedules a shorter one.
+    private var departure: DispatchWorkItem?
+    private var leaving = false
+    private var hover: HoverView?
 
     init(card: Card, console: Console) {
         self.card = card
@@ -160,13 +245,14 @@ final class CardPresenter: CardPresenting {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        panel.ignoresMouseEvents = true
+        panel.ignoresMouseEvents = card.action == nil
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .none
         panel.contentView = built.root
         self.panel = panel
+        self.frame = frame
 
         let motion = CardPresenters.motion(for: card)
         // Rise from the edge the card sits on; a centered card rises from below.
@@ -179,13 +265,42 @@ final class CardPresenter: CardPresenting {
         sound = CardSound(card.sound, console: console)
         sound?.play()
 
-        enter(frame: frame, motion: motion) { [self] in
-            DispatchQueue.main.asyncAfter(deadline: .now() + card.seconds) { [self] in
-                exit(frame: frame, travel: travel, motion: motion) { [self] in
-                    panel.orderOut(nil)
-                    sound?.waitUntilDone { onFinish(true) }
-                }
+        self.travel = travel
+        motionAmount = motion
+        self.onFinish = onFinish
+        if let action = card.action {
+            built.button?.onClick = { [self] in
+                CardActions.perform(action, console: console)
+                leave(clicked: true)
             }
+            // Hovering anywhere on the card holds it; a click off the button dismisses it.
+            let hover = HoverView(frame: NSRect(origin: .zero, size: frame.size))
+            hover.onEnter = { [self] in departure?.cancel() }
+            hover.onExit = { [self] in schedule(after: 1.5) }
+            hover.onClick = { [self] in leave(clicked: false) }
+            hover.button = built.button
+            built.root.addSubview(hover, positioned: .above, relativeTo: nil)
+            self.hover = hover
+        }
+        enter(frame: frame, motion: motion) { [self] in schedule(after: card.seconds) }
+    }
+
+    private func schedule(after seconds: Double) {
+        departure?.cancel()
+        let work = DispatchWorkItem { [self] in leave(clicked: false) }
+        departure = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    private func leave(clicked: Bool) {
+        guard !leaving else { return }
+        leaving = true
+        departure?.cancel()
+        if card.action != nil, !clicked { CardActions.missed = true }
+        panel?.ignoresMouseEvents = true
+        exit(frame: frame, travel: travel, motion: motionAmount) { [self] in
+            panel?.orderOut(nil)
+            sound?.waitUntilDone { [self] in onFinish?(true) }
         }
     }
 

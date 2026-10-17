@@ -1,0 +1,102 @@
+import BlipCore
+import Foundation
+import Testing
+
+struct ActionTests {
+    private func flags(_ arguments: [String]) -> CardFlags? {
+        guard case let .invocation(.show(command)) = CommandLineParser.parse(["ok", "t"] + arguments) else {
+            return nil
+        }
+        return command.options.flags
+    }
+
+    private func usageMessage(_ arguments: [String]) -> String? {
+        guard case let .exit(status, message) = CommandLineParser.parse(["ok", "t"] + arguments),
+              status == ExitStatus.usage
+        else { return nil }
+        return message
+    }
+
+    @Test func openAndButtonParse() throws {
+        let parsed = try #require(flags(["--open", "https://example.com/run/1", "--button", "View run", "--wait"]))
+        #expect(parsed.open == "https://example.com/run/1")
+        #expect(parsed.button == "View run")
+        #expect(parsed.wait)
+    }
+
+    @Test func emptyOpenBadURLsAndEmptyLabelsAreUsageErrors() {
+        #expect(usageMessage(["--open", " "])?.contains("--open needs a URL or a path") == true)
+        #expect(usageMessage(["--open", "://nope"])?.contains("is not a valid URL") == true)
+        #expect(usageMessage(["--button", "  "])?.contains("--button needs a label") == true)
+    }
+
+    @Test func theResolverAddsTheButton() throws {
+        let resolver = CardResolver()
+        #expect(try resolver.resolve(kind: "ok", title: "t", flags: CardFlags()).action == nil)
+        let open = try resolver.resolve(kind: "ok", title: "t", flags: CardFlags(open: "~/build.log"))
+        #expect(open.action == CardAction(label: "Open", open: "~/build.log"))
+        let labelled = try resolver.resolve(
+            kind: "ok", title: "t", flags: CardFlags(button: "  Promote\tto prod  "))
+        #expect(labelled.action == CardAction(label: "Promote to prod", open: nil))
+        let long = try resolver.resolve(kind: "ok", title: "t", flags: CardFlags(button: String(repeating: "a", count: 40)))
+        #expect(long.action?.label.count == Defaults.buttonLimit)
+    }
+
+    @Test func blipRunTakesTheButtonToo() throws {
+        guard case let .invocation(.run(command)) = CommandLineParser.parse(
+            ["run", "--open", "https://ci.example.com", "--", "make"])
+        else { Issue.record("did not parse"); return }
+        let card = try CardResolver().resolveRun(
+            command: command.command, status: 0, seconds: 1, flags: command.options.flags)
+        #expect(card.action?.open == "https://ci.example.com")
+    }
+}
+
+struct DeliveryTests {
+    private let plain = Card(preset: .ok, title: "t")
+
+    @Test func cardsGoToTheBackgroundUnlessSomethingWaits() {
+        var linked = plain
+        linked.action = CardAction(label: "Open", open: "https://example.com")
+        var question = plain
+        question.action = CardAction(label: "Promote", open: nil)
+        #expect(Delivery.choose(for: [plain], wait: false) == .background)
+        #expect(Delivery.choose(for: [linked], wait: false) == .background)
+        #expect(Delivery.choose(for: [plain], wait: true) == .wait)
+        // Only blip's exit status reports the click on a button that opens nothing.
+        #expect(Delivery.choose(for: [question], wait: false) == .wait)
+        #expect(Delivery.choose(for: [plain, question], wait: false) == .wait)
+    }
+
+    @Test func aRequestSurvivesTheTripToTheBackgroundBlip() throws {
+        var card = Card(
+            kind: "deploy", title: "Deploy finished", detail: "api · 2m 14s", icon: .symbol("shippingbox.fill"),
+            fallbackIcon: .symbol("checkmark.circle.fill"), color: .rgb(red: 1, green: 128, blue: 255),
+            sound: .file("~/sounds/done.aiff"), seconds: 7.5, position: .notch, size: .large, style: .wash,
+            notch: .ears, motion: .subtle)
+        card.action = CardAction(label: "View run", open: "https://example.com/run/1")
+        let others = [Card(preset: .fail, title: "x"), Card(preset: .info, title: "y")]
+        let request = BackgroundRequest(cards: [card] + others)
+        #expect(try BackgroundRequest.decode(request.encoded()) == request)
+    }
+
+    @Test func garbageIsNotARequest() {
+        #expect(throws: (any Error).self) { try BackgroundRequest.decode(Data("not json".utf8)) }
+    }
+}
+
+struct IslandButtonTests {
+    @Test func theButtonTakesTheRingsPlaceAndWidensThePill() {
+        let plain = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 34, compactTitleWidth: 90)
+        var withButton = plain
+        withButton.actionWidth = 76
+        #expect(withButton.pillWidth == plain.pillWidth - 20 + 76)
+        #expect(withButton.cardWidth == plain.cardWidth - 22 + 76)
+        var animator = IslandAnimator(motion: .droplet, metrics: withButton)
+        animator.open()
+        let shape = animator.shape(at: 0)
+        let layout = animator.content(for: shape)
+        #expect(layout.ringCenter.x + 76 / 2 < shape.pillWidth / 2)
+        #expect(layout.textX + withButton.textWidth < layout.ringCenter.x - 76 / 2)
+    }
+}
