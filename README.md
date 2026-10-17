@@ -70,7 +70,8 @@ unless `--detail` is given. With a title on the command line, stdin is left alon
 
 **Long text.** Whitespace runs collapse to one space. The title keeps at most 80 characters and the
 detail at most 120, counted as user-perceived characters so emoji are never split, and cut with a
-single ellipsis. The card is never wider than 640 points.
+single ellipsis. The card is never wider than 640 points; a line still too wide for it is cut to fit
+with an ellipsis.
 
 **blip demo** plays every style at your configured position (the bottom when that is the notch),
 then, on a screen with a notch, every notch motion, two seconds each unless `--seconds`,
