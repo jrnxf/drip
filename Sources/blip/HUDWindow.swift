@@ -224,15 +224,6 @@ enum CardPresenters {
         card.motion.capped(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
-    /// Has VoiceOver read the card out as it appears: the whole title, then the whole detail, however
-    /// they wrap on screen.
-    static func announce(_ card: Card, from window: NSWindow) {
-        NSAccessibility.post(element: window, notification: .announcementRequested, userInfo: [
-            .announcement: CardText.spoken(title: card.title, detail: card.detail),
-            .priority: NSAccessibilityPriorityLevel.high.rawValue,
-        ])
-    }
-
     /// The strong ease-out every entrance and exit uses.
     static let easeOut = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
 
@@ -338,7 +329,6 @@ final class CardPresenter: CardPresenting {
         // Never makeKey or activate: the frontmost app keeps focus.
         panel.orderFrontRegardless()
         panel.invalidateShadow()
-        CardPresenters.announce(card, from: panel)
         sound = CardSound(card.sound, console: console)
         sound?.play()
 

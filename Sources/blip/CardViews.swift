@@ -315,6 +315,7 @@ enum CardViewBuilder {
             label.usesSingleLineMode = false
             label.maximumNumberOfLines = 0
             label.lineBreakMode = .byClipping
+            label.setAccessibilityValue(text)
         } else {
             // Exactly the label a card had before text wrapped, so a line that fits looks the same.
             label.usesSingleLineMode = true

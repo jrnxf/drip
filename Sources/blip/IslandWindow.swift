@@ -450,7 +450,6 @@ final class IslandPresenter: CardPresenting {
         var animator = IslandAnimator(metrics: layers.metrics)
         layers.apply(layers.frame(animator.shape(at: 0), layout: animator.content(for: animator.shape(at: 0))))
         panel.orderFrontRegardless()
-        CardPresenters.announce(card, from: panel)
         sound = CardSound(card.sound, console: console)
 
         let motion = CardPresenters.motion(for: card)

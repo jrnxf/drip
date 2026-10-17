@@ -11,16 +11,19 @@ enum CardLines {
     /// `measure`; the last ends in an ellipsis when the text runs on. Text that fits on one line
     /// comes back whole.
     ///
-    /// - Parameter measure: A line's drawn width; without one, the width `attributes` give it.
+    /// - Parameter measure: A line's drawn width; without one, the width `attributes` give it. Core
+    ///   Text breaks lines at `width` less the padding `measure` adds, so its breaks fit as drawn.
     static func wrap(
         _ text: String, attributes: [NSAttributedString.Key: Any], width: CGFloat, maxLines: Int,
         measure: ((String) -> Double)? = nil
     ) -> [String] {
-        let measure = measure ?? { Double(ceil(NSAttributedString(string: $0, attributes: attributes).size().width)) }
+        let natural = { Double(ceil(NSAttributedString(string: $0, attributes: attributes).size().width)) }
+        let measure = measure ?? natural
+        let breakWidth = Double(width) - max(measure(text) - natural(text), 0)
         return CardText.wrap(text, width: Double(width), maxLines: maxLines, measure: measure) { rest in
             let typeset = CTTypesetterCreateWithAttributedString(
                 NSAttributedString(string: rest, attributes: attributes) as CFAttributedString)
-            let length = CTTypesetterSuggestLineBreak(typeset, 0, Double(width))
+            let length = CTTypesetterSuggestLineBreak(typeset, 0, breakWidth)
             return CardText.characterCount(rest, utf16Length: length)
         }
     }

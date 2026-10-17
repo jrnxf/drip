@@ -248,6 +248,17 @@ struct IslandTests {
         #expect(drop.pillRadius(tall) == tall.dropSize / 2)
     }
 
+    /// A title and a detail of one line each in a taller fallback font, Japanese or Thai, stay round at
+    /// the ends: only wrapped text caps the corners.
+    @Test func aOneLineCapsuleInATallFontStaysRound() {
+        let tallFont = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 50)
+        var animator = IslandAnimator(metrics: tallFont)
+        animator.open()
+        let open = animator.shape(at: 0)
+        #expect(open.pillHeight / 2 > 30)
+        #expect(open.pillRadius(tallFont) == open.pillHeight / 2)
+    }
+
     /// The text waits for the capsule to make room, then fades in a line at a time: the title's lines,
     /// then the detail's. On the way out every line goes at once.
     @Test func wrappedLinesFadeInOneAfterAnother() {
