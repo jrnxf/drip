@@ -58,9 +58,47 @@ public enum Sound: Equatable, Sendable {
     }
 }
 
-/// Where the card sits on the screen.
+/// Where the card sits on the screen. `notch` grows the card out of the camera notch, and falls back
+/// to `top` on a screen without one.
 public enum Position: String, CaseIterable, Sendable {
-    case bottom, center, top
+    case bottom, center, top, notch
+}
+
+/// How the card is drawn.
+public enum CardStyle: String, CaseIterable, Sendable {
+    /// The dark HUD material with an accent hairline.
+    case hud
+    /// The system glass on macOS 26; `hud` on earlier versions.
+    case glass
+    /// The whole card in the accent color, darkened until white text is readable on it.
+    case wash
+    /// A solid dark card with an accent stripe and monospaced text.
+    case terminal
+}
+
+/// How a card at `position = notch` leaves the notch.
+public enum NotchMotion: String, CaseIterable, Sendable {
+    /// A drop forms under the notch, breaks free on a neck and floats below the menu bar.
+    case droplet
+    /// One quick move from the notch into the card, without bounce.
+    case snap
+    /// Ears grow either side of the notch, inside the menu bar; the card never drops.
+    case ears
+}
+
+/// How much a card moves. Reduce Motion in System Settings caps this at `subtle`.
+public enum Motion: String, CaseIterable, Sendable {
+    /// Each style's own entrance and exit.
+    case full
+    /// Fades only.
+    case subtle
+    /// Appears and disappears at once.
+    case none
+
+    /// This setting, capped at `subtle` when the system asks for reduced motion.
+    public func capped(reduceMotion: Bool) -> Motion {
+        reduceMotion && self == .full ? .subtle : self
+    }
 }
 
 /// Scales fonts, icon and padding.
@@ -76,20 +114,24 @@ public enum CardSize: String, CaseIterable, Sendable {
     }
 }
 
-/// A named bundle of icon, color, sound and optionally a visible time.
+/// A named bundle of icon, color, sound and optionally a visible time and a style.
 public struct Preset: Equatable, Sendable {
     public var name: String
     public var icon: Icon
     public var color: CardColor
     public var sound: Sound
     public var seconds: Double?
+    public var style: CardStyle?
 
-    public init(name: String, icon: Icon, color: CardColor, sound: Sound, seconds: Double? = nil) {
+    public init(
+        name: String, icon: Icon, color: CardColor, sound: Sound, seconds: Double? = nil, style: CardStyle? = nil
+    ) {
         self.name = name
         self.icon = icon
         self.color = color
         self.sound = sound
         self.seconds = seconds
+        self.style = style
     }
 
     public static let ok = Preset(
@@ -114,6 +156,10 @@ public enum Defaults {
     public static let secondsRange: ClosedRange<Double> = 0.5...60
     public static let position = Position.bottom
     public static let size = CardSize.regular
+    /// The style when nothing sets one and the display has no better default.
+    public static let style = CardStyle.hud
+    public static let notch = NotchMotion.droplet
+    public static let motion = Motion.full
     public static let titleLimit = 80
     public static let detailLimit = 120
 }
@@ -132,6 +178,9 @@ public struct Card: Equatable, Sendable {
     public var seconds: Double
     public var position: Position
     public var size: CardSize
+    public var style: CardStyle
+    public var notch: NotchMotion
+    public var motion: Motion
 
     public init(
         kind: String,
@@ -143,7 +192,10 @@ public struct Card: Equatable, Sendable {
         sound: Sound,
         seconds: Double = Defaults.seconds,
         position: Position = Defaults.position,
-        size: CardSize = Defaults.size
+        size: CardSize = Defaults.size,
+        style: CardStyle = Defaults.style,
+        notch: NotchMotion = Defaults.notch,
+        motion: Motion = Defaults.motion
     ) {
         self.kind = kind
         self.title = title
@@ -155,6 +207,9 @@ public struct Card: Equatable, Sendable {
         self.seconds = seconds
         self.position = position
         self.size = size
+        self.style = style
+        self.notch = notch
+        self.motion = motion
     }
 
     /// A card that uses every value of `preset`.
@@ -166,7 +221,8 @@ public struct Card: Equatable, Sendable {
             icon: preset.icon,
             color: preset.color,
             sound: preset.sound,
-            seconds: preset.seconds ?? Defaults.seconds
+            seconds: preset.seconds ?? Defaults.seconds,
+            style: preset.style ?? Defaults.style
         )
     }
 }

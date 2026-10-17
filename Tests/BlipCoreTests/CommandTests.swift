@@ -1,140 +1,140 @@
 import BlipCore
-import XCTest
+import Testing
 
 /// One test per row of the CLI table, plus help, version and the hidden render command.
-final class CommandTests: XCTestCase {
-    func testKindAndTitlePositionals() throws {
+struct CommandTests {
+    @Test func kindAndTitlePositionals() throws {
         let command = try show(["ok", "hi"])
-        XCTAssertEqual(command.kind, "ok")
-        XCTAssertEqual(command.title, "hi")
+        #expect(command.kind == "ok")
+        #expect(command.title == "hi")
         let titleOnly = try show(["build finished"])
-        XCTAssertEqual(titleOnly.kind, "build finished")
-        XCTAssertNil(titleOnly.title)
+        #expect(titleOnly.kind == "build finished")
+        #expect(titleOnly.title == nil)
         let none = try show([])
-        XCTAssertNil(none.kind)
-        XCTAssertNil(none.title)
+        #expect(none.kind == nil)
+        #expect(none.title == nil)
     }
 
-    func testDetail() throws {
-        XCTAssertEqual(try flags(["ok", "hi", "-d", "there"]).detail, "there")
-        XCTAssertEqual(try flags(["ok", "hi", "--detail", "there"]).detail, "there")
-        XCTAssertNil(try flags(["ok", "hi"]).detail)
+    @Test func detail() throws {
+        #expect(try flags(["ok", "hi", "-d", "there"]).detail == "there")
+        #expect(try flags(["ok", "hi", "--detail", "there"]).detail == "there")
+        #expect(try flags(["ok", "hi"]).detail == nil)
     }
 
-    func testSeconds() throws {
-        XCTAssertEqual(try flags(["hi", "-s", "8"]).seconds, 8)
-        XCTAssertEqual(try flags(["hi", "--seconds", "0.5"]).seconds, 0.5)
-        XCTAssertEqual(try flags(["hi", "--seconds", "60"]).seconds, 60)
-        XCTAssertNil(try flags(["hi"]).seconds)
+    @Test func seconds() throws {
+        #expect(try flags(["hi", "-s", "8"]).seconds == 8)
+        #expect(try flags(["hi", "--seconds", "0.5"]).seconds == 0.5)
+        #expect(try flags(["hi", "--seconds", "60"]).seconds == 60)
+        #expect(try flags(["hi"]).seconds == nil)
         for bad in ["0.4", "60.5", "0", "-1", "nan", "abc"] {
             assertUsageError(["hi", "--seconds", bad])
         }
     }
 
-    func testSound() throws {
-        XCTAssertEqual(try flags(["hi", "--sound", "Hero"]).sound, .named("Hero"))
-        XCTAssertEqual(try flags(["hi", "--sound", "none"]).sound, Sound.none)
-        XCTAssertEqual(try flags(["hi", "--sound", "/tmp/ding.aiff"]).sound, .file("/tmp/ding.aiff"))
-        XCTAssertNil(try flags(["hi"]).sound)
+    @Test func sound() throws {
+        #expect(try flags(["hi", "--sound", "Hero"]).sound == .named("Hero"))
+        #expect(try flags(["hi", "--sound", "none"]).sound == Sound.none)
+        #expect(try flags(["hi", "--sound", "/tmp/ding.aiff"]).sound == .file("/tmp/ding.aiff"))
+        #expect(try flags(["hi"]).sound == nil)
     }
 
-    func testIcon() throws {
-        XCTAssertEqual(try flags(["hi", "--icon", "paperplane.fill"]).icon, .symbol("paperplane.fill"))
-        XCTAssertEqual(try flags(["hi", "--icon", "none"]).icon, Icon.none)
-        XCTAssertNil(try flags(["hi"]).icon)
+    @Test func icon() throws {
+        #expect(try flags(["hi", "--icon", "paperplane.fill"]).icon == .symbol("paperplane.fill"))
+        #expect(try flags(["hi", "--icon", "none"]).icon == Icon.none)
+        #expect(try flags(["hi"]).icon == nil)
     }
 
-    func testColor() throws {
-        XCTAssertEqual(try flags(["hi", "--color", "#a78bfa"]).color, .rgb(red: 0xA7, green: 0x8B, blue: 0xFA))
-        XCTAssertEqual(try flags(["hi", "--color", "purple"]).color, .system(.purple))
-        XCTAssertNil(try flags(["hi"]).color)
+    @Test func color() throws {
+        #expect(try flags(["hi", "--color", "#a78bfa"]).color == .rgb(red: 0xA7, green: 0x8B, blue: 0xFA))
+        #expect(try flags(["hi", "--color", "purple"]).color == .system(.purple))
+        #expect(try flags(["hi"]).color == nil)
         assertUsageError(["hi", "--color", "teal"])
         assertUsageError(["hi", "--color", "#abc"])
     }
 
-    func testPosition() throws {
+    @Test func position() throws {
         for position in Position.allCases {
-            XCTAssertEqual(try flags(["hi", "--position", position.rawValue]).position, position)
+            #expect(try flags(["hi", "--position", position.rawValue]).position == position)
         }
-        XCTAssertNil(try flags(["hi"]).position)
+        #expect(try flags(["hi"]).position == nil)
         assertUsageError(["hi", "--position", "left"])
     }
 
-    func testSize() throws {
+    @Test func size() throws {
         for size in CardSize.allCases {
-            XCTAssertEqual(try flags(["hi", "--size", size.rawValue]).size, size)
+            #expect(try flags(["hi", "--size", size.rawValue]).size == size)
         }
-        XCTAssertNil(try flags(["hi"]).size)
+        #expect(try flags(["hi"]).size == nil)
         assertUsageError(["hi", "--size", "huge"])
     }
 
-    func testWaitAndQuiet() throws {
-        XCTAssertFalse(try flags(["hi"]).wait)
-        XCTAssertFalse(try flags(["hi"]).quiet)
-        XCTAssertTrue(try flags(["hi", "--wait"]).wait)
-        XCTAssertTrue(try flags(["hi", "--quiet"]).quiet)
+    @Test func waitAndQuiet() throws {
+        #expect(!(try flags(["hi"]).wait))
+        #expect(!(try flags(["hi"]).quiet))
+        #expect(try flags(["hi", "--wait"]).wait)
+        #expect(try flags(["hi", "--quiet"]).quiet)
     }
 
-    func testOptionsMayComeFirst() throws {
+    @Test func optionsMayComeFirst() throws {
         let command = try show(["--seconds", "2", "-d", "there", "warn", "hi"])
-        XCTAssertEqual(command.kind, "warn")
-        XCTAssertEqual(command.title, "hi")
-        XCTAssertEqual(command.options.flags, CardFlags(detail: "there", seconds: 2))
+        #expect(command.kind == "warn")
+        #expect(command.title == "hi")
+        #expect(command.options.flags == CardFlags(detail: "there", seconds: 2))
     }
 
-    func testUnknownOptionAndExtraArgumentsAreUsageErrors() {
+    @Test func unknownOptionAndExtraArgumentsAreUsageErrors() {
         assertUsageError(["ok", "hi", "--bogus"])
         assertUsageError(["ok", "hi", "there"])
     }
 
-    func testRunTakesTheCommandAfterTheTerminator() throws {
+    @Test func runTakesTheCommandAfterTheTerminator() throws {
         let command = try run(["--", "make", "test"])
-        XCTAssertEqual(command.command, ["make", "test"])
-        XCTAssertEqual(command.options.flags, CardFlags())
+        #expect(command.command == ["make", "test"])
+        #expect(command.options.flags == CardFlags())
 
         let withOptions = try run(["-s", "3", "--detail", "x", "--quiet", "--", "ls", "--color", "-la"])
-        XCTAssertEqual(withOptions.command, ["ls", "--color", "-la"])
-        XCTAssertEqual(withOptions.options.flags, CardFlags(detail: "x", seconds: 3, quiet: true))
+        #expect(withOptions.command == ["ls", "--color", "-la"])
+        #expect(withOptions.options.flags == CardFlags(detail: "x", seconds: 3, quiet: true))
     }
 
-    func testRunWithoutACommandIsAUsageError() {
+    @Test func runWithoutACommandIsAUsageError() {
         assertUsageError(["run"])
         assertUsageError(["run", "--"])
         assertUsageError(["run", "make", "test"])
         assertUsageError(["run", "--seconds", "99", "--", "true"])
     }
 
-    func testHelpAndVersionExitZero() {
+    @Test func helpAndVersionExitZero() {
         for arguments in [["--help"], ["-h"], ["--version"], ["run", "--help"]] {
             guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
-                return XCTFail("\(arguments) did not exit")
+                Issue.record("\(arguments) did not exit"); return
             }
-            XCTAssertEqual(status, 0, "\(arguments)")
-            XCTAssertFalse(message.isEmpty, "\(arguments)")
+            #expect(status == 0, "\(arguments)")
+            #expect(!message.isEmpty, "\(arguments)")
         }
-        guard case let .exit(_, version) = CommandLineParser.parse(["--version"]) else { return XCTFail() }
-        XCTAssertEqual(version, blipVersion)
+        guard case let .exit(_, version) = CommandLineParser.parse(["--version"]) else { Issue.record(); return }
+        #expect(version == blipVersion)
     }
 
-    func testHelpListsRunAndHidesRender() {
-        guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { return XCTFail() }
-        XCTAssertTrue(help.contains("blip run [options] -- <command> [args...]"), help)
-        XCTAssertTrue(help.contains("--seconds"), help)
-        XCTAssertFalse(help.contains("__render"), help)
+    @Test func helpListsRunAndHidesRender() {
+        guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
+        #expect(help.contains("blip run [options] -- <command> [args...]"), "\(help)")
+        #expect(help.contains("--seconds"), "\(help)")
+        #expect(!help.contains("__render"), "\(help)")
     }
 
-    func testRenderCommand() throws {
+    @Test func renderCommand() throws {
         guard case let .invocation(.render(command)) = CommandLineParser.parse(
             ["__render", "--out", "card.png", "--appearance", "dark", "fail", "nope", "-d", "exit 1", "--size", "large"])
-        else { return XCTFail() }
-        XCTAssertEqual(command.out, "card.png")
-        XCTAssertEqual(command.appearance, .dark)
-        XCTAssertEqual(command.kind, "fail")
-        XCTAssertEqual(command.title, "nope")
-        XCTAssertEqual(command.options.flags, CardFlags(detail: "exit 1", size: .large))
+        else { Issue.record(); return }
+        #expect(command.out == "card.png")
+        #expect(command.appearance == .dark)
+        #expect(command.kind == "fail")
+        #expect(command.title == "nope")
+        #expect(command.options.flags == CardFlags(detail: "exit 1", size: .large))
     }
 
-    func testRenderRequiresOut() {
+    @Test func renderRequiresOut() {
         assertUsageError(["__render", "ok", "hi"])
     }
 
@@ -156,11 +156,11 @@ final class CommandTests: XCTestCase {
         return command
     }
 
-    private func assertUsageError(_ arguments: [String], line: UInt = #line) {
+    private func assertUsageError(_ arguments: [String], sourceLocation: SourceLocation = #_sourceLocation) {
         guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
-            return XCTFail("\(arguments) parsed", line: line)
+            Issue.record("\(arguments) parsed", sourceLocation: sourceLocation); return
         }
-        XCTAssertEqual(status, ExitStatus.usage, "\(arguments)", line: line)
-        XCTAssertFalse(message.isEmpty, line: line)
+        #expect(status == ExitStatus.usage, "\(arguments)", sourceLocation: sourceLocation)
+        #expect(!message.isEmpty, sourceLocation: sourceLocation)
     }
 }

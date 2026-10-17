@@ -1,8 +1,8 @@
 import BlipCore
-import XCTest
+import Testing
 
-final class TOMLTests: XCTestCase {
-    func testScalarsAndLines() throws {
+struct TOMLTests {
+    @Test func scalarsAndLines() throws {
         let table = try TOML.parse("""
             # a comment
             seconds  = 4.5
@@ -10,14 +10,14 @@ final class TOMLTests: XCTestCase {
             count = 3
             sound    = false
             """)
-        XCTAssertEqual(table.keys, ["seconds", "position", "count", "sound"])
-        XCTAssertEqual(table["seconds"], TOMLItem(value: .float(4.5), line: 2))
-        XCTAssertEqual(table["position"], TOMLItem(value: .string("bottom"), line: 3))
-        XCTAssertEqual(table["count"], TOMLItem(value: .integer(3), line: 4))
-        XCTAssertEqual(table["sound"], TOMLItem(value: .boolean(false), line: 5))
+        #expect(table.keys == ["seconds", "position", "count", "sound"])
+        #expect(table["seconds"] == TOMLItem(value: .float(4.5), line: 2))
+        #expect(table["position"] == TOMLItem(value: .string("bottom"), line: 3))
+        #expect(table["count"] == TOMLItem(value: .integer(3), line: 4))
+        #expect(table["sound"] == TOMLItem(value: .boolean(false), line: 5))
     }
 
-    func testTables() throws {
+    @Test func tables() throws {
         let table = try TOML.parse("""
             [preset.ok]
             sound = "Hero"
@@ -29,35 +29,35 @@ final class TOMLTests: XCTestCase {
         guard case let .table(presets)? = table["preset"]?.value,
               case let .table(ok)? = presets["ok"]?.value,
               case let .table(deploy)? = presets["deploy"]?.value
-        else { return XCTFail("\(table)") }
-        XCTAssertEqual(presets.keys, ["ok", "deploy"])
-        XCTAssertEqual(presets["ok"]?.line, 1)
-        XCTAssertEqual(presets["deploy"]?.line, 4)
-        XCTAssertEqual(ok["sound"], TOMLItem(value: .string("Hero"), line: 2))
-        XCTAssertEqual(deploy["seconds"], TOMLItem(value: .integer(6), line: 6))
+        else { Issue.record("\(table)"); return }
+        #expect(presets.keys == ["ok", "deploy"])
+        #expect(presets["ok"]?.line == 1)
+        #expect(presets["deploy"]?.line == 4)
+        #expect(ok["sound"] == TOMLItem(value: .string("Hero"), line: 2))
+        #expect(deploy["seconds"] == TOMLItem(value: .integer(6), line: 6))
     }
 
-    func testAParentTableMayBeDefinedAfterItsChild() throws {
+    @Test func aParentTableMayBeDefinedAfterItsChild() throws {
         let table = try TOML.parse("[ preset . ok ]\nsound = \"Hero\"\n[preset]\nx = 1")
-        guard case let .table(presets)? = table["preset"]?.value else { return XCTFail("\(table)") }
-        XCTAssertEqual(presets.keys, ["ok", "x"])
-        XCTAssertEqual(presets["x"], TOMLItem(value: .integer(1), line: 4))
+        guard case let .table(presets)? = table["preset"]?.value else { Issue.record("\(table)"); return }
+        #expect(presets.keys == ["ok", "x"])
+        #expect(presets["x"] == TOMLItem(value: .integer(1), line: 4))
     }
 
-    func testStrings() throws {
+    @Test func strings() throws {
         let table = try TOML.parse(#"""
             basic = "tab\there \"q\" \u00e9 \U0001F389 back\\slash # not a comment"
             literal = 'C:\path\no escapes'
             empty = ""
             emptyLiteral = ''
             """#)
-        XCTAssertEqual(table["basic"]?.value, .string("tab\there \"q\" é 🎉 back\\slash # not a comment"))
-        XCTAssertEqual(table["literal"]?.value, .string(#"C:\path\no escapes"#))
-        XCTAssertEqual(table["empty"]?.value, .string(""))
-        XCTAssertEqual(table["emptyLiteral"]?.value, .string(""))
+        #expect(table["basic"]?.value == .string("tab\there \"q\" é 🎉 back\\slash # not a comment"))
+        #expect(table["literal"]?.value == .string(#"C:\path\no escapes"#))
+        #expect(table["empty"]?.value == .string(""))
+        #expect(table["emptyLiteral"]?.value == .string(""))
     }
 
-    func testNumbers() throws {
+    @Test func numbers() throws {
         let table = try TOML.parse("""
             a = +42
             b = -17
@@ -69,24 +69,24 @@ final class TOMLTests: XCTestCase {
             m = 0
             n = 1E3
             """)
-        XCTAssertEqual(table["a"]?.value, .integer(42))
-        XCTAssertEqual(table["b"]?.value, .integer(-17))
-        XCTAssertEqual(table["c"]?.value, .integer(1000))
-        XCTAssertEqual(table["g"]?.value, .float(3.1415))
-        XCTAssertEqual(table["h"]?.value, .float(-0.01))
-        XCTAssertEqual(table["i"]?.value, .float(5e22))
-        XCTAssertEqual(table["j"]?.value, .float(6.626e-34))
-        XCTAssertEqual(table["m"]?.value, .integer(0))
-        XCTAssertEqual(table["n"]?.value, .float(1000))
+        #expect(table["a"]?.value == .integer(42))
+        #expect(table["b"]?.value == .integer(-17))
+        #expect(table["c"]?.value == .integer(1000))
+        #expect(table["g"]?.value == .float(3.1415))
+        #expect(table["h"]?.value == .float(-0.01))
+        #expect(table["i"]?.value == .float(5e22))
+        #expect(table["j"]?.value == .float(6.626e-34))
+        #expect(table["m"]?.value == .integer(0))
+        #expect(table["n"]?.value == .float(1000))
     }
 
-    func testWindowsLineEndings() throws {
+    @Test func windowsLineEndings() throws {
         let table = try TOML.parse("a = 1\r\n[t]\r\nb = \"x\"\r\n")
-        guard case let .table(t)? = table["t"]?.value else { return XCTFail() }
-        XCTAssertEqual(t["b"], TOMLItem(value: .string("x"), line: 3))
+        guard case let .table(t)? = table["t"]?.value else { Issue.record(); return }
+        #expect(t["b"] == TOMLItem(value: .string("x"), line: 3))
     }
 
-    func testErrorsNameTheLine() {
+    @Test func errorsNameTheLine() {
         assertError("a = 1\nb = ", line: 2, contains: "expected a value")
         assertError("a = 1\na = 2", line: 2, contains: "defined twice")
         assertError("[t]\nx = 1\n[t]", line: 3, contains: "already defined")
@@ -107,7 +107,7 @@ final class TOMLTests: XCTestCase {
         assertError("a = \"\u{01}\"", line: 1, contains: "control characters")
     }
 
-    func testUnsupportedSyntaxNamesTheLine() {
+    @Test func unsupportedSyntaxNamesTheLine() {
         assertError("a = 1\n[[item]]", line: 2, contains: "arrays of tables are not supported")
         assertError("a = 1\nlist = [1, 2]", line: 2, contains: "arrays are not supported")
         assertError("a = 1\nt = { b = 1 }", line: 2, contains: "inline tables are not supported")
@@ -126,14 +126,14 @@ final class TOMLTests: XCTestCase {
         assertError("a = 1\nb = 0b1101", line: 2, contains: "hexadecimal, octal and binary integers are not supported")
     }
 
-    private func assertError(_ text: String, line: Int, contains: String? = nil, file: StaticString = #filePath,
-                             testLine: UInt = #line) {
-        XCTAssertThrowsError(try TOML.parse(text), file: file, line: testLine) { error in
-            guard let error = error as? TOMLError else { return XCTFail("\(error)", file: file, line: testLine) }
-            XCTAssertEqual(error.line, line, "\(text.debugDescription): \(error)", file: file, line: testLine)
-            if let contains {
-                XCTAssertTrue(error.message.contains(contains), "\(error)", file: file, line: testLine)
-            }
+    private func assertError(
+        _ text: String, line: Int, contains: String? = nil, sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        let error = #expect(throws: TOMLError.self, sourceLocation: sourceLocation) { try TOML.parse(text) }
+        guard let error else { return }
+        #expect(error.line == line, "\(text.debugDescription): \(error)", sourceLocation: sourceLocation)
+        if let contains {
+            #expect(error.message.contains(contains), "\(error)", sourceLocation: sourceLocation)
         }
     }
 }

@@ -10,6 +10,9 @@ public enum ExitStatus {
 
 extension Position: ExpressibleByArgument {}
 extension CardSize: ExpressibleByArgument {}
+extension CardStyle: ExpressibleByArgument {}
+extension NotchMotion: ExpressibleByArgument {}
+extension Motion: ExpressibleByArgument {}
 
 extension CardColor: ExpressibleByArgument {
     public init?(argument: String) {
@@ -53,11 +56,26 @@ public struct CardOptions: ParsableArguments {
         valueName: "hex|name"))
     var color: CardColor?
 
-    @Option(help: ArgumentHelp("bottom, center or top. (default: bottom)", valueName: "position"))
+    @Option(help: ArgumentHelp(
+        "bottom, center, top or notch. notch falls back to top without a notch. (default: bottom)",
+        valueName: "position"))
     var position: Position?
 
     @Option(help: ArgumentHelp("compact, regular or large. (default: regular)", valueName: "size"))
     var size: CardSize?
+
+    @Option(help: ArgumentHelp(
+        "hud, glass, wash or terminal. (default: glass on macOS 26, hud before)", valueName: "style"))
+    var style: CardStyle?
+
+    @Option(help: ArgumentHelp(
+        "How a notch card appears: droplet, snap or ears. (default: droplet)", valueName: "motion"))
+    var notch: NotchMotion?
+
+    @Option(help: ArgumentHelp(
+        "full, subtle (fades only) or none. Reduce Motion caps it at subtle. (default: full)",
+        valueName: "amount"))
+    var motion: Motion?
 
     @Flag(help: "Block until the card has faded out.")
     var wait = false
@@ -77,7 +95,7 @@ public struct CardOptions: ParsableArguments {
     public var flags: CardFlags {
         CardFlags(
             detail: detail, seconds: seconds, sound: sound, icon: icon, color: color, position: position,
-            size: size, wait: wait, quiet: quiet)
+            size: size, style: style, notch: notch, motion: motion, wait: wait, quiet: quiet)
     }
 }
 
@@ -90,13 +108,16 @@ public struct CardFlags: Equatable {
     public var color: CardColor?
     public var position: Position?
     public var size: CardSize?
+    public var style: CardStyle?
+    public var notch: NotchMotion?
+    public var motion: Motion?
     public var wait: Bool
     public var quiet: Bool
 
     public init(
         detail: String? = nil, seconds: Double? = nil, sound: Sound? = nil, icon: Icon? = nil,
-        color: CardColor? = nil, position: Position? = nil, size: CardSize? = nil, wait: Bool = false,
-        quiet: Bool = false
+        color: CardColor? = nil, position: Position? = nil, size: CardSize? = nil, style: CardStyle? = nil,
+        notch: NotchMotion? = nil, motion: Motion? = nil, wait: Bool = false, quiet: Bool = false
     ) {
         self.detail = detail
         self.seconds = seconds
@@ -105,6 +126,9 @@ public struct CardFlags: Equatable {
         self.color = color
         self.position = position
         self.size = size
+        self.style = style
+        self.notch = notch
+        self.motion = motion
         self.wait = wait
         self.quiet = quiet
     }
@@ -118,6 +142,7 @@ public struct BlipCommand: ParsableCommand {
         usage: """
             blip [KIND] [TITLE] [options]
             blip run [options] -- <command> [args...]
+            blip demo [options]
             blip --version | --help
             """,
         discussion: """
@@ -129,6 +154,8 @@ public struct BlipCommand: ParsableCommand {
 
             blip run runs the command, then shows ok when it exits 0 and fail otherwise, with how \
             long it took. It exits with the command's exit code.
+
+            blip demo plays every style, then every notch motion, so you can pick by feel.
 
             Exit codes: 0 shown, 2 usage error, 3 no GUI session, 4 invalid config file.
             """,
@@ -171,6 +198,24 @@ public struct RunCommand: ParsableCommand {
     }
 }
 
+/// `blip demo [options]`: shows every style, then every notch motion, one after another.
+public struct DemoCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "blip demo",
+        abstract: "Play every style, then every notch motion, so you can pick by feel.",
+        usage: "blip demo [options]",
+        discussion: """
+            Styles play at your configured position, or --position. Notch motions play only on a \
+            screen with a notch. Cards are silent unless --sound or BLIP_SOUND is given. --style and \
+            --notch narrow the demo to one style or one notch motion.
+            """
+    )
+
+    @OptionGroup public var options: CardOptions
+
+    public init() {}
+}
+
 /// `blip __render --out card.png [KIND] [TITLE] [options]`: draws a card offscreen into a PNG.
 /// Hidden from help; used by the snapshot tests.
 public struct RenderCommand: ParsableCommand {
@@ -194,6 +239,12 @@ public struct RenderCommand: ParsableCommand {
     @Option(help: "light or dark.")
     public var appearance: Appearance = .light
 
+    @Option(help: "For a notch card: draw its entrance this many seconds in, instead of fully open.")
+    public var at: Double?
+
+    @Flag(help: "With --at, draw the notch card's exit instead of its entrance.")
+    public var leaving = false
+
     public init() {}
 }
 
@@ -201,6 +252,7 @@ public struct RenderCommand: ParsableCommand {
 public enum Invocation {
     case show(BlipCommand)
     case run(RunCommand)
+    case demo(DemoCommand)
     case render(RenderCommand)
 }
 
@@ -220,6 +272,8 @@ public enum CommandLineParser {
         switch arguments.first {
         case "run":
             return parse(RunCommand.self, Array(arguments.dropFirst())).map(Invocation.run)
+        case "demo":
+            return parse(DemoCommand.self, Array(arguments.dropFirst())).map(Invocation.demo)
         case "__render":
             return parse(RenderCommand.self, Array(arguments.dropFirst())).map(Invocation.render)
         default:

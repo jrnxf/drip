@@ -1,10 +1,11 @@
 import BlipCore
-import XCTest
+import Foundation
+import Testing
 
-final class ConfigTests: XCTestCase {
+struct ConfigTests {
     private let path = "/home/me/.config/blip/config.toml"
 
-    func testTheSpecExample() throws {
+    @Test func theSpecExample() throws {
         let file = try ConfigLoader.parse("""
             # every key optional
             seconds  = 4.5
@@ -21,8 +22,8 @@ final class ConfigTests: XCTestCase {
             sound = "Submarine"
             seconds = 6
             """, path: path)
-        XCTAssertEqual(file.warnings, [])
-        XCTAssertEqual(file.config, Config(
+        #expect(file.warnings == [])
+        #expect(file.config == Config(
             seconds: 4.5, position: .bottom, size: .regular, sound: true,
             presets: [
                 "ok": PresetOverride(sound: .named("Hero")),
@@ -32,28 +33,28 @@ final class ConfigTests: XCTestCase {
             ]))
     }
 
-    func testEmptyFile() throws {
-        XCTAssertEqual(try ConfigLoader.parse("", path: path), ConfigFile(config: Config(), warnings: []))
+    @Test func emptyFile() throws {
+        #expect(try ConfigLoader.parse("", path: path) == ConfigFile(config: Config(), warnings: []))
     }
 
-    func testOverridesMergeIntoBuiltInPresets() {
+    @Test func overridesMergeIntoBuiltInPresets() {
         let config = Config(presets: ["ok": PresetOverride(sound: .named("Hero")), "fail": PresetOverride(seconds: 9)])
         let presets = Dictionary(uniqueKeysWithValues: config.allPresets.map { ($0.name, $0) })
-        XCTAssertEqual(presets["ok"], Preset(
+        #expect(presets["ok"] == Preset(
             name: "ok", icon: .symbol("checkmark.circle.fill"), color: .system(.green), sound: .named("Hero")))
-        XCTAssertEqual(presets["fail"]?.seconds, 9)
-        XCTAssertEqual(presets["warn"], .warn)
-        XCTAssertEqual(presets.count, 4)
+        #expect(presets["fail"]?.seconds == 9)
+        #expect(presets["warn"] == .warn)
+        #expect(presets.count == 4)
     }
 
-    func testCustomPresetsStartFromInfo() {
+    @Test func customPresetsStartFromInfo() {
         let config = Config(presets: ["deploy": PresetOverride(color: .system(.purple))])
         let deploy = config.allPresets.first { $0.name == "deploy" }
-        XCTAssertEqual(deploy, Preset(
+        #expect(deploy == Preset(
             name: "deploy", icon: .symbol("info.circle.fill"), color: .system(.purple), sound: .named("Tink")))
     }
 
-    func testPresetSoundForms() throws {
+    @Test func presetSoundForms() throws {
         let file = try ConfigLoader.parse("""
             [preset.ok]
             sound = "none"
@@ -64,33 +65,33 @@ final class ConfigTests: XCTestCase {
             [preset.info]
             sound = "~/sounds/ding.aiff"
             """, path: path)
-        XCTAssertEqual(file.config.presets["ok"]?.sound, Sound.none)
-        XCTAssertEqual(file.config.presets["warn"]?.sound, Sound.none)
-        XCTAssertNil(file.config.presets["fail"]?.sound)
-        XCTAssertEqual(file.config.presets["info"]?.sound, .file("~/sounds/ding.aiff"))
+        #expect(file.config.presets["ok"]?.sound == Sound.none)
+        #expect(file.config.presets["warn"]?.sound == Sound.none)
+        #expect(file.config.presets["fail"]?.sound == nil)
+        #expect(file.config.presets["info"]?.sound == .file("~/sounds/ding.aiff"))
     }
 
-    func testIntegerSecondsAndIconNone() throws {
+    @Test func integerSecondsAndIconNone() throws {
         let file = try ConfigLoader.parse("seconds = 3\n[preset.ok]\nicon = \"none\"", path: path)
-        XCTAssertEqual(file.config.seconds, 3)
-        XCTAssertEqual(file.config.presets["ok"]?.icon, Icon.none)
+        #expect(file.config.seconds == 3)
+        #expect(file.config.presets["ok"]?.icon == Icon.none)
     }
 
-    func testUnknownKeysAreWarnings() throws {
+    @Test func unknownKeysAreWarnings() throws {
         let file = try ConfigLoader.parse("""
             seconds = 2
             colour = "red"
             [preset.ok]
             sond = "Hero"
             """, path: path)
-        XCTAssertEqual(file.config.seconds, 2)
-        XCTAssertEqual(file.warnings, [
+        #expect(file.config.seconds == 2)
+        #expect(file.warnings == [
             "\(path):2: unknown key 'colour'",
             "\(path):4: unknown key 'preset.ok.sond'",
         ])
     }
 
-    func testWrongTypesNameTheKeyAndLine() {
+    @Test func wrongTypesNameTheKeyAndLine() {
         assertError("seconds = \"4\"", line: 1, key: "seconds", message: "expected a number, got a string")
         assertError("\nposition = 1", line: 2, key: "position", message: "expected a string, got an integer")
         assertError("size = true", line: 1, key: "size", message: "expected a string, got a boolean")
@@ -104,26 +105,33 @@ final class ConfigTests: XCTestCase {
                     message: "expected a sound name, a path, \"none\" or false, got an integer")
     }
 
-    func testInvalidValuesNameTheKeyAndLine() {
+    @Test func invalidValuesNameTheKeyAndLine() {
         assertError("seconds = 0.4", line: 1, key: "seconds", message: "must be between 0.5 and 60")
         assertError("seconds = 61", line: 1, key: "seconds", message: "must be between 0.5 and 60")
         assertError("position = \"left\"", line: 1, key: "position",
-                    message: "expected bottom, center or top, got 'left'")
+                    message: "expected bottom, center, top or notch, got 'left'")
         assertError("size = \"huge\"", line: 1, key: "size", message: "expected compact, regular or large, got 'huge'")
+        assertError("style = \"neon\"", line: 1, key: "style", message: "expected hud, glass, wash or terminal, got 'neon'")
+        assertError("notch = \"drip\"", line: 1, key: "notch", message: "expected droplet, snap or ears, got 'drip'")
+        assertError("motion = \"lots\"", line: 1, key: "motion", message: "expected full, subtle or none, got 'lots'")
+        assertError("[preset.fail]\nstyle = \"neon\"", line: 2, key: "preset.fail.style",
+                    message: "expected hud, glass, wash or terminal, got 'neon'")
+        assertError("[preset.demo]\nicon = \"x\"", line: 1, key: "preset.demo",
+                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run or demo")
         assertError("[preset.ok]\ncolor = \"teal\"", line: 2, key: "preset.ok.color",
                     message: "expected #rrggbb or one of green, orange, red, blue, purple, pink, yellow or gray, got 'teal'")
     }
 
-    func testCustomPresetNames() throws {
+    @Test func customPresetNames() throws {
         for name in ["deploy", "a", "ci-2", "x9"] {
-            XCTAssertNotNil(try ConfigLoader.parse("[preset.\(name)]\nicon = \"star\"", path: path).config.presets[name])
+            #expect(try ConfigLoader.parse("[preset.\(name)]\nicon = \"star\"", path: path).config.presets[name] != nil)
         }
         for name in ["run", "Deploy", "2fa", "-x", "a_b"] {
             assertError("\n[preset.\(name)]", line: 2, key: "preset.\(name)", message: "a custom preset name must match")
         }
     }
 
-    func testSyntaxErrorsNameTheLine() {
+    @Test func syntaxErrorsNameTheLine() {
         assertError("seconds = 4.5\nposition = ", line: 2, key: nil, message: "expected a value")
         assertError("[preset.ok]\nsound = \"Hero\"\n[[preset]]", line: 3, key: nil,
                     message: "arrays of tables are not supported")
@@ -131,132 +139,126 @@ final class ConfigTests: XCTestCase {
                     message: "dotted keys are not supported")
     }
 
-    func testPath() {
-        XCTAssertEqual(ConfigLoader.path(environment: ["XDG_CONFIG_HOME": "/x", "HOME": "/home/me"]),
-                       "/x/blip/config.toml")
-        XCTAssertEqual(ConfigLoader.path(environment: ["HOME": "/home/me"]), "/home/me/.config/blip/config.toml")
-        XCTAssertEqual(ConfigLoader.path(environment: ["XDG_CONFIG_HOME": "", "HOME": "/home/me"]),
-                       "/home/me/.config/blip/config.toml")
-        XCTAssertEqual(ConfigLoader.path(environment: ["XDG_CONFIG_HOME": "relative", "HOME": "/home/me"]),
-                       "/home/me/.config/blip/config.toml")
+    @Test func configPath() {
+        #expect(ConfigLoader.path(environment: ["XDG_CONFIG_HOME": "/x", "HOME": "/home/me"]) == "/x/blip/config.toml")
+        #expect(ConfigLoader.path(environment: ["HOME": "/home/me"]) == "/home/me/.config/blip/config.toml")
+        #expect(ConfigLoader.path(environment: ["XDG_CONFIG_HOME": "", "HOME": "/home/me"]) == "/home/me/.config/blip/config.toml")
+        #expect(ConfigLoader.path(environment: ["XDG_CONFIG_HOME": "relative", "HOME": "/home/me"]) == "/home/me/.config/blip/config.toml")
     }
 
-    func testLoadReadsTheFileAndAcceptsAMissingOne() throws {
+    @Test func loadReadsTheFileAndAcceptsAMissingOne() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("blip-config-\(ProcessInfo.processInfo.processIdentifier)")
         defer { try? FileManager.default.removeItem(at: directory) }
         let environment = ["XDG_CONFIG_HOME": directory.path]
-        XCTAssertEqual(try ConfigLoader.load(environment: environment).config, Config())
+        #expect(try ConfigLoader.load(environment: environment).config == Config())
 
         let blip = directory.appendingPathComponent("blip")
         try FileManager.default.createDirectory(at: blip, withIntermediateDirectories: true)
         try "size = \"large\"\n".write(to: blip.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
-        XCTAssertEqual(try ConfigLoader.load(environment: environment).config, Config(size: .large))
+        #expect(try ConfigLoader.load(environment: environment).config == Config(size: .large))
 
         try Data([0xFF, 0xFE]).write(to: blip.appendingPathComponent("config.toml"))
-        XCTAssertThrowsError(try ConfigLoader.load(environment: environment)) { error in
-            XCTAssertEqual((error as? ConfigError)?.message, "the file is not UTF-8")
-        }
+        let error = #expect(throws: ConfigError.self) { try ConfigLoader.load(environment: environment) }
+        #expect(error?.message == "the file is not UTF-8")
     }
 
-    func testErrorDescription() {
+    @Test func errorDescription() {
         let error = ConfigError(path: path, line: 3, key: "seconds", message: "expected a number, got a string")
-        XCTAssertEqual(error.description, "\(path):3: seconds: expected a number, got a string")
-        XCTAssertEqual(ConfigError(path: path, line: nil, key: nil, message: "cannot read the file").description,
-                       "\(path): cannot read the file")
+        #expect(error.description == "\(path):3: seconds: expected a number, got a string")
+        #expect(ConfigError(path: path, line: nil, key: nil, message: "cannot read the file").description == "\(path): cannot read the file")
     }
 
-    private func assertError(_ text: String, line: Int, key: String?, message: String, testLine: UInt = #line) {
-        XCTAssertThrowsError(try ConfigLoader.parse(text, path: path), line: testLine) { error in
-            guard let error = error as? ConfigError else { return XCTFail("\(error)", line: testLine) }
-            XCTAssertEqual(error.path, path, line: testLine)
-            XCTAssertEqual(error.line, line, "\(error)", line: testLine)
-            XCTAssertEqual(error.key, key, "\(error)", line: testLine)
-            XCTAssertTrue(error.message.hasPrefix(message), "\(error)", line: testLine)
+    private func assertError(
+        _ text: String, line: Int, key: String?, message: String, sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        let error = #expect(throws: ConfigError.self, sourceLocation: sourceLocation) {
+            try ConfigLoader.parse(text, path: path)
         }
+        guard let error else { return }
+        #expect(error.path == path, sourceLocation: sourceLocation)
+        #expect(error.line == line, "\(error)", sourceLocation: sourceLocation)
+        #expect(error.key == key, "\(error)", sourceLocation: sourceLocation)
+        #expect(error.message.hasPrefix(message), "\(error)", sourceLocation: sourceLocation)
     }
 }
 
-final class PrecedenceTests: XCTestCase {
-    func testEnvironmentSettings() throws {
-        XCTAssertEqual(try EnvironmentSettings(environment: [:]), EnvironmentSettings())
-        XCTAssertEqual(
-            try EnvironmentSettings(environment: [
+struct PrecedenceTests {
+    @Test func environmentSettings() throws {
+        #expect(try EnvironmentSettings(environment: [:]) == EnvironmentSettings())
+        #expect(try EnvironmentSettings(environment: [
                 "BLIP_SECONDS": "2", "BLIP_POSITION": "top", "BLIP_SIZE": "compact", "BLIP_SOUND": "none",
-            ]),
-            EnvironmentSettings(seconds: 2, position: .top, size: .compact, sound: Sound.none))
-        XCTAssertEqual(try EnvironmentSettings(environment: ["BLIP_SECONDS": ""]), EnvironmentSettings())
+            ]) == EnvironmentSettings(seconds: 2, position: .top, size: .compact, sound: Sound.none))
+        #expect(try EnvironmentSettings(environment: ["BLIP_SECONDS": ""]) == EnvironmentSettings())
         for (name, value) in [("BLIP_SECONDS", "abc"), ("BLIP_SECONDS", "99"), ("BLIP_POSITION", "left"),
                               ("BLIP_SIZE", "huge")] {
-            XCTAssertThrowsError(try EnvironmentSettings(environment: [name: value])) { error in
-                XCTAssertEqual((error as? UsageError)?.message.hasPrefix(name), true)
-            }
+            let error = #expect(throws: UsageError.self) { try EnvironmentSettings(environment: [name: value]) }
+            #expect(error?.message.hasPrefix(name) == true)
         }
     }
 
-    func testDefaultsWhenNothingIsSet() throws {
+    @Test func defaultsWhenNothingIsSet() throws {
         let card = try CardResolver().resolve(kind: "ok", title: "t", flags: CardFlags())
-        XCTAssertEqual(card.seconds, 4.5)
-        XCTAssertEqual(card.position, .bottom)
-        XCTAssertEqual(card.size, .regular)
-        XCTAssertEqual(card.sound, .named("Glass"))
+        #expect(card.seconds == 4.5)
+        #expect(card.position == .bottom)
+        #expect(card.size == .regular)
+        #expect(card.sound == .named("Glass"))
     }
 
-    func testConfigBeatsDefaults() throws {
+    @Test func configBeatsDefaults() throws {
         let config = Config(seconds: 3, position: .center, size: .large)
         let card = try CardResolver(config: config).resolve(kind: "ok", title: "t", flags: CardFlags())
-        XCTAssertEqual(card.seconds, 3)
-        XCTAssertEqual(card.position, .center)
-        XCTAssertEqual(card.size, .large)
+        #expect(card.seconds == 3)
+        #expect(card.position == .center)
+        #expect(card.size == .large)
     }
 
-    func testPresetSecondsBeatGlobalConfigSeconds() throws {
+    @Test func presetSecondsBeatGlobalConfigSeconds() throws {
         let config = Config(seconds: 3, presets: ["fail": PresetOverride(seconds: 8)])
         let resolver = CardResolver(config: config)
-        XCTAssertEqual(try resolver.resolve(kind: "fail", title: "t", flags: CardFlags()).seconds, 8)
-        XCTAssertEqual(try resolver.resolve(kind: "ok", title: "t", flags: CardFlags()).seconds, 3)
+        #expect(try resolver.resolve(kind: "fail", title: "t", flags: CardFlags()).seconds == 8)
+        #expect(try resolver.resolve(kind: "ok", title: "t", flags: CardFlags()).seconds == 3)
     }
 
-    func testEnvironmentBeatsConfig() throws {
+    @Test func environmentBeatsConfig() throws {
         let config = Config(seconds: 3, position: .center, size: .large, presets: ["ok": PresetOverride(seconds: 9)])
         let environment = EnvironmentSettings(seconds: 2, position: .top, size: .compact, sound: .named("Ping"))
         let card = try CardResolver(config: config, environment: environment)
             .resolve(kind: "ok", title: "t", flags: CardFlags())
-        XCTAssertEqual(card.seconds, 2)
-        XCTAssertEqual(card.position, .top)
-        XCTAssertEqual(card.size, .compact)
-        XCTAssertEqual(card.sound, .named("Ping"))
+        #expect(card.seconds == 2)
+        #expect(card.position == .top)
+        #expect(card.size == .compact)
+        #expect(card.sound == .named("Ping"))
     }
 
-    func testFlagsBeatEnvironment() throws {
+    @Test func flagsBeatEnvironment() throws {
         let environment = EnvironmentSettings(seconds: 2, position: .top, size: .compact, sound: Sound.none)
         let flags = CardFlags(seconds: 7, sound: .named("Hero"), position: .bottom, size: .regular)
         let card = try CardResolver(config: Config(seconds: 3), environment: environment)
             .resolve(kind: "ok", title: "t", flags: flags)
-        XCTAssertEqual(card.seconds, 7)
-        XCTAssertEqual(card.position, .bottom)
-        XCTAssertEqual(card.size, .regular)
-        XCTAssertEqual(card.sound, .named("Hero"))
+        #expect(card.seconds == 7)
+        #expect(card.position == .bottom)
+        #expect(card.size == .regular)
+        #expect(card.sound == .named("Hero"))
     }
 
-    func testConfigSoundFalseMutesEveryPreset() throws {
+    @Test func configSoundFalseMutesEveryPreset() throws {
         let config = Config(sound: false, presets: ["ok": PresetOverride(sound: .named("Hero"))])
         let resolver = CardResolver(config: config)
         for kind in ["ok", "warn", "fail", "info"] {
-            XCTAssertEqual(try resolver.resolve(kind: kind, title: "t", flags: CardFlags()).sound, Sound.none)
+            #expect(try resolver.resolve(kind: kind, title: "t", flags: CardFlags()).sound == Sound.none)
         }
-        XCTAssertEqual(try resolver.resolve(kind: "ok", title: "t", flags: CardFlags(sound: .named("Pop"))).sound,
-                       .named("Pop"))
+        #expect(try resolver.resolve(kind: "ok", title: "t", flags: CardFlags(sound: .named("Pop"))).sound == .named("Pop"))
         let unmuted = CardResolver(config: config, environment: EnvironmentSettings(sound: .named("Ping")))
-        XCTAssertEqual(try unmuted.resolve(kind: "ok", title: "t", flags: CardFlags()).sound, .named("Ping"))
+        #expect(try unmuted.resolve(kind: "ok", title: "t", flags: CardFlags()).sound == .named("Ping"))
     }
 
-    func testBlipSoundNoneMutes() throws {
+    @Test func blipSoundNoneMutes() throws {
         let resolver = CardResolver(environment: EnvironmentSettings(sound: Sound.none))
-        XCTAssertEqual(try resolver.resolve(kind: "fail", title: "t", flags: CardFlags()).sound, Sound.none)
+        #expect(try resolver.resolve(kind: "fail", title: "t", flags: CardFlags()).sound == Sound.none)
     }
 
-    func testCustomPresetEndToEnd() throws {
+    @Test func customPresetEndToEnd() throws {
         let file = try ConfigLoader.parse("""
             [preset.deploy]
             icon  = "paperplane.fill"
@@ -266,19 +268,17 @@ final class PrecedenceTests: XCTestCase {
             """, path: "config.toml")
         let resolver = CardResolver(config: file.config)
         let card = try resolver.resolve(kind: "deploy", title: "shipped", flags: CardFlags())
-        XCTAssertEqual(card, Card(
+        #expect(card == Card(
             kind: "deploy", title: "shipped", icon: .symbol("paperplane.fill"),
             color: .rgb(red: 0xA7, green: 0x8B, blue: 0xFA), sound: .named("Submarine"), seconds: 6))
         // Without the config, deploy is just a title.
-        XCTAssertEqual(try CardResolver().resolve(kind: "deploy", title: nil, flags: CardFlags()).title, "deploy")
+        #expect(try CardResolver().resolve(kind: "deploy", title: nil, flags: CardFlags()).title == "deploy")
     }
 
-    func testOverriddenBuiltInPresetDrivesBlipRun() throws {
+    @Test func overriddenBuiltInPresetDrivesBlipRun() throws {
         let config = Config(presets: ["ok": PresetOverride(sound: .named("Hero")), "fail": PresetOverride(seconds: 10)])
         let resolver = CardResolver(config: config)
-        XCTAssertEqual(try resolver.resolveRun(command: ["true"], status: 0, seconds: 1, flags: CardFlags()).sound,
-                       .named("Hero"))
-        XCTAssertEqual(try resolver.resolveRun(command: ["false"], status: 1, seconds: 1, flags: CardFlags()).seconds,
-                       10)
+        #expect(try resolver.resolveRun(command: ["true"], status: 0, seconds: 1, flags: CardFlags()).sound == .named("Hero"))
+        #expect(try resolver.resolveRun(command: ["false"], status: 1, seconds: 1, flags: CardFlags()).seconds == 10)
     }
 }
