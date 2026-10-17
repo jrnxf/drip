@@ -37,6 +37,7 @@ struct SnapshotTests {
     }
 
     /// A title wider than the island's text column used to keep the island from showing at all.
+    /// These references guard the layout only, not the live panel.
     @Test func longTextAtTheNotch() throws {
         let word = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
         let spaced = String(repeating: "A very long title that keeps going ", count: 3)

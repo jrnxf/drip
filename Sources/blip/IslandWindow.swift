@@ -196,7 +196,10 @@ final class IslandLayers {
     }
 
     /// One line of text cut to fit `width` with an ellipsis. The island never leaves the cut to its
-    /// text layers: with a line wider than the layer, the island did not show at all.
+    /// text layers: on a Mac, an island handed a line wider than its text layer did not show at all,
+    /// and fitting the line first makes it show (confirmed before and after on a Mac). The exact
+    /// AppKit/Core Animation mechanism, why an unfitted string in the text layer hid the whole
+    /// island, is not proven.
     private static func line(
         _ text: String, attributes: [NSAttributedString.Key: Any], width: CGFloat
     ) -> NSAttributedString {
