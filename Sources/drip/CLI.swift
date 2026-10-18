@@ -97,8 +97,12 @@ struct DripCLI {
         console.warnAbout(command.options)
         let status: Int32
         do {
-            guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit) else {
+            // One byte past the limit tells a payload that was cut from one that fits.
+            guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit + 1) else {
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
+            }
+            if payload.utf8.count > AgentHook.payloadLimit {
+                throw UsageError("the hook payload is larger than 4 MB")
             }
             let event = try AgentHook.event(agent: command.agent, payload: payload)
             flags.id = flags.id ?? event.id

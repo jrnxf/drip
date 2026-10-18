@@ -270,7 +270,7 @@ public struct RunCommand: ParsableCommand {
 
     public func validate() throws {
         if command.isEmpty {
-            throw ValidationError("Missing the command to run after --.")
+            throw ValidationError("Missing the command to run: put it after --, as in drip run -- make test.")
         }
     }
 }

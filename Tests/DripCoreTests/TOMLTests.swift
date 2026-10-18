@@ -103,6 +103,8 @@ struct TOMLTests {
         assertError("a = 1\n[a.b]", line: 2, contains: "already a value")
         assertError("[t\nx = 1", line: 1, contains: "expected ']'")
         assertError("x = trueish", line: 1, contains: "invalid value")
+        assertError("position = top", line: 1, contains: "invalid value 'top'; a string needs quotes: \"top\"")
+        assertError("color = #a78bfa", line: 1, contains: "a color needs quotes, as in \"#a78bfa\"")
         assertError("= 1", line: 1, contains: "expected a key")
         assertError("a = \"\u{01}\"", line: 1, contains: "control characters")
     }

@@ -161,7 +161,15 @@ private struct ConfigReader {
             case "seconds": config.seconds = try seconds(item, key: key)
             case "position": config.position = try choice(item, key: key, Position.self)
             case "size": config.size = try choice(item, key: key, CardSize.self)
-            case "sound": config.sound = try boolean(item, key: key)
+            case "sound":
+                guard case let .boolean(value) = item.value else {
+                    // The top-level sound only mutes; a sound name belongs to a preset.
+                    throw wrongType(
+                        item, key: key,
+                        expected: "true or false (false mutes every preset; a preset takes a name, as in "
+                            + "[preset.ok] sound = \"Hero\")")
+                }
+                config.sound = value
             case "style": config.style = try choice(item, key: key, CardStyle.self)
             // droplet is the only notch motion now, so an old `notch` setting is ignored, not an error.
             case "notch":

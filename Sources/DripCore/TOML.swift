@@ -211,6 +211,9 @@ private struct LineParser {
             throw error("arrays are not supported")
         case "{"?:
             throw error("inline tables are not supported")
+        case "#"? where peek(1).map({ $0.properties.isASCIIHexDigit }) == true:
+            // color = #a78bfa: the # starts a comment.
+            throw error("expected a value; a color needs quotes, as in \"#a78bfa\", since # starts a comment")
         default:
             return try parseToken()
         }
@@ -232,6 +235,11 @@ private struct LineParser {
         if token.contains(":") || Self.isDate(token) { throw error("date-times are not supported") }
         if ["0x", "0o", "0b"].contains(where: { token.hasPrefix($0) }) {
             throw error("hexadecimal, octal and binary integers are not supported")
+        }
+        if !["inf", "nan"].contains(token),
+           token.unicodeScalars.allSatisfy({ $0.properties.isAlphabetic || "-_.".unicodeScalars.contains($0) }) {
+            // Such as position = top: a word without its quotes.
+            throw error("invalid value '\(token)'; a string needs quotes: \"\(token)\"")
         }
         throw error("invalid value '\(token)'")
     }
