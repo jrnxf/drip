@@ -135,8 +135,17 @@ enum CardViewBuilder {
         }
         let icon = style == .terminal ? nil : symbolImage(for: card, pointSize: metrics.iconSize, console: console)
         let stripeWidth: CGFloat = style == .terminal ? 4 : 0
-        // Text wraps where a card at its widest would otherwise cut it.
+        // A button takes the trailing padding's place and brings its own: a gap after the text, and
+        // room after the button.
+        let trailing = CardLayout.trailing(metrics: metrics, hasIcon: icon != nil)
+        let buttonGap = 14 * metrics.scale, buttonTrailing = 12 * metrics.scale
+        let button = card.action.map {
+            ActionButtonView(label: $0.label, look: ActionButtonView.look(for: style, accent: accent, scale: metrics.scale))
+        }
+        let buttonRoom = button.map { buttonGap + $0.frame.width + buttonTrailing - trailing } ?? 0
+        // Text wraps where a card at its widest, button included, would otherwise cut it.
         let width = CardLayout.maxTextWidth(metrics: metrics, hasIcon: icon != nil, leadingInset: stripeWidth)
+            - buttonRoom
         let title = makeLabel(
             card.title, font: titleFont, color: colors.title, width: width, maxLines: Defaults.titleLines)
         let detail = card.detail.map {
@@ -152,16 +161,11 @@ enum CardViewBuilder {
         let layout = CardLayout(
             metrics: metrics, titleSize: title.fittingSize, detailSize: detail?.fittingSize, hasIcon: icon != nil,
             eyebrowSize: eyebrow?.fittingSize, leadingInset: stripeWidth)
-        // A button takes the trailing padding's place and brings its own.
-        var button: ActionButtonView?
         var size = layout.size
-        if let action = card.action {
-            let view = ActionButtonView(
-                label: action.label, look: ActionButtonView.look(for: style, accent: accent, scale: metrics.scale))
-            let x = size.width - metrics.trailingPadding + 14 * metrics.scale
-            view.setFrameOrigin(NSPoint(x: x, y: ((size.height - view.frame.height) / 2).rounded()))
-            size.width = x + view.frame.width + 12 * metrics.scale
-            button = view
+        if let button {
+            let x = size.width - trailing + buttonGap
+            button.setFrameOrigin(NSPoint(x: x, y: ((size.height - button.frame.height) / 2).rounded()))
+            size.width = x + button.frame.width + buttonTrailing
         }
         let bounds = NSRect(origin: .zero, size: size)
 

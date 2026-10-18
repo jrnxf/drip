@@ -118,8 +118,9 @@ public struct CardLayout: Equatable, Sendable {
         leadingInset + metrics.leadingPadding + (hasIcon ? metrics.iconSize + metrics.iconGap : 0)
     }
 
-    /// Without an icon there is nothing round to balance, so both sides get the leading padding.
-    private static func trailing(metrics: CardMetrics, hasIcon: Bool) -> CGFloat {
+    /// The room after the text. Without an icon there is nothing round to balance, so both sides
+    /// get the leading padding.
+    public static func trailing(metrics: CardMetrics, hasIcon: Bool) -> CGFloat {
         hasIcon ? metrics.trailingPadding : metrics.leadingPadding
     }
 
