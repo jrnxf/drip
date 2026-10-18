@@ -82,6 +82,8 @@ enum CardQueue {
 
     private static let directory = (NSTemporaryDirectory() as NSString).appendingPathComponent("blip-queue")
 
+    private static var leavesAtExit = false
+
     /// Queues the cards of the process `pid`. A foreground blip queues its background blip itself,
     /// before returning, so the order is the order blips were run in.
     static func enqueue(pid: pid_t) {
@@ -96,7 +98,10 @@ enum CardQueue {
     static func waitForTurn() {
         let me = getpid()
         if tickets().first(where: { $0.pid == me }) == nil { enqueue(pid: me) }
-        atexit { CardQueue.leave() }
+        if !leavesAtExit {
+            leavesAtExit = true
+            atexit { CardQueue.leave() }
+        }
         let deadline = Date().addingTimeInterval(patience)
         while Date() < deadline, !isFirst(me) {
             usleep(50_000)
@@ -131,7 +136,8 @@ enum CardQueue {
         try? FileManager.default.removeItem(atPath: (directory as NSString).appendingPathComponent(ticket.name))
     }
 
-    private static func leave() {
+    /// Gives up this process's turn, for a blip that waits for something else before showing.
+    static func leave() {
         let me = getpid()
         tickets().filter { $0.pid == me }.forEach { remove($0) }
     }

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds and tests blip on a Mac, records any missing snapshot references, then shows each preset
-# card on screen once and plays every style and notch motion with blip demo.
+# card on screen once, plays every style and notch motion with blip demo, and lists the history.
 #
 # Existing references are never overwritten: to regenerate one on purpose, delete its PNG in
 # Tests/Snapshots and run this script again.
@@ -53,3 +53,6 @@ done
 
 echo "Playing blip demo"
 XDG_CONFIG_HOME="$config" .build/debug/blip demo
+
+echo "The last cards in the history"
+.build/debug/blip history -n 5

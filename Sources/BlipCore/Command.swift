@@ -175,6 +175,7 @@ public struct BlipCommand: ParsableCommand {
             blip [KIND] [TITLE] [options]
             blip run [options] -- <command> [args...]
             blip demo [options]
+            blip history [--missed] [--json | --replay] [-n <n>]
             blip --version | --help
             """,
         discussion: """
@@ -188,6 +189,9 @@ public struct BlipCommand: ParsableCommand {
             long it took. It exits with the command's exit code.
 
             blip demo plays every style, then every notch motion, so you can pick by feel.
+
+            Cards that come up while the screen is locked wait for the unlock; three or more \
+            become one card. blip history lists every card, the missed ones marked.
 
             Exit codes: 0 shown, 2 usage error, 3 no GUI session, 4 invalid config file.
             """,
@@ -248,6 +252,39 @@ public struct DemoCommand: ParsableCommand {
     public init() {}
 }
 
+/// `blip history [--missed] [--json | --replay] [-n <n>]`: lists or shows again recent cards.
+public struct HistoryCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "blip history",
+        abstract: "List recent cards, or show them again.",
+        usage: "blip history [--missed] [--json | --replay] [-n <n>]",
+        discussion: """
+            Lists the newest cards, oldest first, marking those that came up while the screen was \
+            locked as missed. The history is $XDG_STATE_HOME/blip/history.jsonl, or \
+            ~/.local/state/blip/history.jsonl, and keeps the last \(CardHistory.limit) cards.
+            """
+    )
+
+    @Flag(help: "Only cards that came up while the screen was locked.")
+    public var missed = false
+
+    @Flag(help: "Print each card as a line of JSON, as it is stored.")
+    public var json = false
+
+    @Flag(help: "Show the cards again instead of listing them.")
+    public var replay = false
+
+    @Option(name: [.customShort("n"), .long], help: ArgumentHelp("How many of the newest cards.", valueName: "n"))
+    public var limit = 20
+
+    public init() {}
+
+    public func validate() throws {
+        if limit < 1 { throw ValidationError("--limit must be at least 1.") }
+        if json, replay { throw ValidationError("--json and --replay cannot be used together.") }
+    }
+}
+
 /// `blip __render --out card.png [KIND] [TITLE] [options]`: draws a card offscreen into a PNG.
 /// Hidden from help; used by the snapshot tests.
 public struct RenderCommand: ParsableCommand {
@@ -285,6 +322,7 @@ public enum Invocation {
     case show(BlipCommand)
     case run(RunCommand)
     case demo(DemoCommand)
+    case history(HistoryCommand)
     case render(RenderCommand)
     /// The background blip: shows the cards it reads from standard input.
     case background
@@ -308,6 +346,8 @@ public enum CommandLineParser {
             return parse(RunCommand.self, Array(arguments.dropFirst())).map(Invocation.run)
         case "demo":
             return parse(DemoCommand.self, Array(arguments.dropFirst())).map(Invocation.demo)
+        case "history":
+            return parse(HistoryCommand.self, Array(arguments.dropFirst())).map(Invocation.history)
         case "__render":
             return parse(RenderCommand.self, Array(arguments.dropFirst())).map(Invocation.render)
         case "__background":

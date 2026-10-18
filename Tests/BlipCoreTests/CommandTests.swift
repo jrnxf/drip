@@ -104,8 +104,20 @@ struct CommandTests {
         assertUsageError(["run", "--seconds", "99", "--", "true"])
     }
 
+    @Test func historyCommand() throws {
+        let plain = try history([])
+        #expect(!plain.missed && !plain.json && !plain.replay)
+        #expect(plain.limit == 20)
+        let all = try history(["--missed", "--replay", "-n", "3"])
+        #expect(all.missed && all.replay && all.limit == 3)
+        #expect(try history(["--json", "--limit", "50"]).json)
+        assertUsageError(["history", "--json", "--replay"])
+        assertUsageError(["history", "-n", "0"])
+        assertUsageError(["history", "extra"])
+    }
+
     @Test func helpAndVersionExitZero() {
-        for arguments in [["--help"], ["-h"], ["--version"], ["run", "--help"]] {
+        for arguments in [["--help"], ["-h"], ["--version"], ["run", "--help"], ["history", "--help"]] {
             guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
                 Issue.record("\(arguments) did not exit"); return
             }
@@ -119,6 +131,7 @@ struct CommandTests {
     @Test func helpListsRunAndHidesRender() {
         guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
         #expect(help.contains("blip run [options] -- <command> [args...]"), "\(help)")
+        #expect(help.contains("blip history [--missed] [--json | --replay] [-n <n>]"), "\(help)")
         #expect(help.contains("--seconds"), "\(help)")
         #expect(!help.contains("__render"), "\(help)")
     }
@@ -152,6 +165,13 @@ struct CommandTests {
     private func run(_ arguments: [String]) throws -> RunCommand {
         guard case let .invocation(.run(command)) = CommandLineParser.parse(["run"] + arguments) else {
             throw UsageError("\(arguments) did not parse as blip run")
+        }
+        return command
+    }
+
+    private func history(_ arguments: [String]) throws -> HistoryCommand {
+        guard case let .invocation(.history(command)) = CommandLineParser.parse(["history"] + arguments) else {
+            throw UsageError("\(arguments) did not parse as blip history")
         }
         return command
     }
