@@ -115,6 +115,10 @@ struct TOMLTests {
         assertError("a = 1\n\"quoted\" = 1", line: 2, contains: "quoted keys are not supported")
         assertError("a = 1\n'quoted' = 1", line: 2, contains: "quoted keys are not supported")
         assertError("a = 1\n[preset.\"ok\"]", line: 2, contains: "quoted keys are not supported")
+        assertError("a = 1\n[preset.ok.sound]", line: 2, contains: "at most 2 keys")
+        // A header thousands of keys deep is an error, not a crash.
+        let deep = "[" + Array(repeating: "a", count: 50_000).joined(separator: ".") + "]"
+        assertError(deep, line: 1, contains: "at most 2 keys")
         assertError("a = 1\nb = \"\"\"\nx\"\"\"", line: 2, contains: "multi-line strings are not supported")
         assertError("a = 1\nb = '''x'''", line: 2, contains: "multi-line strings are not supported")
         assertError("a = 1\nb = 1979-05-27", line: 2, contains: "date-times are not supported")
