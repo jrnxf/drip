@@ -24,7 +24,7 @@ struct HUDDisplay: CardDisplay {
         guard let cards = holdWhileLocked(cards, locked: locked, console: console), !cards.isEmpty else {
             return ExitStatus.shown
         }
-        if locked == .pool {
+        if case .pool = locked {
             // However long the cards were held, a background blip never outlives them by much.
             let longest = cards.reduce(0) { $0 + $1.seconds } + 600
             DispatchQueue.global().asyncAfter(deadline: .now() + longest) { exit(ExitStatus.shown) }
@@ -50,14 +50,14 @@ struct HUDDisplay: CardDisplay {
         return CardActions.missed ? ExitStatus.notClicked : ExitStatus.shown
     }
 
-    func showInBackground(_ cards: [Card], console: Console) -> Int32 {
+    func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32 {
         guard CGSessionCopyCurrentDictionary() != nil else {
             console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")
             return ExitStatus.noGUISession
         }
-        if BackgroundBlip.start(BackgroundRequest(cards: cards)) { return ExitStatus.shown }
+        if BackgroundBlip.start(request) { return ExitStatus.shown }
         console.warn("cannot start a background blip; showing the card here instead")
-        return show(cards, locked: .wait, console: console)
+        return show(request.cards, locked: .wait(record: request.record), console: console)
     }
 
     /// Records the cards in the history, first holding them while the screen is locked. Returns the
@@ -66,16 +66,19 @@ struct HUDDisplay: CardDisplay {
         let environment = ProcessInfo.processInfo.environment
         func record(_ cards: [Card], missed: Bool) {
             do {
-                try CardHistory(environment: environment).record(cards, missed: missed)
+                try locked.record(cards, missed: missed, in: CardHistory(environment: environment))
             } catch {
                 console.warn("cannot record the card in the history: \(error)")
             }
         }
-        /// Gives up the turn until the screen unlocks, so other blips can hold their cards too.
+        /// Gives up the turn until the screen unlocks, so other blips can hold their cards too, and
+        /// waits again if it locks before the turn comes back.
         func waitForUnlock() {
-            CardQueue.leave()
-            ScreenLock.waitUntilUnlocked()
-            CardQueue.waitForTurn()
+            repeat {
+                CardQueue.leave()
+                ScreenLock.waitUntilUnlocked()
+                CardQueue.waitForTurn()
+            } while ScreenLock.isLocked
         }
 
         switch locked {

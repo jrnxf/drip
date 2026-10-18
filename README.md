@@ -36,7 +36,7 @@ cp .build/apple/Products/Release/blip /usr/local/bin/
 blip [KIND] [TITLE] [options]
 blip run [options] -- <command> [args...]
 blip demo [options]
-blip history [--missed] [--json | --replay] [-n <n>]
+blip history [--missed] [--json | --replay]
 blip --version | --help
 ```
 
@@ -100,15 +100,16 @@ Every card is also kept in `$XDG_STATE_HOME/blip/history.jsonl`, or
 the last 1000 cards. `blip demo` cards are not kept.
 
 ```sh
-blip history                  # the last 20 cards, oldest first
+blip history                  # every kept card, oldest first
 blip history --missed         # only those that came up while the screen was locked
-blip history -n 100 --json    # as stored: {"time", "missed", "card": {"kind", "title", "detail", ...}}
-blip history --missed --replay -n 3   # show the last 3 missed cards again
+blip history --json           # as stored: {"time", "missed", "card": {"kind", "title", "detail", ...}}
+blip history --missed --replay   # show the missed cards again
 ```
 
 A listed line reads `2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)`. `--replay`
 shows the cards again, in order, with any button that opens something; a question's button is
-dropped, since nothing waits for its answer anymore.
+dropped, since nothing waits for its answer anymore. Replayed cards are held while the screen is
+locked like any other, and are not added to the history again.
 
 ### Buttons
 
