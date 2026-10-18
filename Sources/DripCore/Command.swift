@@ -450,7 +450,8 @@ extension CommandLineParser {
                 result += arguments[index...]
                 break
             }
-            if let name = textOptions[argument], index + 1 < arguments.endIndex {
+            // An empty value stays apart: `--detail=` would read as a missing value.
+            if let name = textOptions[argument], index + 1 < arguments.endIndex, !arguments[index + 1].isEmpty {
                 result.append("\(name)=\(arguments[index + 1])")
                 index += 2
             } else {

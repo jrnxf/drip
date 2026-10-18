@@ -29,6 +29,10 @@ struct CommandTests {
         let card = try flags(["hi", "--open", "https://example.com", "--button", "-> View", "--id", "-deploy"])
         #expect(card.button == "-> View")
         #expect(card.id == "-deploy")
+        // An empty value, as from `-d "$err"` when there was no error, is no detail.
+        #expect(try flags(["fail", "hi", "-d", ""]).detail == "")
+        #expect(try flags(["fail", "hi", "--detail", "", "-s", "3"]).seconds == 3)
+        #expect(try run(["-d", "", "--", "echo", "ran"]).command == ["echo", "ran"])
     }
 
     @Test func seconds() throws {
