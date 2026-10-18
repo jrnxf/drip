@@ -191,6 +191,18 @@ final class HistoryTests {
         #expect(try held.admit([card("d")], locked: false, pid: 103) == .show(held: [card("a"), card("b"), card("c")]))
     }
 
+    @Test func aBlipGivenADeadHoldersIdTakesOver() throws {
+        var starts: [Int32: UInt64] = [100: 1]
+        let directory = try scratch()
+        let held = HeldCards(directory: directory, processStart: { starts[$0] })
+        #expect(try held.admit([card("a")], locked: true, pid: 100) == .holding)
+        // The holder died, and a new blip got its id.
+        starts = [100: 2, 101: 3]
+        #expect(try held.admit([card("b")], locked: true, pid: 100) == .holding)
+        #expect(try held.admit([card("c")], locked: true, pid: 101) == .held)
+        #expect(try held.release().map(\.title) == ["a", "b", "c"])
+    }
+
     @Test func aHolderFileWithoutAStartTimeHasNoHolder() throws {
         let directory = try scratch()
         try "100\n".write(toFile: directory + "/held.pid", atomically: true, encoding: .utf8)
