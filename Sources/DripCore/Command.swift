@@ -136,8 +136,19 @@ public struct CardOptions: ParsableArguments {
     public var flags: CardFlags {
         CardFlags(
             detail: detail, seconds: seconds, sound: sound, icon: icon, color: color, position: position,
-            size: size, style: style, motion: motion, wait: wait, quiet: quiet, open: open,
+            size: size, style: style, motion: motion, wait: wait, quiet: quiet,
+            open: open.map { Self.target($0, from: FileManager.default.currentDirectoryPath) },
             button: button, id: id, activate: activate)
+    }
+
+    /// What `--open` names, as the button opens it: a URL as given, and a path with `~` expanded
+    /// and made absolute from `directory`. The button may be clicked in another drip, started
+    /// somewhere else, or replayed from the history later.
+    static func target(_ open: String, from directory: String) -> String {
+        guard !open.contains("://") else { return open }
+        let path = (open as NSString).expandingTildeInPath
+        guard !path.hasPrefix("/") else { return path }
+        return ((directory as NSString).appendingPathComponent(path) as NSString).standardizingPath
     }
 }
 

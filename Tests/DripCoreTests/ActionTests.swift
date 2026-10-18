@@ -20,6 +20,13 @@ struct ActionTests {
     @Test func openAndButtonParse() throws {
         let parsed = try #require(flags(["--open", "https://example.com/run/1", "--button", "View run", "--wait"]))
         #expect(parsed.open == "https://example.com/run/1")
+        // A path is made absolute where drip runs, since another drip may show the card, or the
+        // history replay it.
+        let here = FileManager.default.currentDirectoryPath
+        #expect(try #require(flags(["--open", "coverage/index.html"])).open == here + "/coverage/index.html")
+        #expect(try #require(flags(["--open", "./a/../build.log"])).open == here + "/build.log")
+        #expect(try #require(flags(["--open", "~/build.log"])).open == NSHomeDirectory() + "/build.log")
+        #expect(try #require(flags(["--open", "/tmp/test.log"])).open == "/tmp/test.log")
         #expect(parsed.button == "View run")
         #expect(parsed.wait)
     }
