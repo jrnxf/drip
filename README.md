@@ -23,13 +23,24 @@ drip history --missed         # what came up while you were away
 
 Requires macOS 13 or newer.
 
-## Install from source
+## Install
+
+```sh
+brew install jrnxf/tap/drip
+drip ok "drip works"
+```
+
+Homebrew builds drip from source with the Swift in the Command Line Tools, which Homebrew already
+needs, in about a minute. Xcode is not needed.
+
+Without Homebrew, build it the same way and put the binary on your `PATH`:
 
 ```sh
 git clone https://github.com/jrnxf/drip.git
 cd drip
-swift build -c release --arch arm64 --arch x86_64
-cp .build/apple/Products/Release/drip /usr/local/bin/
+swift build -c release
+sudo mkdir -p /usr/local/bin
+sudo cp .build/release/drip /usr/local/bin/
 ```
 
 ## Usage

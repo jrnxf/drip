@@ -1,0 +1,31 @@
+name: Release
+
+# Publishing a GitHub release points the Homebrew formula at its tag. The formula builds drip from
+# the tag's source archive, so the release needs no binary. Setup: jrnxf/homebrew-tap's
+# docs/automatic-updates.md, which issues the TAP_DEPLOY_KEY secret.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  tap:
+    name: Update the tap formula
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: jrnxf/homebrew-tap
+          ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
+      - run: scripts/bump-formula.sh drip "$TAG"
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "drip $TAG"
+          git push
+        env:
+          TAG: ${{ github.event.release.tag_name }}

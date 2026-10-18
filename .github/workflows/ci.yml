@@ -8,12 +8,15 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
     # Pushes already cover branches in this repository; pull requests run only from forks.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
-    # Linux builds and tests DripCore. The macOS build, rendering and snapshot tests run on a Mac
-    # with scripts/mac-check.sh.
+    # Linux builds and tests DripCore. The rendering and snapshot tests run on a Mac with
+    # scripts/mac-check.sh.
     runs-on: ubuntu-latest
     container: swift:6.2-noble
     steps:
@@ -25,3 +28,12 @@ jobs:
           restore-keys: swiftpm-${{ runner.os }}-
       - run: swift build --build-tests
       - run: swift test --skip-build
+
+  macos:
+    # The release build, the way the Homebrew formula makes it.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release
+      - run: .build/release/drip --version
