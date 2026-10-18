@@ -1,24 +1,24 @@
-# blip
+# drip
 
 A HUD from the shell for macOS: one command shows a brief native card growing out of the camera
 notch, or out of the top edge of a screen without one, with an icon, a title, an optional detail, a
 colored accent and a system sound, then takes it away again. A glance tells you what finished and
-how it went: a build, a deploy, a test run, a backup, a script, an agent. blip returns at once, so
+how it went: a build, a deploy, a test run, a backup, a script, an agent. drip returns at once, so
 it never slows the script that calls it.
 
 ```sh
-blip "build finished"
-blip ok "dotfiles up to date" -d "pulled 1 commit: feat(nvim): show hidden files"
-blip fail "deploy failed" -d "$err" --seconds 8
-git log -1 --format='%s%n%an' | blip ok
-blip run -- make test
-blip run --open "$CI_URL" --button "View run" -- ./deploy.sh
-blip warn "staging is ready" --button "Promote" && ./promote.sh
-blip ok "shipped" --position notch --style glass
-blip info "deploying" --id deploy && blip ok "deployed" --id deploy
-blip hook claude              # from a Claude Code hook: which project needs you, and why
-blip demo                     # every style and the notch card, to pick by feel
-blip history --missed         # what came up while you were away
+drip "build finished"
+drip ok "dotfiles up to date" -d "pulled 1 commit: feat(nvim): show hidden files"
+drip fail "deploy failed" -d "$err" --seconds 8
+git log -1 --format='%s%n%an' | drip ok
+drip run -- make test
+drip run --open "$CI_URL" --button "View run" -- ./deploy.sh
+drip warn "staging is ready" --button "Promote" && ./promote.sh
+drip ok "shipped" --position notch --style glass
+drip info "deploying" --id deploy && drip ok "deployed" --id deploy
+drip hook claude              # from a Claude Code hook: which project needs you, and why
+drip demo                     # every style and the notch card, to pick by feel
+drip history --missed         # what came up while you were away
 ```
 
 Requires macOS 13 or newer.
@@ -26,21 +26,21 @@ Requires macOS 13 or newer.
 ## Install from source
 
 ```sh
-git clone https://github.com/jrnxf/blip.git
-cd blip
+git clone https://github.com/jrnxf/drip.git
+cd drip
 swift build -c release --arch arm64 --arch x86_64
-cp .build/apple/Products/Release/blip /usr/local/bin/
+cp .build/apple/Products/Release/drip /usr/local/bin/
 ```
 
 ## Usage
 
 ```
-blip [KIND] [TITLE] [options]
-blip run [options] -- <command> [args...]
-blip hook claude|codex [options] [payload]
-blip demo [options]
-blip history [--missed] [--json | --replay]
-blip --version | --help
+drip [KIND] [TITLE] [options]
+drip run [options] -- <command> [args...]
+drip hook claude|codex [options] [payload]
+drip demo [options]
+drip history [--missed] [--json | --replay]
+drip --version | --help
 ```
 
 | Part | Behavior | Default |
@@ -57,9 +57,9 @@ blip --version | --help
 | `--style hud\|glass\|wash\|terminal` | How the card is drawn; see [Styles](#styles). | `glass` on macOS 26, `hud` before |
 | `--motion full\|subtle\|none` | `full` plays each style's entrance and exit, `subtle` only fades, `none` neither. Reduce Motion in System Settings caps it at `subtle`. | `full` |
 | `--open URL\|PATH` | Adds a button that opens a URL or a file; see [Buttons](#buttons). | none |
-| `--button LABEL` | The button's label, up to 24 characters. Without `--open`, blip waits for the card and reports the click in its exit status. | `Open` |
+| `--button LABEL` | The button's label, up to 24 characters. Without `--open`, drip waits for the card and reports the click in its exit status. | `Open` |
 | `--id ID` | Names what the card is about, up to 200 characters; see [Replacing cards](#replacing-cards). | none |
-| `--activate BUNDLE-ID\|none` | The app a click on the card brings forward, such as `com.apple.Terminal`; see [Clicks](#clicks). | the app blip was run from |
+| `--activate BUNDLE-ID\|none` | The app a click on the card brings forward, such as `com.apple.Terminal`; see [Clicks](#clicks). | the app drip was run from |
 | `--wait` | Wait until the card has gone before exiting. | off |
 | `--quiet` | Never print warnings. | off |
 
@@ -70,7 +70,7 @@ blip --version | --help
 | `fail` | `xmark.circle.fill` | red | Basso |
 | `info` | `info.circle.fill` | blue | Tink |
 
-**stdin.** When no title is given and stdin is not a terminal, blip reads stdin (up to 64 KB): the
+**stdin.** When no title is given and stdin is not a terminal, drip reads stdin (up to 64 KB): the
 first non-empty line is the title and the remaining lines, joined with a space, are the detail,
 unless `--detail` is given. With a title on the command line, stdin is left alone.
 
@@ -81,15 +81,15 @@ most three, breaking between words, between Japanese or Chinese characters, or i
 long for a line. When text is still left over, the last line ends in an ellipsis. Text that fits on
 one line looks as it always has. The card stays up for `--seconds` however many lines it has.
 
-**blip demo** plays every style at your configured position (the bottom when that is the notch),
-then the notch card, two seconds each unless `--seconds`, `BLIP_SECONDS`
-or the config's `seconds` say otherwise, and silent unless `--sound` or `BLIP_SOUND` is given.
-Options apply to every card, so `blip demo --style wash` shows only wash.
+**drip demo** plays every style at your configured position (the bottom when that is the notch),
+then the notch card, two seconds each unless `--seconds`, `DRIP_SECONDS`
+or the config's `seconds` say otherwise, and silent unless `--sound` or `DRIP_SOUND` is given.
+Options apply to every card, so `drip demo --style wash` shows only wash.
 
-**Returning at once.** blip checks everything first (flags, config, stdin, sounds and icons), so a
-mistake still prints its message and exit status. Then it hands the card to a background blip and
-exits. Cards from every blip queue up and show one after another, in the order they were sent.
-`--wait` keeps blip running until its card has gone, still in its turn.
+**Returning at once.** drip checks everything first (flags, config, stdin, sounds and icons), so a
+mistake still prints its message and exit status. Then it hands the card to a background drip and
+exits. Cards from every drip queue up and show one after another, in the order they were sent.
+`--wait` keeps drip running until its card has gone, still in its turn.
 
 ### Replacing cards
 
@@ -103,32 +103,32 @@ exits 5.
 
 ### Clicks
 
-A click on a card brings forward the app blip was run from, such as your terminal, and takes the
+A click on a card brings forward the app drip was run from, such as your terminal, and takes the
 card away. macOS names that app in the `__CFBundleIdentifier` environment variable of everything it
-starts, and blip uses it; `--activate` names another app by its bundle identifier, and
+starts, and drip uses it; `--activate` names another app by its bundle identifier, and
 `--activate none` leaves the card click-through. A card you can click holds while the pointer is on
 it, like a card with a button. The card itself never takes focus.
 
 ### Missed cards and history
 
-A card that comes up while the screen is locked would play to nobody, so blip holds it until the
+A card that comes up while the screen is locked would play to nobody, so drip holds it until the
 screen unlocks. Then one or two held cards show as they are, and three or more show as one card,
 `5 cards while you were away`, with their titles newest first. It takes the look and sound of the
 newest `fail` card among them, else the newest `warn` card, else the newest card, so a failure
 still reads as one. Of held cards with the same `--id`, only the newest shows. A click on the
 summary brings forward the app the held cards came from, or nothing when they came from different
-apps. A blip that waits for its card, with `--wait` or a `--button` question, keeps
+apps. A drip that waits for its card, with `--wait` or a `--button` question, keeps
 waiting until the unlock and then shows its card on its own.
 
-Every card is also kept in `$XDG_STATE_HOME/blip/history.jsonl`, or
-`~/.local/state/blip/history.jsonl`, one JSON object per line, readable only by you. blip keeps
-the last 1000 cards. `blip demo` cards are not kept.
+Every card is also kept in `$XDG_STATE_HOME/drip/history.jsonl`, or
+`~/.local/state/drip/history.jsonl`, one JSON object per line, readable only by you. drip keeps
+the last 1000 cards. `drip demo` cards are not kept.
 
 ```sh
-blip history                  # every kept card, oldest first
-blip history --missed         # only those that came up while the screen was locked
-blip history --json           # as stored: {"time", "missed", "card": {"kind", "title", "detail", ...}}
-blip history --missed --replay   # show the missed cards again
+drip history                  # every kept card, oldest first
+drip history --missed         # only those that came up while the screen was locked
+drip history --json           # as stored: {"time", "missed", "card": {"kind", "title", "detail", ...}}
+drip history --missed --replay   # show the missed cards again
 ```
 
 A listed line reads `2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)`. `--replay`
@@ -144,14 +144,14 @@ moving away gives it another 1.5 seconds. A click on the button opens the target
 away; a click anywhere else on the card brings the sending app forward (see [Clicks](#clicks)) and
 takes the card away. Clicking the button never takes focus from the app you are in.
 
-`--button` without `--open` asks a question: blip waits and exits 0 if the button was clicked and 5
+`--button` without `--open` asks a question: drip waits and exits 0 if the button was clicked and 5
 if it was not, so the script decides what happens:
 
 ```sh
-blip warn "staging is ready" -d "api 1.4.2" --button "Promote" --seconds 10 && ./promote.sh
+drip warn "staging is ready" -d "api 1.4.2" --button "Promote" --seconds 10 && ./promote.sh
 ```
 
-**blip run** runs the command with blip's stdin, stdout and stderr, then shows `ok` with the title
+**drip run** runs the command with drip's stdin, stdout and stderr, then shows `ok` with the title
 `<command> finished` on exit 0, or `fail` with `<command> failed (exit N)` otherwise. The detail is
 how long it took, such as `3m 12s`. Options before `--` apply as usual.
 
@@ -160,34 +160,34 @@ how long it took, such as `3m 12s`. Options before `--` apply as usual.
 Builds and tests, with how long they took:
 
 ```sh
-blip run -- make test
-blip run --position notch -- npm run build
+drip run -- make test
+drip run --position notch -- npm run build
 ```
 
 A deploy that links to its run, and a backup:
 
 ```sh
-blip run --open "https://github.com/me/app/actions" --button "View run" -- ./deploy.sh
-blip run -- restic backup ~/Documents
+drip run --open "https://github.com/me/app/actions" --button "View run" -- ./deploy.sh
+drip run -- restic backup ~/Documents
 ```
 
-A git hook, such as `.git/hooks/post-merge`, which blip never slows down:
+A git hook, such as `.git/hooks/post-merge`, which drip never slows down:
 
 ```sh
 #!/bin/sh
-blip info "pulled $(git log -1 --format='%h %s')"
+drip info "pulled $(git log -1 --format='%h %s')"
 ```
 
-**Coding agents.** Point an agent's hooks at `blip hook` to see a card when it needs you or has
-finished. blip reads the hook's payload: the title is the project, from the session's working
-directory, and whether the agent needs you or is done, such as `blip needs you`. The detail is what
+**Coding agents.** Point an agent's hooks at `drip hook` to see a card when it needs you or has
+finished. drip reads the hook's payload: the title is the project, from the session's working
+directory, and whether the agent needs you or is done, such as `drip needs you`. The detail is what
 the agent said: the notification's message, or the last thing it wrote before it stopped. A
 permission prompt or a question is `warn`, an idle prompt `info`, and a finished turn `ok`. Each
 session's card has the id `<agent>:<session>`, so a session's new card replaces its last one
 instead of queuing behind it, and a click on the card brings back the terminal the agent runs in.
-blip reads Claude Code's `Notification` and `Stop` events and Codex's `agent-turn-complete`; any
+drip reads Claude Code's `Notification` and `Stop` events and Codex's `agent-turn-complete`; any
 other payload prints an error. Card options such as `--position` or `--seconds` work as usual. On a
-mistake, `blip hook` exits 1, never 2, which tells Claude Code to block the agent.
+mistake, `drip hook` exits 1, never 2, which tells Claude Code to block the agent.
 
 **Claude Code**, in `~/.claude/settings.json`:
 
@@ -197,12 +197,12 @@ mistake, `blip hook` exits 1, never 2, which tells Claude Code to block the agen
     "Notification": [
       {
         "matcher": "permission_prompt|idle_prompt|elicitation_dialog",
-        "hooks": [{ "type": "command", "command": "blip hook claude" }]
+        "hooks": [{ "type": "command", "command": "drip hook claude" }]
       }
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "blip hook claude" }]
+        "hooks": [{ "type": "command", "command": "drip hook claude" }]
       }
     ]
   }
@@ -212,10 +212,10 @@ mistake, `blip hook` exits 1, never 2, which tells Claude Code to block the agen
 **Codex**, in `~/.codex/config.toml`. Codex adds the event payload as the last argument:
 
 ```toml
-notify = ["blip", "hook", "codex"]
+notify = ["drip", "hook", "codex"]
 ```
 
-Any other agent or tool: wrap what it runs in `blip run`, or call blip from its hooks.
+Any other agent or tool: wrap what it runs in `drip run`, or call drip from its hooks.
 
 ### Styles
 
@@ -234,12 +234,12 @@ drop forms above the screen and oozes out of the middle of its top edge instead,
 it the same way.
 
 **Several cards at once (experimental).** Notch cards that come in while one is showing stack below
-it, up to `BLIP_STACK_MAX` (3) at a time; the rest wait their turn. With `BLIP_STACK=chain`, the
+it, up to `DRIP_STACK_MAX` (3) at a time; the rest wait their turn. With `DRIP_STACK=chain`, the
 default, each new card drops out of the bottom of the last one and the oldest goes back into the
-notch first, the others moving up behind it. With `BLIP_STACK=push` a new card drops out of the
-notch once the others have moved down out of its way. `BLIP_STACK=off` shows one card at a time.
+notch first, the others moving up behind it. With `DRIP_STACK=push` a new card drops out of the
+notch once the others have moved down out of its way. `DRIP_STACK=off` shows one card at a time.
 While the pointer is on any card in the stack, nothing moves: every countdown stops, gaps stay open
-and new cards wait. A click on a card dismisses it. Only the cards of blips that returned at once
+and new cards wait. A click on a card dismisses it. Only the cards of drips that returned at once
 stack; a card that waits (`--wait`, or a question) waits its turn.
 
 ### Exit codes
@@ -247,18 +247,18 @@ stack; a card that waits (`--wait`, or a question) waits its turn.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown. |
-| 1 | `blip hook` could not make a card: a usage error, or a payload it cannot read or does not know. |
+| 1 | `drip hook` could not make a card: a usage error, or a payload it cannot read or does not know. |
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh. |
 | 4 | The config file is invalid; the message names the key and line. |
-| 5 | The card had a button and blip waited, but the button was not clicked. |
+| 5 | The card had a button and drip waited, but the button was not clicked. |
 
-Without `--wait`, 0 means the card was handed off to be shown. `blip run` always exits with the
+Without `--wait`, 0 means the card was handed off to be shown. `drip run` always exits with the
 wrapped command's exit code, as soon as the command ends.
 
 ## Config
 
-blip reads `$XDG_CONFIG_HOME/blip/config.toml`, or `~/.config/blip/config.toml`. Every key is
+drip reads `$XDG_CONFIG_HOME/drip/config.toml`, or `~/.config/drip/config.toml`. Every key is
 optional, and a missing file is fine.
 
 ```toml
@@ -275,15 +275,15 @@ sound = "Hero"
 [preset.fail]
 style = "wash"               # a preset can have its own style: failures shout, the rest stay calm
 
-[preset.deploy]              # a custom preset: blip deploy "shipped"
+[preset.deploy]              # a custom preset: drip deploy "shipped"
 icon  = "paperplane.fill"
 color = "#a78bfa"
 sound = "Submarine"
 seconds = 6
 ```
 
-Each setting comes from the first of: flags, the environment (`BLIP_SECONDS`, `BLIP_POSITION`,
-`BLIP_SIZE`, `BLIP_SOUND`, `BLIP_STYLE`, `BLIP_MOTION`; `BLIP_SOUND=none` mutes), the config file,
+Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_POSITION`,
+`DRIP_SIZE`, `DRIP_SOUND`, `DRIP_STYLE`, `DRIP_MOTION`; `DRIP_SOUND=none` mutes), the config file,
 the built-in defaults. A preset's own `seconds` and `style` beat the top-level ones. A custom preset
 starts from `info` and replaces what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be
 `run`, `hook`, `demo` or `history`. Unknown keys print a warning; wrong types exit 4. The `notch` key
@@ -302,13 +302,13 @@ swift test            # on Linux, or on a Mac with Xcode
 scripts/mac-check.sh  # on any Mac
 ```
 
-`swift test` runs the BlipCore unit tests anywhere Swift runs, including Linux CI. The snapshot
-tests render cards with the hidden `blip __render --out card.png` command and compare them with the
+`swift test` runs the DripCore unit tests anywhere Swift runs, including Linux CI. The snapshot
+tests render cards with the hidden `drip __render --out card.png` command and compare them with the
 PNGs in `Tests/Snapshots`; they run on macOS and skip cards that have no reference yet. For a notch
 card, `__render --at 0.2` draws its entrance 0.2 seconds in, to check a motion frame by frame.
 
 On a Mac, `scripts/mac-check.sh` builds, runs every test, records any missing snapshot references
-into `Tests/Snapshots`, shows each preset on screen once, runs `blip demo`, then lists the last
+into `Tests/Snapshots`, shows each preset on screen once, runs `drip demo`, then lists the last
 cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
 never overwrites a reference: to regenerate one on purpose, delete its PNG and run the script again.
 

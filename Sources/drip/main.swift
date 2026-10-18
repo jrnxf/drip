@@ -1,0 +1,10 @@
+import DripCore
+import Foundation
+
+#if canImport(AppKit)
+let display: CardDisplay = HUDDisplay()
+#else
+let display: CardDisplay = UnavailableDisplay()
+#endif
+
+exit(DripCLI(display: display).run(Array(CommandLine.arguments.dropFirst())))
