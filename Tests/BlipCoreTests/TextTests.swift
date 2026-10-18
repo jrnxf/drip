@@ -101,6 +101,123 @@ struct TextTests {
         #expect(CardText.fit("abc", width: 10, measure: Self.measure) == "…")
     }
 
+    /// Every character as wide as the 14-point semibold system font's average, ideographs twice that.
+    private static func wide(_ text: String) -> Double {
+        text.reduce(0) { width, character in
+            width + (character.unicodeScalars.first?.properties.isIdeographic == true
+                || ("\u{3040}"..."\u{30FF}").contains(character) ? 15 : 7.5)
+        }
+    }
+
+    @Test func wrapLeavesTextThatFitsAlone() {
+        let text = "Build finished"
+        #expect(CardText.wrap(text, width: 500, maxLines: 2, measure: Self.measure) == [text])
+        // Exactly as wide as the line: not wrapped, just as `fit` would not cut it.
+        let full = String(repeating: "x", count: 66)
+        #expect(Self.measure(full) == 495)
+        #expect(CardText.wrap(full, width: 495, maxLines: 2, measure: Self.measure) == [full])
+        #expect(CardText.fit(full, width: 495, measure: Self.measure) == full)
+    }
+
+    @Test func wrapBreaksAfterSpacesAndDropsThem() {
+        let spaced = String(repeating: "A very long title that keeps going ", count: 2).trimmingCharacters(in: .whitespaces)
+        let lines = CardText.wrap(spaced, width: 300, maxLines: 3, measure: Self.measure)
+        #expect(lines == ["A very long title that keeps going A", "very long title that keeps going"])
+        #expect(lines.allSatisfy { Self.measure($0) <= 300 })
+        #expect(lines.joined(separator: " ") == spaced)
+    }
+
+    /// The last line allowed takes the rest, cut with an ellipsis like a line that does not wrap.
+    @Test func wrapEndsTheLastLineInAnEllipsis() throws {
+        let text = String(repeating: "word ", count: 100).trimmingCharacters(in: .whitespaces)
+        for maxLines in 1...3 {
+            let lines = CardText.wrap(text, width: 200, maxLines: maxLines, measure: Self.measure)
+            #expect(lines.count == maxLines)
+            #expect(lines.allSatisfy { Self.measure($0) <= 200 })
+            #expect(lines.dropLast().allSatisfy { !$0.hasSuffix("…") && !$0.hasSuffix(" ") && !$0.hasPrefix(" ") })
+            let last = try #require(lines.last)
+            #expect(last.hasSuffix("…"))
+            #expect(last == CardText.fit(String(text.dropFirst(lines.dropLast().map { $0.count + 1 }.reduce(0, +))),
+                                         width: 200, measure: Self.measure))
+        }
+        #expect(CardText.wrap(text, width: 200, maxLines: 1, measure: Self.measure)
+            == [CardText.fit(text, width: 200, measure: Self.measure)])
+    }
+
+    @Test func wrapCutsAWordTooLongForALine() {
+        let word = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
+        let lines = CardText.wrap(word, width: 500, maxLines: 2, measure: Self.measure)
+        #expect(lines == [String(word.prefix(66)), String(word.dropFirst(66))])
+        // A word that fits no line starts on a line of its own.
+        #expect(CardText.wrap("go " + word, width: 500, maxLines: 2, measure: Self.measure)
+            == ["go", String(word.prefix(65)) + "…"])
+    }
+
+    @Test func wrapBreaksBetweenIdeographsButNotBeforeClosingPunctuation() {
+        let japanese = "ビルドが完了しました。テストはすべて成功しました。"
+        let lines = CardText.wrap(japanese, width: 150, maxLines: 3, measure: Self.wide)
+        #expect(lines.joined() == japanese)
+        #expect(lines.count == 3)
+        #expect(lines.allSatisfy { Self.wide($0) <= 150 })
+        #expect(lines.dropFirst().allSatisfy { !$0.hasPrefix("。") })
+        // Ten characters fit a line; the eleventh would be a full stop, which never starts a line, so
+        // the line breaks a character earlier and takes it along.
+        #expect(lines == ["ビルドが完了しまし", "た。テストはすべて成", "功しました。"])
+    }
+
+    @Test func wrapNeverSplitsEmojiOrCombiningMarks() {
+        let family = "👨‍👩‍👧‍👦"
+        let lines = CardText.wrap(String(repeating: family, count: 10), width: 30, maxLines: 3, measure: Self.measure)
+        #expect(lines == [String(repeating: family, count: 4), String(repeating: family, count: 4), family + family])
+        #expect(CardText.wrap(String(repeating: family, count: 13), width: 30, maxLines: 3, measure: Self.measure).last
+            == family + family + family + "…")
+        let accents = String(repeating: "e\u{0301}", count: 10)
+        #expect(CardText.wrap(accents, width: 30, maxLines: 3, measure: Self.measure)
+            == [String(repeating: "e\u{0301}", count: 4), String(repeating: "e\u{0301}", count: 4),
+                String(repeating: "e\u{0301}", count: 2)])
+    }
+
+    /// Right-to-left text is broken in reading order: the first line holds the start of the text.
+    @Test func wrapKeepsRightToLeftTextInReadingOrder() {
+        let hebrew = "שלום עולם זה כרטיס ארוך מאוד שממשיך הלאה"
+        let lines = CardText.wrap(hebrew, width: 120, maxLines: 3, measure: Self.measure)
+        #expect(lines.count > 1)
+        #expect(hebrew.hasPrefix(lines[0]))
+        #expect(lines.allSatisfy { CardText.isRightToLeft($0) })
+    }
+
+    /// A typesetter's break is used as given when it fits, and moved back to the last space when the
+    /// line it makes is too wide by the renderer's own measure.
+    @Test func wrapTakesTheTypesettersBreakButNeverAWiderLine() {
+        let text = "one two three four five six"
+        let given = CardText.wrap(text, width: 100, maxLines: 3, measure: Self.measure) { _ in 4 }
+        #expect(given == ["one", "two", "three four f…"])
+        let tooWide = CardText.wrap(text, width: 100, maxLines: 2, measure: Self.measure) { $0.count }
+        #expect(tooWide == ["one two three", "four five six"])
+        // A break of nothing still makes progress.
+        #expect(CardText.wrap("ab cd", width: 10, maxLines: 2, measure: Self.measure) { _ in 0 } == ["a", "…"])
+    }
+
+    @Test func characterCountFollowsUTF16() {
+        #expect(CardText.characterCount("abc", utf16Length: 2) == 2)
+        // A family emoji is 11 UTF-16 code units; none of it is counted until all of it fits.
+        let family = "👨‍👩‍👧‍👦"
+        #expect(CardText.characterCount("a" + family + "b", utf16Length: 5) == 1)
+        #expect(CardText.characterCount("a" + family + "b", utf16Length: 12) == 2)
+        #expect(CardText.characterCount("abc", utf16Length: 99) == 3)
+        #expect(CardText.characterCount("abc", utf16Length: 0) == 0)
+    }
+
+    @Test func voiceOverReadsTheWholeTitleThenTheDetail() {
+        #expect(CardText.spoken(title: "Build finished", detail: "42 tests passed") == "Build finished, 42 tests passed")
+        #expect(CardText.spoken(title: "Build finished", detail: nil) == "Build finished")
+    }
+
+    @Test func lineCaps() {
+        #expect(Defaults.titleLines == 2)
+        #expect(Defaults.detailLines == 3)
+    }
+
     @Test func titleAndDetailLimits() {
         #expect(Defaults.titleLimit == 80)
         #expect(Defaults.detailLimit == 120)

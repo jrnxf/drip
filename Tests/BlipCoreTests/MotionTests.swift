@@ -83,48 +83,38 @@ struct WashPaletteTests {
 }
 
 struct IslandTests {
-    private let metrics = IslandMetrics(
-        notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 34, compactTitleWidth: 90)
+    private let metrics = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 34)
+    /// A title of two lines over a detail of three.
+    private let tall = IslandMetrics(
+        notchWidth: 185, notchHeight: 32, textWidth: 500, textHeight: 2 * 17 + 3 + 3 * 15, titleLines: 2,
+        detailLines: 3)
 
-    @Test func everyMotionOpensToItsShapeAndClosesBackIntoTheNotch() {
-        for motion in NotchMotion.allCases {
-            var animator = IslandAnimator(motion: motion, metrics: metrics)
-            let rest = animator.shape(at: 0)
+    @Test func opensToTheCapsuleAndClosesBackIntoTheNotch() {
+        for metrics in [metrics, tall] {
+            var animator = IslandAnimator(metrics: metrics)
             _ = animator.enter(at: 0)
             let open = animator.shape(at: animator.end)
-            var reference = IslandAnimator(motion: motion, metrics: metrics)
+            var reference = IslandAnimator(metrics: metrics)
             reference.open()
             let expected = reference.shape(at: 0)
-            #expect(abs(open.left - expected.left) < 0.5, "\(motion)")
-            #expect(abs(open.right - expected.right) < 0.5, "\(motion)")
-            #expect(abs(open.height - expected.height) < 0.5, "\(motion)")
-            #expect(abs(open.pillWidth - expected.pillWidth) < 0.5, "\(motion)")
-            #expect(abs(open.progress - 1) < 0.001, "\(motion)")
+            // Settled to within a thousandth of the distance travelled.
+            #expect(abs(open.pillWidth - expected.pillWidth) < 1, "\(metrics.textHeight)")
+            #expect(abs(open.pillHeight - expected.pillHeight) < 0.5, "\(metrics.textHeight)")
+            #expect(abs(open.pillTop - expected.pillTop) < 0.5, "\(metrics.textHeight)")
+            #expect(abs(open.progress - 1) < 0.001, "\(metrics.textHeight)")
 
             let leaving = animator.end
             _ = animator.exit(at: leaving)
             let closed = animator.shape(at: animator.end)
-            #expect(abs(closed.left - rest.left) < 0.5, "\(motion)")
-            #expect(abs(closed.right - rest.right) < 0.5, "\(motion)")
-            #expect(abs(closed.height - rest.height) < 0.5, "\(motion)")
-            if motion == .droplet {
-                // Swallowed whole: hidden in the notch and too deep to make it bulge.
-                #expect(!DropletField(metrics: metrics, shape: closed).touchesNotch)
-                #expect(closed.pillTop + closed.pillHeight < metrics.notchHeight)
-            }
-            #expect(animator.end - leaving < leaving, "\(motion): the exit must be quicker than the entrance")
-        }
-    }
-
-    @Test func exitsNeverOvershootTheNotch() {
-        for motion in [NotchMotion.snap, .ears] {
-            var animator = IslandAnimator(motion: motion, metrics: metrics)
-            animator.open()
-            _ = animator.exit(at: 0)
-            for time in stride(from: 0.0, to: animator.end, by: 0.005) {
-                let shape = animator.shape(at: time)
-                #expect(shape.right >= metrics.notchWidth / 2 - 0.01, "\(motion) at \(time)")
-                #expect(shape.height >= metrics.notchHeight - 0.01, "\(motion) at \(time)")
+            // Swallowed whole: hidden in the notch and too deep to make it bulge.
+            #expect(!DropletField(metrics: metrics, shape: closed).touchesNotch, "\(metrics.textHeight)")
+            #expect(closed.pillTop + closed.pillHeight < metrics.notchHeight, "\(metrics.textHeight)")
+            if metrics == tall {
+                // A capsule this tall falls further, so it breaks free and opens sooner, while the
+                // widest one takes a little longer to gather back into a drop.
+                #expect(animator.end - leaving < 0.9)
+            } else {
+                #expect(animator.end - leaving < leaving, "the exit must be quicker than the entrance")
             }
         }
     }
@@ -141,7 +131,7 @@ struct IslandTests {
     }
 
     @Test func theDropHangsOnANeckThenPinchesOff() {
-        var animator = IslandAnimator(motion: .droplet, metrics: metrics)
+        var animator = IslandAnimator(metrics: metrics)
         #expect(!DropletField(metrics: metrics, shape: animator.shape(at: 0)).touchesNotch)
         _ = animator.enter(at: 0)
         let times = Array(stride(from: 0.0, to: animator.end, by: 0.004))
@@ -155,20 +145,23 @@ struct IslandTests {
     }
 
     @Test func theNotchReachesForTheRisingDropAndSwallowsIt() {
-        var animator = IslandAnimator(motion: .droplet, metrics: metrics)
-        animator.open()
-        _ = animator.exit(at: 0)
-        let loops = stride(from: 0.0, to: animator.end, by: 0.004).map { loopsBelowNotch(animator.shape(at: $0)) }
-        let merged = loops.firstIndex(of: 1)
-        #expect(merged != nil)
-        #expect(!loops[(merged ?? 0)...].contains(2), "once merged, the drop never breaks away again")
+        for metrics in [metrics, tall] {
+            var animator = IslandAnimator(metrics: metrics)
+            animator.open()
+            _ = animator.exit(at: 0)
+            let loops = stride(from: 0.0, to: animator.end, by: 0.004).map {
+                loopsBelowNotch(animator.shape(at: $0), metrics: metrics)
+            }
+            let merged = loops.firstIndex(of: 1)
+            #expect(merged != nil, "\(metrics.textHeight)")
+            #expect(!loops[(merged ?? 0)...].contains(2), "\(metrics.textHeight): once merged, the drop never breaks away again")
+        }
     }
 
     @Test func theIconLeavesOnlyOnceTheRoundDropRisesAndIsGoneBeforeItMerges() throws {
-        let wide = IslandMetrics(
-            notchWidth: 200, notchHeight: 37, scale: 1.2, textWidth: 520, textHeight: 34, compactTitleWidth: 90)
-        for metrics in [self.metrics, wide] {
-            var animator = IslandAnimator(motion: .droplet, metrics: metrics)
+        let wide = IslandMetrics(notchWidth: 200, notchHeight: 37, scale: 1.2, textWidth: 520, textHeight: 34)
+        for metrics in [self.metrics, wide, tall] {
+            var animator = IslandAnimator(metrics: metrics)
             animator.open()
             let open = animator.shape(at: 0)
             let cues = animator.exit(at: 0)
@@ -201,7 +194,7 @@ struct IslandTests {
 
     @Test func theFallingDropOutgrowsItsNeck() throws {
         // A real drop's bulb is wider than the neck it hangs from just before it breaks.
-        var animator = IslandAnimator(motion: .droplet, metrics: metrics)
+        var animator = IslandAnimator(metrics: metrics)
         _ = animator.enter(at: 0)
         let times = Array(stride(from: 0.0, to: 0.6, by: 0.002))
         let last = try #require(times.last { loopsBelowNotch(animator.shape(at: $0)) == 1 && $0 > 0.05 })
@@ -214,60 +207,103 @@ struct IslandTests {
         #expect(neck < bulb / 2, "neck \(neck) bulb \(bulb)")
     }
 
-    @Test func shouldersGrowWithTheOverhang() {
-        #expect(IslandShape.shoulder(overhang: 0) == 0)
-        #expect(IslandShape.shoulder(overhang: -5) == 0)
-        #expect(IslandShape.shoulder(overhang: 8) == IslandShape.maxShoulder / 2)
-        #expect(IslandShape.shoulder(overhang: 100) == IslandShape.maxShoulder)
-    }
-
-    @Test func cornersGrowFromTheNotchsToTheCards() {
-        let notch = IslandShape(left: -92.5, right: 92.5, height: 32, pillTop: 0, pillWidth: 0, pillHeight: 0, progress: 0)
-        #expect(notch.radius(metrics) == metrics.notchRadius)
-        let card = IslandShape(
-            left: -150, right: 150, height: metrics.cardHeight, pillTop: 0, pillWidth: 0, pillHeight: 0, progress: 1)
-        #expect(card.radius(metrics) == metrics.cardRadius)
-    }
-
-    @Test func contentSitsInsideTheShape() {
-        for motion in NotchMotion.allCases {
-            var animator = IslandAnimator(motion: motion, metrics: metrics)
+    @Test func contentSitsInsideTheCapsule() {
+        for metrics in [metrics, tall] {
+            var animator = IslandAnimator(metrics: metrics)
             animator.open()
             let shape = animator.shape(at: 0)
             let content = animator.content(for: shape)
-            switch motion {
-            case .droplet:
-                #expect(content.iconCenter.x - content.iconSize / 2 > -shape.pillWidth / 2)
-                #expect(content.ringCenter.x + content.ringSize / 2 < shape.pillWidth / 2)
-                #expect(content.textX + metrics.textWidth < content.ringCenter.x)
-            case .snap:
-                #expect(content.iconCenter.x - content.iconSize / 2 > shape.left)
-                #expect(content.ringCenter.x + content.ringSize / 2 < shape.right)
-                #expect(content.textCenterY > metrics.notchHeight)
-            case .ears:
-                #expect(content.compact)
-                #expect(content.iconCenter.x < -metrics.notchWidth / 2)
-                #expect(content.textX > metrics.notchWidth / 2)
-                #expect(content.textX + metrics.compactTitleWidth < shape.right)
-            }
+            #expect(content.iconCenter.x - content.iconSize / 2 > -shape.pillWidth / 2)
+            #expect(content.ringCenter.x + content.ringSize / 2 < shape.pillWidth / 2)
+            #expect(content.textX + metrics.textWidth < content.ringCenter.x)
+            // The text block sits inside the capsule, clear of its rounded corners' reach at the top
+            // and bottom.
+            #expect(content.textCenterY - metrics.textHeight / 2 >= shape.pillTop + 12 * metrics.scale - 1e-9)
+            #expect(content.textCenterY + metrics.textHeight / 2
+                <= shape.pillTop + shape.pillHeight - 12 * metrics.scale + 1e-9)
         }
     }
 
-    @Test func earsHaveNoRingAndCueTheTextAfterTheIcon() {
-        var animator = IslandAnimator(motion: .ears, metrics: metrics)
-        let cues = animator.enter(at: 0)
-        #expect(cues.ring == nil)
-        #expect(cues.detail == nil)
-        #expect((cues.icon ?? 1) < (cues.title ?? 0))
+    /// Up to a title and a detail of one line each, the capsule is round at the ends as before; taller
+    /// ones keep those corners rather than swelling into a blob, and the drop is always round.
+    @Test func theCapsulesCornersStopGrowingPastTwoLines() {
+        var two = IslandAnimator(metrics: metrics)
+        two.open()
+        let open = two.shape(at: 0)
+        #expect(open.pillRadius(metrics) == open.pillHeight / 2)
+        #expect(open.pillHeight / 2 <= metrics.pillCornerRadius)
+
+        var five = IslandAnimator(metrics: tall)
+        five.open()
+        let taller = five.shape(at: 0)
+        #expect(taller.pillHeight / 2 > tall.pillCornerRadius)
+        #expect(taller.pillRadius(tall) == tall.pillCornerRadius)
+        // Its outline is a rounded box: the side runs straight between the corners.
+        let field = DropletField(metrics: tall, shape: taller)
+        let side = -taller.pillWidth / 2
+        #expect(abs(field.value(x: side, y: taller.pillTop + taller.pillHeight / 2)) < 1e-9)
+        #expect(abs(field.value(x: side, y: taller.pillTop + tall.pillCornerRadius + 1)) < 1e-9)
+
+        let drop = IslandShape(pillTop: 60, pillWidth: tall.dropSize, pillHeight: tall.dropSize, progress: 0)
+        #expect(drop.pillRadius(tall) == tall.dropSize / 2)
+    }
+
+    /// A title and a detail of one line each in a taller fallback font, Japanese or Thai, stay round at
+    /// the ends: only wrapped text caps the corners.
+    @Test func aOneLineCapsuleInATallFontStaysRound() {
+        let tallFont = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 50)
+        var animator = IslandAnimator(metrics: tallFont)
+        animator.open()
+        let open = animator.shape(at: 0)
+        #expect(open.pillHeight / 2 > 30)
+        #expect(open.pillRadius(tallFont) == open.pillHeight / 2)
+    }
+
+    /// The text waits for the capsule to make room, then fades in a line at a time: the title's lines,
+    /// then the detail's. On the way out every line goes at once.
+    @Test func wrappedLinesFadeInOneAfterAnother() {
+        var one = IslandAnimator(metrics: metrics)
+        let single = one.enter(at: 0)
+        #expect(single.title.count == 1)
+        #expect(single.detail.count == 1)
+        #expect(single.ring == single.title[0])
+        #expect(abs(single.detail[0] - single.title[0] - 0.04) < 1e-9)
+        #expect(single.icon < single.title[0])
+
+        var five = IslandAnimator(metrics: tall)
+        let cues = five.enter(at: 0)
+        #expect(cues.title.count == 2)
+        #expect(cues.detail.count == 3)
+        // The first line comes once the capsule has made room, with the ring.
+        #expect(cues.title[0] == cues.ring)
+        let order = cues.title + cues.detail
+        #expect(zip(order, order.dropFirst()).allSatisfy { $0 < $1 })
+        #expect(abs(cues.title[1] - cues.title[0] - IslandCues.lineStagger) < 1e-9)
+        #expect(abs(cues.detail[0] - cues.title[1] - 0.04) < 1e-9)
+        #expect(abs(cues.detail[2] - cues.detail[1] - IslandCues.lineStagger) < 1e-9)
+
+        five.open()
+        let exit = five.exit(at: 0)
+        #expect(exit.title == [0, 0])
+        #expect(exit.detail == [0, 0, 0])
+
+        let bare = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 17, detailLines: 0)
+        var titleOnly = IslandAnimator(metrics: bare)
+        #expect(titleOnly.enter(at: 0).detail.isEmpty)
+    }
+
+    @Test func theWindowHoldsTheWidestCapsuleAndTheNotch() {
+        #expect(metrics.maxWidth == metrics.pillWidth)
+        let narrow = IslandMetrics(notchWidth: 230, notchHeight: 32, scale: 0.85, textWidth: 20, textHeight: 30)
+        #expect(narrow.maxWidth == 230)
+        #expect(tall.maxHeight == tall.pillTop + tall.pillHeight + 16)
     }
 }
 
 struct DropletOutlineTests {
     @Test func aTracedCircleIsRoundAndWoundLikeTheNotch() throws {
-        let metrics = IslandMetrics(
-            notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 34, compactTitleWidth: 90)
-        let shape = IslandShape(
-            left: -92.5, right: 92.5, height: 32, pillTop: 60, pillWidth: 20, pillHeight: 20, progress: 0, blend: 24)
+        let metrics = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 34)
+        let shape = IslandShape(pillTop: 60, pillWidth: 20, pillHeight: 20, progress: 0, blend: 24)
         let loops = DropletField(metrics: metrics, shape: shape).outline(above: 28, cell: 0.25)
         let circle = try #require(loops.first { $0.allSatisfy { $0.y > 40 } })
         for point in circle {

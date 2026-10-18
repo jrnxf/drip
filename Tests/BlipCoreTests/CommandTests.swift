@@ -146,8 +146,19 @@ struct CommandTests {
         #expect(status == 0)
     }
 
+    @Test func historyCommand() throws {
+        let plain = try history([])
+        #expect(!plain.missed && !plain.json && !plain.replay)
+        let all = try history(["--missed", "--replay"])
+        #expect(all.missed && all.replay)
+        #expect(try history(["--json"]).json)
+        assertUsageError(["history", "--json", "--replay"])
+        assertUsageError(["history", "-n", "3"])
+        assertUsageError(["history", "extra"])
+    }
+
     @Test func helpAndVersionExitZero() {
-        for arguments in [["--help"], ["-h"], ["--version"], ["run", "--help"]] {
+        for arguments in [["--help"], ["-h"], ["--version"], ["run", "--help"], ["history", "--help"]] {
             guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
                 Issue.record("\(arguments) did not exit"); return
             }
@@ -162,6 +173,7 @@ struct CommandTests {
         guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
         #expect(help.contains("blip run [options] -- <command> [args...]"), "\(help)")
         #expect(help.contains("blip hook claude|codex [options]"), "\(help)")
+        #expect(help.contains("blip history [--missed] [--json | --replay]"), "\(help)")
         #expect(help.contains("--seconds"), "\(help)")
         #expect(!help.contains("__render"), "\(help)")
     }
@@ -195,6 +207,13 @@ struct CommandTests {
     private func run(_ arguments: [String]) throws -> RunCommand {
         guard case let .invocation(.run(command)) = CommandLineParser.parse(["run"] + arguments) else {
             throw UsageError("\(arguments) did not parse as blip run")
+        }
+        return command
+    }
+
+    private func history(_ arguments: [String]) throws -> HistoryCommand {
+        guard case let .invocation(.history(command)) = CommandLineParser.parse(["history"] + arguments) else {
+            throw UsageError("\(arguments) did not parse as blip history")
         }
         return command
     }

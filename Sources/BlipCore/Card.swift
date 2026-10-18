@@ -76,16 +76,6 @@ public enum CardStyle: String, CaseIterable, Sendable, Codable {
     case terminal
 }
 
-/// How a card at `position = notch` leaves the notch.
-public enum NotchMotion: String, CaseIterable, Sendable, Codable {
-    /// A drop forms under the notch, breaks free on a neck and floats below the menu bar.
-    case droplet
-    /// One quick move from the notch into the card, without bounce.
-    case snap
-    /// Ears grow either side of the notch, inside the menu bar; the card never drops.
-    case ears
-}
-
 /// How much a card moves. Reduce Motion in System Settings caps this at `subtle`.
 public enum Motion: String, CaseIterable, Sendable, Codable {
     /// Each style's own entrance and exit.
@@ -158,10 +148,13 @@ public enum Defaults {
     public static let size = CardSize.regular
     /// The style when nothing sets one and the display has no better default.
     public static let style = CardStyle.hud
-    public static let notch = NotchMotion.droplet
     public static let motion = Motion.full
     public static let titleLimit = 80
     public static let detailLimit = 120
+    /// The most lines the title and the detail wrap to; the last one ends in an ellipsis when the
+    /// text runs on.
+    public static let titleLines = 2
+    public static let detailLines = 3
     /// The longest button label, in characters.
     public static let buttonLimit = 24
     /// The longest `--id`, in characters.
@@ -195,7 +188,6 @@ public struct Card: Equatable, Sendable, Codable {
     public var position: Position
     public var size: CardSize
     public var style: CardStyle
-    public var notch: NotchMotion
     public var motion: Motion
     /// A button on the card; nil for none.
     public var action: CardAction?
@@ -217,7 +209,6 @@ public struct Card: Equatable, Sendable, Codable {
         position: Position = Defaults.position,
         size: CardSize = Defaults.size,
         style: CardStyle = Defaults.style,
-        notch: NotchMotion = Defaults.notch,
         motion: Motion = Defaults.motion
     ) {
         self.kind = kind
@@ -231,7 +222,6 @@ public struct Card: Equatable, Sendable, Codable {
         self.position = position
         self.size = size
         self.style = style
-        self.notch = notch
         self.motion = motion
     }
 

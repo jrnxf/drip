@@ -73,7 +73,7 @@ struct DeliveryTests {
             kind: "deploy", title: "Deploy finished", detail: "api · 2m 14s", icon: .symbol("shippingbox.fill"),
             fallbackIcon: .symbol("checkmark.circle.fill"), color: .rgb(red: 1, green: 128, blue: 255),
             sound: .file("~/sounds/done.aiff"), seconds: 7.5, position: .notch, size: .large, style: .wash,
-            notch: .ears, motion: .subtle)
+            motion: .subtle)
         card.action = CardAction(label: "View run", open: "https://example.com/run/1")
         let others = [Card(preset: .fail, title: "x"), Card(preset: .info, title: "y")]
         let request = BackgroundRequest(cards: [card] + others)
@@ -87,16 +87,31 @@ struct DeliveryTests {
 
 struct IslandButtonTests {
     @Test func theButtonTakesTheRingsPlaceAndWidensThePill() {
-        let plain = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 34, compactTitleWidth: 90)
+        let plain = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 34)
         var withButton = plain
         withButton.actionWidth = 76
         #expect(withButton.pillWidth == plain.pillWidth - 20 + 76)
-        #expect(withButton.cardWidth == plain.cardWidth - 22 + 76)
-        var animator = IslandAnimator(motion: .droplet, metrics: withButton)
+        var animator = IslandAnimator(metrics: withButton)
         animator.open()
         let shape = animator.shape(at: 0)
         let layout = animator.content(for: shape)
         #expect(layout.ringCenter.x + 76 / 2 < shape.pillWidth / 2)
         #expect(layout.textX + withButton.textWidth < layout.ringCenter.x - 76 / 2)
+    }
+
+    /// The text column is 500 points, unless a button is too wide for both to fit in the widest
+    /// capsule: then the column narrows, so the longest line still stops short of the button.
+    @Test func aWideButtonNarrowsTheTextColumn() {
+        let plain = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 0, textHeight: 34)
+        #expect(plain.textColumn == 500)
+        var wide = plain
+        wide.actionWidth = 180
+        #expect(wide.textColumn == 640 - 48 - 10 - 180 - 14)
+        wide.textWidth = wide.textColumn
+        #expect(wide.pillWidth == 640)
+        var animator = IslandAnimator(metrics: wide)
+        animator.open()
+        let layout = animator.content(for: animator.shape(at: 0))
+        #expect(layout.textX + wide.textWidth <= layout.ringCenter.x - 180 / 2 - 10 + 1e-9)
     }
 }

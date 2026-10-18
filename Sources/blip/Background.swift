@@ -85,6 +85,9 @@ enum CardQueue {
 
     /// This process's ticket, once it has waited for its turn.
     private(set) static var mine: QueueTicket?
+    /// The cards this process queues, kept for when it queues again after giving up its turn.
+    private static var cards: [Card] = []
+    private static var leavesAtExit = false
 
     /// Queues the cards of the process `pid`. A foreground blip queues its background blip itself,
     /// before returning, so the order is the order blips were run in.
@@ -96,13 +99,17 @@ enum CardQueue {
         write(contents, to: QueueTicket.name(stamp: stamp, pid: pid))
     }
 
-    /// Waits until every blip queued earlier has shown its cards. The ticket goes when this
-    /// process exits.
-    static func waitForTurn(cards: [Card]) {
+    /// Waits until every blip queued earlier has shown its cards, queuing `cards`, or the cards it
+    /// queued before when nil. The ticket goes when this process exits.
+    static func waitForTurn(cards: [Card]? = nil) {
         let me = getpid()
-        if tickets().first(where: { $0.pid == me }) == nil { enqueue(pid: me, cards: cards) }
+        if let cards { self.cards = cards }
+        if tickets().first(where: { $0.pid == me }) == nil { enqueue(pid: me, cards: self.cards) }
         mine = tickets().first(where: { $0.pid == me })
-        atexit { CardQueue.leave() }
+        if !leavesAtExit {
+            leavesAtExit = true
+            atexit { CardQueue.leave() }
+        }
         let deadline = Date().addingTimeInterval(patience)
         while Date() < deadline, !isFirst(me) {
             usleep(50_000)
@@ -186,7 +193,8 @@ enum CardQueue {
         try? FileManager.default.removeItem(atPath: path(QueueTicket.claimName(for: ticket)))
     }
 
-    private static func leave() {
+    /// Gives up this process's turn, for a blip that waits for something else before showing.
+    static func leave() {
         let me = getpid()
         tickets().filter { $0.pid == me }.forEach { remove($0.name) }
     }

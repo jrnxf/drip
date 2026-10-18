@@ -30,7 +30,7 @@ public struct DropletField: Sendable {
         let halfWidth = shape.pillWidth / 2, halfHeight = shape.pillHeight / 2
         let drop = Self.roundedBox(
             x: x, y: y, centerX: 0, centerY: shape.pillTop + halfHeight, halfWidth: halfWidth,
-            halfHeight: halfHeight, radius: min(halfWidth, halfHeight))
+            halfHeight: halfHeight, radius: shape.pillRadius(metrics))
         return Self.smoothMin(notch, drop, blend: shape.blend)
     }
 

@@ -59,8 +59,8 @@ public struct CardLayout: Equatable, Sendable {
     /// Lays out a card from the measured sizes of its labels.
     ///
     /// - Parameters:
-    ///   - titleSize: The title label's own fitting size.
-    ///   - detailSize: The detail label's own fitting size, or nil for a one-line card.
+    ///   - titleSize: The title label's own fitting size, all its lines.
+    ///   - detailSize: The detail label's own fitting size, or nil for a card without a detail.
     ///   - hasIcon: False when the card shows no icon.
     ///   - eyebrowSize: A small label above the title, if any.
     ///   - leadingInset: Extra room before the content, such as the `terminal` style's stripe.
@@ -68,10 +68,9 @@ public struct CardLayout: Equatable, Sendable {
         metrics: CardMetrics, titleSize: CGSize, detailSize: CGSize?, hasIcon: Bool, eyebrowSize: CGSize? = nil,
         leadingInset: CGFloat = 0
     ) {
-        let textX = leadingInset + metrics.leadingPadding + (hasIcon ? metrics.iconSize + metrics.iconGap : 0)
-        // Without an icon there is nothing round to balance, so both sides get the leading padding.
-        let trailing = hasIcon ? metrics.trailingPadding : metrics.leadingPadding
-        let maxTextWidth = CardMetrics.maxWidth - textX - trailing
+        let textX = Self.textX(metrics: metrics, hasIcon: hasIcon, leadingInset: leadingInset)
+        let trailing = Self.trailing(metrics: metrics, hasIcon: hasIcon)
+        let maxTextWidth = Self.maxTextWidth(metrics: metrics, hasIcon: hasIcon, leadingInset: leadingInset)
         let widest = max(titleSize.width, detailSize?.width ?? 0, eyebrowSize?.width ?? 0)
         let textWidth = min(widest.rounded(.up), maxTextWidth)
         let width = min((textX + textWidth + trailing).rounded(.up), CardMetrics.maxWidth)
@@ -107,6 +106,21 @@ public struct CardLayout: Equatable, Sendable {
         eyebrowFrame = eyebrowSize.map {
             CGRect(x: textX, y: titleFrame.maxY + metrics.detailSpacing, width: columnWidth, height: $0.height)
         }
+    }
+
+    /// The widest the text column gets, in a card at the 640-point cap. Text wraps at this width.
+    public static func maxTextWidth(metrics: CardMetrics, hasIcon: Bool, leadingInset: CGFloat = 0) -> CGFloat {
+        CardMetrics.maxWidth - textX(metrics: metrics, hasIcon: hasIcon, leadingInset: leadingInset)
+            - trailing(metrics: metrics, hasIcon: hasIcon)
+    }
+
+    private static func textX(metrics: CardMetrics, hasIcon: Bool, leadingInset: CGFloat) -> CGFloat {
+        leadingInset + metrics.leadingPadding + (hasIcon ? metrics.iconSize + metrics.iconGap : 0)
+    }
+
+    /// Without an icon there is nothing round to balance, so both sides get the leading padding.
+    private static func trailing(metrics: CardMetrics, hasIcon: Bool) -> CGFloat {
+        hasIcon ? metrics.trailingPadding : metrics.leadingPadding
     }
 
     /// The card's window origin on a screen, rounded to whole points.

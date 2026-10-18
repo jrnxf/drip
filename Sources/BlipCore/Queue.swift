@@ -70,8 +70,8 @@ public enum CardReplacement {
 
     /// Whether `new` can take the place of `old` on screen. A card that asks a question reports its
     /// click to the blip that showed it, so it never swaps; and the new card must sit in the same
-    /// place and appear the same way.
+    /// place.
     public static func canSwap(_ old: Card, for new: Card) -> Bool {
-        !old.asksQuestion && !new.asksQuestion && old.position == new.position && old.notch == new.notch
+        !old.asksQuestion && !new.asksQuestion && old.position == new.position
     }
 }

@@ -94,9 +94,6 @@ struct QueueTests {
         var bottom = card("a")
         bottom.position = .bottom
         #expect(!CardReplacement.canSwap(card("a"), for: bottom))
-        var snap = card("a")
-        snap.notch = .snap
-        #expect(!CardReplacement.canSwap(card("a"), for: snap))
     }
 
     private func card(_ id: String?, title: String = "hi") -> Card {

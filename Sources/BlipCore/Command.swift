@@ -17,7 +17,6 @@ public enum ExitStatus {
 extension Position: ExpressibleByArgument {}
 extension CardSize: ExpressibleByArgument {}
 extension CardStyle: ExpressibleByArgument {}
-extension NotchMotion: ExpressibleByArgument {}
 extension Motion: ExpressibleByArgument {}
 
 extension CardColor: ExpressibleByArgument {
@@ -40,7 +39,8 @@ extension Sound: ExpressibleByArgument {
 
 /// Options shared by every command that shows a card.
 public struct CardOptions: ParsableArguments {
-    @Option(name: .shortAndLong, help: ArgumentHelp("The second, gray line.", valueName: "text"))
+    @Option(name: .shortAndLong, help: ArgumentHelp(
+        "The gray text under the title, up to 3 lines.", valueName: "text"))
     var detail: String?
 
     @Option(name: .shortAndLong, help: ArgumentHelp(
@@ -73,10 +73,6 @@ public struct CardOptions: ParsableArguments {
     @Option(help: ArgumentHelp(
         "hud, glass, wash or terminal. (default: glass on macOS 26, hud before)", valueName: "style"))
     var style: CardStyle?
-
-    @Option(help: ArgumentHelp(
-        "How a notch card appears: droplet, snap or ears. (default: droplet)", valueName: "motion"))
-    var notch: NotchMotion?
 
     @Option(help: ArgumentHelp(
         "full, subtle (fades only) or none. Reduce Motion caps it at subtle. (default: full)",
@@ -140,7 +136,7 @@ public struct CardOptions: ParsableArguments {
     public var flags: CardFlags {
         CardFlags(
             detail: detail, seconds: seconds, sound: sound, icon: icon, color: color, position: position,
-            size: size, style: style, notch: notch, motion: motion, wait: wait, quiet: quiet, open: open,
+            size: size, style: style, motion: motion, wait: wait, quiet: quiet, open: open,
             button: button, id: id, activate: activate)
     }
 }
@@ -155,7 +151,6 @@ public struct CardFlags: Equatable {
     public var position: Position?
     public var size: CardSize?
     public var style: CardStyle?
-    public var notch: NotchMotion?
     public var motion: Motion?
     public var wait: Bool
     public var quiet: Bool
@@ -168,7 +163,7 @@ public struct CardFlags: Equatable {
     public init(
         detail: String? = nil, seconds: Double? = nil, sound: Sound? = nil, icon: Icon? = nil,
         color: CardColor? = nil, position: Position? = nil, size: CardSize? = nil, style: CardStyle? = nil,
-        notch: NotchMotion? = nil, motion: Motion? = nil, wait: Bool = false, quiet: Bool = false,
+        motion: Motion? = nil, wait: Bool = false, quiet: Bool = false,
         open: String? = nil, button: String? = nil, id: String? = nil, activate: String? = nil
     ) {
         self.open = open
@@ -183,7 +178,6 @@ public struct CardFlags: Equatable {
         self.position = position
         self.size = size
         self.style = style
-        self.notch = notch
         self.motion = motion
         self.wait = wait
         self.quiet = quiet
@@ -200,6 +194,7 @@ public struct BlipCommand: ParsableCommand {
             blip run [options] -- <command> [args...]
             blip hook claude|codex [options] [payload]
             blip demo [options]
+            blip history [--missed] [--json | --replay]
             blip --version | --help
             """,
         discussion: """
@@ -218,7 +213,10 @@ public struct BlipCommand: ParsableCommand {
             A click on the card brings forward the app blip was run from, such as the terminal, \
             unless --activate says otherwise.
 
-            blip demo plays every style, then every notch motion, so you can pick by feel.
+            blip demo plays every style, then the notch card, so you can pick by feel.
+
+            Cards that come up while the screen is locked wait for the unlock; three or more \
+            become one card. blip history lists every card, the missed ones marked.
 
             Exit codes: 0 shown, 2 usage error, 3 no GUI session, 4 invalid config file.
             """,
@@ -230,7 +228,7 @@ public struct BlipCommand: ParsableCommand {
         valueName: "kind"))
     public var kind: String?
 
-    @Argument(help: ArgumentHelp("The bold line. Required unless stdin provides it.", valueName: "title"))
+    @Argument(help: ArgumentHelp("The bold text, up to 2 lines. Required unless stdin provides it.", valueName: "title"))
     public var title: String?
 
     @OptionGroup public var options: CardOptions
@@ -289,22 +287,51 @@ public struct HookCommand: ParsableCommand {
     public init() {}
 }
 
-/// `blip demo [options]`: shows every style, then every notch motion, one after another.
+/// `blip demo [options]`: shows every style, then the notch card, one after another.
 public struct DemoCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "blip demo",
-        abstract: "Play every style, then every notch motion, so you can pick by feel.",
+        abstract: "Play every style, then the notch card, so you can pick by feel.",
         usage: "blip demo [options]",
         discussion: """
-            Styles play at your configured position, or --position. Notch motions play only on a \
-            screen with a notch. Cards are silent unless --sound or BLIP_SOUND is given. --style and \
-            --notch narrow the demo to one style or one notch motion.
+            Styles play at your configured position, or --position. The notch card plays only on a \
+            screen with a notch. Cards are silent unless --sound or BLIP_SOUND is given. --style \
+            narrows the demo to one style.
             """
     )
 
     @OptionGroup public var options: CardOptions
 
     public init() {}
+}
+
+/// `blip history [--missed] [--json | --replay]`: lists or shows again the cards in the history.
+public struct HistoryCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "blip history",
+        abstract: "List the cards in the history, or show them again.",
+        usage: "blip history [--missed] [--json | --replay]",
+        discussion: """
+            Lists every card in the history, oldest first, marking those that came up while the screen was \
+            locked as missed. The history is $XDG_STATE_HOME/blip/history.jsonl, or \
+            ~/.local/state/blip/history.jsonl, and keeps the last \(CardHistory.limit) cards.
+            """
+    )
+
+    @Flag(help: "Only cards that came up while the screen was locked.")
+    public var missed = false
+
+    @Flag(help: "Print each card as a line of JSON, as it is stored.")
+    public var json = false
+
+    @Flag(help: "Show the cards again instead of listing them.")
+    public var replay = false
+
+    public init() {}
+
+    public func validate() throws {
+        if json, replay { throw ValidationError("--json and --replay cannot be used together.") }
+    }
 }
 
 /// `blip __render --out card.png [KIND] [TITLE] [options]`: draws a card offscreen into a PNG.
@@ -345,6 +372,7 @@ public enum Invocation {
     case run(RunCommand)
     case demo(DemoCommand)
     case hook(HookCommand)
+    case history(HistoryCommand)
     case render(RenderCommand)
     /// The background blip: shows the cards it reads from standard input.
     case background
@@ -371,6 +399,8 @@ public enum CommandLineParser {
         case "hook":
             return parse(HookCommand.self, Array(arguments.dropFirst()), failure: ExitStatus.hookFailed)
                 .map(Invocation.hook)
+        case "history":
+            return parse(HistoryCommand.self, Array(arguments.dropFirst())).map(Invocation.history)
         case "__render":
             return parse(RenderCommand.self, Array(arguments.dropFirst())).map(Invocation.render)
         case "__background":

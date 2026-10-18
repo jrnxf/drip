@@ -1,7 +1,7 @@
 # blip
 
 A HUD from the shell for macOS: one command shows a brief native card growing out of the camera
-notch, or near the top of a screen without one, with an icon, a title, an optional detail line, a
+notch, or near the top of a screen without one, with an icon, a title, an optional detail, a
 colored accent and a system sound, then takes it away again. A glance tells you what finished and
 how it went: a build, a deploy, a test run, a backup, a script, an agent. blip returns at once, so
 it never slows the script that calls it.
@@ -17,7 +17,8 @@ blip warn "staging is ready" --button "Promote" && ./promote.sh
 blip ok "shipped" --position notch --style glass
 blip info "deploying" --id deploy && blip ok "deployed" --id deploy
 blip hook claude              # from a Claude Code hook: which project needs you, and why
-blip demo                     # every style and notch motion, to pick by feel
+blip demo                     # every style and the notch card, to pick by feel
+blip history --missed         # what came up while you were away
 ```
 
 Requires macOS 13 or newer.
@@ -38,14 +39,15 @@ blip [KIND] [TITLE] [options]
 blip run [options] -- <command> [args...]
 blip hook claude|codex [options] [payload]
 blip demo [options]
+blip history [--missed] [--json | --replay]
 blip --version | --help
 ```
 
 | Part | Behavior | Default |
 | --- | --- | --- |
 | `KIND` | A preset: `ok`, `warn`, `fail`, `info`, or a custom preset from the config file. When the first argument is not a preset, it is the title. | `info` |
-| `TITLE` | The bold line. Required unless stdin provides it. | none |
-| `-d`, `--detail TEXT` | The second, gray line. | none |
+| `TITLE` | The bold text, up to 2 lines. Required unless stdin provides it. | none |
+| `-d`, `--detail TEXT` | The gray text under the title, up to 3 lines. | none |
 | `-s`, `--seconds N` | Time fully visible, excluding fades: 0.5 to 60. | 4.5 |
 | `--sound NAME\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. | the preset's |
 | `--icon SYMBOL\|none` | An SF Symbol name. Unknown names fall back to the preset's icon with a warning. | the preset's |
@@ -53,7 +55,6 @@ blip --version | --help
 | `--position bottom\|center\|top\|notch` | Where the card sits. `notch` grows it out of the camera notch, and falls back to `top` on a screen without one. | `notch` |
 | `--size compact\|regular\|large` | Scales fonts, icon and padding by 0.85, 1.0 or 1.25. | `regular` |
 | `--style hud\|glass\|wash\|terminal` | How the card is drawn; see [Styles](#styles). | `glass` on macOS 26, `hud` before |
-| `--notch droplet\|snap\|ears` | How a `notch` card appears; see [Styles](#styles). | `droplet` |
 | `--motion full\|subtle\|none` | `full` plays each style's entrance and exit, `subtle` only fades, `none` neither. Reduce Motion in System Settings caps it at `subtle`. | `full` |
 | `--open URL\|PATH` | Adds a button that opens a URL or a file; see [Buttons](#buttons). | none |
 | `--button LABEL` | The button's label, up to 24 characters. Without `--open`, blip waits for the card and reports the click in its exit status. | `Open` |
@@ -73,16 +74,18 @@ blip --version | --help
 first non-empty line is the title and the remaining lines, joined with a space, are the detail,
 unless `--detail` is given. With a title on the command line, stdin is left alone.
 
-**Long text.** Whitespace runs collapse to one space. The title keeps at most 80 characters and the
-detail at most 120, counted as user-perceived characters so emoji are never split, and cut with a
-single ellipsis. The card is never wider than 640 points; a line still too wide for it is cut to fit
-with an ellipsis.
+**Long text.** Whitespace runs collapse to one space, line breaks included. The title keeps at most
+80 characters and the detail at most 120, counted as user-perceived characters so emoji are never
+split, and cut with a single ellipsis. The card is never wider than 640 points. Text too wide for it
+wraps, at every position: the title to at most two lines and the detail to at most three, breaking
+between words, between Japanese or Chinese characters, or inside a word too long for a line. When
+text is still left over, the last line ends in an ellipsis. Text that fits on one line looks as it
+always has. The card stays up for `--seconds` however many lines it has.
 
 **blip demo** plays every style at your configured position (the bottom when that is the notch),
-then, on a screen with a notch, every notch motion, two seconds each unless `--seconds`,
-`BLIP_SECONDS` or the config's `seconds` say otherwise, and silent unless `--sound` or `BLIP_SOUND`
-is given. Options apply to every card, so `blip demo --style wash` shows only wash, and
-`blip demo --notch ears` only that notch motion.
+then, on a screen with a notch, the notch card, two seconds each unless `--seconds`, `BLIP_SECONDS`
+or the config's `seconds` say otherwise, and silent unless `--sound` or `BLIP_SOUND` is given.
+Options apply to every card, so `blip demo --style wash` shows only wash.
 
 **Returning at once.** blip checks everything first (flags, config, stdin, sounds and icons), so a
 mistake still prints its message and exit status. Then it hands the card to a background blip and
@@ -96,8 +99,8 @@ id replaces an older one that is still waiting its turn, so a burst of updates s
 latest. When the older card is already on screen, the newer one takes its place there: the text
 changes, its sound plays, and its time starts again. A card that asks a question (`--button`
 without `--open`) never changes in place, and neither does one that would sit somewhere else
-(another `--position` or `--notch`); the newer card then waits its turn. A question replaced before
-it showed exits 5.
+(another `--position`); the newer card then waits its turn. A question replaced before it showed
+exits 5.
 
 ### Clicks
 
@@ -107,14 +110,38 @@ starts, and blip uses it; `--activate` names another app by its bundle identifie
 `--activate none` leaves the card click-through. A card you can click holds while the pointer is on
 it, like a card with a button. The card itself never takes focus.
 
+### Missed cards and history
+
+A card that comes up while the screen is locked would play to nobody, so blip holds it until the
+screen unlocks. Then one or two held cards show as they are, and three or more show as one card,
+`5 cards while you were away`, with their titles newest first. It takes the look and sound of the
+newest `fail` card among them, else the newest `warn` card, else the newest card, so a failure
+still reads as one. A blip that waits for its card, with `--wait` or a `--button` question, keeps
+waiting until the unlock and then shows its card on its own.
+
+Every card is also kept in `$XDG_STATE_HOME/blip/history.jsonl`, or
+`~/.local/state/blip/history.jsonl`, one JSON object per line, readable only by you. blip keeps
+the last 1000 cards. `blip demo` cards are not kept.
+
+```sh
+blip history                  # every kept card, oldest first
+blip history --missed         # only those that came up while the screen was locked
+blip history --json           # as stored: {"time", "missed", "card": {"kind", "title", "detail", ...}}
+blip history --missed --replay   # show the missed cards again
+```
+
+A listed line reads `2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)`. `--replay`
+shows the cards again, in order, with any button that opens something; a question's button is
+dropped, since nothing waits for its answer anymore. Replayed cards are held while the screen is
+locked like any other, and are not added to the history again.
+
 ### Buttons
 
 `--open` adds a button that opens a URL or a file, such as a CI run, a pull request or a log.
 `--button` names it. Hovering over the card holds it, and the countdown ring of a notch card stops;
 moving away gives it another 1.5 seconds. A click on the button opens the target and takes the card
 away; a click anywhere else on the card brings the sending app forward (see [Clicks](#clicks)) and
-takes the card away. Clicking the button never takes focus from the app you are in. On a `ears`
-notch card there is no room for a button, so the whole island is one.
+takes the card away. Clicking the button never takes focus from the app you are in.
 
 `--button` without `--open` asks a question: blip waits and exits 0 if the button was clicked and 5
 if it was not, so the script decides what happens:
@@ -198,14 +225,10 @@ Any other agent or tool: wrap what it runs in `blip run`, or call blip from its 
 | `wash` | The whole card in the accent color, as a gradient, darkened just enough that the white text reaches WCAG AA contrast (4.5:1) for any color. A `fail` card shakes once. |
 | `terminal` | A solid dark card with an accent stripe, the kind in small capitals above the title, and monospaced text. No icon. |
 
-At `--position notch` the card is drawn as one black shape with the notch, a countdown ring
-draining over `--seconds`, and one of three motions:
-
-| Notch motion | Behavior |
-| --- | --- |
-| `droplet` | A drop forms under the notch, stretches on a neck, breaks free and widens into a capsule just below the menu bar. It leaves the same way, pulled back up into the notch. |
-| `snap` | One quick move from the notch into the card, without bounce. |
-| `ears` | Ears grow either side of the notch, with the icon on the left and the title on the right, inside the menu bar so nothing is covered. No detail line. |
+At `--position notch` the card is drawn as one black shape with the notch, with a countdown ring
+draining over `--seconds`. A drop forms under the notch, stretches on a neck, breaks free and widens
+into a capsule just below the menu bar. It leaves the same way, pulled back up into the notch. A card
+whose text wraps grows into a taller capsule with rounded corners.
 
 ### Exit codes
 
@@ -232,7 +255,6 @@ position = "notch"           # bottom | center | top | notch
 size     = "regular"         # compact | regular | large
 sound    = true              # false mutes every preset
 style    = "glass"           # hud | glass | wash | terminal (default: glass on macOS 26, hud before)
-notch    = "droplet"         # droplet | snap | ears
 motion   = "full"            # full | subtle | none
 
 [preset.ok]                  # override a built-in preset, any subset of keys
@@ -249,10 +271,11 @@ seconds = 6
 ```
 
 Each setting comes from the first of: flags, the environment (`BLIP_SECONDS`, `BLIP_POSITION`,
-`BLIP_SIZE`, `BLIP_SOUND`, `BLIP_STYLE`, `BLIP_NOTCH`, `BLIP_MOTION`; `BLIP_SOUND=none` mutes), the
-config file, the built-in defaults. A preset's own `seconds` and `style` beat the top-level ones.
-A custom preset starts from `info` and replaces what it sets. Its name must match `[a-z][a-z0-9-]*`
-and must not be `run`, `hook` or `demo`. Unknown keys print a warning; wrong types exit 4.
+`BLIP_SIZE`, `BLIP_SOUND`, `BLIP_STYLE`, `BLIP_MOTION`; `BLIP_SOUND=none` mutes), the config file,
+the built-in defaults. A preset's own `seconds` and `style` beat the top-level ones. A custom preset
+starts from `info` and replaces what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be
+`run`, `hook`, `demo` or `history`. Unknown keys print a warning; wrong types exit 4. The `notch` key
+of earlier versions also prints a warning and is ignored: the droplet is the only notch motion now.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
 such as `[preset.ok]`, and values that are single-line strings, decimal integers, floats or
@@ -273,9 +296,9 @@ PNGs in `Tests/Snapshots`; they run on macOS and skip cards that have no referen
 card, `__render --at 0.2` draws its entrance 0.2 seconds in, to check a motion frame by frame.
 
 On a Mac, `scripts/mac-check.sh` builds, runs every test, records any missing snapshot references
-into `Tests/Snapshots`, shows each preset on screen once, then runs `blip demo`. It works with only
-the Command Line Tools installed; Xcode is not needed. It never overwrites a reference: to
-regenerate one on purpose, delete its PNG and run the script again.
+into `Tests/Snapshots`, shows each preset on screen once, runs `blip demo`, then lists the last
+cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
+never overwrites a reference: to regenerate one on purpose, delete its PNG and run the script again.
 
 ## License
 
