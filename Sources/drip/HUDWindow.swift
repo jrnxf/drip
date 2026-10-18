@@ -25,9 +25,10 @@ struct HUDDisplay: CardDisplay {
             return ExitStatus.shown
         }
         if case .pool = locked {
-            // However long the cards were held, a background drip never outlives them by much.
+            // However long the cards were held, a background drip never outlives them by much. It
+            // exits from the main thread, between AppKit's own work rather than in the middle of it.
             let longest = cards.reduce(0) { $0 + $1.seconds } + 600
-            DispatchQueue.global().asyncAfter(deadline: .now() + longest) { exit(ExitStatus.shown) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + longest) { exit(ExitStatus.shown) }
         }
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
