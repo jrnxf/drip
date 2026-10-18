@@ -20,30 +20,36 @@ public enum StandardInput {
         return read(from: STDIN_FILENO, limit: limit)
     }
 
-    /// Reads up to `limit` bytes or end of file from a file descriptor, as lossy UTF-8.
+    /// Reads a file descriptor to end of file, as lossy UTF-8, keeping the first `limit` bytes.
+    /// The rest is read and dropped, so the command writing it, as in `./backup.sh | drip ok`, is
+    /// never cut short by a closed pipe.
     public static func read(from descriptor: Int32, limit: Int) -> String? {
         var bytes = [UInt8](repeating: 0, count: limit)
         var count = 0
-        while count < limit {
-            let result = bytes.withUnsafeMutableBytes { buffer in
-                #if canImport(Darwin)
-                Darwin.read(descriptor, buffer.baseAddress! + count, limit - count)
-                #else
-                Glibc.read(descriptor, buffer.baseAddress! + count, limit - count)
-                #endif
-            }
-            if result > 0 {
-                count += result
-            } else if result < 0, errno == EINTR {
-                continue
+        var discard = [UInt8](repeating: 0, count: 16 * 1024)
+        while true {
+            let result: Int
+            if count < limit {
+                result = bytes.withUnsafeMutableBytes { readSome(descriptor, $0.baseAddress! + count, limit - count) }
+                if result > 0 { count += result }
             } else {
-                break
+                result = discard.withUnsafeMutableBytes { readSome(descriptor, $0.baseAddress!, $0.count) }
             }
+            if result < 0, errno == EINTR { continue }
+            if result <= 0 { break }
         }
         guard count > 0 else { return nil }
         // A cut at the limit can end inside a UTF-8 sequence; drop the replacement it would become.
         var text = String(decoding: bytes[..<count], as: UTF8.self)
         if count == limit, text.last == "\u{FFFD}" { text.removeLast() }
         return text
+    }
+
+    private static func readSome(_ descriptor: Int32, _ buffer: UnsafeMutableRawPointer, _ size: Int) -> Int {
+        #if canImport(Darwin)
+        Darwin.read(descriptor, buffer, size)
+        #else
+        Glibc.read(descriptor, buffer, size)
+        #endif
     }
 }

@@ -87,6 +87,26 @@ struct StandardInputTests {
         #expect(read("aé", limit: 2) == "a")
     }
 
+    @Test func readsPastTheLimitToTheEnd() throws {
+        // A writer with more than the limit to say, as in `./backup.sh | drip ok`: every write gets
+        // through, instead of the writer dying of a closed pipe.
+        signal(SIGPIPE, SIG_IGN)
+        var descriptors: [Int32] = [0, 0]
+        try #require(pipe(&descriptors) == 0)
+        let chunk = [UInt8](repeating: UInt8(ascii: "a"), count: 50 * 1024)
+        let written = Written()
+        let writer = Thread {
+            for _ in 0..<4 { written.results.append(write(descriptors[1], chunk, chunk.count)) }
+            close(descriptors[1])
+        }
+        writer.start()
+        // Returns at end of file, which comes only after the writer's last write.
+        let text = StandardInput.read(from: descriptors[0], limit: StandardInput.limit)
+        close(descriptors[0])
+        #expect(text == String(repeating: "a", count: StandardInput.limit))
+        #expect(written.results == Array(repeating: chunk.count, count: 4))
+    }
+
     private func read(_ text: String, limit: Int) -> String? {
         var descriptors: [Int32] = [0, 0]
         #expect(pipe(&descriptors) == 0)
@@ -98,4 +118,9 @@ struct StandardInputTests {
         defer { close(descriptors[0]) }
         return StandardInput.read(from: descriptors[0], limit: limit)
     }
+}
+
+/// What a writer thread's calls returned, read once the thread has closed its end of the pipe.
+private final class Written: @unchecked Sendable {
+    var results: [Int] = []
 }
