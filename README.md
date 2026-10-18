@@ -1,5 +1,9 @@
 # drip
 
+<p align="center">
+  <img src="docs/demo.gif" width="400" alt="Two drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then drip needs you, with Claude needs your permission to use Bash">
+</p>
+
 A HUD from the shell for macOS: one command shows a brief native card growing out of the camera
 notch, or near the top of a screen without one, with an icon, a title, an optional detail, a
 colored accent and a system sound, then takes it away again. A glance tells you what finished and
@@ -300,6 +304,7 @@ exits 4 with the line.
 swift build
 swift test            # on Linux, or on a Mac with Xcode
 scripts/mac-check.sh  # on any Mac
+scripts/demo-gif.sh   # redraws docs/demo.gif; needs ImageMagick
 ```
 
 `swift test` runs the DripCore unit tests anywhere Swift runs, including Linux CI. The snapshot
@@ -311,6 +316,9 @@ On a Mac, `scripts/mac-check.sh` builds, runs every test, records any missing sn
 into `Tests/Snapshots`, shows each preset on screen once, runs `drip demo`, then lists the last
 cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
 never overwrites a reference: to regenerate one on purpose, delete its PNG and run the script again.
+
+`scripts/demo-gif.sh` draws the animation at the top of this file frame by frame with
+`__render --at`, from the same layers the notch card shows, so it needs no screen recording.
 
 ## License
 
