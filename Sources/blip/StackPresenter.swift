@@ -111,6 +111,11 @@ final class StackPresenter: CardPresenting {
     private static let entranceSpacing = 0.35
     /// Keyframes per second when sampling the springs, as for a single card.
     private static let framesPerSecond = 240.0
+    /// How long after it is decided a change starts moving. Sampling the springs takes the main
+    /// thread a moment, and the keyframes start at the moment of the decision, so a change that
+    /// started at once would lose its first frames; until it starts, the samples carry on where the
+    /// stack was already heading.
+    private static let lead = 0.06
 
     /// A stack for `card` and the notch cards that follow it in `rest`, which it takes; nil when
     /// stacking is off, the card is not for the notch, or motion is reduced.
@@ -226,56 +231,82 @@ final class StackPresenter: CardPresenting {
         return moved
     }
 
-    /// Samples every card's springs from `start` until they settle, and plays them.
+    /// Samples every card's springs from `start` until they settle, and plays them. The samples are
+    /// independent, so they are taken on every core at once; a card already at rest by `start` gets
+    /// no keyframes.
     private func replan(from start: Double) {
         let begin = started + start
         let end = max(entries.map(\.animator.end).max() ?? start, start + 0.05)
-        let count = Int(((end - start) * Self.framesPerSecond).rounded(.up))
-        let times = (0...count).map { start + (end - start) * Double($0) / Double(count) }
-        var paths: [CGPath] = []
-        var frames: [ObjectIdentifier: [IslandLayers.Frame]] = [:]
-        for time in times {
-            paths.append(path(at: time))
-            for entry in entries {
-                let shape = entry.animator.shape(at: time)
-                frames[ObjectIdentifier(entry), default: []].append(
-                    entry.layers.frame(shape, layout: entry.animator.content(for: shape), withPath: false))
+        let count = Int(((end - start) * Self.framesPerSecond).rounded(.up)) + 1
+        let cards = entries.map { entry in
+            StackCard(
+                animator: entry.animator, metrics: entry.layers.metrics,
+                anchor: entry.anchor.flatMap { anchor in entries.firstIndex { $0 === anchor } })
+        }
+        let layers = entries.map(\.layers)
+        let moving = entries.map { $0.animator.end > start }
+        let centerX = size.width / 2
+        var paths = [CGPath?](repeating: nil, count: count)
+        var frames = [[IslandLayers.Frame?]](repeating: [IslandLayers.Frame?](repeating: nil, count: count), count: cards.count)
+        paths.withUnsafeMutableBufferPointer { paths in
+            DispatchQueue.concurrentPerform(iterations: count) { index in
+                let time = start + (end - start) * Double(index) / Double(count - 1)
+                paths[index] = Self.path(at: time, cards: cards, centerX: centerX)
+            }
+        }
+        for (card, layer) in zip(cards.indices, layers) where moving[card] {
+            frames[card].withUnsafeMutableBufferPointer { samples in
+                DispatchQueue.concurrentPerform(iterations: count) { index in
+                    let time = start + (end - start) * Double(index) / Double(count - 1)
+                    let shape = cards[card].animator.shape(at: time)
+                    samples[index] = layer.frame(shape, layout: cards[card].animator.content(for: shape), withPath: false)
+                }
             }
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        liquid.path = paths.last
+        let values = paths.compactMap { $0 }
+        liquid.path = values.last
         let animation = CAKeyframeAnimation(keyPath: "path")
-        animation.values = paths
+        animation.values = values
         animation.duration = end - start
         animation.calculationMode = .discrete
         animation.beginTime = begin
         liquid.add(animation, forKey: "stack")
-        for entry in entries {
-            entry.layers.play(frames[ObjectIdentifier(entry)] ?? [], duration: end - start, begin: begin)
+        for (card, layer) in zip(cards.indices, layers) {
+            if moving[card] {
+                layer.play(frames[card].compactMap { $0 }, duration: end - start, begin: begin)
+            } else {
+                let shape = cards[card].animator.shape(at: start)
+                layer.apply(layer.frame(shape, layout: cards[card].animator.content(for: shape), withPath: false))
+            }
         }
         CATransaction.commit()
     }
 
+    /// What drawing a card's outline needs, copied so the samples can be taken off the main thread.
+    private struct StackCard {
+        let animator: IslandAnimator
+        let metrics: IslandMetrics
+        /// The card it grows out of, as an index into the same list; nil for the notch.
+        let anchor: Int?
+    }
+
     /// The notch and every card at `time`, each card melted into what it grows out of while it is
     /// close enough.
-    private func path(at time: Double) -> CGPath {
-        let centerX = size.width / 2
+    private static func path(at time: Double, cards: [StackCard], centerX: CGFloat) -> CGPath {
         let path = CGMutablePath()
-        if let metrics = entries.first?.layers.metrics {
+        if let metrics = cards.first?.metrics {
             IslandPath.addNotch(to: path, metrics: metrics, centerX: centerX)
         }
-        for entry in entries {
-            let shape = entry.animator.shape(at: time)
-            let metrics = entry.layers.metrics
-            let anchor = entry.anchor.map {
-                DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.layers.metrics)
-            }
-            let field = DropletField(metrics: metrics, shape: shape, anchor: anchor)
+        let shapes = cards.map { $0.animator.shape(at: time) }
+        for (index, card) in cards.enumerated() {
+            let anchor = card.anchor.map { DropletAnchor.capsule(shapes[$0], metrics: cards[$0].metrics) }
+            let field = DropletField(metrics: card.metrics, shape: shapes[index], anchor: anchor)
             if field.touchesNotch {
                 IslandPath.addTraced(field, to: path, centerX: centerX)
             } else {
-                IslandPath.addCapsule(shape, metrics: metrics, to: path, centerX: centerX)
+                IslandPath.addCapsule(shapes[index], metrics: card.metrics, to: path, centerX: centerX)
             }
         }
         return path
@@ -295,7 +326,8 @@ final class StackPresenter: CardPresenting {
     /// Drops `card` into the stack: out of the bottom of the last card, or out of the notch once the
     /// cards under it have moved down out of its way.
     private func enter(_ card: Card, own: Bool) {
-        let time = now
+        let decided = now
+        let time = decided + Self.lead
         let layers = makeLayers(for: card)
         let above = settings.mode == .chain ? live.last : nil
         let anchor = above.map { DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.layers.metrics) }
@@ -320,37 +352,50 @@ final class StackPresenter: CardPresenting {
         entry.animator = animator
         entry.phase = .entering(start: start, cues: cues)
         entry.countdownFrom = start + (cues.title.first ?? cues.sides) + 0.25
+        // Without actions: a change to the container's sublayers would otherwise crossfade the
+        // whole stack.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         container.addSublayer(layers.root)
+        CATransaction.commit()
         layers.fade(cues, into: true, at: started + start)
         layers.drain(over: card.seconds, at: started + entry.countdownFrom)
         // The sound lands as the drop first shows.
         entry.sound = CardSound(card.sound, console: console)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.05) { entry.sound?.play() }
-        lastEntrance = time
-        replan(from: time)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (start - decided) + 0.05) { entry.sound?.play() }
+        lastEntrance = decided
+        replan(from: decided)
         updateAccessibility()
     }
 
     /// How long a drop coming out of the notch waits so it never touches `below` as that card moves
     /// down out of its way.
     private static func delay(clearing below: Entry, for animator: IslandAnimator, top: Double, at time: Double) -> Double {
-        for delay in stride(from: 0.0, through: 0.6, by: 0.01) {
+        func clears(after delay: Double) -> Bool {
             var trial = animator
             _ = trial.enter(at: time + delay, top: top)
-            let clear = stride(from: time, through: trial.end, by: 1.0 / 120).allSatisfy { t in
+            return stride(from: time, through: trial.end, by: 1.0 / 60).allSatisfy { t in
                 let shape = trial.shape(at: t)
                 return shape.pillTop + shape.pillHeight <= below.animator.shape(at: t).pillTop - 2
             }
-            if clear { return delay }
         }
-        return 0.6
+        // Waiting longer only ever helps, so the shortest wait that clears is found by halving.
+        var low = 0.0, high = 0.6
+        guard !clears(after: low) else { return 0 }
+        guard clears(after: high) else { return high }
+        while high - low > 0.01 {
+            let middle = (low + high) / 2
+            if clears(after: middle) { high = middle } else { low = middle }
+        }
+        return high
     }
 
     /// Takes `entry` back into the card above it, or into the notch.
     private func leave(_ entry: Entry, clicked: Bool) {
         guard !entry.isLeaving else { return }
         if entry.own, entry.card.action != nil, !clicked { CardActions.missed = true }
-        let time = now
+        let decided = now
+        let time = decided + Self.lead
         let position = entries.firstIndex { $0 === entry } ?? 0
         let above = entries[..<position].last { !$0.isLeaving }
         entry.anchor = above
@@ -361,7 +406,7 @@ final class StackPresenter: CardPresenting {
         entry.layers.fade(cues, into: false, at: started + time)
         // The cards that grew out of this one now hang from whatever is above it.
         for other in entries where other.anchor === entry { other.anchor = above }
-        replan(from: time)
+        replan(from: decided)
         updateAccessibility()
     }
 
@@ -392,7 +437,7 @@ final class StackPresenter: CardPresenting {
         if hovering { IslandLayers.pause(layers.ringProgress, paused: true) }
         entry.sound = CardSound(card.sound, console: console)
         entry.sound?.play()
-        place(at: time)
+        place(at: time + Self.lead)
         replan(from: time)
         updateAccessibility()
     }
@@ -458,11 +503,14 @@ final class StackPresenter: CardPresenting {
             if case let .leaving(until) = entry.phase { return time >= until + 0.02 }
             return false
         }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         for entry in gone {
             entry.layers.root.removeFromSuperlayer()
             entries.removeAll { $0 === entry }
         }
-        if released || needsLayout, place(at: time) { replan(from: time) }
+        CATransaction.commit()
+        if released || needsLayout, place(at: time + Self.lead) { replan(from: time) }
         if !gone.isEmpty { updateAccessibility() }
 
         // Done once nothing is on screen, nothing of its own is left, and the queue had nothing new.
