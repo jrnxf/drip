@@ -162,7 +162,7 @@ public struct HeldCards {
             let holder = (StateFiles.lines(atPath: holderPath).first ?? "").split(separator: " ")
             let holderIsAlive: Bool
             if holder.count == 2, let holderPID = Int32(holder[0]), let start = UInt64(holder[1]) {
-                holderIsAlive = holderPID == pid || processStart(holderPID) == start
+                holderIsAlive = processStart(holderPID) == start
             } else {
                 holderIsAlive = false
             }
