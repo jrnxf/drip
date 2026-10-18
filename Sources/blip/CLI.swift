@@ -133,8 +133,8 @@ struct BlipCLI {
         return outcome.status
     }
 
-    /// Every style at the configured position (bottom when that is the notch), then every notch
-    /// motion when the screen has a notch. Silent unless --sound or BLIP_SOUND is given.
+    /// Every style at the configured position (bottom when that is the notch), then the notch card
+    /// when the screen has a notch. Silent unless --sound or BLIP_SOUND is given.
     private func demo(_ command: DemoCommand) -> Int32 {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
@@ -157,16 +157,12 @@ struct BlipCLI {
                 cards.append(card)
             }
             if display.hasNotch {
-                for (index, notch) in NotchMotion.allCases.enumerated() where flags.notch == nil || flags.notch == notch {
-                    var notchFlags = flags
-                    notchFlags.position = .notch
-                    notchFlags.notch = notch
-                    notchFlags.detail = flags.detail ?? "notch = \"\(notch.rawValue)\""
-                    cards.append(try resolver.resolve(
-                        kind: presets[index % presets.count], title: "blip demo: \(notch.rawValue)", flags: notchFlags))
-                }
+                var notchFlags = flags
+                notchFlags.position = .notch
+                notchFlags.detail = flags.detail ?? "position = \"notch\""
+                cards.append(try resolver.resolve(kind: presets[0], title: "blip demo: notch", flags: notchFlags))
             } else {
-                console.warn("this screen has no notch, so the notch motions are skipped")
+                console.warn("this screen has no notch, so the notch card is skipped")
             }
             return display.show(display.prepare(cards, console: console), locked: .ignore, console: console)
         } catch {

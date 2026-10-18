@@ -77,7 +77,6 @@ public struct CardResolver {
             position: flags.position ?? environment.position ?? config.position ?? Defaults.position,
             size: flags.size ?? environment.size ?? config.size ?? Defaults.size,
             style: flags.style ?? environment.style ?? preset.style ?? config.style ?? automaticStyle,
-            notch: flags.notch ?? environment.notch ?? config.notch ?? Defaults.notch,
             motion: flags.motion ?? environment.motion ?? config.motion ?? Defaults.motion
         )
         if flags.open != nil || flags.button != nil {

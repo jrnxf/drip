@@ -112,7 +112,6 @@ struct ConfigTests {
                     message: "expected bottom, center, top or notch, got 'left'")
         assertError("size = \"huge\"", line: 1, key: "size", message: "expected compact, regular or large, got 'huge'")
         assertError("style = \"neon\"", line: 1, key: "style", message: "expected hud, glass, wash or terminal, got 'neon'")
-        assertError("notch = \"drip\"", line: 1, key: "notch", message: "expected droplet, snap or ears, got 'drip'")
         assertError("motion = \"lots\"", line: 1, key: "motion", message: "expected full, subtle or none, got 'lots'")
         assertError("[preset.fail]\nstyle = \"neon\"", line: 2, key: "preset.fail.style",
                     message: "expected hud, glass, wash or terminal, got 'neon'")

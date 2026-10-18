@@ -4,11 +4,10 @@ import Testing
 struct StyleSettingsTests {
     private let path = "/home/me/.config/blip/config.toml"
 
-    @Test func configReadsStyleNotchMotionAndPresetStyles() throws {
+    @Test func configReadsStyleMotionAndPresetStyles() throws {
         let file = try ConfigLoader.parse("""
             style    = "glass"
             position = "notch"
-            notch    = "ears"
             motion   = "subtle"
 
             [preset.fail]
@@ -16,17 +15,30 @@ struct StyleSettingsTests {
             """, path: path)
         #expect(file.warnings == [])
         #expect(file.config == Config(
-            position: .notch, style: .glass, notch: .ears, motion: .subtle,
-            presets: ["fail": PresetOverride(style: .wash)]))
+            position: .notch, style: .glass, motion: .subtle, presets: ["fail": PresetOverride(style: .wash)]))
         #expect(file.config.allPresets.first { $0.name == "fail" }?.style == .wash)
         #expect(file.config.allPresets.first { $0.name == "ok" }?.style == nil)
     }
 
-    @Test func environmentReadsStyleNotchAndMotion() throws {
+    /// droplet is the only notch motion now: an old `notch` key is a warning, whatever its value, and
+    /// BLIP_NOTCH is not read at all.
+    @Test func theRemovedNotchSettingIsIgnored() throws {
+        let file = try ConfigLoader.parse("""
+            position = "notch"
+            notch    = "ears"
+            motion   = "subtle"
+            """, path: path)
+        #expect(file.warnings == ["\(path):2: 'notch' is no longer used; droplet is the only notch motion"])
+        #expect(file.config == Config(position: .notch, motion: .subtle))
+        #expect(try ConfigLoader.parse("notch = 3", path: path).config == Config())
+        #expect(try EnvironmentSettings(environment: ["BLIP_NOTCH": "drip"]) == EnvironmentSettings())
+    }
+
+    @Test func environmentReadsStyleAndMotion() throws {
         let settings = try EnvironmentSettings(environment: [
-            "BLIP_STYLE": "terminal", "BLIP_NOTCH": "snap", "BLIP_MOTION": "none", "BLIP_POSITION": "notch",
+            "BLIP_STYLE": "terminal", "BLIP_MOTION": "none", "BLIP_POSITION": "notch",
         ])
-        #expect(settings == EnvironmentSettings(position: .notch, style: .terminal, notch: .snap, motion: Motion.none))
+        #expect(settings == EnvironmentSettings(position: .notch, style: .terminal, motion: Motion.none))
         let error = #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["BLIP_STYLE": "neon"]) }
         #expect(error?.message == "BLIP_STYLE must be hud, glass, wash or terminal, not 'neon'")
     }
@@ -46,17 +58,15 @@ struct StyleSettingsTests {
         #expect(try CardResolver().resolve(kind: "ok", title: "t", flags: CardFlags()).style == Defaults.style)
     }
 
-    @Test func notchAndMotionComeFromFlagsThenEnvironmentThenConfig() throws {
-        let resolver = CardResolver(
-            config: Config(notch: .snap, motion: .subtle), environment: EnvironmentSettings(notch: .ears))
+    @Test func motionComesFromFlagsThenEnvironmentThenConfig() throws {
+        let resolver = CardResolver(config: Config(motion: .subtle))
         let card = try resolver.resolve(kind: "ok", title: "t", flags: CardFlags())
-        #expect(card.notch == .ears)
         #expect(card.motion == .subtle)
-        let flagged = try resolver.resolve(kind: "ok", title: "t", flags: CardFlags(notch: .droplet, motion: Motion.none))
-        #expect(flagged.notch == .droplet)
+        let environment = CardResolver(config: Config(motion: .subtle), environment: EnvironmentSettings(motion: .full))
+        #expect(try environment.resolve(kind: "ok", title: "t", flags: CardFlags()).motion == .full)
+        let flagged = try resolver.resolve(kind: "ok", title: "t", flags: CardFlags(motion: Motion.none))
         #expect(flagged.motion == Motion.none)
         let defaults = try CardResolver().resolve(kind: "ok", title: "t", flags: CardFlags())
-        #expect(defaults.notch == .droplet)
         #expect(defaults.motion == .full)
     }
 
@@ -79,13 +89,20 @@ struct StyleSettingsTests {
 struct StyleCommandTests {
     @Test func flagsParse() throws {
         guard case let .invocation(.show(command)) = CommandLineParser.parse(
-            ["ok", "t", "--style", "wash", "--notch", "ears", "--motion", "none", "--position", "notch"])
+            ["ok", "t", "--style", "wash", "--motion", "none", "--position", "notch"])
         else { Issue.record("did not parse"); return }
         let flags = command.options.flags
         #expect(flags.style == .wash)
-        #expect(flags.notch == .ears)
         #expect(flags.motion == Motion.none)
         #expect(flags.position == .notch)
+    }
+
+    @Test func theRemovedNotchFlagIsAUsageError() {
+        guard case let .exit(status, message) = CommandLineParser.parse(["ok", "t", "--notch", "droplet"]) else {
+            Issue.record("parsed"); return
+        }
+        #expect(status == ExitStatus.usage)
+        #expect(message.contains("--notch"))
     }
 
     @Test func invalidStyleIsAUsageError() {

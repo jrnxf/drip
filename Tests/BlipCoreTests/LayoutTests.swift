@@ -73,6 +73,30 @@ struct LayoutTests {
         #expect(layout.titleFrame.maxX == 620)
     }
 
+    /// Text wraps at the widest column a card has: the one it gets at the 640-point cap.
+    @Test func textWrapsAtTheWidestColumn() {
+        // Typed, as in widthIsCappedAt640.
+        let withIcon: CGFloat = 640 - 48 - 20, withoutIcon: CGFloat = 640 - 16 - 16
+        #expect(CardLayout.maxTextWidth(metrics: regular, hasIcon: true) == withIcon)
+        #expect(CardLayout.maxTextWidth(metrics: regular, hasIcon: false) == withoutIcon)
+        #expect(CardLayout.maxTextWidth(metrics: regular, hasIcon: false, leadingInset: 4) == withoutIcon - 4)
+        let capped = CardLayout(
+            metrics: regular, titleSize: CGSize(width: 2000, height: 17), detailSize: nil, hasIcon: true)
+        #expect(capped.titleFrame.width == CardLayout.maxTextWidth(metrics: regular, hasIcon: true))
+    }
+
+    /// A wrapped title of two lines and a detail of three: the card grows to hold them, and the icon
+    /// stays centered.
+    @Test func wrappedTextMakesATallerCard() {
+        let layout = CardLayout(
+            metrics: regular, titleSize: CGSize(width: 572, height: 34), detailSize: CGSize(width: 560, height: 45),
+            hasIcon: true)
+        #expect(layout.size == CGSize(width: 640, height: 34 + 1 + 45 + 20))
+        #expect(layout.detailFrame == CGRect(x: 48, y: 10, width: 572, height: 45))
+        #expect(layout.titleFrame == CGRect(x: 48, y: 56, width: 572, height: 34))
+        #expect(layout.iconFrame?.midY == layout.size.height / 2)
+    }
+
     @Test func cardWithoutIconUsesEqualPadding() {
         let layout = CardLayout(
             metrics: regular, titleSize: CGSize(width: 80, height: 17), detailSize: nil, hasIcon: false)

@@ -133,16 +133,21 @@ enum CardViewBuilder {
             titleFont = .systemFont(ofSize: metrics.titleFontSize, weight: .semibold)
             detailFont = .systemFont(ofSize: metrics.detailFontSize, weight: .regular)
         }
-        let title = makeLabel(card.title, font: titleFont, color: colors.title)
-        let detail = card.detail.map { makeLabel($0, font: detailFont, color: colors.detail) }
+        let icon = style == .terminal ? nil : symbolImage(for: card, pointSize: metrics.iconSize, console: console)
+        let stripeWidth: CGFloat = style == .terminal ? 4 : 0
+        // Text wraps where a card at its widest would otherwise cut it.
+        let width = CardLayout.maxTextWidth(metrics: metrics, hasIcon: icon != nil, leadingInset: stripeWidth)
+        let title = makeLabel(
+            card.title, font: titleFont, color: colors.title, width: width, maxLines: Defaults.titleLines)
+        let detail = card.detail.map {
+            makeLabel($0, font: detailFont, color: colors.detail, width: width, maxLines: Defaults.detailLines)
+        }
         let eyebrow = style == .terminal
             ? makeLabel(
                 card.kind.uppercased(),
                 font: .monospacedSystemFont(ofSize: metrics.detailFontSize * 0.92, weight: .semibold),
-                color: colors.eyebrow)
+                color: colors.eyebrow, width: width, maxLines: 1)
             : nil
-        let icon = style == .terminal ? nil : symbolImage(for: card, pointSize: metrics.iconSize, console: console)
-        let stripeWidth: CGFloat = style == .terminal ? 4 : 0
         // Measure with each label's own fitting size so the text sits exactly where it is drawn.
         let layout = CardLayout(
             metrics: metrics, titleSize: title.fittingSize, detailSize: detail?.fittingSize, hasIcon: icon != nil,
@@ -160,8 +165,8 @@ enum CardViewBuilder {
         }
         let bounds = NSRect(origin: .zero, size: size)
 
+        // Added in reading order, which VoiceOver follows: the kind, the title, the detail, the button.
         let content = NSView(frame: bounds)
-        if let button { content.addSubview(button) }
         if let icon, let iconFrame = layout.iconFrame {
             let iconView = NSImageView(frame: iconFrame)
             iconView.image = icon
@@ -169,16 +174,17 @@ enum CardViewBuilder {
             iconView.contentTintColor = colors.icon
             content.addSubview(iconView)
         }
+        if let eyebrow, let eyebrowFrame = layout.eyebrowFrame {
+            eyebrow.frame = eyebrowFrame
+            content.addSubview(eyebrow)
+        }
         title.frame = layout.titleFrame
         content.addSubview(title)
         if let detail, let detailFrame = layout.detailFrame {
             detail.frame = detailFrame
             content.addSubview(detail)
         }
-        if let eyebrow, let eyebrowFrame = layout.eyebrowFrame {
-            eyebrow.frame = eyebrowFrame
-            content.addSubview(eyebrow)
-        }
+        if let button { content.addSubview(button) }
 
         let backdrop: CardBackdrop
         switch style {
@@ -287,15 +293,35 @@ enum CardViewBuilder {
         }
     }
 
-    static func makeLabel(_ text: String, font: NSFont, color: NSColor) -> NSTextField {
+    /// A label showing `text` in at most `maxLines` lines no wider than `width`, broken where it
+    /// would otherwise be cut. The last line ends in an ellipsis when the text runs on.
+    static func makeLabel(_ text: String, font: NSFont, color: NSColor, width: CGFloat, maxLines: Int) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = font
         label.textColor = color
-        label.usesSingleLineMode = true
-        label.maximumNumberOfLines = 1
-        label.lineBreakMode = .byTruncatingTail
         // Right-to-left text hugs the right edge of the text column; the icon stays put.
-        label.alignment = CardText.isRightToLeft(text) ? .right : .left
+        let rightToLeft = CardText.isRightToLeft(text)
+        label.alignment = rightToLeft ? .right : .left
+        // Each line is measured as this label draws it, padding included, so none is ever clipped.
+        let lines = CardLines.wrap(text, attributes: [.font: font], width: width, maxLines: maxLines) {
+            label.stringValue = $0
+            return Double(label.fittingSize.width)
+        }
+        label.stringValue = lines.joined(separator: "\n")
+        if lines.count > 1 {
+            // The lines are broken already: one per paragraph, never wrapped again or cut. Every line
+            // reads in the text's own direction, however it starts.
+            label.baseWritingDirection = rightToLeft ? .rightToLeft : .leftToRight
+            label.usesSingleLineMode = false
+            label.maximumNumberOfLines = 0
+            label.lineBreakMode = .byClipping
+            label.setAccessibilityValue(text)
+        } else {
+            // Exactly the label a card had before text wrapped, so a line that fits looks the same.
+            label.usesSingleLineMode = true
+            label.maximumNumberOfLines = 1
+            label.lineBreakMode = .byTruncatingTail
+        }
         return label
     }
 

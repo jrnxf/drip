@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds and tests blip on a Mac, records any missing snapshot references, then shows each preset
-# card on screen once, plays every style and notch motion with blip demo, and lists the history.
+# card on screen once, plays every style and the notch card with blip demo, and lists the history.
 #
 # Existing references are never overwritten: to regenerate one on purpose, delete its PNG in
 # Tests/Snapshots and run this script again.
@@ -45,7 +45,7 @@ icon  = "paperplane.fill"
 color = "#a78bfa"
 sound = "Submarine"
 TOML
-unset BLIP_SECONDS BLIP_POSITION BLIP_SIZE BLIP_SOUND BLIP_STYLE BLIP_NOTCH BLIP_MOTION
+unset BLIP_SECONDS BLIP_POSITION BLIP_SIZE BLIP_SOUND BLIP_STYLE BLIP_MOTION
 for kind in ok warn fail info deploy; do
     echo "Showing the $kind card"
     XDG_CONFIG_HOME="$config" .build/debug/blip "$kind" "blip $kind" --detail "mac-check: the $kind preset"

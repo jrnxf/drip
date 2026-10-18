@@ -44,15 +44,16 @@ final class IslandLayers {
     let size: CGSize
     let root = CALayer()
     let shape = CAShapeLayer()
-    /// Holds the icon, ring and text; for `droplet` it clips them to the drop.
+    /// Holds the icon, ring and text, clipped to the drop.
     let content = CALayer()
     let icon = CALayer()
     /// The countdown ring, or a button in its place.
     let ring = CALayer()
     let ringProgress = CAShapeLayer()
     let text = CALayer()
-    let title = CATextLayer()
-    let detail = CATextLayer()
+    /// One text layer per line of the title, and of the detail.
+    let titleLines: [CATextLayer]
+    let detailLines: [CATextLayer]
     private let iconSide: CGFloat
     private let ringSide: CGFloat
     private let textSize: CGSize
@@ -61,38 +62,58 @@ final class IslandLayers {
         self.card = card
         let sizeScale = CGFloat(card.size.scale)
         let accent = card.color.nsColor
-        let titleFont = NSFont.systemFont(ofSize: 14 * sizeScale, weight: .semibold)
-        let detailFont = NSFont.systemFont(ofSize: 12 * sizeScale, weight: .regular)
-        let compactFont = NSFont.systemFont(ofSize: 12.5 * sizeScale, weight: .semibold)
-        let compact = card.notch == .ears
-        let maxText = CardMetrics.maxWidth - 140 * sizeScale
-        // The ears title sits in the right ear, which stops at half the widest card.
-        let titleText = Self.line(
-            card.title, attributes: [.font: compact ? compactFont : titleFont, .foregroundColor: NSColor.white],
-            width: compact ? CardMetrics.maxWidth / 2 - 26 * sizeScale : maxText)
-        let detailText = card.detail.map {
-            Self.line(
-                $0, attributes: [.font: detailFont, .foregroundColor: NSColor(white: 0.62, alpha: 1)], width: maxText)
-        }
-        let titleSize = Self.measure(titleText, maxWidth: maxText)
-        let detailSize = compact ? .zero : detailText.map { Self.measure($0, maxWidth: maxText) } ?? .zero
-        let spacing = detailText == nil || compact ? 0 : 3 * sizeScale
-        textSize = CGSize(
-            width: max(titleSize.width, detailSize.width), height: titleSize.height + spacing + detailSize.height)
         let image = CardViewBuilder.symbolImage(for: card, pointSize: 28 * sizeScale, console: console)
-        // ears has no room for a button; the whole island is clickable there instead.
-        let buttonLabel = card.notch == .ears ? nil : card.action.map {
+        let buttonLabel = card.action.map {
             NSAttributedString(string: $0.label, attributes: [
                 .font: NSFont.systemFont(ofSize: 12.5 * sizeScale, weight: .semibold),
                 .foregroundColor: NSColor.white,
             ])
         }
         let buttonSize = buttonLabel.map { CGSize(width: ceil($0.size().width) + 24 * sizeScale, height: 26 * sizeScale) }
-        metrics = IslandMetrics(
-            notchWidth: Double(notch.width), notchHeight: Double(notch.height), scale: Double(sizeScale),
-            textWidth: Double(textSize.width), textHeight: Double(textSize.height),
-            compactTitleWidth: Double(titleSize.width), hasIcon: image != nil,
-            actionWidth: Double(buttonSize?.width ?? 0))
+        func islandMetrics(textSize: CGSize, titleLines: Int, detailLines: Int) -> IslandMetrics {
+            IslandMetrics(
+                notchWidth: Double(notch.width), notchHeight: Double(notch.height), scale: Double(sizeScale),
+                textWidth: Double(textSize.width), textHeight: Double(textSize.height), titleLines: titleLines,
+                detailLines: detailLines, hasIcon: image != nil, actionWidth: Double(buttonSize?.width ?? 0))
+        }
+        // The text column depends only on the size, the icon and the button.
+        let column = CGFloat(islandMetrics(textSize: .zero, titleLines: 0, detailLines: 0).textColumn)
+        let titleText = Self.lines(
+            card.title, font: .systemFont(ofSize: 14 * sizeScale, weight: .semibold), color: .white, width: column,
+            maxLines: Defaults.titleLines)
+        let detailText = card.detail.map {
+            Self.lines(
+                $0, font: .systemFont(ofSize: 12 * sizeScale, weight: .regular), color: NSColor(white: 0.62, alpha: 1),
+                width: column, maxLines: Defaults.detailLines)
+        } ?? []
+        let titleSizes = titleText.map { Self.measure($0, maxWidth: column) }
+        let detailSizes = detailText.map { Self.measure($0, maxWidth: column) }
+        let spacing = detailText.isEmpty ? 0 : 3 * sizeScale
+        let block = CGSize(
+            width: (titleSizes + detailSizes).map(\.width).max() ?? 0,
+            height: (titleSizes + detailSizes).map(\.height).reduce(spacing, +))
+
+        // One layer per line, stacked down from the top of the text block, the detail's a little below
+        // the title's. Right-to-left text hugs the block's right edge.
+        var top: CGFloat = 0
+        func stack(_ lines: [NSAttributedString], _ sizes: [CGSize], rightToLeft: Bool) -> [CATextLayer] {
+            zip(lines, sizes).map { line, lineSize in
+                let layer = CATextLayer()
+                layer.string = line
+                layer.frame = CGRect(x: 0, y: top, width: block.width, height: lineSize.height)
+                layer.truncationMode = .end
+                if rightToLeft { layer.alignmentMode = .right }
+                layer.contentsScale = scale
+                layer.opacity = 0
+                top += lineSize.height
+                return layer
+            }
+        }
+        titleLines = stack(titleText, titleSizes, rightToLeft: CardText.isRightToLeft(card.title))
+        top += spacing
+        detailLines = stack(detailText, detailSizes, rightToLeft: card.detail.map(CardText.isRightToLeft) ?? false)
+        textSize = block
+        metrics = islandMetrics(textSize: block, titleLines: titleText.count, detailLines: detailText.count)
         size = CGSize(width: ceil(metrics.maxWidth) + 40, height: ceil(metrics.maxHeight))
         iconSide = 28 * sizeScale
         ringSide = buttonSize?.width ?? 22 * sizeScale
@@ -106,7 +127,7 @@ final class IslandLayers {
         shape.contentsScale = scale
         root.addSublayer(shape)
         content.frame = root.bounds
-        content.masksToBounds = card.notch == .droplet
+        content.masksToBounds = true
         root.addSublayer(content)
 
         // The icon is drawn at its largest and scaled down, so it stays sharp as it grows.
@@ -132,20 +153,7 @@ final class IslandLayers {
 
         text.bounds = CGRect(origin: .zero, size: textSize)
         text.anchorPoint = CGPoint(x: 0, y: 0.5)
-        title.string = titleText
-        title.frame = CGRect(x: 0, y: 0, width: textSize.width, height: titleSize.height)
-        title.truncationMode = .end
-        title.contentsScale = scale
-        title.opacity = 0
-        text.addSublayer(title)
-        if let detailText, !compact {
-            detail.string = detailText
-            detail.frame = CGRect(x: 0, y: titleSize.height + spacing, width: textSize.width, height: detailSize.height)
-            detail.truncationMode = .end
-            detail.contentsScale = scale
-            detail.opacity = 0
-            text.addSublayer(detail)
-        }
+        for line in titleLines + detailLines { text.addSublayer(line) }
         content.addSublayer(text)
     }
 
@@ -195,24 +203,34 @@ final class IslandLayers {
         ring.addSublayer(ringProgress)
     }
 
-    /// One line of text cut to fit `width` with an ellipsis. The island never leaves the cut to its
-    /// text layers: on a Mac, an island handed a line wider than its text layer did not show at all,
-    /// and fitting the line first makes it show (confirmed before and after on a Mac). The exact
-    /// AppKit/Core Animation mechanism, why an unfitted string in the text layer hid the whole
-    /// island, is not proven.
-    private static func line(
-        _ text: String, attributes: [NSAttributedString.Key: Any], width: CGFloat
-    ) -> NSAttributedString {
-        let fitted = CardText.fit(text, width: Double(width)) {
-            Double(ceil(NSAttributedString(string: $0, attributes: attributes).size().width))
+    /// `text` broken into at most `maxLines` lines, each cut to fit `width`, the last with an ellipsis
+    /// when the text runs on. The island never leaves the cut to its text layers: on a Mac, an island
+    /// handed a line wider than its text layer did not show at all, and fitting the line first makes
+    /// it show (confirmed before and after on a Mac). The exact AppKit/Core Animation mechanism, why
+    /// an unfitted string in the text layer hid the whole island, is not proven. So every line gets
+    /// its own layer, as wide as the widest line.
+    private static func lines(
+        _ text: String, font: NSFont, color: NSColor, width: CGFloat, maxLines: Int
+    ) -> [NSAttributedString] {
+        var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        if CardText.isRightToLeft(text) {
+            // Every line reads right to left, however it starts.
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.baseWritingDirection = .rightToLeft
+            attributes[.paragraphStyle] = paragraph
         }
-        return NSAttributedString(string: fitted, attributes: attributes)
+        return CardLines.wrap(text, attributes: attributes, width: width, maxLines: maxLines).map {
+            NSAttributedString(string: $0, attributes: attributes)
+        }
     }
 
     private static func measure(_ text: NSAttributedString, maxWidth: CGFloat) -> CGSize {
         let size = text.size()
         return CGSize(width: min(ceil(size.width), maxWidth), height: ceil(size.height))
     }
+
+    /// Every text layer, title lines first.
+    var textLines: [CATextLayer] { titleLines + detailLines }
 
     /// The island's x = 0 in layer coordinates.
     var centerX: CGFloat { size.width / 2 }
@@ -225,25 +243,23 @@ final class IslandLayers {
         var ringPosition: CGPoint
         var ringScale: CGFloat
         var textPosition: CGPoint
-        /// The content's clip, in the root's coordinates: the drop for `droplet`, else everything.
+        /// The content's clip, in the root's coordinates: the drop.
         var clip: CGRect
         var clipRadius: CGFloat
     }
 
     func frame(_ islandShape: IslandShape, layout: IslandContentLayout) -> Frame {
-        let clip = card.notch == .droplet
-            ? CGRect(
-                x: centerX - islandShape.pillWidth / 2, y: islandShape.pillTop, width: islandShape.pillWidth,
-                height: islandShape.pillHeight)
-            : root.bounds
+        let clip = CGRect(
+            x: centerX - islandShape.pillWidth / 2, y: islandShape.pillTop, width: islandShape.pillWidth,
+            height: islandShape.pillHeight)
         return Frame(
-            path: IslandPath.make(islandShape, metrics: metrics, motion: card.notch, centerX: centerX),
+            path: IslandPath.make(islandShape, metrics: metrics, centerX: centerX),
             iconPosition: CGPoint(x: centerX + layout.iconCenter.x, y: layout.iconCenter.y),
             iconScale: CGFloat(layout.iconSize) / iconSide,
             ringPosition: CGPoint(x: centerX + layout.ringCenter.x, y: layout.ringCenter.y),
             ringScale: CGFloat(layout.ringSize) / ringSide,
             textPosition: CGPoint(x: centerX + layout.textX, y: layout.textCenterY),
-            clip: clip, clipRadius: card.notch == .droplet ? min(clip.width, clip.height) / 2 : 0)
+            clip: clip, clipRadius: CGFloat(islandShape.pillRadius(metrics)))
     }
 
     /// Sets the model values without implicit animations.
@@ -267,30 +283,28 @@ final class IslandLayers {
     func showContent() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for layer in [icon, ring, title, detail] { layer.opacity = 1 }
-        if card.notch == .ears { ring.opacity = 0 }
+        for layer in [icon, ring] { layer.opacity = 1 }
+        for line in textLines { line.opacity = 1 }
         if !metrics.hasIcon { icon.opacity = 0 }
         CATransaction.commit()
     }
 
     /// Sets the content's opacity as the exit fades leave it `time` seconds in.
     func hideContent(at time: Double, cues: IslandCues) {
-        func faded(_ cue: Double?, over duration: Double = IslandCues.fadeOut) -> Float {
+        func faded(_ cue: Double, over duration: Double = IslandCues.fadeOut) -> Float {
             Float(IslandCues.opacity(leaving: cue, over: duration, at: time))
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         icon.opacity = metrics.hasIcon ? faded(cues.icon, over: cues.iconFadeOut) : 0
-        ring.opacity = card.notch == .ears ? 0 : faded(cues.ring)
-        title.opacity = faded(cues.title)
-        detail.opacity = faded(cues.detail)
+        ring.opacity = faded(cues.ring)
+        for (layer, cue) in zip(textLines, cues.title + cues.detail) { layer.opacity = faded(cue) }
         CATransaction.commit()
     }
 
     /// Sets the content's opacity as the entrance fades leave it `time` seconds in.
     func showContent(at time: Double, cues: IslandCues) {
-        func faded(_ cue: Double?, _ duration: Double) -> Float {
-            guard let cue else { return 0 }
+        func faded(_ cue: Double, _ duration: Double) -> Float {
             let linear = min(max((time - cue) / duration, 0), 1)
             return Float(1 - pow(1 - linear, 3))
         }
@@ -298,36 +312,29 @@ final class IslandLayers {
         CATransaction.setDisableActions(true)
         icon.opacity = metrics.hasIcon ? faded(cues.icon, 0.18) : 0
         ring.opacity = faded(cues.ring, 0.18)
-        title.opacity = faded(cues.title, 0.25)
-        detail.opacity = faded(cues.detail, 0.25)
+        for (layer, cue) in zip(textLines, cues.title + cues.detail) { layer.opacity = faded(cue, 0.25) }
         CATransaction.commit()
     }
 }
 
-/// The island's outline as one path: the shape hanging from the top edge, and for `droplet` the drop,
-/// traced where it melts into the notch. Every part winds the same way, so overlaps fill as a union.
+/// The island's outline as one path: the notch, and the drop, traced where it melts into the notch.
+/// Every part winds the same way, so overlaps fill as a union.
 enum IslandPath {
-    static func make(_ shape: IslandShape, metrics: IslandMetrics, motion: NotchMotion, centerX: CGFloat) -> CGPath {
+    static func make(_ shape: IslandShape, metrics: IslandMetrics, centerX: CGFloat) -> CGPath {
         let path = CGMutablePath()
         let x = { (value: Double) in centerX + CGFloat(value) }
-        let halfNotch = metrics.notchWidth / 2
 
-        // The hanging shape: down the left side, across the bottom, up the right side.
-        let left = shape.left, right = shape.right, height = CGFloat(shape.height)
-        let radius = CGFloat(shape.radius(metrics))
-        let leftFlare = CGFloat(IslandShape.shoulder(overhang: -halfNotch - left))
-        let rightFlare = CGFloat(IslandShape.shoulder(overhang: right - halfNotch))
-        path.move(to: CGPoint(x: x(left) - leftFlare, y: 0))
-        path.addQuadCurve(to: CGPoint(x: x(left), y: leftFlare), control: CGPoint(x: x(left), y: 0))
+        // The notch: down the left side, across the bottom, up the right side.
+        let left = x(-metrics.notchWidth / 2), right = x(metrics.notchWidth / 2)
+        let height = CGFloat(metrics.notchHeight)
+        let radius = CGFloat(min(metrics.notchRadius, metrics.notchHeight / 2, metrics.notchWidth / 2))
+        path.move(to: CGPoint(x: left, y: 0))
         path.addArc(
-            tangent1End: CGPoint(x: x(left), y: height), tangent2End: CGPoint(x: x(right), y: height), radius: radius)
+            tangent1End: CGPoint(x: left, y: height), tangent2End: CGPoint(x: right, y: height), radius: radius)
         path.addArc(
-            tangent1End: CGPoint(x: x(right), y: height), tangent2End: CGPoint(x: x(right), y: 0), radius: radius)
-        path.addLine(to: CGPoint(x: x(right), y: rightFlare))
-        path.addQuadCurve(to: CGPoint(x: x(right) + rightFlare, y: 0), control: CGPoint(x: x(right), y: 0))
+            tangent1End: CGPoint(x: right, y: height), tangent2End: CGPoint(x: right, y: 0), radius: radius)
+        path.addLine(to: CGPoint(x: right, y: 0))
         path.closeSubpath()
-
-        guard motion == .droplet else { return path }
 
         let field = DropletField(metrics: metrics, shape: shape)
         if field.touchesNotch {
@@ -342,11 +349,11 @@ enum IslandPath {
             return path
         }
 
-        // Free of the notch, the drop is an exact capsule, same winding: down the left, across the
-        // bottom, up the right, back across the top.
+        // Free of the notch, the drop is an exact capsule, or a rounded box once it is taller than its
+        // corners; same winding: down the left, across the bottom, up the right, back across the top.
         let top = CGFloat(shape.pillTop), pillHeight = CGFloat(shape.pillHeight)
         let pillLeft = x(-shape.pillWidth / 2), pillRight = x(shape.pillWidth / 2), bottom = top + pillHeight
-        let pillRadius = min(pillHeight / 2, CGFloat(shape.pillWidth) / 2)
+        let pillRadius = CGFloat(shape.pillRadius(metrics))
         let corners = [
             CGPoint(x: pillLeft, y: bottom), CGPoint(x: pillRight, y: bottom), CGPoint(x: pillRight, y: top),
             CGPoint(x: pillLeft, y: top), CGPoint(x: pillLeft, y: bottom),
@@ -432,11 +439,15 @@ final class IslandPresenter: CardPresenting {
             view.onClick = { [weak self] point in self?.click(at: point) }
         }
         view.layer?.addSublayer(layers.root)
+        // The text is drawn in layers, which VoiceOver cannot read: the view reads it out whole.
+        view.setAccessibilityElement(true)
+        view.setAccessibilityRole(.staticText)
+        view.setAccessibilityLabel(CardText.spoken(title: card.title, detail: card.detail))
         panel.contentView = view
         panel.setFrame(frame, display: false)
         self.panel = panel
 
-        var animator = IslandAnimator(motion: card.notch, metrics: layers.metrics)
+        var animator = IslandAnimator(metrics: layers.metrics)
         layers.apply(layers.frame(animator.shape(at: 0), layout: animator.content(for: animator.shape(at: 0))))
         panel.orderFrontRegardless()
         sound = CardSound(card.sound, console: console)
@@ -462,11 +473,11 @@ final class IslandPresenter: CardPresenting {
         let enterCues = animator.enter(at: 0)
         play(animator, from: 0, layers: layers)
         let started = CACurrentMediaTime()
-        // The sound lands as the island first shows: the droplet starts hidden in the notch.
-        let audible = card.notch == .droplet ? 0.05 : 0
-        DispatchQueue.main.asyncAfter(deadline: .now() + audible) { [self] in sound?.play() }
+        // The sound lands as the island first shows: the drop starts hidden in the notch.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [self] in sound?.play() }
         fade(enterCues, into: true, layers: layers)
-        let visible = (enterCues.title ?? 0) + 0.25
+        // The countdown starts once the title's first line has faded in, however many lines follow.
+        let visible = (enterCues.title.first ?? enterCues.ring) + 0.25
         drain(after: visible, layers: layers)
         departure = { [self] in
             let now = CACurrentMediaTime() - started
@@ -511,8 +522,6 @@ final class IslandPresenter: CardPresenting {
 
     /// Whether a point in the view is on the button as it is drawn right now.
     private func onButton(_ point: CGPoint) -> Bool {
-        // ears has no room for a button: the whole island is one.
-        guard card.notch != .ears else { return onIsland(point) }
         guard let layers else { return false }
         let shown = layers.ring.presentation() ?? layers.ring
         let rect = (layers.root.presentation() ?? layers.root).convert(shown.bounds, from: shown)
@@ -581,7 +590,7 @@ final class IslandPresenter: CardPresenting {
         layers.apply(last)
         // A traced droplet changes its number of points from frame to frame, so its frames can't be
         // blended; at 240 a second, every display frame still gets its own.
-        layers.shape.add(keyframes("path", frames.map(\.path), discrete: card.notch == .droplet), forKey: "island")
+        layers.shape.add(keyframes("path", frames.map(\.path), discrete: true), forKey: "island")
         layers.content.add(keyframes("bounds", frames.map { NSValue(rect: $0.clip) }), forKey: "island")
         layers.content.add(
             keyframes("position", frames.map { NSValue(point: CGPoint(x: $0.clip.midX, y: $0.clip.midY)) }),
@@ -594,13 +603,15 @@ final class IslandPresenter: CardPresenting {
         layers.text.add(keyframes("position", frames.map { NSValue(point: $0.textPosition) }), forKey: "island")
     }
 
-    /// Fades the content in or out at the cues: 180 ms in with a 4-point rise for text, 120 ms out
-    /// unless the cues time the icon's exit fade.
+    /// Fades the content in or out at the cues: 180 ms in with a 4-point rise for each line of text,
+    /// 120 ms out unless the cues time the icon's exit fade.
     private func fade(_ cues: IslandCues, into visible: Bool, layers: IslandLayers) {
-        let parts: [(CALayer, Double?, Bool)] = [
+        var parts: [(CALayer, Double?, Bool)] = [
             (layers.icon, layers.metrics.hasIcon ? cues.icon : nil, false), (layers.ring, cues.ring, false),
-            (layers.title, cues.title, true), (layers.detail, cues.detail, true),
         ]
+        parts += zip(layers.textLines, cues.title + cues.detail).map { line, cue -> (CALayer, Double?, Bool) in
+            (line, cue, true)
+        }
         let now = CACurrentMediaTime()
         for (layer, cue, isText) in parts {
             guard let cue else { continue }
