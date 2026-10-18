@@ -425,11 +425,20 @@ public enum CommandLineParser {
     private static func parse<Command: ParsableCommand>(
         _ type: Command.Type, _ arguments: [String], failure: Int32 = ExitStatus.usage
     ) -> Result<Command, ParseFailure> {
+        let attached = attachingTextValues(arguments)
         do {
-            return .success(try type.parse(attachingTextValues(arguments)))
+            return .success(try type.parse(attached))
         } catch {
             let status = type.exitCode(for: error) == .success ? 0 : failure
-            return .failure(ParseFailure(status: status, message: type.fullMessage(for: error)))
+            var message = type.fullMessage(for: error)
+            if status != 0, message.hasPrefix("Error: Invalid option") || message.hasPrefix("Error: Unknown option"),
+               let text = dashLeadingText(in: attached) {
+                // Text such as "--- FAIL: TestFoo" read as an option: say where it goes instead.
+                let usage = message.split(separator: "\n", maxSplits: 1).dropFirst().first.map { "\n" + $0 } ?? ""
+                message = "Error: '\(text)' starts with a dash, so it reads as an option. Put text that starts "
+                    + "with a dash after --, as in: drip fail -- '\(text)'" + usage
+            }
+            return .failure(ParseFailure(status: status, message: message))
         }
     }
 }
@@ -437,6 +446,15 @@ public enum CommandLineParser {
 extension CommandLineParser {
     /// The options whose values are free text, often a script's own output.
     private static let textOptions = ["-d": "--detail", "--detail": "--detail", "--button": "--button", "--id": "--id"]
+
+    /// The first argument before `--` that starts with a dash but is text, not an option: it holds
+    /// a space, or starts with three dashes. Options never do.
+    static func dashLeadingText(in arguments: [String]) -> String? {
+        arguments.prefix { $0 != "--" }.first { argument in
+            argument.hasPrefix("-") && (argument.hasPrefix("---") || argument.contains(" "))
+                && !textOptions.values.contains { argument.hasPrefix($0 + "=") }
+        }
+    }
 
     /// Joins each text option to the argument after it, as `--detail=<text>`, so text that starts
     /// with a dash, such as `-d "$err"` when the error reads "--- FAIL: TestFoo", is the option's

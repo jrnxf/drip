@@ -21,6 +21,29 @@ struct CommandTests {
         #expect(try flags(["ok", "hi"]).detail == nil)
     }
 
+    @Test func aTitleThatStartsWithADashIsExplained() throws {
+        guard case let .exit(status, message) = CommandLineParser.parse(["fail", "--- FAIL: TestFoo"]) else {
+            Issue.record("a title starting with dashes parsed")
+            return
+        }
+        #expect(status == 2)
+        #expect(message.hasPrefix("Error: '--- FAIL: TestFoo' starts with a dash, so it reads as an option."))
+        #expect(message.contains("drip fail -- '--- FAIL: TestFoo'"))
+        #expect(message.contains("Usage: drip [KIND] [TITLE] [options]"))
+        // After --, it is the title.
+        #expect(try show(["fail", "--", "--- FAIL: TestFoo"]).title == "--- FAIL: TestFoo")
+        // A real unknown option, or a detail that starts with dashes next to another mistake, keeps
+        // its own message.
+        guard case let .exit(_, unknown) = CommandLineParser.parse(["fail", "x", "--bogus"]),
+              case let .exit(_, seconds) = CommandLineParser.parse(["fail", "x", "-d", "--- F", "-s", "0.1"])
+        else {
+            Issue.record("a mistake parsed")
+            return
+        }
+        #expect(unknown.hasPrefix("Error: Unknown option '--bogus'"))
+        #expect(seconds.hasPrefix("Error: --seconds must be between"))
+    }
+
     @Test func textOptionsTakeValuesThatStartWithADash() throws {
         // Command output often does: `drip fail "tests failed" -d "$err"`.
         #expect(try flags(["fail", "hi", "-d", "--- FAIL: TestFoo"]).detail == "--- FAIL: TestFoo")
