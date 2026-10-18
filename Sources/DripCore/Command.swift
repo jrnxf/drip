@@ -71,7 +71,8 @@ public struct CardOptions: ParsableArguments {
     var size: CardSize?
 
     @Option(help: ArgumentHelp(
-        "hud, glass, wash or terminal. (default: glass on macOS 26, hud before)", valueName: "style"))
+        "hud, glass, wash or terminal. A notch card is always black. (default: glass on macOS 26, hud before)",
+        valueName: "style"))
     var style: CardStyle?
 
     @Option(help: ArgumentHelp(
@@ -213,7 +214,8 @@ public struct DripCommand: ParsableCommand {
             drip --version | --help
             """,
         discussion: """
-            Presets: ok, warn, fail and info, plus any defined in $XDG_CONFIG_HOME/drip/config.toml.
+            Presets: ok, warn, fail and info, plus any defined in $XDG_CONFIG_HOME/drip/config.toml \
+            or ~/.config/drip/config.toml.
 
             When no TITLE is given and stdin is not a terminal, drip reads stdin: the first \
             non-empty line is the title and the remaining lines are the detail, unless --detail \
@@ -234,7 +236,8 @@ public struct DripCommand: ParsableCommand {
             become one card. drip history lists every card, the missed ones marked.
 
             Exit codes: 0 shown, 1 drip hook could not make a card, 2 usage error, 3 no GUI \
-            session, 4 invalid config file, 5 a --button question went unanswered.
+            session, 4 invalid config file, 5 drip waited for a card with a button and it was not \
+            clicked.
             """,
         version: dripVersion
     )
@@ -310,7 +313,8 @@ public struct DemoCommand: ParsableCommand {
         abstract: "Play every style, then the notch card, so you can pick by feel.",
         usage: "drip demo [options]",
         discussion: """
-            Styles play at your configured position, or --position. The notch card plays only on a \
+            Styles play at your configured position, or --position, at the bottom when that is the \
+            notch. The notch card plays only on a \
             screen with a notch. Cards are silent unless --sound or DRIP_SOUND is given. --style \
             narrows the demo to one style.
             """
