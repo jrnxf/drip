@@ -277,6 +277,11 @@ final class IslandLayers {
             clip: clip, clipRadius: CGFloat(islandShape.pillRadius(metrics)))
     }
 
+    /// Leaves the notch itself out of the black shape, for the live screen.
+    func maskNotch() {
+        shape.mask = IslandPath.notchMask(size: size, metrics: metrics, centerX: centerX, scale: root.contentsScale)
+    }
+
     /// Sets the model values without implicit animations.
     func apply(_ frame: Frame) {
         CATransaction.begin()
@@ -452,6 +457,22 @@ enum IslandPath {
         return path
     }
 
+    /// Everything but the notch, to mask the live island with: on screen the hardware notch covers
+    /// that part anyway, and a screen recording, which sees what is drawn under the notch, then shows
+    /// only the drop. Nil on a screen without a notch.
+    static func notchMask(size: CGSize, metrics: IslandMetrics, centerX: CGFloat, scale: CGFloat) -> CAShapeLayer? {
+        guard metrics.notchHeight > 0 else { return nil }
+        let path = CGMutablePath()
+        path.addRect(CGRect(origin: .zero, size: size))
+        addNotch(to: path, metrics: metrics, centerX: centerX)
+        let mask = CAShapeLayer()
+        mask.frame = CGRect(origin: .zero, size: size)
+        mask.path = path
+        mask.fillRule = .evenOdd
+        mask.contentsScale = scale
+        return mask
+    }
+
     /// The notch: down the left side, across the bottom, up the right side.
     static func addNotch(to path: CGMutablePath, metrics: IslandMetrics, centerX: CGFloat) {
         let x = { (value: Double) in centerX + CGFloat(value) }
@@ -550,6 +571,7 @@ final class IslandPresenter: CardPresenting {
         self.onFinish = onFinish
         let scale = CardPresenters.targetScreen()?.backingScaleFactor ?? 2
         let layers = IslandLayers(card: card, notch: notch, scale: scale, console: console)
+        layers.maskNotch()
         self.layers = layers
         let frame = self.frame(for: layers)
         let panel = IslandPanel(
@@ -623,6 +645,7 @@ final class IslandPresenter: CardPresenting {
         guard canReplace, let panel, let view = panel.contentView, let old = layers else { return }
         self.card = card
         let layers = IslandLayers(card: card, notch: notch, scale: old.root.contentsScale, console: console)
+        layers.maskNotch()
         self.layers = layers
         var animator = IslandAnimator(metrics: layers.metrics)
         animator.open()

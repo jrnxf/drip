@@ -320,6 +320,9 @@ final class StackPresenter: CardPresenting {
     private func makeLayers(for card: Card) -> IslandLayers {
         let layers = IslandLayers(card: card, notch: notch, scale: scale, console: console)
         layers.shape.isHidden = true
+        if liquid.mask == nil {
+            liquid.mask = IslandPath.notchMask(size: size, metrics: layers.metrics, centerX: size.width / 2, scale: scale)
+        }
         layers.root.frame = CGRect(
             x: (size.width - layers.size.width) / 2, y: size.height - layers.size.height,
             width: layers.size.width, height: layers.size.height)
