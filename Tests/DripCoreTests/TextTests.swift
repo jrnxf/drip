@@ -21,10 +21,22 @@ struct TextTests {
         // A terminal title, and a hyperlink ended by BEL and by ESC \.
         #expect(CardText.normalize("\u{1B}]0;title\u{07}text") == "text")
         #expect(CardText.normalize("\u{1B}]8;;https://example.com\u{1B}\\link\u{1B}]8;;\u{1B}\\") == "link")
-        // Two-character escapes, and a sequence cut off at the end.
+        // Two-character escapes, and a lone ESC at the end.
         #expect(CardText.normalize("a\u{1B}7b\u{1B}8c") == "abc")
-        #expect(CardText.normalize("done\u{1B}[3") == "done")
         #expect(CardText.normalize("a\u{1B}") == "a")
+        // A sequence that never ends is not one, so it cannot hide the text after it.
+        #expect(CardText.normalize("\u{1B}]0;evil deploy ok, by Jo") == "]0;evil deploy ok, by Jo")
+        #expect(CardText.normalize("done\u{1B}[3") == "done[3")
+        let unfinished = String(repeating: "\u{1B}]x\u{1B}[", count: 200_000)
+        #expect(CardText.normalize(unfinished) == String(repeating: "]x[", count: 200_000))
+    }
+
+    @Test func normalizeDropsBidiControls() {
+        // A folder named "\u{202E}gnipmud" would read "dumping" and reverse what follows it.
+        #expect(CardText.normalize("api\u{202E} needs you") == "api needs you")
+        #expect(CardText.normalize("\u{2066}a\u{2069} \u{202A}b\u{202C} \u{202B}c\u{202D}d\u{2067}\u{2068}") == "a b cd")
+        // The marks that only nudge neutral characters stay, as right-to-left text needs them.
+        #expect(CardText.normalize("\u{200F}שלום\u{200E}") == "\u{200F}שלום\u{200E}")
     }
 
     @Test func truncateLeavesShortTextAlone() {

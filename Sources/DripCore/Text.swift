@@ -1,15 +1,19 @@
 /// Text helpers shared by the CLI and the renderer.
 public enum CardText {
     /// Collapses every run of whitespace, line breaks included, to one space, drops terminal escape
-    /// sequences (the colors of piped command output) and other control characters, and trims both
-    /// ends.
+    /// sequences (the colors of piped command output), other control characters and the bidi
+    /// embedding, override and isolate controls, which could reorder a card's or a history line's
+    /// text, and trims both ends.
     public static func normalize(_ text: String) -> String {
         var result = ""
         var pendingSpace = false
         for character in withoutEscapeSequences(text) {
             if character.isWhitespace {
                 pendingSpace = true
-            } else if !character.unicodeScalars.allSatisfy({ $0.properties.generalCategory == .control }) {
+            } else if !character.unicodeScalars.allSatisfy({
+                $0.properties.generalCategory == .control || (0x202A...0x202E).contains($0.value)
+                    || (0x2066...0x2069).contains($0.value)
+            }) {
                 if pendingSpace, !result.isEmpty { result.append(" ") }
                 pendingSpace = false
                 result.append(character)
@@ -20,44 +24,61 @@ public enum CardText {
 
     /// `text` without ANSI escape sequences: CSI sequences such as colors (`ESC [ 31 m`, or the
     /// one-character CSI), OSC sequences such as terminal titles and hyperlinks (up to BEL or
-    /// `ESC \`), and two-character escapes. An unfinished sequence runs to the end of the text.
+    /// `ESC \`), and two-character escapes. A sequence that never ends is not one: its text stays,
+    /// so a part of the text cannot hide the rest.
     static func withoutEscapeSequences(_ text: String) -> String {
-        guard text.unicodeScalars.contains(where: { $0 == "\u{1B}" || $0 == "\u{9B}" || $0 == "\u{9D}" }) else {
-            return text
+        let scalars = Array(text.unicodeScalars)
+        guard scalars.contains(where: { $0 == "\u{1B}" || $0 == "\u{9B}" || $0 == "\u{9D}" }) else { return text }
+        // Just past the final byte of a CSI sequence whose parameters start at `start`: parameter
+        // and intermediate bytes, then one final byte.
+        func endOfSequence(from start: Int) -> Int? {
+            var index = start
+            while index < scalars.count, (0x20...0x3F).contains(scalars[index].value) { index += 1 }
+            guard index < scalars.count, (0x40...0x7E).contains(scalars[index].value) else { return nil }
+            return index + 1
         }
-        var scalars = String.UnicodeScalarView()
-        var iterator = text.unicodeScalars.makeIterator()
-        // Skips a CSI sequence's parameters and intermediates, up to and including its final byte.
-        func skipControlSequence() {
-            while let next = iterator.next(), !(0x40...0x7E).contains(next.value) {}
-        }
-        // Skips an OSC sequence's text, up to and including its terminator.
-        func skipOperatingSystemCommand() {
-            while let next = iterator.next() {
-                if next == "\u{07}" || next == "\u{9C}" { return }
-                if next == "\u{1B}" {
-                    _ = iterator.next()
-                    return
+        // Once a search for an OSC terminator fails, every later one would too: remembering it
+        // keeps a long text full of unfinished sequences linear.
+        var commandsEnd = true
+        // Just past the terminator of an OSC sequence whose text starts at `start`.
+        func endOfCommand(from start: Int) -> Int? {
+            guard commandsEnd else { return nil }
+            var index = start
+            while index < scalars.count {
+                switch scalars[index] {
+                case "\u{07}", "\u{9C}": return index + 1
+                case "\u{1B}" where index + 1 < scalars.count && scalars[index + 1] == "\\": return index + 2
+                default: index += 1
                 }
             }
+            commandsEnd = false
+            return nil
         }
-        while let scalar = iterator.next() {
+        var kept = String.UnicodeScalarView()
+        var index = 0
+        while index < scalars.count {
+            let scalar = scalars[index]
+            var end: Int?
             switch scalar {
-            case "\u{9B}":
-                skipControlSequence()
-            case "\u{9D}":
-                skipOperatingSystemCommand()
-            case "\u{1B}":
-                switch iterator.next() {
-                case "[": skipControlSequence()
-                case "]": skipOperatingSystemCommand()
-                default: break
+            case "\u{9B}": end = endOfSequence(from: index + 1)
+            case "\u{9D}": end = endOfCommand(from: index + 1)
+            case "\u{1B}" where index + 1 < scalars.count:
+                switch scalars[index + 1] {
+                case "[": end = endOfSequence(from: index + 2)
+                case "]": end = endOfCommand(from: index + 2)
+                default: end = index + 2
                 }
-            default:
-                scalars.append(scalar)
+            default: break
+            }
+            if let end {
+                index = end
+            } else {
+                // Not a sequence; a lone ESC goes with the other control characters.
+                kept.append(scalar)
+                index += 1
             }
         }
-        return String(scalars)
+        return String(kept)
     }
 
     /// Cuts `text` to at most `limit` user-perceived characters, ending in a single ellipsis when
