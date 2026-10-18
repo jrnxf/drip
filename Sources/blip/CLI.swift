@@ -60,6 +60,8 @@ struct BlipCLI {
             return run(command)
         case let .invocation(.demo(command)):
             return demo(command)
+        case let .invocation(.hook(command)):
+            return hook(command)
         case let .invocation(.history(command)):
             return history(command)
         case let .invocation(.render(command)):
@@ -79,6 +81,27 @@ struct BlipCLI {
         } catch {
             return report(error, console)
         }
+    }
+
+    /// The card for an agent's hook. Never exits 2, which an agent reads as "block": a mistake exits
+    /// 1 instead.
+    private func hook(_ command: HookCommand) -> Int32 {
+        var flags = command.options.flags
+        let console = Console(quiet: flags.quiet)
+        let status: Int32
+        do {
+            guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit) else {
+                throw UsageError("no hook payload: pass it as an argument or on stdin")
+            }
+            let event = try AgentHook.event(agent: command.agent, payload: payload)
+            flags.id = flags.id ?? event.id
+            flags.detail = flags.detail ?? event.detail
+            let card = try makeResolver(console).resolve(kind: event.kind, title: event.title, flags: flags)
+            status = deliver([card], wait: flags.wait, console: console)
+        } catch {
+            status = report(error, console)
+        }
+        return status == ExitStatus.usage ? ExitStatus.hookFailed : status
     }
 
     /// Everything that can fail is checked here, before the cards are handed off. `record` is false
@@ -145,6 +168,8 @@ struct BlipCLI {
                 flags.seconds = 2
             }
             if flags.sound == nil, resolver.environment.sound == nil { flags.sound = Sound.none }
+            // Every demo card would share one id and replace the one before.
+            flags.id = nil
             let presets = Preset.builtIn.map(\.name)
             var cards: [Card] = []
             for (index, style) in CardStyle.allCases.enumerated() where flags.style == nil || flags.style == style {

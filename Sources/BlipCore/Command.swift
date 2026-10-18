@@ -9,6 +9,9 @@ public enum ExitStatus {
     public static let invalidConfig: Int32 = 4
     /// The card had a button and it was not clicked.
     public static let notClicked: Int32 = 5
+    /// `blip hook` could not make a card. Never 2: Claude Code reads exit 2 from a hook as "block",
+    /// which would stop Claude from finishing its turn.
+    public static let hookFailed: Int32 = 1
 }
 
 extension Position: ExpressibleByArgument {}
@@ -85,6 +88,16 @@ public struct CardOptions: ParsableArguments {
         valueName: "label"))
     var button: String?
 
+    @Option(help: ArgumentHelp(
+        "Names what the card is about: a newer card with the same id replaces it while it waits, or takes its place on screen.",
+        valueName: "id"))
+    var id: String?
+
+    @Option(help: ArgumentHelp(
+        "The app a click on the card brings forward, or none. (default: the app blip was run from)",
+        valueName: "bundle-id|none"))
+    var activate: String?
+
     @Flag(help: "Wait until the card has gone before exiting. Without it, blip returns at once.")
     var wait = false
 
@@ -111,6 +124,12 @@ public struct CardOptions: ParsableArguments {
         if let button, CardText.line(button, limit: Defaults.buttonLimit) == nil {
             throw ValidationError("--button needs a label.")
         }
+        if let id, id.trimmingCharacters(in: .whitespaces).isEmpty || id.count > Defaults.idLimit {
+            throw ValidationError("--id needs 1 to \(Defaults.idLimit) characters.")
+        }
+        if let activate, activate != CardActivation.none, !CardActivation.isBundleIdentifier(activate) {
+            throw ValidationError("--activate: '\(activate)' is not a bundle identifier such as com.apple.Terminal.")
+        }
     }
 
     /// The parsed values, as a plain value.
@@ -118,7 +137,7 @@ public struct CardOptions: ParsableArguments {
         CardFlags(
             detail: detail, seconds: seconds, sound: sound, icon: icon, color: color, position: position,
             size: size, style: style, motion: motion, wait: wait, quiet: quiet, open: open,
-            button: button)
+            button: button, id: id, activate: activate)
     }
 }
 
@@ -137,15 +156,20 @@ public struct CardFlags: Equatable {
     public var quiet: Bool
     public var open: String?
     public var button: String?
+    public var id: String?
+    /// A bundle identifier, or `none`.
+    public var activate: String?
 
     public init(
         detail: String? = nil, seconds: Double? = nil, sound: Sound? = nil, icon: Icon? = nil,
         color: CardColor? = nil, position: Position? = nil, size: CardSize? = nil, style: CardStyle? = nil,
         motion: Motion? = nil, wait: Bool = false, quiet: Bool = false,
-        open: String? = nil, button: String? = nil
+        open: String? = nil, button: String? = nil, id: String? = nil, activate: String? = nil
     ) {
         self.open = open
         self.button = button
+        self.id = id
+        self.activate = activate
         self.detail = detail
         self.seconds = seconds
         self.sound = sound
@@ -168,6 +192,7 @@ public struct BlipCommand: ParsableCommand {
         usage: """
             blip [KIND] [TITLE] [options]
             blip run [options] -- <command> [args...]
+            blip hook claude|codex [options] [payload]
             blip demo [options]
             blip history [--missed] [--json | --replay]
             blip --version | --help
@@ -181,6 +206,12 @@ public struct BlipCommand: ParsableCommand {
 
             blip run runs the command, then shows ok when it exits 0 and fail otherwise, with how \
             long it took. It exits with the command's exit code.
+
+            blip hook shows a card from a Claude Code or Codex hook: which project needs you or is \
+            done, and what the agent said.
+
+            A click on the card brings forward the app blip was run from, such as the terminal, \
+            unless --activate says otherwise.
 
             blip demo plays every style, then the notch card, so you can pick by feel.
 
@@ -226,6 +257,34 @@ public struct RunCommand: ParsableCommand {
             throw ValidationError("Missing the command to run after --.")
         }
     }
+}
+
+/// `blip hook claude|codex [options] [payload]`: shows a card from a coding agent's hook.
+public struct HookCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "blip hook",
+        abstract: "Show a card from a Claude Code or Codex hook.",
+        usage: "blip hook claude|codex [options] [payload]",
+        discussion: """
+            Reads the hook's JSON from the payload argument, which Codex's notify appends, or from \
+            stdin, which Claude Code hooks use. Claude's Notification and Stop events and Codex's \
+            agent-turn-complete make a card; any other payload is an error. The title is the \
+            project (the payload's working directory) and whether the agent needs you or is done; \
+            the detail is the agent's message. Each session's card replaces its previous one, \
+            unless --id says otherwise. Exits 1 instead of 2 on an error, because a hook exiting 2 \
+            blocks the agent.
+            """
+    )
+
+    @Argument(help: ArgumentHelp("The agent whose hook runs blip: claude or codex.", valueName: "agent"))
+    public var agent: AgentHook.Agent
+
+    @Argument(help: ArgumentHelp("The hook's JSON. Read from stdin when absent.", valueName: "payload"))
+    public var payload: String?
+
+    @OptionGroup public var options: CardOptions
+
+    public init() {}
 }
 
 /// `blip demo [options]`: shows every style, then the notch card, one after another.
@@ -312,6 +371,7 @@ public enum Invocation {
     case show(BlipCommand)
     case run(RunCommand)
     case demo(DemoCommand)
+    case hook(HookCommand)
     case history(HistoryCommand)
     case render(RenderCommand)
     /// The background blip: shows the cards it reads from standard input.
@@ -336,6 +396,9 @@ public enum CommandLineParser {
             return parse(RunCommand.self, Array(arguments.dropFirst())).map(Invocation.run)
         case "demo":
             return parse(DemoCommand.self, Array(arguments.dropFirst())).map(Invocation.demo)
+        case "hook":
+            return parse(HookCommand.self, Array(arguments.dropFirst()), failure: ExitStatus.hookFailed)
+                .map(Invocation.hook)
         case "history":
             return parse(HistoryCommand.self, Array(arguments.dropFirst())).map(Invocation.history)
         case "__render":
@@ -348,12 +411,12 @@ public enum CommandLineParser {
     }
 
     private static func parse<Command: ParsableCommand>(
-        _ type: Command.Type, _ arguments: [String]
+        _ type: Command.Type, _ arguments: [String], failure: Int32 = ExitStatus.usage
     ) -> Result<Command, ParseFailure> {
         do {
             return .success(try type.parse(arguments))
         } catch {
-            let status = type.exitCode(for: error) == .success ? 0 : ExitStatus.usage
+            let status = type.exitCode(for: error) == .success ? 0 : failure
             return .failure(ParseFailure(status: status, message: type.fullMessage(for: error)))
         }
     }

@@ -183,7 +183,7 @@ private struct ConfigReader {
             if !builtInNames.contains(name), !Self.isValidPresetName(name) {
                 throw ConfigError(
                     path: path, line: presetItem.line, key: key,
-                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run, demo or history")
+                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run, hook, demo or history")
             }
             presets[name] = try preset(fields, key: key)
         }
@@ -225,8 +225,8 @@ private struct ConfigReader {
     }
 
     static func isValidPresetName(_ name: String) -> Bool {
-        // run, demo and history are subcommands.
-        guard !["run", "demo", "history"].contains(name), let first = name.unicodeScalars.first, ("a"..."z").contains(first)
+        // run, hook, demo and history are subcommands.
+        guard !["run", "hook", "demo", "history"].contains(name), let first = name.unicodeScalars.first, ("a"..."z").contains(first)
         else { return false }
         return name.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "-" }
     }
@@ -296,11 +296,14 @@ public struct EnvironmentSettings: Equatable {
     public var sound: Sound?
     public var style: CardStyle?
     public var motion: Motion?
+    /// The bundle identifier of the app blip was run from, from `__CFBundleIdentifier`.
+    public var sender: String?
 
     public init(
         seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Sound? = nil,
-        style: CardStyle? = nil, motion: Motion? = nil
+        style: CardStyle? = nil, motion: Motion? = nil, sender: String? = nil
     ) {
+        self.sender = sender
         self.seconds = seconds
         self.position = position
         self.size = size
@@ -310,7 +313,8 @@ public struct EnvironmentSettings: Equatable {
     }
 
     /// Reads BLIP_SECONDS, BLIP_POSITION, BLIP_SIZE, BLIP_SOUND, BLIP_STYLE and BLIP_MOTION. Empty
-    /// values are ignored; invalid ones are usage errors.
+    /// values are ignored; invalid ones are usage errors. Also notes the app blip was run from, from
+    /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
         func value(_ name: String) -> String? {
             environment[name].flatMap { $0.isEmpty ? nil : $0 }
@@ -334,5 +338,6 @@ public struct EnvironmentSettings: Equatable {
         style = try choice("BLIP_STYLE", CardStyle.self)
         motion = try choice("BLIP_MOTION", Motion.self)
         sound = value("BLIP_SOUND").map(Sound.init(parsing:))
+        sender = CardActivation.sender(in: environment)
     }
 }

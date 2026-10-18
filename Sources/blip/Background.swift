@@ -47,7 +47,7 @@ enum BackgroundBlip {
             close(writing)
             return false
         }
-        CardQueue.enqueue(pid: pid)
+        CardQueue.enqueue(pid: pid, cards: request.cards)
         // A closed pipe must fail the write, not kill blip.
         signal(SIGPIPE, SIG_IGN)
         let written = data.withUnsafeBytes { buffer -> Bool in
@@ -73,31 +73,39 @@ enum BackgroundBlip {
 /// Lines cards up across every blip of this user, so they show one after another, in the order
 /// the blips were run, instead of on top of each other.
 ///
-/// Each showing blip holds a ticket: an empty file named for when it was queued and its pid. The
-/// oldest ticket whose process is still alive shows; a blip that dies leaves a ticket that the
-/// others skip and clean up.
+/// Each showing blip holds a ticket: a file named for when it was queued and its pid, holding its
+/// cards that carry an id. The oldest ticket whose process is still alive shows; a blip that dies
+/// leaves a ticket that the others skip and clean up. `CardReplacement` decides which cards a
+/// newer card with the same id replaces.
 enum CardQueue {
     /// The longest a blip waits for its turn before showing its cards anyway.
     static let patience: TimeInterval = 120
 
     private static let directory = (NSTemporaryDirectory() as NSString).appendingPathComponent("blip-queue")
 
+    /// This process's ticket, once it has waited for its turn.
+    private(set) static var mine: QueueTicket?
+    /// The cards this process queues, kept for when it queues again after giving up its turn.
+    private static var cards: [Card] = []
     private static var leavesAtExit = false
 
     /// Queues the cards of the process `pid`. A foreground blip queues its background blip itself,
     /// before returning, so the order is the order blips were run in.
-    static func enqueue(pid: pid_t) {
+    static func enqueue(pid: pid_t, cards: [Card]) {
         try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         let stamp = UInt64(Date().timeIntervalSince1970 * 1_000_000_000)
-        let name = String(format: "%020llu-%d", stamp, pid)
-        FileManager.default.createFile(atPath: (directory as NSString).appendingPathComponent(name), contents: nil)
+        let replaceable = cards.filter { $0.id != nil }
+        let contents = replaceable.isEmpty ? Data() : (try? JSONEncoder().encode(replaceable)) ?? Data()
+        write(contents, to: QueueTicket.name(stamp: stamp, pid: pid))
     }
 
-    /// Waits until every blip queued earlier has shown its cards. The ticket goes when this
-    /// process exits.
-    static func waitForTurn() {
+    /// Waits until every blip queued earlier has shown its cards, queuing `cards`, or the cards it
+    /// queued before when nil. The ticket goes when this process exits.
+    static func waitForTurn(cards: [Card]? = nil) {
         let me = getpid()
-        if tickets().first(where: { $0.pid == me }) == nil { enqueue(pid: me) }
+        if let cards { self.cards = cards }
+        if tickets().first(where: { $0.pid == me }) == nil { enqueue(pid: me, cards: self.cards) }
+        mine = tickets().first(where: { $0.pid == me })
         if !leavesAtExit {
             leavesAtExit = true
             atexit { CardQueue.leave() }
@@ -108,38 +116,87 @@ enum CardQueue {
         }
     }
 
+    /// Whether a newer card with the same id has replaced `card`, so it should not be shown.
+    static func isReplaced(_ card: Card) -> Bool {
+        guard card.id != nil, let mine else { return false }
+        let queue = load()
+        let ticket = queue.first(where: { $0.name == mine.name }) ?? mine
+        return CardReplacement.isReplaced(card, in: ticket, queue: queue, isAlive: isAlive)
+    }
+
+    /// The newest card queued after `source` that should take the place of `showing` on screen,
+    /// and its ticket.
+    static func replacement(for showing: Card, after source: String) -> (ticket: String, card: Card)? {
+        guard showing.id != nil else { return nil }
+        return CardReplacement.replacement(for: showing, after: source, queue: load(), isAlive: isAlive)
+    }
+
+    /// Marks the card with `id` in `ticket` as taken over, so its own blip skips it.
+    static func claim(_ id: String, in ticket: String) {
+        var claimed = claims(of: ticket)
+        claimed.insert(id)
+        write((try? JSONEncoder().encode(claimed.sorted())) ?? Data(), to: QueueTicket.claimName(for: ticket))
+    }
+
     /// Whether `pid` holds the oldest live ticket, clearing the tickets of blips that died.
     private static func isFirst(_ pid: pid_t) -> Bool {
         for ticket in tickets() {
             if ticket.pid == pid { return true }
-            if kill(ticket.pid, 0) == 0 || errno != ESRCH { return false }
-            remove(ticket)
+            if isAlive(ticket.pid) { return false }
+            remove(ticket.name)
         }
         // The ticket is gone, so there is nothing left to wait for.
         return true
     }
 
-    private struct Ticket {
-        var name: String
-        var pid: pid_t
+    private static func isAlive(_ pid: Int32) -> Bool {
+        kill(pid, 0) == 0 || errno != ESRCH
     }
 
-    private static func tickets() -> [Ticket] {
+    /// The tickets in queue order, without reading them.
+    private static func tickets() -> [QueueTicket] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
-        return names.sorted().compactMap { name in
-            guard let pid = name.split(separator: "-").last.flatMap({ pid_t($0) }) else { return nil }
-            return Ticket(name: name, pid: pid)
+        return names.sorted().compactMap { QueueTicket(name: $0) }
+    }
+
+    /// The tickets in queue order, with their cards and claims.
+    private static func load() -> [QueueTicket] {
+        tickets().map { ticket in
+            var ticket = ticket
+            if let data = FileManager.default.contents(atPath: path(ticket.name)), !data.isEmpty {
+                ticket.cards = (try? JSONDecoder().decode([Card].self, from: data)) ?? []
+            }
+            ticket.claimed = claims(of: ticket.name)
+            return ticket
         }
     }
 
-    private static func remove(_ ticket: Ticket) {
-        try? FileManager.default.removeItem(atPath: (directory as NSString).appendingPathComponent(ticket.name))
+    private static func claims(of ticket: String) -> Set<String> {
+        guard let data = FileManager.default.contents(atPath: path(QueueTicket.claimName(for: ticket))) else { return [] }
+        return Set((try? JSONDecoder().decode([String].self, from: data)) ?? [])
+    }
+
+    /// Writes a file whole, so a reader never sees it half written: to a hidden name first, which
+    /// is not a ticket, then renamed into place.
+    private static func write(_ contents: Data, to name: String) {
+        let temporary = path(".\(name).\(getpid()).tmp")
+        guard FileManager.default.createFile(atPath: temporary, contents: contents) else { return }
+        if rename(temporary, path(name)) != 0 { try? FileManager.default.removeItem(atPath: temporary) }
+    }
+
+    private static func path(_ name: String) -> String {
+        (directory as NSString).appendingPathComponent(name)
+    }
+
+    private static func remove(_ ticket: String) {
+        try? FileManager.default.removeItem(atPath: path(ticket))
+        try? FileManager.default.removeItem(atPath: path(QueueTicket.claimName(for: ticket)))
     }
 
     /// Gives up this process's turn, for a blip that waits for something else before showing.
     static func leave() {
         let me = getpid()
-        tickets().filter { $0.pid == me }.forEach { remove($0) }
+        tickets().filter { $0.pid == me }.forEach { remove($0.name) }
     }
 }
 #endif

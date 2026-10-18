@@ -15,6 +15,8 @@ blip run -- make test
 blip run --open "$CI_URL" --button "View run" -- ./deploy.sh
 blip warn "staging is ready" --button "Promote" && ./promote.sh
 blip ok "shipped" --position notch --style glass
+blip info "deploying" --id deploy && blip ok "deployed" --id deploy
+blip hook claude              # from a Claude Code hook: which project needs you, and why
 blip demo                     # every style and the notch card, to pick by feel
 blip history --missed         # what came up while you were away
 ```
@@ -35,6 +37,7 @@ cp .build/apple/Products/Release/blip /usr/local/bin/
 ```
 blip [KIND] [TITLE] [options]
 blip run [options] -- <command> [args...]
+blip hook claude|codex [options] [payload]
 blip demo [options]
 blip history [--missed] [--json | --replay]
 blip --version | --help
@@ -55,6 +58,8 @@ blip --version | --help
 | `--motion full\|subtle\|none` | `full` plays each style's entrance and exit, `subtle` only fades, `none` neither. Reduce Motion in System Settings caps it at `subtle`. | `full` |
 | `--open URL\|PATH` | Adds a button that opens a URL or a file; see [Buttons](#buttons). | none |
 | `--button LABEL` | The button's label, up to 24 characters. Without `--open`, blip waits for the card and reports the click in its exit status. | `Open` |
+| `--id ID` | Names what the card is about, up to 200 characters; see [Replacing cards](#replacing-cards). | none |
+| `--activate BUNDLE-ID\|none` | The app a click on the card brings forward, such as `com.apple.Terminal`; see [Clicks](#clicks). | the app blip was run from |
 | `--wait` | Wait until the card has gone before exiting. | off |
 | `--quiet` | Never print warnings. | off |
 
@@ -87,13 +92,33 @@ mistake still prints its message and exit status. Then it hands the card to a ba
 exits. Cards from every blip queue up and show one after another, in the order they were sent.
 `--wait` keeps blip running until its card has gone, still in its turn.
 
+### Replacing cards
+
+`--id` names what a card is about, such as a deploy or an agent session. A newer card with the same
+id replaces an older one that is still waiting its turn, so a burst of updates shows only the
+latest. When the older card is already on screen, the newer one takes its place there: the text
+changes, its sound plays, and its time starts again. A card that asks a question (`--button`
+without `--open`) never changes in place, and neither does one that would sit somewhere else
+(another `--position`); the newer card then waits its turn. A question replaced before it showed
+exits 5.
+
+### Clicks
+
+A click on a card brings forward the app blip was run from, such as your terminal, and takes the
+card away. macOS names that app in the `__CFBundleIdentifier` environment variable of everything it
+starts, and blip uses it; `--activate` names another app by its bundle identifier, and
+`--activate none` leaves the card click-through. A card you can click holds while the pointer is on
+it, like a card with a button. The card itself never takes focus.
+
 ### Missed cards and history
 
 A card that comes up while the screen is locked would play to nobody, so blip holds it until the
 screen unlocks. Then one or two held cards show as they are, and three or more show as one card,
 `5 cards while you were away`, with their titles newest first. It takes the look and sound of the
 newest `fail` card among them, else the newest `warn` card, else the newest card, so a failure
-still reads as one. A blip that waits for its card, with `--wait` or a `--button` question, keeps
+still reads as one. Of held cards with the same `--id`, only the newest shows. A click on the
+summary brings forward the app the held cards came from, or nothing when they came from different
+apps. A blip that waits for its card, with `--wait` or a `--button` question, keeps
 waiting until the unlock and then shows its card on its own.
 
 Every card is also kept in `$XDG_STATE_HOME/blip/history.jsonl`, or
@@ -117,8 +142,8 @@ locked like any other, and are not added to the history again.
 `--open` adds a button that opens a URL or a file, such as a CI run, a pull request or a log.
 `--button` names it. Hovering over the card holds it, and the countdown ring of a notch card stops;
 moving away gives it another 1.5 seconds. A click on the button opens the target and takes the card
-away; a click anywhere else on the card just takes it away. Clicking never takes focus from the app
-you are in.
+away; a click anywhere else on the card brings the sending app forward (see [Clicks](#clicks)) and
+takes the card away. Clicking the button never takes focus from the app you are in.
 
 `--button` without `--open` asks a question: blip waits and exits 0 if the button was clicked and 5
 if it was not, so the script decides what happens:
@@ -154,7 +179,16 @@ A git hook, such as `.git/hooks/post-merge`, which blip never slows down:
 blip info "pulled $(git log -1 --format='%h %s')"
 ```
 
-**Coding agents.** Point an agent's hooks at blip to see a card when it needs you or has finished.
+**Coding agents.** Point an agent's hooks at `blip hook` to see a card when it needs you or has
+finished. blip reads the hook's payload: the title is the project, from the session's working
+directory, and whether the agent needs you or is done, such as `blip needs you`. The detail is what
+the agent said: the notification's message, or the last thing it wrote before it stopped. A
+permission prompt or a question is `warn`, an idle prompt `info`, and a finished turn `ok`. Each
+session's card has the id `<agent>:<session>`, so a session's new card replaces its last one
+instead of queuing behind it, and a click on the card brings back the terminal the agent runs in.
+blip reads Claude Code's `Notification` and `Stop` events and Codex's `agent-turn-complete`; any
+other payload prints an error. Card options such as `--position` or `--seconds` work as usual. On a
+mistake, `blip hook` exits 1, never 2, which tells Claude Code to block the agent.
 
 **Claude Code**, in `~/.claude/settings.json`:
 
@@ -164,22 +198,22 @@ blip info "pulled $(git log -1 --format='%h %s')"
     "Notification": [
       {
         "matcher": "permission_prompt|idle_prompt|elicitation_dialog",
-        "hooks": [{ "type": "command", "command": "blip warn 'Claude needs you' --position notch" }]
+        "hooks": [{ "type": "command", "command": "blip hook claude" }]
       }
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "blip ok 'Claude is done' --position notch" }]
+        "hooks": [{ "type": "command", "command": "blip hook claude" }]
       }
     ]
   }
 }
 ```
 
-**Codex**, in `~/.codex/config.toml`. Codex adds an event payload to the command, which `sh -c` ignores:
+**Codex**, in `~/.codex/config.toml`. Codex adds the event payload as the last argument:
 
 ```toml
-notify = ["sh", "-c", "blip ok 'Codex is done' --position notch", "codex-notify"]
+notify = ["blip", "hook", "codex"]
 ```
 
 Any other agent or tool: wrap what it runs in `blip run`, or call blip from its hooks.
@@ -203,6 +237,7 @@ whose text wraps grows into a taller capsule with rounded corners.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown. |
+| 1 | `blip hook` could not make a card: a usage error, or a payload it cannot read or does not know. |
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh. |
 | 4 | The config file is invalid; the message names the key and line. |
@@ -241,8 +276,8 @@ Each setting comes from the first of: flags, the environment (`BLIP_SECONDS`, `B
 `BLIP_SIZE`, `BLIP_SOUND`, `BLIP_STYLE`, `BLIP_MOTION`; `BLIP_SOUND=none` mutes), the config file,
 the built-in defaults. A preset's own `seconds` and `style` beat the top-level ones. A custom preset
 starts from `info` and replaces what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be
-`run`, `demo` or `history`. Unknown keys print a warning; wrong types exit 4. The `notch` key of
-earlier versions also prints a warning and is ignored: the droplet is the only notch motion now.
+`run`, `hook`, `demo` or `history`. Unknown keys print a warning; wrong types exit 4. The `notch` key
+of earlier versions also prints a warning and is ignored: the droplet is the only notch motion now.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
 such as `[preset.ok]`, and values that are single-line strings, decimal integers, floats or

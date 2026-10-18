@@ -249,6 +249,21 @@ final class HistoryTests {
         #expect(custom.kind == "deploy")
     }
 
+    @Test func theSummaryTakesNoCardsIDAndOnlyASharedActivate() throws {
+        var cards = [card("a", kind: "fail"), card("b"), card("c")]
+        for index in cards.indices {
+            cards[index].id = "card-\(index)"
+            cards[index].activate = "com.apple.Terminal"
+        }
+        let shared = try #require(MissedSummary.cards(for: cards).first)
+        #expect(shared.id == nil)
+        #expect(shared.activate == "com.apple.Terminal")
+        cards[0].activate = "com.example.Deploy"
+        let mixed = try #require(MissedSummary.cards(for: cards).first)
+        #expect(mixed.id == nil)
+        #expect(mixed.activate == nil)
+    }
+
     @Test func aLongSummaryIsCut() throws {
         let cards = (1...20).map { card("a fairly long card title number \($0)") }
         let summary = try #require(MissedSummary.cards(for: cards).first)

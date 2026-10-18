@@ -20,7 +20,7 @@ struct HUDDisplay: CardDisplay {
             console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")
             return ExitStatus.noGUISession
         }
-        CardQueue.waitForTurn()
+        CardQueue.waitForTurn(cards: cards)
         guard let cards = holdWhileLocked(cards, locked: locked, console: console), !cards.isEmpty else {
             return ExitStatus.shown
         }
@@ -33,12 +33,20 @@ struct HUDDisplay: CardDisplay {
         app.setActivationPolicy(.accessory)
 
         var failed = false
+        // A question replaced before it showed was never answered.
+        var unanswered = false
         var remaining = cards[...]
         func next() {
             guard let card = remaining.popFirst() else { return stopApplication() }
+            if CardQueue.isReplaced(card) {
+                unanswered = unanswered || card.asksQuestion
+                return next()
+            }
             let presenter = CardPresenters.make(for: card, console: console)
+            let watch = ReplacementWatch(presenter: presenter, card: card)
             // The presenter keeps itself alive through the timers and animations it schedules.
             presenter.start { ok in
+                watch.stop()
                 failed = failed || !ok
                 next()
             }
@@ -46,8 +54,9 @@ struct HUDDisplay: CardDisplay {
         // Start once the run loop is running, after the application has finished launching.
         DispatchQueue.main.async(execute: next)
         app.run()
+        CardActions.waitForActivations()
         if failed { return ExitStatus.noGUISession }
-        return CardActions.missed ? ExitStatus.notClicked : ExitStatus.shown
+        return CardActions.missed || unanswered ? ExitStatus.notClicked : ExitStatus.shown
     }
 
     func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32 {
@@ -102,7 +111,9 @@ struct HUDDisplay: CardDisplay {
             switch admission {
             case let .show(leftovers):
                 record(cards, missed: false)
-                return MissedSummary.cards(for: leftovers) + cards
+                let ids = Set(cards.compactMap(\.id))
+                let stale = leftovers.filter { $0.id.map { !ids.contains($0) } ?? true }
+                return MissedSummary.cards(for: CardReplacement.latest(stale)) + cards
             case .held:
                 record(cards, missed: true)
                 return nil
@@ -110,7 +121,7 @@ struct HUDDisplay: CardDisplay {
                 record(cards, missed: true)
                 waitForUnlock()
                 do {
-                    return MissedSummary.cards(for: try held.release())
+                    return MissedSummary.cards(for: CardReplacement.latest(try held.release()))
                 } catch {
                     console.warn("cannot read the cards held while the screen was locked: \(error)")
                     return cards
@@ -172,10 +183,12 @@ final class HoverView: NSView {
     /// Gets its own clicks; everything else on the card is this view's.
     weak var button: NSView?
 
-    override init(frame: NSRect) {
+    /// `pointerInside` is for a pointer already on the card, so its leaving still sends `onExit`.
+    init(frame: NSRect, pointerInside: Bool = false) {
         super.init(frame: frame)
-        addTrackingArea(NSTrackingArea(
-            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        var options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+        if pointerInside { options.insert(.assumeInside) }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: options, owner: self))
     }
 
     @available(*, unavailable)
@@ -200,6 +213,48 @@ final class HoverView: NSView {
 protocol CardPresenting: AnyObject {
     /// Calls `onFinish` once the card has gone, with false when there was no screen for it.
     func start(onFinish: @escaping (Bool) -> Void)
+
+    /// Whether the card is fully in and not yet leaving, so another card can take its place.
+    var canReplace: Bool { get }
+
+    /// Shows `card` in place of the current one, with its sound, and restarts the time it stays.
+    func replace(with card: Card)
+}
+
+/// While a card with an id is on screen, looks for a newer card with the same id from another blip,
+/// and swaps it in place of the shown one.
+final class ReplacementWatch {
+    private let presenter: CardPresenting
+    /// The card on screen, and the ticket it came from.
+    private var current: Card
+    private var source: String
+    private var timer: Timer?
+
+    init(presenter: CardPresenting, card: Card) {
+        self.presenter = presenter
+        current = card
+        source = CardQueue.mine?.name ?? ""
+        guard card.id != nil, CardQueue.mine != nil else { return }
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.look() }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func look() {
+        guard presenter.canReplace, let found = CardQueue.replacement(for: current, after: source),
+              let id = found.card.id
+        else { return }
+        // Claimed first, so the newer blip never shows the card too.
+        CardQueue.claim(id, in: found.ticket)
+        presenter.replace(with: found.card)
+        current = found.card
+        source = found.ticket
+    }
 }
 
 enum CardPresenters {
@@ -279,7 +334,7 @@ final class CardSound {
 /// With `motion = full` the card rises 10 points into place from the edge it sits on while it fades
 /// in, and drifts back 6 points as it fades out; a `wash` card for `fail` shakes once.
 final class CardPresenter: CardPresenting {
-    private let card: Card
+    private var card: Card
     private let console: Console
     private var panel: NSPanel?
     private var sound: CardSound?
@@ -290,6 +345,8 @@ final class CardPresenter: CardPresenting {
     /// The pending exit; hovering cancels it and leaving schedules a shorter one.
     private var departure: DispatchWorkItem?
     private var leaving = false
+    /// Set once the entrance has finished.
+    private var entered = false
     private var hover: HoverView?
 
     init(card: Card, console: Console) {
@@ -312,7 +369,7 @@ final class CardPresenter: CardPresenting {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        panel.ignoresMouseEvents = card.action == nil
+        panel.ignoresMouseEvents = !card.isClickable
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
@@ -335,21 +392,57 @@ final class CardPresenter: CardPresenting {
         self.travel = travel
         motionAmount = motion
         self.onFinish = onFinish
+        handleClicks(on: built)
+        enter(frame: frame, motion: motion) { [self] in
+            entered = true
+            schedule(after: card.seconds)
+        }
+    }
+
+    var canReplace: Bool { entered && !leaving }
+
+    func replace(with card: Card) {
+        guard canReplace, let panel, let screen = panel.screen ?? CardPresenters.targetScreen() else { return }
+        self.card = card
+        let built = CardViewBuilder.make(for: card, appearance: nil, console: console)
+        let origin = CardLayout.origin(for: built.size, in: screen.visibleFrame, position: card.position)
+        frame = NSRect(origin: origin, size: built.size)
+        hover = nil
+        panel.contentView = built.root
+        panel.setFrame(frame, display: true)
+        panel.ignoresMouseEvents = !card.isClickable
+        panel.invalidateShadow()
+        let held = card.isClickable && NSMouseInRect(NSEvent.mouseLocation, frame, false)
+        handleClicks(on: built, pointerInside: held)
+        sound = CardSound(card.sound, console: console)
+        sound?.play()
+        if held {
+            departure?.cancel()
+        } else {
+            schedule(after: card.seconds)
+        }
+    }
+
+    /// For a clickable card: hovering anywhere on it holds it, a click on the button runs the
+    /// action, and a click anywhere else brings the sending app forward and dismisses the card.
+    private func handleClicks(on built: CardContent, pointerInside: Bool = false) {
+        guard card.isClickable else { return }
         if let action = card.action {
             built.button?.onClick = { [self] in
                 CardActions.perform(action, console: console)
                 leave(clicked: true)
             }
-            // Hovering anywhere on the card holds it; a click off the button dismisses it.
-            let hover = HoverView(frame: NSRect(origin: .zero, size: frame.size))
-            hover.onEnter = { [self] in departure?.cancel() }
-            hover.onExit = { [self] in schedule(after: 1.5) }
-            hover.onClick = { [self] in leave(clicked: false) }
-            hover.button = built.button
-            built.root.addSubview(hover, positioned: .above, relativeTo: nil)
-            self.hover = hover
         }
-        enter(frame: frame, motion: motion) { [self] in schedule(after: card.seconds) }
+        let hover = HoverView(frame: NSRect(origin: .zero, size: frame.size), pointerInside: pointerInside)
+        hover.onEnter = { [self] in departure?.cancel() }
+        hover.onExit = { [self] in schedule(after: 1.5) }
+        hover.onClick = { [self] in
+            if let target = card.activate { CardActions.activate(target, console: console) }
+            leave(clicked: false)
+        }
+        hover.button = built.button
+        built.root.addSubview(hover, positioned: .above, relativeTo: nil)
+        self.hover = hover
     }
 
     private func schedule(after seconds: Double) {
