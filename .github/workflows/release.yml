@@ -13,9 +13,12 @@ permissions:
 jobs:
   tap:
     name: Update the tap formula
+    # A pre-release is for trying out; the formula follows full releases only.
+    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to a commit: this job holds the key that can push to the tap brew installs from.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: jrnxf/homebrew-tap
           ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
