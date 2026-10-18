@@ -371,6 +371,11 @@ extension IslandLayers {
         parts += zip(textLines, cues.title + cues.detail).map { line, cue -> (CALayer, Double?, Bool) in
             (line, cue, true)
         }
+        // One transaction for the model values and the animations alike: a model value committed on
+        // its own reaches the screen a frame before the animation that should hide it.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
         for (layer, cue, isText) in parts {
             guard let cue else { continue }
             let duration = visible ? (isText ? 0.25 : 0.18) : IslandCues.fadeOut
@@ -389,10 +394,7 @@ extension IslandLayers {
             group.duration = duration
             group.timingFunction = CardPresenters.easeOut
             group.fillMode = .backwards
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
             layer.opacity = visible ? 1 : 0
-            CATransaction.commit()
             layer.add(group, forKey: "fade")
         }
     }
@@ -413,8 +415,8 @@ extension IslandLayers {
         ringProgress.speed = 1
         ringProgress.timeOffset = 0
         ringProgress.beginTime = 0
-        CATransaction.commit()
         ringProgress.add(drain, forKey: "drain")
+        CATransaction.commit()
     }
 
     /// Freezes or resumes every animation on `layer`, where it is.
@@ -631,17 +633,18 @@ final class IslandPresenter: CardPresenting {
         CATransaction.setDisableActions(true)
         old.root.removeFromSuperlayer()
         view.layer?.addSublayer(layers.root)
-        CATransaction.commit()
-        panel.setFrame(frame(for: layers), display: true)
-        panel.ignoresMouseEvents = !card.isClickable
-        view.setAccessibilityLabel(CardText.spoken(title: card.title, detail: card.detail))
-        hovering = false
+        // With the swap, so the new text never shows for a frame before it fades in.
         let fadeIn = CABasicAnimation(keyPath: "opacity")
         fadeIn.fromValue = 0
         fadeIn.toValue = 1
         fadeIn.duration = 0.18
         fadeIn.timingFunction = CardPresenters.easeOut
         layers.text.add(fadeIn, forKey: "replace")
+        CATransaction.commit()
+        panel.setFrame(frame(for: layers), display: true)
+        panel.ignoresMouseEvents = !card.isClickable
+        view.setAccessibilityLabel(CardText.spoken(title: card.title, detail: card.detail))
+        hovering = false
         sound = CardSound(card.sound, console: console)
         sound?.play()
 

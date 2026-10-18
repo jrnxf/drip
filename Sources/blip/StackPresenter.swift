@@ -425,13 +425,14 @@ final class StackPresenter: CardPresenting {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         container.replaceSublayer(entry.layers.root, with: layers.root)
-        CATransaction.commit()
+        // With the swap, so the new text never shows for a frame before it fades in.
         let fadeIn = CABasicAnimation(keyPath: "opacity")
         fadeIn.fromValue = 0
         fadeIn.toValue = 1
         fadeIn.duration = 0.18
         fadeIn.timingFunction = CardPresenters.easeOut
         layers.text.add(fadeIn, forKey: "replace")
+        CATransaction.commit()
         entry.card = card
         entry.layers = layers
         entry.animator = animator
