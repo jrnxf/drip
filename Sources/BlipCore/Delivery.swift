@@ -24,10 +24,27 @@ public enum Delivery: Equatable, Sendable {
 /// The cards a background blip shows, as JSON on its standard input.
 public struct BackgroundRequest: Equatable, Sendable, Codable {
     public var cards: [Card]
+    /// False for cards shown again from the history, which keeps them already.
+    public var record: Bool
 
-    public init(cards: [Card]) {
+    public init(cards: [Card], record: Bool = true) {
         self.cards = cards
+        self.record = record
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case cards, record
+    }
+
+    /// A request from a blip that predates `record` is recorded.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        cards = try container.decode([Card].self, forKey: .cards)
+        record = try container.decodeIfPresent(Bool.self, forKey: .record) ?? true
+    }
+
+    /// What the background blip does with the cards while the screen is locked.
+    public var locked: LockedScreen { .pool(record: record) }
 
     public func encoded() throws -> Data {
         try JSONEncoder().encode(self)
@@ -39,12 +56,22 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
 }
 
 /// What a blip does with its cards when the screen is locked at their turn. Locked or not, the
-/// cards go into the history, except with `ignore`.
+/// cards go into the history when `record` is true.
 public enum LockedScreen: Equatable, Sendable {
     /// Hold them with every other background blip's, to show together once the screen unlocks.
-    case pool
+    case pool(record: Bool)
     /// Wait here until the screen unlocks, then show them: the caller is waiting for the outcome.
-    case wait
+    case wait(record: Bool)
     /// Show them anyway, and keep them out of the history: `blip demo`.
     case ignore
+
+    /// Adds the cards to `history`, unless they are kept out of it.
+    public func record(_ cards: [Card], missed: Bool, in history: CardHistory) throws {
+        switch self {
+        case let .pool(record), let .wait(record):
+            if record { try history.record(cards, missed: missed) }
+        case .ignore:
+            break
+        }
+    }
 }

@@ -175,7 +175,7 @@ public struct BlipCommand: ParsableCommand {
             blip [KIND] [TITLE] [options]
             blip run [options] -- <command> [args...]
             blip demo [options]
-            blip history [--missed] [--json | --replay] [-n <n>]
+            blip history [--missed] [--json | --replay]
             blip --version | --help
             """,
         discussion: """
@@ -252,14 +252,14 @@ public struct DemoCommand: ParsableCommand {
     public init() {}
 }
 
-/// `blip history [--missed] [--json | --replay] [-n <n>]`: lists or shows again recent cards.
+/// `blip history [--missed] [--json | --replay]`: lists or shows again the cards in the history.
 public struct HistoryCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "blip history",
-        abstract: "List recent cards, or show them again.",
-        usage: "blip history [--missed] [--json | --replay] [-n <n>]",
+        abstract: "List the cards in the history, or show them again.",
+        usage: "blip history [--missed] [--json | --replay]",
         discussion: """
-            Lists the newest cards, oldest first, marking those that came up while the screen was \
+            Lists every card in the history, oldest first, marking those that came up while the screen was \
             locked as missed. The history is $XDG_STATE_HOME/blip/history.jsonl, or \
             ~/.local/state/blip/history.jsonl, and keeps the last \(CardHistory.limit) cards.
             """
@@ -274,13 +274,9 @@ public struct HistoryCommand: ParsableCommand {
     @Flag(help: "Show the cards again instead of listing them.")
     public var replay = false
 
-    @Option(name: [.customShort("n"), .long], help: ArgumentHelp("How many of the newest cards.", valueName: "n"))
-    public var limit = 20
-
     public init() {}
 
     public func validate() throws {
-        if limit < 1 { throw ValidationError("--limit must be at least 1.") }
         if json, replay { throw ValidationError("--json and --replay cannot be used together.") }
     }
 }

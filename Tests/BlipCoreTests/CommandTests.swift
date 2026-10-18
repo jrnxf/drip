@@ -107,12 +107,11 @@ struct CommandTests {
     @Test func historyCommand() throws {
         let plain = try history([])
         #expect(!plain.missed && !plain.json && !plain.replay)
-        #expect(plain.limit == 20)
-        let all = try history(["--missed", "--replay", "-n", "3"])
-        #expect(all.missed && all.replay && all.limit == 3)
-        #expect(try history(["--json", "--limit", "50"]).json)
+        let all = try history(["--missed", "--replay"])
+        #expect(all.missed && all.replay)
+        #expect(try history(["--json"]).json)
         assertUsageError(["history", "--json", "--replay"])
-        assertUsageError(["history", "-n", "0"])
+        assertUsageError(["history", "-n", "3"])
         assertUsageError(["history", "extra"])
     }
 
@@ -131,7 +130,7 @@ struct CommandTests {
     @Test func helpListsRunAndHidesRender() {
         guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
         #expect(help.contains("blip run [options] -- <command> [args...]"), "\(help)")
-        #expect(help.contains("blip history [--missed] [--json | --replay] [-n <n>]"), "\(help)")
+        #expect(help.contains("blip history [--missed] [--json | --replay]"), "\(help)")
         #expect(help.contains("--seconds"), "\(help)")
         #expect(!help.contains("__render"), "\(help)")
     }

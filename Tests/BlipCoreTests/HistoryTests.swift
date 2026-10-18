@@ -78,15 +78,13 @@ final class HistoryTests {
         #expect(Set(history.entries().map(\.card.title)) == Set((0..<40).map { "card \($0)" }))
     }
 
-    @Test func listingSelectsTheNewestAndTheMissed() {
+    @Test func listingSelectsEverythingOrTheMissed() {
         let entries = (1...6).map {
             HistoryEntry(time: Date(timeIntervalSince1970: Double($0)), missed: $0 % 2 == 0, card: card("card \($0)"))
         }
-        #expect(HistoryListing.select(entries, missed: false, limit: 20).count == 6)
-        #expect(HistoryListing.select(entries, missed: false, limit: 2).map(\.card.title) == ["card 5", "card 6"])
-        #expect(HistoryListing.select(entries, missed: true, limit: 20).map(\.card.title) == ["card 2", "card 4", "card 6"])
-        #expect(HistoryListing.select(entries, missed: true, limit: 1).map(\.card.title) == ["card 6"])
-        #expect(HistoryListing.select([], missed: true, limit: 5).isEmpty)
+        #expect(HistoryListing.select(entries, missed: false) == entries)
+        #expect(HistoryListing.select(entries, missed: true).map(\.card.title) == ["card 2", "card 4", "card 6"])
+        #expect(HistoryListing.select([], missed: true).isEmpty)
     }
 
     @Test func listingLines() throws {
@@ -120,17 +118,40 @@ final class HistoryTests {
         #expect(HistoryListing.replay(HistoryEntry(time: Date(), missed: true, card: link)).action == link.action)
     }
 
+    @Test func aReplayAddsNoHistoryEntries() throws {
+        let history = CardHistory(path: try scratch().appending("/history.jsonl"))
+        try history.record([card("a"), card("b")], missed: true)
+        let before = history.entries()
+        let replay = BackgroundRequest(cards: before.map(HistoryListing.replay), record: false)
+        let received = try BackgroundRequest.decode(replay.encoded())
+        try received.locked.record(received.cards, missed: true, in: history)
+        try LockedScreen.wait(record: received.record).record(received.cards, missed: false, in: history)
+        try LockedScreen.ignore.record(received.cards, missed: false, in: history)
+        #expect(history.entries() == before)
+        // A card sent as usual is recorded, by either path.
+        let sent = try BackgroundRequest.decode(BackgroundRequest(cards: [card("c")]).encoded())
+        try sent.locked.record(sent.cards, missed: true, in: history)
+        try LockedScreen.wait(record: sent.record).record([card("d")], missed: false, in: history)
+        #expect(history.entries().map(\.card.title) == ["a", "b", "c", "d"])
+    }
+
+    @Test func aRequestWithoutRecordIsRecorded() throws {
+        let request = try BackgroundRequest.decode(Data(#"{"cards":[]}"#.utf8))
+        #expect(request.record)
+        #expect(request.locked == .pool(record: true))
+    }
+
     // MARK: Holding cards while the screen is locked
 
     @Test func unlockedCardsShowAtOnce() throws {
-        let held = HeldCards(directory: try scratch(), isAlive: { _ in true })
+        let held = HeldCards(directory: try scratch(), processStart: { _ in 1 })
         #expect(try held.admit([card("a")], locked: false, pid: 100) == .show(held: []))
         #expect(try held.release().isEmpty)
     }
 
     @Test func theFirstLockedBlipHoldsAndTheRestJoinIt() throws {
         let alive: Set<Int32> = [100, 101, 102]
-        let held = HeldCards(directory: try scratch(), isAlive: { alive.contains($0) })
+        let held = HeldCards(directory: try scratch(), processStart: { alive.contains($0) ? 1 : nil })
         #expect(try held.admit([card("a")], locked: true, pid: 100) == .holding)
         #expect(try held.admit([card("b")], locked: true, pid: 101) == .held)
         #expect(try held.admit([card("c"), card("d")], locked: true, pid: 102) == .held)
@@ -145,11 +166,11 @@ final class HistoryTests {
     @Test func aDeadHoldersCardsAreTakenOver() throws {
         var alive: Set<Int32> = [100]
         let directory = try scratch()
-        let held = HeldCards(directory: directory, isAlive: { alive.contains($0) })
+        let held = HeldCards(directory: directory, processStart: { alive.contains($0) ? 1 : nil })
         #expect(try held.admit([card("a")], locked: true, pid: 100) == .holding)
         alive = [101]
         // Still locked: the next blip becomes the holder and keeps the dead one's cards.
-        let next = HeldCards(directory: directory, isAlive: { alive.contains($0) })
+        let next = HeldCards(directory: directory, processStart: { alive.contains($0) ? 1 : nil })
         #expect(try next.admit([card("b")], locked: true, pid: 101) == .holding)
         alive = []
         // Unlocked with no live holder: the next blip shows what was left behind before its own.
@@ -157,9 +178,30 @@ final class HistoryTests {
         #expect(try next.release().isEmpty)
     }
 
-    @Test func realProcessesAreCheckedForLife() {
-        #expect(HeldCards.processIsAlive(getpid()))
-        #expect(!HeldCards.processIsAlive(Int32.max))
+    @Test func aHolderIdReusedAfterARestartIsNotTheHolder() throws {
+        var starts: [Int32: UInt64] = [100: 1]
+        let directory = try scratch()
+        let held = HeldCards(directory: directory, processStart: { starts[$0] })
+        #expect(try held.admit([card("a")], locked: true, pid: 100) == .holding)
+        // After a restart, id 100 is some other process, perhaps one blip cannot signal.
+        starts = [100: 2, 101: 3]
+        #expect(try held.admit([card("b")], locked: true, pid: 101) == .holding)
+        #expect(try held.admit([card("c")], locked: true, pid: 102) == .held)
+        starts = [100: 2]
+        #expect(try held.admit([card("d")], locked: false, pid: 103) == .show(held: [card("a"), card("b"), card("c")]))
+    }
+
+    @Test func aHolderFileWithoutAStartTimeHasNoHolder() throws {
+        let directory = try scratch()
+        try "100\n".write(toFile: directory + "/held.pid", atomically: true, encoding: .utf8)
+        let held = HeldCards(directory: directory, processStart: { _ in 1 })
+        #expect(try held.admit([card("a")], locked: true, pid: 101) == .holding)
+    }
+
+    @Test func realProcessesHaveAStartTime() throws {
+        let start = try #require(HeldCards.processStartTime(getpid()))
+        #expect(HeldCards.processStartTime(getpid()) == start)
+        #expect(HeldCards.processStartTime(Int32.max) == nil)
     }
 
     // MARK: The summary shown on unlock

@@ -86,9 +86,9 @@ public struct CardHistory {
 
 /// What `blip history` prints and replays.
 public enum HistoryListing {
-    /// The newest `limit` entries, only the missed ones when `missed`, oldest first.
-    public static func select(_ entries: [HistoryEntry], missed: Bool, limit: Int) -> [HistoryEntry] {
-        Array(entries.filter { !missed || $0.missed }.suffix(limit))
+    /// The entries, only the missed ones when `missed`, oldest first.
+    public static func select(_ entries: [HistoryEntry], missed: Bool) -> [HistoryEntry] {
+        entries.filter { !missed || $0.missed }
     }
 
     /// `2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)`, in local time.
@@ -138,12 +138,14 @@ public struct HeldCards {
     }
 
     public var directory: String
-    /// Whether a process is still running; replaceable so tests can stand in for other blips.
-    public var isAlive: (Int32) -> Bool
+    /// When a process started, or nil when no process has the id; replaceable so tests can stand
+    /// in for other blips. A holder is alive while its id still names the process that started
+    /// then, so an id reused after a logout or restart is not mistaken for it.
+    public var processStart: (Int32) -> UInt64?
 
-    public init(directory: String, isAlive: @escaping (Int32) -> Bool = HeldCards.processIsAlive) {
+    public init(directory: String, processStart: @escaping (Int32) -> UInt64? = HeldCards.processStartTime) {
         self.directory = directory
-        self.isAlive = isAlive
+        self.processStart = processStart
     }
 
     /// Held cards in the state directory.
@@ -157,8 +159,13 @@ public struct HeldCards {
     /// Decides what the blip with process id `pid` does with `cards`, given whether the screen is locked.
     public func admit(_ cards: [Card], locked: Bool, pid: Int32) throws -> Admission {
         try StateFiles.locked(cardsPath) {
-            let holder = StateFiles.lines(atPath: holderPath).first.flatMap { Int32($0) }
-            let holderIsAlive = holder.map { $0 == pid || isAlive($0) } ?? false
+            let holder = (StateFiles.lines(atPath: holderPath).first ?? "").split(separator: " ")
+            let holderIsAlive: Bool
+            if holder.count == 2, let holderPID = Int32(holder[0]), let start = UInt64(holder[1]) {
+                holderIsAlive = holderPID == pid || processStart(holderPID) == start
+            } else {
+                holderIsAlive = false
+            }
             guard locked else {
                 return .show(held: holderIsAlive ? [] : try takeAll())
             }
@@ -168,7 +175,7 @@ public struct HeldCards {
             try StateFiles.write(
                 (StateFiles.lines(atPath: cardsPath) + added).map { $0 + "\n" }.joined(), toPath: cardsPath)
             if holderIsAlive { return .held }
-            try StateFiles.write("\(pid)\n", toPath: holderPath)
+            try StateFiles.write("\(pid) \(processStart(pid) ?? 0)\n", toPath: holderPath)
             return .holding
         }
     }
@@ -188,9 +195,24 @@ public struct HeldCards {
         return cards
     }
 
-    /// True unless no process has the id.
-    public static func processIsAlive(_ pid: Int32) -> Bool {
-        kill(pid, 0) == 0 || errno != ESRCH
+    /// When the process with the id started, in microseconds since 1970 on macOS and in clock
+    /// ticks since boot elsewhere; nil when no process has the id.
+    public static func processStartTime(_ pid: Int32) -> UInt64? {
+        #if canImport(Darwin)
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&name, UInt32(name.count), &info, &size, nil, 0) == 0, size > 0 else { return nil }
+        let start = info.kp_proc.p_un.__p_starttime
+        return UInt64(start.tv_sec) * 1_000_000 + UInt64(start.tv_usec)
+        #else
+        // Field 22 of /proc/<pid>/stat, counting the fields after the command name, which can hold spaces.
+        guard let stat = try? String(contentsOfFile: "/proc/\(pid)/stat", encoding: .utf8),
+              let end = stat.lastIndex(of: ")")
+        else { return nil }
+        let fields = stat[stat.index(after: end)...].split(separator: " ")
+        return fields.count > 19 ? UInt64(fields[19]) : nil
+        #endif
     }
 }
 

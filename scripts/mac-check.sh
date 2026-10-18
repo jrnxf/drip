@@ -55,4 +55,4 @@ echo "Playing blip demo"
 XDG_CONFIG_HOME="$config" .build/debug/blip demo
 
 echo "The last cards in the history"
-.build/debug/blip history -n 5
+.build/debug/blip history | tail -n 5
