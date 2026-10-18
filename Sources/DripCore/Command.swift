@@ -414,11 +414,39 @@ public enum CommandLineParser {
         _ type: Command.Type, _ arguments: [String], failure: Int32 = ExitStatus.usage
     ) -> Result<Command, ParseFailure> {
         do {
-            return .success(try type.parse(arguments))
+            return .success(try type.parse(attachingTextValues(arguments)))
         } catch {
             let status = type.exitCode(for: error) == .success ? 0 : failure
             return .failure(ParseFailure(status: status, message: type.fullMessage(for: error)))
         }
+    }
+}
+
+extension CommandLineParser {
+    /// The options whose values are free text, often a script's own output.
+    private static let textOptions = ["-d": "--detail", "--detail": "--detail", "--button": "--button", "--id": "--id"]
+
+    /// Joins each text option to the argument after it, as `--detail=<text>`, so text that starts
+    /// with a dash, such as `-d "$err"` when the error reads "--- FAIL: TestFoo", is the option's
+    /// value instead of an unknown option. Arguments after `--` are left alone.
+    static func attachingTextValues(_ arguments: [String]) -> [String] {
+        var result: [String] = []
+        var index = arguments.startIndex
+        while index < arguments.endIndex {
+            let argument = arguments[index]
+            if argument == "--" {
+                result += arguments[index...]
+                break
+            }
+            if let name = textOptions[argument], index + 1 < arguments.endIndex {
+                result.append("\(name)=\(arguments[index + 1])")
+                index += 2
+            } else {
+                result.append(argument)
+                index += 1
+            }
+        }
+        return result
     }
 }
 

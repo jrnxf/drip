@@ -21,6 +21,16 @@ struct CommandTests {
         #expect(try flags(["ok", "hi"]).detail == nil)
     }
 
+    @Test func textOptionsTakeValuesThatStartWithADash() throws {
+        // Command output often does: `drip fail "tests failed" -d "$err"`.
+        #expect(try flags(["fail", "hi", "-d", "--- FAIL: TestFoo"]).detail == "--- FAIL: TestFoo")
+        #expect(try flags(["fail", "hi", "--detail", "-1 files changed", "-s", "3"]).detail == "-1 files changed")
+        #expect(try flags(["fail", "hi", "-d", "--open=/Applications/Calculator.app"]).open == nil)
+        let card = try flags(["hi", "--open", "https://example.com", "--button", "-> View", "--id", "-deploy"])
+        #expect(card.button == "-> View")
+        #expect(card.id == "-deploy")
+    }
+
     @Test func seconds() throws {
         #expect(try flags(["hi", "-s", "8"]).seconds == 8)
         #expect(try flags(["hi", "--seconds", "0.5"]).seconds == 0.5)
@@ -95,6 +105,11 @@ struct CommandTests {
         let withOptions = try run(["-s", "3", "--detail", "x", "--quiet", "--", "ls", "--color", "-la"])
         #expect(withOptions.command == ["ls", "--color", "-la"])
         #expect(withOptions.options.flags == CardFlags(detail: "x", seconds: 3, quiet: true))
+
+        // The command's own arguments are never joined to a value.
+        let wrapped = try run(["-d", "--- x", "--", "grep", "-d", "skip", "--id", "y"])
+        #expect(wrapped.command == ["grep", "-d", "skip", "--id", "y"])
+        #expect(wrapped.options.flags.detail == "--- x")
     }
 
     @Test func runWithoutACommandIsAUsageError() {
