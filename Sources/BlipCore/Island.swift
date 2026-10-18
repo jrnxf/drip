@@ -50,7 +50,7 @@ public struct IslandMetrics: Equatable, Sendable {
     public var pillHeight: Double { 2 * 12 * scale + max(textHeight, pillIcon) }
     public var pillTop: Double { notchHeight + 12 * scale }
     /// The capsule's ends are round up to this radius. A capsule of one title line and one detail
-    /// line is round at the ends however tall its fonts are; one of more lines keeps corners of 30
+    /// line is round at the ends however tall its fonts are; one with more lines keeps corners of 30
     /// points instead of swelling into a blob.
     public var pillCornerRadius: Double { titleLines > 1 || detailLines > 1 ? 30 * scale : .infinity }
     /// The widest a line of text may be: 500 points at regular size, less when a button is too wide
