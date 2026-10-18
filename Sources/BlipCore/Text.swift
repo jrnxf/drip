@@ -148,10 +148,12 @@ public enum CardText {
         [title, detail].compactMap { $0 }.joined(separator: ", ")
     }
 
-    /// Normalizes and truncates a card's line; nil when nothing is left.
-    public static func line(_ text: String?, limit: Int) -> String? {
+    /// Normalizes a card's line, cut to `limit` characters when one is given; nil when nothing is
+    /// left. The title and the detail have no limit: the card wraps them to its lines.
+    public static func line(_ text: String?, limit: Int? = nil) -> String? {
         guard let text else { return nil }
-        let line = truncate(normalize(text), limit: limit)
+        let normalized = normalize(text)
+        let line = limit.map { truncate(normalized, limit: $0) } ?? normalized
         return line.isEmpty ? nil : line
     }
 

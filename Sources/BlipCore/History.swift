@@ -226,7 +226,7 @@ public enum MissedSummary {
         guard held.count >= threshold, var card = mostSevere(held) else { return held }
         card.title = "\(held.count) cards while you were away"
         // Newest first: what happened last is likely what matters now.
-        card.detail = CardText.line(held.reversed().map(\.title).joined(separator: " · "), limit: Defaults.detailLimit)
+        card.detail = CardText.line(held.reversed().map(\.title).joined(separator: " · "))
         card.seconds = held.map(\.seconds).max() ?? card.seconds
         card.action = nil
         card.id = nil

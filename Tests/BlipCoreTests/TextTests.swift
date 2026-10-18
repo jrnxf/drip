@@ -218,19 +218,22 @@ struct TextTests {
         #expect(Defaults.detailLines == 3)
     }
 
-    @Test func titleAndDetailLimits() {
-        #expect(Defaults.titleLimit == 80)
-        #expect(Defaults.detailLimit == 120)
-        let title = CardText.line(String(repeating: "🎉", count: 81), limit: Defaults.titleLimit)
-        #expect(title?.count == 80)
-        #expect(title?.last == "…")
-        #expect(CardText.line(String(repeating: "x", count: 80), limit: 80)?.count == 80)
+    @Test func lineKeepsLongTextWhole() {
+        let long = String(repeating: "word ", count: 200)
+        #expect(CardText.line(long) == String(long.dropLast()))
+    }
+
+    @Test func lineCutsToAGivenLimit() {
+        let label = CardText.line(String(repeating: "🎉", count: 25), limit: Defaults.buttonLimit)
+        #expect(label?.count == 24)
+        #expect(label?.last == "…")
+        #expect(CardText.line(String(repeating: "x", count: 24), limit: 24)?.count == 24)
     }
 
     @Test func lineIsNilWhenEmpty() {
-        #expect(CardText.line(nil, limit: 80) == nil)
-        #expect(CardText.line(" \n", limit: 80) == nil)
-        #expect(CardText.line(" a  b ", limit: 80) == "a b")
+        #expect(CardText.line(nil) == nil)
+        #expect(CardText.line(" \n") == nil)
+        #expect(CardText.line(" a  b ") == "a b")
     }
 
     @Test func splitStandardInput() {

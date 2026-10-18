@@ -12,7 +12,7 @@ public enum RunSummary {
     public static func title(command: [String], status: Int32) -> String {
         let suffix = status == 0 ? " finished" : " failed (exit \(status))"
         let commandLine = CardText.normalize(command.joined(separator: " "))
-        return CardText.truncate(commandLine, limit: Defaults.titleLimit - suffix.count) + suffix
+        return CardText.truncate(commandLine, limit: Defaults.runTitleLimit - suffix.count) + suffix
     }
 
     /// A wall time such as `3.1s`, `42s`, `3m 12s` or `1h 4m 0s`.

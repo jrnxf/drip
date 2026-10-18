@@ -47,7 +47,7 @@ public struct CardResolver {
             title = lines.title
             if detail == nil { detail = lines.detail }
         }
-        guard let title = CardText.line(title, limit: Defaults.titleLimit) else {
+        guard let title = CardText.line(title) else {
             throw UsageError("missing TITLE: pass it as an argument or on stdin")
         }
         return card(preset: preset, title: title, detail: detail, flags: flags)
@@ -68,7 +68,7 @@ public struct CardResolver {
         var card = Card(
             kind: preset.name,
             title: title,
-            detail: CardText.line(detail, limit: Defaults.detailLimit),
+            detail: CardText.line(detail),
             icon: flags.icon ?? preset.icon,
             fallbackIcon: preset.icon,
             color: flags.color ?? preset.color,

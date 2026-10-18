@@ -264,14 +264,13 @@ final class HistoryTests {
         #expect(mixed.activate == nil)
     }
 
-    @Test func aLongSummaryIsCut() throws {
+    @Test func aLongSummaryKeepsEveryTitle() throws {
         let cards = (1...20).map { card("a fairly long card title number \($0)") }
         let summary = try #require(MissedSummary.cards(for: cards).first)
         #expect(summary.title == "20 cards while you were away")
         let detail = try #require(summary.detail)
-        #expect(detail.count == Defaults.detailLimit)
         #expect(detail.hasPrefix("a fairly long card title number 20 · "))
-        #expect(detail.hasSuffix("…"))
+        #expect(detail.hasSuffix(" · a fairly long card title number 1"))
     }
 
     private func card(_ title: String, kind: String = "info") -> Card {

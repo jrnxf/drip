@@ -103,16 +103,14 @@ struct ResolveTests {
         #expect(throws: UsageError.self) { try resolver.resolve(kind: "ok", title: nil, flags: CardFlags()) { nil } }
     }
 
-    @Test func titleAndDetailAreNormalizedAndTruncated() throws {
+    @Test func titleAndDetailAreNormalizedAndKeptWhole() throws {
         let card = try resolver.resolve(
             kind: "ok", title: "  build\t\tfinished\n", flags: CardFlags(detail: String(repeating: "d", count: 300)))
         #expect(card.title == "build finished")
-        #expect(card.detail?.count == 120)
-        #expect(card.detail?.last == "…")
+        #expect(card.detail == String(repeating: "d", count: 300))
 
         let long = try resolver.resolve(kind: "ok", title: String(repeating: "t", count: 300), flags: CardFlags())
-        #expect(long.title.count == 80)
-        #expect(long.title == String(repeating: "t", count: 79) + "…")
+        #expect(long.title == String(repeating: "t", count: 300))
     }
 
     @Test func blankDetailIsDropped() throws {

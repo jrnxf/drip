@@ -149,8 +149,9 @@ public enum Defaults {
     /// The style when nothing sets one and the display has no better default.
     public static let style = CardStyle.hud
     public static let motion = Motion.full
-    public static let titleLimit = 80
-    public static let detailLimit = 120
+    /// The longest `blip run` title, in characters: only the command is cut, so the outcome after
+    /// it always shows inside the title's lines.
+    public static let runTitleLimit = 80
     /// The most lines the title and the detail wrap to; the last one ends in an ellipsis when the
     /// text runs on.
     public static let titleLines = 2
