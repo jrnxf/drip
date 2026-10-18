@@ -114,10 +114,12 @@ final class HoverView: NSView {
     /// Gets its own clicks; everything else on the card is this view's.
     weak var button: NSView?
 
-    override init(frame: NSRect) {
+    /// `pointerInside` is for a pointer already on the card, so its leaving still sends `onExit`.
+    init(frame: NSRect, pointerInside: Bool = false) {
         super.init(frame: frame)
-        addTrackingArea(NSTrackingArea(
-            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        var options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+        if pointerInside { options.insert(.assumeInside) }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: options, owner: self))
     }
 
     @available(*, unavailable)
@@ -341,10 +343,11 @@ final class CardPresenter: CardPresenting {
         panel.setFrame(frame, display: true)
         panel.ignoresMouseEvents = !card.isClickable
         panel.invalidateShadow()
-        handleClicks(on: built)
+        let held = card.isClickable && NSMouseInRect(NSEvent.mouseLocation, frame, false)
+        handleClicks(on: built, pointerInside: held)
         sound = CardSound(card.sound, console: console)
         sound?.play()
-        if card.isClickable, NSMouseInRect(NSEvent.mouseLocation, frame, false) {
+        if held {
             departure?.cancel()
         } else {
             schedule(after: card.seconds)
@@ -353,7 +356,7 @@ final class CardPresenter: CardPresenting {
 
     /// For a clickable card: hovering anywhere on it holds it, a click on the button runs the
     /// action, and a click anywhere else brings the sending app forward and dismisses the card.
-    private func handleClicks(on built: CardContent) {
+    private func handleClicks(on built: CardContent, pointerInside: Bool = false) {
         guard card.isClickable else { return }
         if let action = card.action {
             built.button?.onClick = { [self] in
@@ -361,7 +364,7 @@ final class CardPresenter: CardPresenting {
                 leave(clicked: true)
             }
         }
-        let hover = HoverView(frame: NSRect(origin: .zero, size: frame.size))
+        let hover = HoverView(frame: NSRect(origin: .zero, size: frame.size), pointerInside: pointerInside)
         hover.onEnter = { [self] in departure?.cancel() }
         hover.onExit = { [self] in schedule(after: 1.5) }
         hover.onClick = { [self] in

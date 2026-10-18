@@ -369,7 +369,8 @@ final class IslandView: NSView {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(
-            rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+            rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect, .assumeInside],
+            owner: self))
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
