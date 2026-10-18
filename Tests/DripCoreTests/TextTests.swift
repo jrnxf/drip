@@ -31,6 +31,13 @@ struct TextTests {
         #expect(CardText.normalize(unfinished) == String(repeating: "]x[", count: 200_000))
     }
 
+    @Test func printableWritesOutControlCharacters() {
+        #expect(CardText.printable("unknown claude hook event '\u{1B}]0;pwned\u{07}'")
+            == "unknown claude hook event '\\u{1B}]0;pwned\\u{7}'")
+        #expect(CardText.printable("usage:\n\tdrip \u{202E}x") == "usage:\n\tdrip \\u{202E}x")
+        #expect(CardText.printable("plain ✓ שלום") == "plain ✓ שלום")
+    }
+
     @Test func normalizeDropsBidiControls() {
         // A folder named "\u{202E}gnipmud" would read "dumping" and reverse what follows it.
         #expect(CardText.normalize("api\u{202E} needs you") == "api needs you")

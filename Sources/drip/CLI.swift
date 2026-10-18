@@ -37,7 +37,7 @@ struct Console {
     }
 
     func error(_ message: String) {
-        FileHandle.standardError.write(Data("drip: \(message)\n".utf8))
+        FileHandle.standardError.write(Data("drip: \(CardText.printable(message))\n".utf8))
     }
 }
 
@@ -51,7 +51,7 @@ struct DripCLI {
             if status == 0 {
                 print(message)
             } else {
-                FileHandle.standardError.write(Data((message + "\n").utf8))
+                FileHandle.standardError.write(Data((CardText.printable(message) + "\n").utf8))
             }
             return status
         case let .invocation(.show(command)):

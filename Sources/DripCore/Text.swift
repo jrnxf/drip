@@ -81,6 +81,23 @@ public enum CardText {
         return String(kept)
     }
 
+    /// `text` for a terminal: control characters other than line breaks and tabs, and the bidi
+    /// controls, written out as `\u{1B}`, so a message quoting a payload cannot drive the terminal
+    /// or reorder the line.
+    public static func printable(_ text: String) -> String {
+        var result = ""
+        for scalar in text.unicodeScalars {
+            let isControl = scalar.properties.generalCategory == .control && scalar != "\n" && scalar != "\t"
+            let isBidi = (0x202A...0x202E).contains(scalar.value) || (0x2066...0x2069).contains(scalar.value)
+            if isControl || isBidi {
+                result += "\\u{" + String(scalar.value, radix: 16, uppercase: true) + "}"
+            } else {
+                result.unicodeScalars.append(scalar)
+            }
+        }
+        return result
+    }
+
     /// Cuts `text` to at most `limit` user-perceived characters, ending in a single ellipsis when
     /// it was cut. Emoji, flags and combining sequences are never split.
     public static func truncate(_ text: String, limit: Int) -> String {
