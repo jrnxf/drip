@@ -510,6 +510,7 @@ final class IslandPresenter: CardPresenting {
             departure = fadingDeparture(motion)
         }
         schedule(after: card.seconds)
+        pointer(at: view.convert(panel.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil))
     }
 
     /// The panel's frame for the island's layers: centered on the notch, hanging from the top.

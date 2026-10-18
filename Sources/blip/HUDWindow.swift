@@ -344,7 +344,11 @@ final class CardPresenter: CardPresenting {
         handleClicks(on: built)
         sound = CardSound(card.sound, console: console)
         sound?.play()
-        schedule(after: card.seconds)
+        if card.isClickable, NSMouseInRect(NSEvent.mouseLocation, frame, false) {
+            departure?.cancel()
+        } else {
+            schedule(after: card.seconds)
+        }
     }
 
     /// For a clickable card: hovering anywhere on it holds it, a click on the button runs the

@@ -269,10 +269,12 @@ public struct HookCommand: ParsableCommand {
         usage: "blip hook claude|codex [options] [payload]",
         discussion: """
             Reads the hook's JSON from the payload argument, which Codex's notify appends, or from \
-            stdin, which Claude Code and Codex hooks use. The title is the project (the payload's \
-            working directory) and whether the agent needs you or is done; the detail is the \
-            agent's message. Each session's card replaces its previous one, unless --id says \
-            otherwise. Exits 1 instead of 2 on an error, because a hook exiting 2 blocks the agent.
+            stdin, which Claude Code hooks use. Claude's Notification and Stop events and Codex's \
+            agent-turn-complete make a card; any other payload is an error. The title is the \
+            project (the payload's working directory) and whether the agent needs you or is done; \
+            the detail is the agent's message. Each session's card replaces its previous one, \
+            unless --id says otherwise. Exits 1 instead of 2 on an error, because a hook exiting 2 \
+            blocks the agent.
             """
     )
 

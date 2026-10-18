@@ -5,8 +5,8 @@ import Foundation
 ///
 /// Claude Code hooks write JSON to stdin with snake_case keys (`hook_event_name`, `session_id`,
 /// `cwd`, `message`, `notification_type`, `last_assistant_message`). Codex's `notify` appends JSON
-/// with kebab-case keys (`type`, `thread-id`, `cwd`, `last-assistant-message`). Both spellings are
-/// read for either agent, so Codex hooks that use Claude's shape work too.
+/// with kebab-case keys (`type`, `thread-id`, `cwd`, `last-assistant-message`). Each agent is read
+/// only in its own shape.
 public enum AgentHook {
     public enum Agent: String, CaseIterable, Sendable, ExpressibleByArgument {
         case claude, codex
@@ -42,7 +42,8 @@ public enum AgentHook {
         }
     }
 
-    /// Reads a payload. Throws a `UsageError` when it is not a JSON object.
+    /// Reads a payload. Throws a `UsageError` when it is not a JSON object or not an event this agent
+    /// sends: a Claude `Notification` or `Stop`, or a Codex `agent-turn-complete`.
     public static func event(agent: Agent, payload: String) throws -> Event {
         guard let data = payload.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
@@ -50,44 +51,47 @@ public enum AgentHook {
         else {
             throw UsageError("the \(agent.rawValue) hook payload is not a JSON object")
         }
-        func string(_ keys: String...) -> String? {
-            for key in keys {
-                if let value = fields[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    return value
+        func string(_ key: String) -> String? {
+            guard let value = fields[key] as? String,
+                  !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return nil }
+            return value
+        }
+        func project() -> String {
+            string("cwd").flatMap(projectName) ?? agent.displayName
+        }
+
+        switch agent {
+        case .claude:
+            let id = string("session_id").map { "claude:\($0)" }
+            switch string("hook_event_name") {
+            case "Notification":
+                let kind: String
+                switch string("notification_type") {
+                case "permission_prompt", "elicitation_dialog": kind = Preset.warn.name
+                default: kind = Preset.info.name
                 }
+                return Event(kind: kind, title: "\(project()) needs you", detail: string("message"), id: id)
+            case "Stop":
+                return Event(
+                    kind: Preset.ok.name, title: "\(project()) is done",
+                    detail: string("last_assistant_message"), id: id)
+            case let name:
+                let found = name.map { "'\($0)'" } ?? "with no hook_event_name"
+                throw UsageError("unknown claude hook event \(found): expected Notification or Stop")
             }
-            return nil
+        case .codex:
+            let id = string("thread-id").map { "codex:\($0)" }
+            switch string("type") {
+            case "agent-turn-complete":
+                return Event(
+                    kind: Preset.ok.name, title: "\(project()) is done",
+                    detail: string("last-assistant-message"), id: id)
+            case let type:
+                let found = type.map { "'\($0)'" } ?? "with no type"
+                throw UsageError("unknown codex notify payload \(found): expected type agent-turn-complete")
+            }
         }
-
-        let event = string("hook_event_name", "type")
-        let message = string("message")
-        let lastMessage = string("last_assistant_message", "last-assistant-message")
-        let project = string("cwd").flatMap(projectName) ?? agent.displayName
-        let session = string("session_id", "thread-id", "thread_id")
-        let id = session.map { "\(agent.rawValue):\($0)" }
-
-        let done: Bool
-        switch event {
-        case "Stop", "SubagentStop", "agent-turn-complete":
-            done = true
-        case nil:
-            done = message == nil && lastMessage != nil
-        default:
-            done = false
-        }
-        if done {
-            return Event(kind: Preset.ok.name, title: "\(project) is done", detail: lastMessage ?? message, id: id)
-        }
-
-        let kind: String
-        switch (event, string("notification_type")) {
-        case ("PermissionRequest", _), (_, "permission_prompt"), (_, "elicitation_dialog"):
-            kind = Preset.warn.name
-        default:
-            kind = Preset.info.name
-        }
-        let tool = string("tool_name").map { "wants to use \($0)" }
-        return Event(kind: kind, title: "\(project) needs you", detail: message ?? tool, id: id)
     }
 
     /// The last component of a working directory, or nil for the root.

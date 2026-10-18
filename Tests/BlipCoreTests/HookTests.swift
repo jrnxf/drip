@@ -33,13 +33,6 @@ struct HookTests {
             kind: "ok", title: "api is done", detail: "Fixed the flaky test.\n\nAll 42 tests pass.", id: "claude:s1"))
     }
 
-    @Test func claudePermissionRequestNamesTheTool() throws {
-        let event = try AgentHook.event(agent: .claude, payload: """
-            {"hook_event_name":"PermissionRequest","cwd":"/w/app","tool_name":"Bash","session_id":"s"}
-            """)
-        #expect(event == AgentHook.Event(kind: "warn", title: "app needs you", detail: "wants to use Bash", id: "claude:s"))
-    }
-
     @Test func codexNotifyIsDone() throws {
         let event = try AgentHook.event(agent: .codex, payload: """
             {"type":"agent-turn-complete","thread-id":"t-9","turn-id":"1","cwd":"/src/web",
@@ -48,25 +41,9 @@ struct HookTests {
         #expect(event == AgentHook.Event(kind: "ok", title: "web is done", detail: "Done: renamed the route.", id: "codex:t-9"))
     }
 
-    @Test func codexHooksInClaudesShapeWork() throws {
-        let event = try AgentHook.event(agent: .codex, payload: """
-            {"hook_event_name":"Stop","session_id":"x","cwd":"/a/b","last_assistant_message":"ok"}
-            """)
-        #expect(event == AgentHook.Event(kind: "ok", title: "b is done", detail: "ok", id: "codex:x"))
-    }
-
-    @Test func withoutAnEventNameTheMessagesDecide() throws {
-        let done = try AgentHook.event(agent: .claude, payload: #"{"last_assistant_message":"bye"}"#)
-        #expect(done.kind == "ok")
-        #expect(done.title == "Claude is done")
-        let waiting = try AgentHook.event(agent: .claude, payload: #"{"message":"hello"}"#)
-        #expect(waiting.kind == "info")
-        #expect(waiting.title == "Claude needs you")
-    }
-
     @Test func theTitleFallsBackToTheAgent() throws {
-        for payload in [#"{"hook_event_name":"Stop"}"#, #"{"hook_event_name":"Stop","cwd":"/"}"#,
-                        #"{"hook_event_name":"Stop","cwd":"  "}"#] {
+        for payload in [#"{"type":"agent-turn-complete"}"#, #"{"type":"agent-turn-complete","cwd":"/"}"#,
+                        #"{"type":"agent-turn-complete","cwd":"  "}"#] {
             #expect(try AgentHook.event(agent: .codex, payload: payload).title == "Codex is done", "\(payload)")
         }
         let trailing = try AgentHook.event(agent: .claude, payload: #"{"hook_event_name":"Stop","cwd":"/a/repo/"}"#)
@@ -80,9 +57,35 @@ struct HookTests {
 
     @Test func emptyMessagesAreIgnored() throws {
         let event = try AgentHook.event(agent: .claude, payload: """
-            {"hook_event_name":"Notification","message":"  ","tool_name":"Edit"}
+            {"hook_event_name":"Notification","message":"  "}
             """)
-        #expect(event.detail == "wants to use Edit")
+        #expect(event.detail == nil)
+    }
+
+    @Test func eachAgentIsReadOnlyInItsOwnShape() throws {
+        let claude = try AgentHook.event(agent: .claude, payload: """
+            {"hook_event_name":"Stop","thread-id":"t","last-assistant-message":"bye"}
+            """)
+        #expect(claude == AgentHook.Event(kind: "ok", title: "Claude is done"))
+        let codex = try AgentHook.event(agent: .codex, payload: """
+            {"type":"agent-turn-complete","session_id":"s","last_assistant_message":"bye"}
+            """)
+        #expect(codex == AgentHook.Event(kind: "ok", title: "Codex is done"))
+    }
+
+    @Test func anUnknownEventIsAnError() {
+        let claude = [
+            #"{}"#, #"{"last_assistant_message":"bye"}"#, #"{"message":"hello"}"#,
+            #"{"hook_event_name":"PermissionRequest","tool_name":"Bash"}"#,
+            #"{"hook_event_name":"SubagentStop"}"#, #"{"type":"agent-turn-complete"}"#,
+        ]
+        for payload in claude {
+            #expect(throws: UsageError.self, "\(payload)") { try AgentHook.event(agent: .claude, payload: payload) }
+        }
+        let codex = [#"{}"#, #"{"type":"approval-requested"}"#, #"{"hook_event_name":"Stop"}"#]
+        for payload in codex {
+            #expect(throws: UsageError.self, "\(payload)") { try AgentHook.event(agent: .codex, payload: payload) }
+        }
     }
 
     @Test func aPayloadThatIsNotAnObjectIsAnError() {

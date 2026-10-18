@@ -157,8 +157,9 @@ the agent said: the notification's message, or the last thing it wrote before it
 permission prompt or a question is `warn`, an idle prompt `info`, and a finished turn `ok`. Each
 session's card has the id `<agent>:<session>`, so a session's new card replaces its last one
 instead of queuing behind it, and a click on the card brings back the terminal the agent runs in.
-Card options such as `--position` or `--seconds` work as usual. On a mistake, `blip hook` exits 1,
-never 2, which tells Claude Code to block the agent.
+blip reads Claude Code's `Notification` and `Stop` events and Codex's `agent-turn-complete`; any
+other payload prints an error. Card options such as `--position` or `--seconds` work as usual. On a
+mistake, `blip hook` exits 1, never 2, which tells Claude Code to block the agent.
 
 **Claude Code**, in `~/.claude/settings.json`:
 
@@ -211,7 +212,7 @@ draining over `--seconds`, and one of three motions:
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown. |
-| 1 | `blip hook` could not make a card: a usage error or an unreadable payload. |
+| 1 | `blip hook` could not make a card: a usage error, or a payload it cannot read or does not know. |
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh. |
 | 4 | The config file is invalid; the message names the key and line. |
