@@ -124,14 +124,11 @@ public struct IslandContentLayout: Equatable, Sendable {
 
 /// When each part of the content fades, in seconds after the shape starts moving.
 public struct IslandCues: Equatable, Sendable {
-    public var icon: Double
-    public var ring: Double
+    /// The icon and the countdown ring, or the button, at the capsule's two ends.
+    public var sides: Double
     /// One cue for each line of the title, and of the detail.
     public var title: [Double]
     public var detail: [Double]
-    /// How long the icon takes to fade out on the exit; the other parts take `fadeOut`.
-    public var iconFadeOut = IslandCues.fadeOut
-
     /// How long a part takes to fade out on the exit.
     public static let fadeOut = 0.12
     /// On the entrance, each wrapped line fades in this long after the line above it.
@@ -191,7 +188,7 @@ public struct IslandAnimator: Sendable {
         let roomy = Self.firstTime(after: detached) { grow.progress(at: $0 - detached) >= 0.8 } - time
         let step = IslandCues.lineStagger
         return IslandCues(
-            icon: detached - time, ring: roomy, title: IslandCues.lines(m.titleLines, from: roomy, step: step),
+            sides: roomy, title: IslandCues.lines(m.titleLines, from: roomy, step: step),
             detail: IslandCues.lines(
                 m.detailLines, from: roomy + 0.04 + Double(max(m.titleLines - 1, 0)) * step, step: step))
     }
@@ -216,16 +213,9 @@ public struct IslandAnimator: Sendable {
         // Aimed past its resting place, so it is swallowed at speed instead of easing in, and the
         // notch's bulge goes flat as quickly as liquid would.
         dropCenter.animate(to: m.dropTop + m.dropSize / 2 - m.dropSize, with: Spring(duration: 0.4), at: rise)
-        // The icon stays until the round drop starts to rise and is gone before it melts into the
-        // notch, which happens when the gap closes to a third of the blend. That moment is found to
-        // the millisecond, so the fade ends the millisecond before.
-        let merged = Self.firstTime(after: rise) { t in
-            let shape = self.shape(at: t)
-            return shape.pillTop < m.notchHeight + shape.blend / 3
-        }
         return IslandCues(
-            icon: rise - time, ring: 0, title: IslandCues.lines(m.titleLines, from: 0, step: 0),
-            detail: IslandCues.lines(m.detailLines, from: 0, step: 0), iconFadeOut: max(merged - 0.001 - rise, 0.01))
+            sides: 0, title: IslandCues.lines(m.titleLines, from: 0, step: 0),
+            detail: IslandCues.lines(m.detailLines, from: 0, step: 0))
     }
 
     /// Jumps straight to fully open, for reduced motion and offscreen rendering.
@@ -267,15 +257,11 @@ public struct IslandAnimator: Sendable {
 
     public func content(for shape: IslandShape) -> IslandContentLayout {
         let m = metrics
-        let p = shape.progress
-        func lerp(_ a: Double, _ b: Double) -> Double { a + (b - a) * p }
-        // The ring and text sit where the open capsule puts them and the growing capsule reveals them;
-        // only the icon travels, from the middle of the drop to its place.
+        // Everything sits where the open capsule puts it, and the growing capsule reveals it.
         let left = -m.pillWidth / 2, right = m.pillWidth / 2
         let centerY = shape.pillTop + shape.pillHeight / 2
         return IslandContentLayout(
-            iconCenter: IslandPoint(lerp(0, left + m.pillPadding + m.pillIcon / 2), centerY),
-            iconSize: lerp(16 * m.scale, m.pillIcon),
+            iconCenter: IslandPoint(left + m.pillPadding + m.pillIcon / 2, centerY), iconSize: m.pillIcon,
             ringCenter: IslandPoint(right - m.pillPadding - m.pillRing / 2, centerY), ringSize: m.pillRing,
             textX: left + m.pillTextX, textCenterY: centerY)
     }

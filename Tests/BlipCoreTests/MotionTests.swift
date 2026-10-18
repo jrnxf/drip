@@ -158,37 +158,20 @@ struct IslandTests {
         }
     }
 
-    @Test func theIconLeavesOnlyOnceTheRoundDropRisesAndIsGoneBeforeItMerges() throws {
-        let wide = IslandMetrics(notchWidth: 200, notchHeight: 37, scale: 1.2, textWidth: 520, textHeight: 34)
-        for metrics in [self.metrics, wide, tall] {
-            var animator = IslandAnimator(metrics: metrics)
-            animator.open()
-            let open = animator.shape(at: 0)
-            let cues = animator.exit(at: 0)
-            func icon(at time: Double) -> Double {
-                IslandCues.opacity(leaving: cues.icon, over: cues.iconFadeOut, at: time)
-            }
-            let times = Array(stride(from: 0.0, to: animator.end, by: 0.002))
-            for time in times {
-                let shape = animator.shape(at: time)
-                let center = shape.pillTop + shape.pillHeight / 2
-                let openCenter = open.pillTop + open.pillHeight / 2
-                if center >= openCenter - 1e-6 {
-                    // Still gathering where the capsule was: the icon shows in full.
-                    #expect(icon(at: time) >= 0.999, "\(metrics.textWidth) at \(time)")
-                }
-                if icon(at: time) < 0.999 {
-                    // Fading: the drop is round and on its way up.
-                    #expect(shape.pillWidth <= metrics.dropSize + 2 * metrics.scale, "\(metrics.textWidth) at \(time)")
-                    #expect(center < openCenter, "\(metrics.textWidth) at \(time)")
-                }
-                if center < openCenter, loopsBelowNotch(shape, metrics: metrics) == 1 {
-                    #expect(icon(at: time) == 0, "\(metrics.textWidth) at \(time): merged with the icon showing")
-                }
-            }
-            // It does fade, and only after the capsule has gathered into a drop.
-            let fading = try #require(times.first { icon(at: $0) < 1 })
-            #expect(fading > 0.2, "\(metrics.textWidth)")
+    /// The icon, the ring and the text never move or resize within the capsule: the growing capsule
+    /// reveals them where the open one puts them.
+    @Test func contentSitsStillAsTheCapsuleGrows() {
+        var animator = IslandAnimator(metrics: metrics)
+        _ = animator.enter(at: 0)
+        var open = IslandAnimator(metrics: metrics)
+        open.open()
+        let final = open.content(for: open.shape(at: 0))
+        for time in stride(from: 0.0, to: animator.end, by: 0.01) {
+            let content = animator.content(for: animator.shape(at: time))
+            #expect(content.iconCenter.x == final.iconCenter.x, "\(time)")
+            #expect(content.iconSize == final.iconSize, "\(time)")
+            #expect(content.ringCenter.x == final.ringCenter.x, "\(time)")
+            #expect(content.textX == final.textX, "\(time)")
         }
     }
 
@@ -266,16 +249,15 @@ struct IslandTests {
         let single = one.enter(at: 0)
         #expect(single.title.count == 1)
         #expect(single.detail.count == 1)
-        #expect(single.ring == single.title[0])
+        #expect(single.sides == single.title[0])
         #expect(abs(single.detail[0] - single.title[0] - 0.04) < 1e-9)
-        #expect(single.icon < single.title[0])
 
         var five = IslandAnimator(metrics: tall)
         let cues = five.enter(at: 0)
         #expect(cues.title.count == 2)
         #expect(cues.detail.count == 3)
-        // The first line comes once the capsule has made room, with the ring.
-        #expect(cues.title[0] == cues.ring)
+        // The first line comes once the capsule has made room, with the icon and the ring.
+        #expect(cues.title[0] == cues.sides)
         let order = cues.title + cues.detail
         #expect(zip(order, order.dropFirst()).allSatisfy { $0 < $1 })
         #expect(abs(cues.title[1] - cues.title[0] - IslandCues.lineStagger) < 1e-9)

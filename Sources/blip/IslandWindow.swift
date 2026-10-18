@@ -296,8 +296,8 @@ final class IslandLayers {
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        icon.opacity = metrics.hasIcon ? faded(cues.icon, over: cues.iconFadeOut) : 0
-        ring.opacity = faded(cues.ring)
+        icon.opacity = metrics.hasIcon ? faded(cues.sides) : 0
+        ring.opacity = faded(cues.sides)
         for (layer, cue) in zip(textLines, cues.title + cues.detail) { layer.opacity = faded(cue) }
         CATransaction.commit()
     }
@@ -310,8 +310,8 @@ final class IslandLayers {
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        icon.opacity = metrics.hasIcon ? faded(cues.icon, 0.18) : 0
-        ring.opacity = faded(cues.ring, 0.18)
+        icon.opacity = metrics.hasIcon ? faded(cues.sides, 0.18) : 0
+        ring.opacity = faded(cues.sides, 0.18)
         for (layer, cue) in zip(textLines, cues.title + cues.detail) { layer.opacity = faded(cue, 0.25) }
         CATransaction.commit()
     }
@@ -477,7 +477,7 @@ final class IslandPresenter: CardPresenting {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [self] in sound?.play() }
         fade(enterCues, into: true, layers: layers)
         // The countdown starts once the title's first line has faded in, however many lines follow.
-        let visible = (enterCues.title.first ?? enterCues.ring) + 0.25
+        let visible = (enterCues.title.first ?? enterCues.sides) + 0.25
         drain(after: visible, layers: layers)
         departure = springingDeparture(animator, started: started, layers: layers)
         openAt = started + visible
@@ -676,10 +676,10 @@ final class IslandPresenter: CardPresenting {
     }
 
     /// Fades the content in or out at the cues: 180 ms in with a 4-point rise for each line of text,
-    /// 120 ms out unless the cues time the icon's exit fade.
+    /// 120 ms out.
     private func fade(_ cues: IslandCues, into visible: Bool, layers: IslandLayers) {
         var parts: [(CALayer, Double?, Bool)] = [
-            (layers.icon, layers.metrics.hasIcon ? cues.icon : nil, false), (layers.ring, cues.ring, false),
+            (layers.icon, layers.metrics.hasIcon ? cues.sides : nil, false), (layers.ring, cues.sides, false),
         ]
         parts += zip(layers.textLines, cues.title + cues.detail).map { line, cue -> (CALayer, Double?, Bool) in
             (line, cue, true)
@@ -687,8 +687,7 @@ final class IslandPresenter: CardPresenting {
         let now = CACurrentMediaTime()
         for (layer, cue, isText) in parts {
             guard let cue else { continue }
-            let fadeOut = layer === layers.icon ? cues.iconFadeOut : IslandCues.fadeOut
-            let duration = visible ? (isText ? 0.25 : 0.18) : fadeOut
+            let duration = visible ? (isText ? 0.25 : 0.18) : IslandCues.fadeOut
             let opacity = CABasicAnimation(keyPath: "opacity")
             opacity.fromValue = visible ? 0 : 1
             opacity.toValue = visible ? 1 : 0
