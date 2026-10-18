@@ -208,7 +208,7 @@ struct DripCLI {
         }
         do {
             for entry in entries {
-                print(command.json ? try HistoryListing.json(entry) : HistoryListing.line(entry))
+                print(command.json ? try HistoryListing.publicJSON(entry) : HistoryListing.line(entry))
             }
         } catch {
             return report(error, console)

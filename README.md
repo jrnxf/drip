@@ -142,11 +142,19 @@ the last 1000 cards. `drip demo` cards are not kept.
 ```sh
 drip history                  # every kept card, oldest first
 drip history --missed         # only those that came up while the screen was locked
-drip history --json           # as stored: {"time", "missed", "card": {"kind", "title", "detail", ...}}
+drip history --json           # one JSON object per line, for scripts
 drip history --missed --replay   # show the missed cards again
 ```
 
-A listed line reads `2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)`. `--replay`
+A listed line reads `2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)`. A `--json` line
+writes each setting the way its flag takes it, and leaves out `detail`, `button`, `open`, `id` and
+`activate` when the card had none:
+
+```json
+{"card":{"button":"View run","color":"red","detail":"api 1.4.2","icon":"xmark.circle.fill","id":"deploy","kind":"fail","motion":"full","open":"https://example.com/run/1","position":"notch","seconds":8,"size":"regular","sound":"Basso","style":"glass","title":"deploy failed"},"missed":true,"time":"2026-10-18T13:02:41Z"}
+```
+
+`--replay`
 shows the cards again, in order, with any button that opens something; a question's button is
 dropped, since nothing waits for its answer anymore. Replayed cards are held while the screen is
 locked like any other, and are not added to the history again.
