@@ -110,9 +110,6 @@ public struct CardOptions: ParsableArguments {
         if let seconds, !Defaults.secondsRange.contains(seconds) {
             throw ValidationError("--seconds must be between 0.5 and 60.")
         }
-        if let open, open.trimmingCharacters(in: .whitespaces).isEmpty {
-            throw ValidationError("--open needs a URL or a path.")
-        }
         if let open, let separator = open.range(of: "://") {
             // A URL needs a scheme such as https before its "://"; a path never contains one.
             let scheme = open[..<separator.lowerBound]
@@ -137,8 +134,15 @@ public struct CardOptions: ParsableArguments {
         CardFlags(
             detail: detail, seconds: seconds, sound: sound, icon: icon, color: color, position: position,
             size: size, style: style, motion: motion, wait: wait, quiet: quiet,
-            open: open.map { Self.target($0, from: FileManager.default.currentDirectoryPath) },
-            button: button, id: id, activate: activate)
+            open: opensNothing ? nil : open.map { Self.target($0, from: FileManager.default.currentDirectoryPath) },
+            button: opensNothing ? nil : button, id: id, activate: activate)
+    }
+
+    /// `--open` was given with nothing to open, as `--open "$CI_URL"` when the variable is empty.
+    /// The card then has no button at all, rather than a --button question nobody meant to ask, and
+    /// `drip run` still runs its command.
+    public var opensNothing: Bool {
+        open?.trimmingCharacters(in: .whitespaces).isEmpty == true
     }
 
     /// What `--open` names, as the button opens it: a URL as given, and a path with `~` expanded

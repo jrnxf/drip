@@ -36,6 +36,11 @@ struct Console {
         if !quiet { error("warning: \(message)") }
     }
 
+    /// Warns about card options that were given but say nothing.
+    func warnAbout(_ options: CardOptions) {
+        if options.opensNothing { warn("--open is empty, so the card has no button") }
+    }
+
     func error(_ message: String) {
         FileHandle.standardError.write(Data("drip: \(CardText.printable(message))\n".utf8))
     }
@@ -74,6 +79,7 @@ struct DripCLI {
     private func show(_ command: DripCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        console.warnAbout(command.options)
         do {
             let card = try makeResolver(console).resolve(
                 kind: command.kind, title: command.title, flags: flags, standardInput: StandardInput.read)
@@ -88,6 +94,7 @@ struct DripCLI {
     private func hook(_ command: HookCommand) -> Int32 {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        console.warnAbout(command.options)
         let status: Int32
         do {
             guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit) else {
@@ -130,6 +137,7 @@ struct DripCLI {
     private func run(_ command: RunCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        console.warnAbout(command.options)
         let resolver: CardResolver
         do {
             resolver = try makeResolver(console)
@@ -163,6 +171,7 @@ struct DripCLI {
     private func demo(_ command: DemoCommand) -> Int32 {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        console.warnAbout(command.options)
         do {
             let resolver = try makeResolver(console)
             // Short and silent, unless a flag, the environment or the config says otherwise.
@@ -219,6 +228,7 @@ struct DripCLI {
     private func render(_ command: RenderCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        console.warnAbout(command.options)
         do {
             // Renderings must not depend on the machine, so the automatic style is always hud here.
             let card = try makeResolver(console, automaticStyle: .hud)

@@ -32,7 +32,11 @@ struct ActionTests {
     }
 
     @Test func emptyOpenBadURLsAndEmptyLabelsAreUsageErrors() {
-        #expect(usageMessage(["--open", " "])?.contains("--open needs a URL or a path") == true)
+        // `--open "$CI_URL"` with the variable empty: no button, not a question nobody meant to ask.
+        let empty = flags(["--open", " ", "--button", "View run"])
+        #expect(empty != nil)
+        #expect(empty?.open == nil)
+        #expect(empty?.button == nil)
         #expect(usageMessage(["--open", "://nope"])?.contains("is not a valid URL") == true)
         #expect(usageMessage(["--button", "  "])?.contains("--button needs a label") == true)
     }
