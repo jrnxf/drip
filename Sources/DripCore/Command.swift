@@ -229,7 +229,8 @@ public struct DripCommand: ParsableCommand {
             Cards that come up while the screen is locked wait for the unlock; three or more \
             become one card. drip history lists every card, the missed ones marked.
 
-            Exit codes: 0 shown, 2 usage error, 3 no GUI session, 4 invalid config file.
+            Exit codes: 0 shown, 1 drip hook could not make a card, 2 usage error, 3 no GUI \
+            session, 4 invalid config file, 5 a --button question went unanswered.
             """,
         version: dripVersion
     )
