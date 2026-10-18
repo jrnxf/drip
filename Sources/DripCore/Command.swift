@@ -421,6 +421,11 @@ public enum CommandLineParser {
             return parse(RenderCommand.self, Array(arguments.dropFirst())).map(Invocation.render)
         case "__background":
             return .invocation(.background)
+        // What people type for help and the version; a card titled "help" is never what they meant.
+        case "help" where arguments.count == 1:
+            return parse(["--help"])
+        case "version" where arguments.count == 1:
+            return parse(["--version"])
         default:
             return parse(DripCommand.self, arguments).map(Invocation.show)
         }

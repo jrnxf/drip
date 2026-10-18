@@ -21,6 +21,21 @@ struct CommandTests {
         #expect(try flags(["ok", "hi"]).detail == nil)
     }
 
+    @Test func helpAndVersionAsWords() {
+        for (word, flag) in [("help", "--help"), ("version", "--version")] {
+            guard case let .exit(status, message) = CommandLineParser.parse([word]),
+                  case let .exit(_, expected) = CommandLineParser.parse([flag])
+            else {
+                Issue.record("drip \(word) parsed as a card")
+                continue
+            }
+            #expect(status == 0)
+            #expect(message == expected)
+        }
+        // With anything after it, the word is read as usual: here, a card titled help.
+        #expect((try? show(["help", "-d", "x"]))?.kind == "help")
+    }
+
     @Test func aTitleThatStartsWithADashIsExplained() throws {
         guard case let .exit(status, message) = CommandLineParser.parse(["fail", "--- FAIL: TestFoo"]) else {
             Issue.record("a title starting with dashes parsed")
