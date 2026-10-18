@@ -68,6 +68,14 @@ public enum CardReplacement {
         return nil
     }
 
+    /// The cards in order, keeping only the newest card for each id; cards without an id all stay.
+    public static func latest(_ cards: [Card]) -> [Card] {
+        cards.indices.filter { index in
+            guard let id = cards[index].id else { return true }
+            return !cards[(index + 1)...].contains { $0.id == id }
+        }.map { cards[$0] }
+    }
+
     /// Whether `new` can take the place of `old` on screen. A card that asks a question reports its
     /// click to the blip that showed it, so it never swaps; and the new card must sit in the same
     /// place.

@@ -111,7 +111,9 @@ struct HUDDisplay: CardDisplay {
             switch admission {
             case let .show(leftovers):
                 record(cards, missed: false)
-                return MissedSummary.cards(for: leftovers) + cards
+                let ids = Set(cards.compactMap(\.id))
+                let stale = leftovers.filter { $0.id.map { !ids.contains($0) } ?? true }
+                return MissedSummary.cards(for: CardReplacement.latest(stale)) + cards
             case .held:
                 record(cards, missed: true)
                 return nil
@@ -119,7 +121,7 @@ struct HUDDisplay: CardDisplay {
                 record(cards, missed: true)
                 waitForUnlock()
                 do {
-                    return MissedSummary.cards(for: try held.release())
+                    return MissedSummary.cards(for: CardReplacement.latest(try held.release()))
                 } catch {
                     console.warn("cannot read the cards held while the screen was locked: \(error)")
                     return cards

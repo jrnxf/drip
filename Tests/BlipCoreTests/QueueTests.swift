@@ -96,6 +96,15 @@ struct QueueTests {
         #expect(!CardReplacement.canSwap(card("a"), for: bottom))
     }
 
+    @Test func onlyTheNewestCardForEachIDIsKeptInOrder() {
+        let cards = [
+            card("a", title: "needs you"), card(nil, title: "plain"), card("b", title: "deploy"),
+            card(nil, title: "plain"), card("a", title: "is done"),
+        ]
+        #expect(CardReplacement.latest(cards).map(\.title) == ["plain", "deploy", "plain", "is done"])
+        #expect(CardReplacement.latest([]).isEmpty)
+    }
+
     private func card(_ id: String?, title: String = "hi") -> Card {
         var card = Card(preset: .info, title: title)
         card.id = id
