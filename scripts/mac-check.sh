@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds and tests blip on a Mac, records any missing snapshot references, then shows each preset
-# card on screen once and plays every style and notch motion with blip demo.
+# card on screen once, plays every style and notch motion with blip demo, and shows a Claude hook
+# card that a newer card from the same session replaces in place.
 #
 # Existing references are never overwritten: to regenerate one on purpose, delete its PNG in
 # Tests/Snapshots and run this script again.
@@ -53,3 +54,13 @@ done
 
 echo "Playing blip demo"
 XDG_CONFIG_HOME="$config" .build/debug/blip demo
+
+# The demo waits for its cards, so the queue is empty: the first hook card is on screen when the
+# second arrives, and the second takes its place.
+echo "Showing a Claude hook card, then a newer one from the same session in its place; click it to come back here"
+hook() {
+    XDG_CONFIG_HOME="$config" .build/debug/blip hook claude --seconds 8
+}
+printf '{"hook_event_name":"Notification","notification_type":"permission_prompt","session_id":"mac-check","cwd":"%s","message":"Claude needs your permission to use Bash"}' "$PWD" | hook
+sleep 3
+printf '{"hook_event_name":"Stop","session_id":"mac-check","cwd":"%s","last_assistant_message":"mac-check: this card took the place of the one before"}' "$PWD" | hook

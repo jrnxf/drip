@@ -84,6 +84,8 @@ public struct CardResolver {
             card.action = CardAction(
                 label: CardText.line(flags.button, limit: Defaults.buttonLimit) ?? "Open", open: flags.open)
         }
+        card.id = flags.id
+        card.activate = CardActivation.target(flag: flags.activate, sender: environment.sender)
         return card
     }
 

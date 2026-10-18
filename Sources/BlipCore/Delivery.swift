@@ -14,7 +14,7 @@ public enum Delivery: Equatable, Sendable {
     /// `--wait` waits, and so does a button with nothing to open: its click is only reported
     /// through blip's exit status.
     public static func choose(for cards: [Card], wait: Bool) -> Delivery {
-        if wait || cards.contains(where: { $0.action != nil && $0.action?.open == nil }) {
+        if wait || cards.contains(where: \.asksQuestion) {
             return .wait
         }
         return .background

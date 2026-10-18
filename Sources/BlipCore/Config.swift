@@ -183,7 +183,7 @@ private struct ConfigReader {
             if !builtInNames.contains(name), !Self.isValidPresetName(name) {
                 throw ConfigError(
                     path: path, line: presetItem.line, key: key,
-                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run or demo")
+                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run, hook or demo")
             }
             presets[name] = try preset(fields, key: key)
         }
@@ -225,8 +225,8 @@ private struct ConfigReader {
     }
 
     static func isValidPresetName(_ name: String) -> Bool {
-        // run and demo are subcommands.
-        guard !["run", "demo"].contains(name), let first = name.unicodeScalars.first, ("a"..."z").contains(first)
+        // run, hook and demo are subcommands.
+        guard !["run", "hook", "demo"].contains(name), let first = name.unicodeScalars.first, ("a"..."z").contains(first)
         else { return false }
         return name.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "-" }
     }
@@ -297,11 +297,14 @@ public struct EnvironmentSettings: Equatable {
     public var style: CardStyle?
     public var notch: NotchMotion?
     public var motion: Motion?
+    /// The bundle identifier of the app blip was run from, from `__CFBundleIdentifier`.
+    public var sender: String?
 
     public init(
         seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Sound? = nil,
-        style: CardStyle? = nil, notch: NotchMotion? = nil, motion: Motion? = nil
+        style: CardStyle? = nil, notch: NotchMotion? = nil, motion: Motion? = nil, sender: String? = nil
     ) {
+        self.sender = sender
         self.seconds = seconds
         self.position = position
         self.size = size
@@ -312,7 +315,8 @@ public struct EnvironmentSettings: Equatable {
     }
 
     /// Reads BLIP_SECONDS, BLIP_POSITION, BLIP_SIZE, BLIP_SOUND, BLIP_STYLE, BLIP_NOTCH and
-    /// BLIP_MOTION. Empty values are ignored; invalid ones are usage errors.
+    /// BLIP_MOTION. Empty values are ignored; invalid ones are usage errors. Also notes the app blip
+    /// was run from, from `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
         func value(_ name: String) -> String? {
             environment[name].flatMap { $0.isEmpty ? nil : $0 }
@@ -337,5 +341,6 @@ public struct EnvironmentSettings: Equatable {
         notch = try choice("BLIP_NOTCH", NotchMotion.self)
         motion = try choice("BLIP_MOTION", Motion.self)
         sound = value("BLIP_SOUND").map(Sound.init(parsing:))
+        sender = CardActivation.sender(in: environment)
     }
 }

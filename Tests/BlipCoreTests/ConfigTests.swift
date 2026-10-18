@@ -117,7 +117,7 @@ struct ConfigTests {
         assertError("[preset.fail]\nstyle = \"neon\"", line: 2, key: "preset.fail.style",
                     message: "expected hud, glass, wash or terminal, got 'neon'")
         assertError("[preset.demo]\nicon = \"x\"", line: 1, key: "preset.demo",
-                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run or demo")
+                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run, hook or demo")
         assertError("[preset.ok]\ncolor = \"teal\"", line: 2, key: "preset.ok.color",
                     message: "expected #rrggbb or one of green, orange, red, blue, purple, pink, yellow or gray, got 'teal'")
     }
@@ -126,7 +126,7 @@ struct ConfigTests {
         for name in ["deploy", "a", "ci-2", "x9"] {
             #expect(try ConfigLoader.parse("[preset.\(name)]\nicon = \"star\"", path: path).config.presets[name] != nil)
         }
-        for name in ["run", "Deploy", "2fa", "-x", "a_b"] {
+        for name in ["run", "hook", "Deploy", "2fa", "-x", "a_b"] {
             assertError("\n[preset.\(name)]", line: 2, key: "preset.\(name)", message: "a custom preset name must match")
         }
     }

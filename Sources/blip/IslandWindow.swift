@@ -387,12 +387,15 @@ final class IslandPanel: NSPanel {
 
 /// Grows a card out of the notch, holds it while the ring drains, and takes it back in.
 final class IslandPresenter: CardPresenting {
-    private let card: Card
+    private var card: Card
     private let notch: NotchGeometry
     private let console: Console
     private var panel: IslandPanel?
     private var sound: CardSound?
     private var layers: IslandLayers?
+    private var onFinish: ((Bool) -> Void)?
+    /// When the card is fully in.
+    private var openAt = CFTimeInterval.infinity
 
     /// Keyframes per second when sampling the springs.
     private static let framesPerSecond = 240.0
@@ -404,12 +407,11 @@ final class IslandPresenter: CardPresenting {
     }
 
     func start(onFinish: @escaping (Bool) -> Void) {
+        self.onFinish = onFinish
         let scale = CardPresenters.targetScreen()?.backingScaleFactor ?? 2
         let layers = IslandLayers(card: card, notch: notch, scale: scale, console: console)
         self.layers = layers
-        let frame = NSRect(
-            x: (notch.midX - layers.size.width / 2).rounded(), y: notch.top - layers.size.height,
-            width: layers.size.width, height: layers.size.height)
+        let frame = self.frame(for: layers)
         let panel = IslandPanel(
             contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         // Above the menu bar, so the island can cover it.
@@ -417,9 +419,9 @@ final class IslandPresenter: CardPresenting {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        // With an action, keep AppKit's default: clicks on the island's transparent surroundings
+        // When clickable, keep AppKit's default: clicks on the island's transparent surroundings
         // still reach the menu bar beneath.
-        if card.action == nil { panel.ignoresMouseEvents = true }
+        if !card.isClickable { panel.ignoresMouseEvents = true }
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
@@ -427,10 +429,8 @@ final class IslandPresenter: CardPresenting {
         // A sublayer of AppKit's backing layer, so AppKit can't reset the root's flipped geometry.
         let view = IslandView(frame: NSRect(origin: .zero, size: frame.size))
         view.wantsLayer = true
-        if card.action != nil {
-            view.onMove = { [weak self] point in self?.pointer(at: point) }
-            view.onClick = { [weak self] point in self?.click(at: point) }
-        }
+        view.onMove = { [weak self] point in self?.pointer(at: point) }
+        view.onClick = { [weak self] point in self?.click(at: point) }
         view.layer?.addSublayer(layers.root)
         panel.contentView = view
         panel.setFrame(frame, display: false)
@@ -450,9 +450,8 @@ final class IslandPresenter: CardPresenting {
             layers.showContent()
             panel.alphaValue = motion == .none ? 1 : 0
             fadePanel(to: 1, duration: motion == .none ? 0 : 0.15)
-            departure = { [self] in
-                fadePanel(to: 0, duration: motion == .none ? 0 : 0.25) { [self] in finish(onFinish) }
-            }
+            departure = fadingDeparture(motion)
+            openAt = CACurrentMediaTime() + 0.15
             schedule(after: 0.15 + card.seconds)
             return
         }
@@ -468,19 +467,83 @@ final class IslandPresenter: CardPresenting {
         fade(enterCues, into: true, layers: layers)
         let visible = (enterCues.title ?? 0) + 0.25
         drain(after: visible, layers: layers)
-        departure = { [self] in
+        departure = springingDeparture(animator, started: started, layers: layers)
+        openAt = started + visible
+        schedule(after: visible + card.seconds)
+    }
+
+    var canReplace: Bool { departure != nil && CACurrentMediaTime() >= openAt }
+
+    /// Rebuilds the island for `card` fully open, with its text fading in, and restarts the ring.
+    func replace(with card: Card) {
+        guard canReplace, let panel, let view = panel.contentView, let old = layers else { return }
+        self.card = card
+        let layers = IslandLayers(card: card, notch: notch, scale: old.root.contentsScale, console: console)
+        self.layers = layers
+        var animator = IslandAnimator(motion: card.notch, metrics: layers.metrics)
+        animator.open()
+        let open = animator.shape(at: 0)
+        layers.apply(layers.frame(open, layout: animator.content(for: open)))
+        layers.showContent()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        old.root.removeFromSuperlayer()
+        view.layer?.addSublayer(layers.root)
+        CATransaction.commit()
+        panel.setFrame(frame(for: layers), display: true)
+        panel.ignoresMouseEvents = !card.isClickable
+        hovering = false
+        let fadeIn = CABasicAnimation(keyPath: "opacity")
+        fadeIn.fromValue = 0
+        fadeIn.toValue = 1
+        fadeIn.duration = 0.18
+        fadeIn.timingFunction = CardPresenters.easeOut
+        layers.text.add(fadeIn, forKey: "replace")
+        sound = CardSound(card.sound, console: console)
+        sound?.play()
+
+        let motion = CardPresenters.motion(for: card)
+        if motion == .full {
+            drain(after: 0, layers: layers)
+            departure = springingDeparture(animator, started: CACurrentMediaTime(), layers: layers)
+        } else {
+            departure = fadingDeparture(motion)
+        }
+        schedule(after: card.seconds)
+    }
+
+    /// The panel's frame for the island's layers: centered on the notch, hanging from the top.
+    private func frame(for layers: IslandLayers) -> NSRect {
+        NSRect(
+            x: (notch.midX - layers.size.width / 2).rounded(), y: notch.top - layers.size.height,
+            width: layers.size.width, height: layers.size.height)
+    }
+
+    /// The exit for reduced motion: the panel fades out, or goes at once.
+    private func fadingDeparture(_ motion: Motion) -> () -> Void {
+        { [self] in
+            fadePanel(to: 0, duration: motion == .none ? 0 : 0.25) { [self] in finish() }
+        }
+    }
+
+    /// The exit for full motion: back into the notch, springing from wherever `animator` has things
+    /// on the clock that began at `started`.
+    private func springingDeparture(
+        _ animator: IslandAnimator, started: CFTimeInterval, layers: IslandLayers
+    ) -> () -> Void {
+        var animator = animator
+        return { [self] in
             let now = CACurrentMediaTime() - started
             let exitCues = animator.exit(at: now)
             play(animator, from: now, layers: layers)
             fade(exitCues, into: false, layers: layers)
             DispatchQueue.main.asyncAfter(deadline: .now() + max(animator.end - now, 0) + 0.02) { [self] in
-                finish(onFinish)
+                finish()
             }
         }
-        schedule(after: visible + card.seconds)
     }
 
-    // MARK: Clicks and hovering, for a card with an action.
+    // MARK: Clicks and hovering, for a clickable card.
 
     /// Runs the exit once; nil after that.
     private var departure: (() -> Void)?
@@ -520,7 +583,7 @@ final class IslandPresenter: CardPresenting {
     }
 
     private func pointer(at point: CGPoint) {
-        guard departure != nil else { return }
+        guard departure != nil, card.isClickable else { return }
         let inside = onIsland(point)
         guard inside != hovering else { return }
         hovering = inside
@@ -534,11 +597,17 @@ final class IslandPresenter: CardPresenting {
         }
     }
 
+    /// A click on the button runs its action; anywhere else on the island, it brings the sending
+    /// app forward. Either way the card goes.
     private func click(at point: CGPoint) {
-        guard departure != nil, let action = card.action, onIsland(point) else { return }
-        let clicked = onButton(point)
-        if clicked { CardActions.perform(action, console: console) }
-        leave(clicked: clicked)
+        guard departure != nil, card.isClickable, onIsland(point) else { return }
+        if let action = card.action, onButton(point) {
+            CardActions.perform(action, console: console)
+            leave(clicked: true)
+            return
+        }
+        if let target = card.activate { CardActions.activate(target, console: console) }
+        leave(clicked: false)
     }
 
     private func pause(_ layer: CALayer?, paused: Bool) {
@@ -556,9 +625,9 @@ final class IslandPresenter: CardPresenting {
         }
     }
 
-    private func finish(_ onFinish: @escaping (Bool) -> Void) {
+    private func finish() {
         panel?.orderOut(nil)
-        sound?.waitUntilDone { onFinish(true) }
+        sound?.waitUntilDone { [self] in onFinish?(true) }
     }
 
     /// Samples every spring from `start` until they settle into keyframe animations.

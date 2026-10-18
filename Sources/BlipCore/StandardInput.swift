@@ -11,6 +11,11 @@ public enum StandardInput {
     /// Reads stdin when it is not a terminal, up to `limit` bytes or end of file. Returns nil for
     /// a terminal or when there is no data.
     public static func read() -> String? {
+        read(limit: limit)
+    }
+
+    /// Reads stdin when it is not a terminal, up to `limit` bytes or end of file.
+    public static func read(limit: Int) -> String? {
         guard isatty(STDIN_FILENO) == 0 else { return nil }
         return read(from: STDIN_FILENO, limit: limit)
     }

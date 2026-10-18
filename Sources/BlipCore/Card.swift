@@ -164,6 +164,8 @@ public enum Defaults {
     public static let detailLimit = 120
     /// The longest button label, in characters.
     public static let buttonLimit = 24
+    /// The longest `--id`, in characters.
+    public static let idLimit = 200
 }
 
 /// A button on the card. A click opens `open` when it is set and dismisses the card; a blip that
@@ -197,6 +199,11 @@ public struct Card: Equatable, Sendable, Codable {
     public var motion: Motion
     /// A button on the card; nil for none.
     public var action: CardAction?
+    /// Names what the card is about, such as an agent session: a newer card with the same id
+    /// replaces this one while it waits, or takes its place on screen. Nil for none.
+    public var id: String?
+    /// The bundle identifier of the app a click on the card brings forward; nil for none.
+    public var activate: String?
 
     public init(
         kind: String,
@@ -226,6 +233,17 @@ public struct Card: Equatable, Sendable, Codable {
         self.style = style
         self.notch = notch
         self.motion = motion
+    }
+
+    /// Whether the card asks a question: it has a button with nothing to open, and only blip's exit
+    /// status reports the click.
+    public var asksQuestion: Bool {
+        action != nil && action?.open == nil
+    }
+
+    /// Whether the card takes clicks: on its button, or anywhere to bring the sending app forward.
+    public var isClickable: Bool {
+        action != nil || activate != nil
     }
 
     /// A card that uses every value of `preset`.

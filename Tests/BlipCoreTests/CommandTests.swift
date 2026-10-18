@@ -104,6 +104,48 @@ struct CommandTests {
         assertUsageError(["run", "--seconds", "99", "--", "true"])
     }
 
+    @Test func id() throws {
+        #expect(try flags(["hi", "--id", "claude:abc"]).id == "claude:abc")
+        #expect(try flags(["hi"]).id == nil)
+        assertUsageError(["hi", "--id", ""])
+        assertUsageError(["hi", "--id", "  "])
+        assertUsageError(["hi", "--id", String(repeating: "x", count: Defaults.idLimit + 1)])
+    }
+
+    @Test func activate() throws {
+        #expect(try flags(["hi", "--activate", "com.apple.Terminal"]).activate == "com.apple.Terminal")
+        #expect(try flags(["hi", "--activate", "none"]).activate == "none")
+        #expect(try flags(["hi"]).activate == nil)
+        for bad in ["", "com..apple", ".com.apple", "com.apple.", "com apple", "com/apple"] {
+            assertUsageError(["hi", "--activate", bad])
+        }
+    }
+
+    @Test func hookTakesTheAgentAndAnOptionalPayload() throws {
+        guard case let .invocation(.hook(claude)) = CommandLineParser.parse(["hook", "claude", "--position", "top"])
+        else { Issue.record(); return }
+        #expect(claude.agent == .claude)
+        #expect(claude.payload == nil)
+        #expect(claude.options.flags == CardFlags(position: .top))
+        guard case let .invocation(.hook(codex)) = CommandLineParser.parse(["hook", "codex", #"{"type":"x"}"#])
+        else { Issue.record(); return }
+        #expect(codex.agent == .codex)
+        #expect(codex.payload == #"{"type":"x"}"#)
+    }
+
+    @Test func hookMistakesExitOneNotTwo() {
+        // Claude Code reads a hook's exit 2 as "block", so blip hook never uses it.
+        for arguments in [["hook"], ["hook", "cursor"], ["hook", "claude", "--seconds", "99"]] {
+            guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
+                Issue.record("\(arguments) parsed"); continue
+            }
+            #expect(status == ExitStatus.hookFailed, "\(arguments)")
+            #expect(!message.isEmpty, "\(arguments)")
+        }
+        guard case let .exit(status, _) = CommandLineParser.parse(["hook", "--help"]) else { Issue.record(); return }
+        #expect(status == 0)
+    }
+
     @Test func helpAndVersionExitZero() {
         for arguments in [["--help"], ["-h"], ["--version"], ["run", "--help"]] {
             guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
@@ -119,6 +161,7 @@ struct CommandTests {
     @Test func helpListsRunAndHidesRender() {
         guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
         #expect(help.contains("blip run [options] -- <command> [args...]"), "\(help)")
+        #expect(help.contains("blip hook claude|codex [options]"), "\(help)")
         #expect(help.contains("--seconds"), "\(help)")
         #expect(!help.contains("__render"), "\(help)")
     }
