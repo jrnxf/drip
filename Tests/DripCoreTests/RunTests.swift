@@ -7,7 +7,8 @@ import Darwin
 import Glibc
 #endif
 
-struct RunTests {
+// One at a time: a test changes how this process handles SIGINT.
+@Suite(.serialized) struct RunTests {
     @Test func duration() {
         #expect(RunSummary.duration(seconds: 0) == "0.0s")
         #expect(RunSummary.duration(seconds: 3.14) == "3.1s")
@@ -46,6 +47,18 @@ struct RunTests {
         #expect(CommandRunner.run(["sh", "-c", "kill -TERM $$"]).status == 128 + SIGTERM)
         // The command gets the default SIGINT handler back even though drip ignores it.
         #expect(CommandRunner.run(["sh", "-c", "kill -INT $$"]).status == 128 + SIGINT)
+        #expect(CommandRunner.run(["sh", "-c", "kill -INT $$"]).signal == SIGINT)
+        #expect(CommandRunner.run(["sh", "-c", "exit 130"]).signal == nil)
+    }
+
+    @Test func runnerKeepsSignalsIgnoredThatWereIgnored() {
+        // As for `drip run -- job &` in a script: the shell started drip with SIGINT ignored.
+        let previous = signal(SIGINT, SIG_IGN)
+        defer { signal(SIGINT, previous) }
+        let outcome = CommandRunner.run(["sh", "-c", "kill -INT $$; exit 7"])
+        #expect(outcome.status == 7)
+        // With nothing to end it, drip carries on.
+        CommandRunner.endLikeTheCommand(CommandRunner.Outcome(status: 130, signal: SIGINT))
     }
 
     @Test func runnerReportsAMissingCommand() {

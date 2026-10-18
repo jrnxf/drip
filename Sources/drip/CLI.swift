@@ -153,6 +153,8 @@ struct DripCLI {
         } catch {
             _ = report(error, console)
         }
+        // The card is on its way; Ctrl-C now stops the script that ran drip, as it would the command.
+        CommandRunner.endLikeTheCommand(outcome)
         return outcome.status
     }
 
