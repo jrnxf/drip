@@ -183,7 +183,7 @@ private struct ConfigReader {
             if !builtInNames.contains(name), !Self.isValidPresetName(name) {
                 throw ConfigError(
                     path: path, line: presetItem.line, key: key,
-                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run or demo")
+                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run, demo or history")
             }
             presets[name] = try preset(fields, key: key)
         }
@@ -225,8 +225,8 @@ private struct ConfigReader {
     }
 
     static func isValidPresetName(_ name: String) -> Bool {
-        // run and demo are subcommands.
-        guard !["run", "demo"].contains(name), let first = name.unicodeScalars.first, ("a"..."z").contains(first)
+        // run, demo and history are subcommands.
+        guard !["run", "demo", "history"].contains(name), let first = name.unicodeScalars.first, ("a"..."z").contains(first)
         else { return false }
         return name.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "-" }
     }

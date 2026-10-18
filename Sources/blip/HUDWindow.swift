@@ -14,13 +14,21 @@ struct HUDDisplay: CardDisplay {
     }
 
     /// Shows the cards one after another and returns once the last has gone.
-    func show(_ cards: [Card], console: Console) -> Int32 {
+    func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
         // Without a GUI session, touching NSApplication can abort or hang, so check first.
         guard CGSessionCopyCurrentDictionary() != nil else {
             console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")
             return ExitStatus.noGUISession
         }
         CardQueue.waitForTurn()
+        guard let cards = holdWhileLocked(cards, locked: locked, console: console), !cards.isEmpty else {
+            return ExitStatus.shown
+        }
+        if locked == .pool {
+            // However long the cards were held, a background blip never outlives them by much.
+            let longest = cards.reduce(0) { $0 + $1.seconds } + 600
+            DispatchQueue.global().asyncAfter(deadline: .now() + longest) { exit(ExitStatus.shown) }
+        }
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
@@ -49,7 +57,63 @@ struct HUDDisplay: CardDisplay {
         }
         if BackgroundBlip.start(BackgroundRequest(cards: cards)) { return ExitStatus.shown }
         console.warn("cannot start a background blip; showing the card here instead")
-        return show(cards, console: console)
+        return show(cards, locked: .wait, console: console)
+    }
+
+    /// Records the cards in the history, first holding them while the screen is locked. Returns the
+    /// cards to show now, in this blip's turn, or nil when another blip shows them on the unlock.
+    private func holdWhileLocked(_ cards: [Card], locked: LockedScreen, console: Console) -> [Card]? {
+        let environment = ProcessInfo.processInfo.environment
+        func record(_ cards: [Card], missed: Bool) {
+            do {
+                try CardHistory(environment: environment).record(cards, missed: missed)
+            } catch {
+                console.warn("cannot record the card in the history: \(error)")
+            }
+        }
+        /// Gives up the turn until the screen unlocks, so other blips can hold their cards too.
+        func waitForUnlock() {
+            CardQueue.leave()
+            ScreenLock.waitUntilUnlocked()
+            CardQueue.waitForTurn()
+        }
+
+        switch locked {
+        case .ignore:
+            return cards
+        case .wait:
+            let missed = ScreenLock.isLocked
+            record(cards, missed: missed)
+            if missed { waitForUnlock() }
+            return cards
+        case .pool:
+            let held = HeldCards(environment: environment)
+            let admission: HeldCards.Admission
+            do {
+                admission = try held.admit(cards, locked: ScreenLock.isLocked, pid: getpid())
+            } catch {
+                console.warn("cannot hold cards while the screen is locked: \(error)")
+                record(cards, missed: false)
+                return cards
+            }
+            switch admission {
+            case let .show(leftovers):
+                record(cards, missed: false)
+                return MissedSummary.cards(for: leftovers) + cards
+            case .held:
+                record(cards, missed: true)
+                return nil
+            case .holding:
+                record(cards, missed: true)
+                waitForUnlock()
+                do {
+                    return MissedSummary.cards(for: try held.release())
+                } catch {
+                    console.warn("cannot read the cards held while the screen was locked: \(error)")
+                    return cards
+                }
+            }
+        }
     }
 
     /// Loads each card's sound and icon now, so a problem is reported before blip returns: a sound

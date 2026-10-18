@@ -10,8 +10,8 @@ protocol CardDisplay {
     var hasNotch: Bool { get }
 
     /// Shows the cards one after another, after any other blip's, and returns once the last has
-    /// gone, with the exit status to report.
-    func show(_ cards: [Card], console: Console) -> Int32
+    /// gone, with the exit status to report. `locked` says what happens while the screen is locked.
+    func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32
 
     /// Hands the cards to a background blip and returns at once, or shows them here when it cannot.
     func showInBackground(_ cards: [Card], console: Console) -> Int32
@@ -60,6 +60,8 @@ struct BlipCLI {
             return run(command)
         case let .invocation(.demo(command)):
             return demo(command)
+        case let .invocation(.history(command)):
+            return history(command)
         case let .invocation(.render(command)):
             return render(command)
         case .invocation(.background):
@@ -84,7 +86,7 @@ struct BlipCLI {
         let cards = display.prepare(cards, console: console)
         switch Delivery.choose(for: cards, wait: wait) {
         case .background: return display.showInBackground(cards, console: console)
-        case .wait: return display.show(cards, console: console)
+        case .wait: return display.show(cards, locked: .wait, console: console)
         }
     }
 
@@ -93,10 +95,7 @@ struct BlipCLI {
     private func background() -> Int32 {
         #if canImport(AppKit)
         guard let request = BackgroundBlip.readRequest() else { return ExitStatus.usage }
-        // However long the cards are held, a background blip never outlives them by much.
-        let longest = request.cards.reduce(0) { $0 + $1.seconds } + CardQueue.patience + 600
-        DispatchQueue.global().asyncAfter(deadline: .now() + longest) { exit(ExitStatus.shown) }
-        return display.show(request.cards, console: Console(quiet: true))
+        return display.show(request.cards, locked: .pool, console: Console(quiet: true))
         #else
         return ExitStatus.noGUISession
         #endif
@@ -168,10 +167,30 @@ struct BlipCLI {
             } else {
                 console.warn("this screen has no notch, so the notch motions are skipped")
             }
-            return display.show(display.prepare(cards, console: console), console: console)
+            return display.show(display.prepare(cards, console: console), locked: .ignore, console: console)
         } catch {
             return report(error, console)
         }
+    }
+
+    /// Lists the newest cards, or shows them again, oldest first.
+    private func history(_ command: HistoryCommand) -> Int32 {
+        let console = Console()
+        let entries = HistoryListing.select(
+            CardHistory(environment: ProcessInfo.processInfo.environment).entries(), missed: command.missed,
+            limit: command.limit)
+        if command.replay {
+            guard !entries.isEmpty else { return ExitStatus.shown }
+            return deliver(entries.map(HistoryListing.replay), wait: false, console: console)
+        }
+        do {
+            for entry in entries {
+                print(command.json ? try HistoryListing.json(entry) : HistoryListing.line(entry))
+            }
+        } catch {
+            return report(error, console)
+        }
+        return ExitStatus.shown
     }
 
     private func render(_ command: RenderCommand) -> Int32 {
@@ -214,13 +233,13 @@ struct UnavailableDisplay: CardDisplay {
     var automaticStyle: CardStyle { Defaults.style }
     var hasNotch: Bool { false }
 
-    func show(_ cards: [Card], console: Console) -> Int32 {
+    func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
         console.error("no GUI session: blip shows cards only on macOS")
         return ExitStatus.noGUISession
     }
 
     func showInBackground(_ cards: [Card], console: Console) -> Int32 {
-        show(cards, console: console)
+        show(cards, locked: .wait, console: console)
     }
 
     func prepare(_ cards: [Card], console: Console) -> [Card] {

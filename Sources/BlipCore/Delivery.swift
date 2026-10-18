@@ -37,3 +37,14 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
         try JSONDecoder().decode(BackgroundRequest.self, from: data)
     }
 }
+
+/// What a blip does with its cards when the screen is locked at their turn. Locked or not, the
+/// cards go into the history, except with `ignore`.
+public enum LockedScreen: Equatable, Sendable {
+    /// Hold them with every other background blip's, to show together once the screen unlocks.
+    case pool
+    /// Wait here until the screen unlocks, then show them: the caller is waiting for the outcome.
+    case wait
+    /// Show them anyway, and keep them out of the history: `blip demo`.
+    case ignore
+}

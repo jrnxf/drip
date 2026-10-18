@@ -16,6 +16,7 @@ blip run --open "$CI_URL" --button "View run" -- ./deploy.sh
 blip warn "staging is ready" --button "Promote" && ./promote.sh
 blip ok "shipped" --position notch --style glass
 blip demo                     # every style and notch motion, to pick by feel
+blip history --missed         # what came up while you were away
 ```
 
 Requires macOS 13 or newer.
@@ -35,6 +36,7 @@ cp .build/apple/Products/Release/blip /usr/local/bin/
 blip [KIND] [TITLE] [options]
 blip run [options] -- <command> [args...]
 blip demo [options]
+blip history [--missed] [--json | --replay] [-n <n>]
 blip --version | --help
 ```
 
@@ -83,6 +85,30 @@ is given. Options apply to every card, so `blip demo --style wash` shows only wa
 mistake still prints its message and exit status. Then it hands the card to a background blip and
 exits. Cards from every blip queue up and show one after another, in the order they were sent.
 `--wait` keeps blip running until its card has gone, still in its turn.
+
+### Missed cards and history
+
+A card that comes up while the screen is locked would play to nobody, so blip holds it until the
+screen unlocks. Then one or two held cards show as they are, and three or more show as one card,
+`5 cards while you were away`, with their titles newest first. It takes the look and sound of the
+newest `fail` card among them, else the newest `warn` card, else the newest card, so a failure
+still reads as one. A blip that waits for its card, with `--wait` or a `--button` question, keeps
+waiting until the unlock and then shows its card on its own.
+
+Every card is also kept in `$XDG_STATE_HOME/blip/history.jsonl`, or
+`~/.local/state/blip/history.jsonl`, one JSON object per line, readable only by you. blip keeps
+the last 1000 cards. `blip demo` cards are not kept.
+
+```sh
+blip history                  # the last 20 cards, oldest first
+blip history --missed         # only those that came up while the screen was locked
+blip history -n 100 --json    # as stored: {"time", "missed", "card": {"kind", "title", "detail", ...}}
+blip history --missed --replay -n 3   # show the last 3 missed cards again
+```
+
+A listed line reads `2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)`. `--replay`
+shows the cards again, in order, with any button that opens something; a question's button is
+dropped, since nothing waits for its answer anymore.
 
 ### Buttons
 
@@ -218,7 +244,7 @@ Each setting comes from the first of: flags, the environment (`BLIP_SECONDS`, `B
 `BLIP_SIZE`, `BLIP_SOUND`, `BLIP_STYLE`, `BLIP_NOTCH`, `BLIP_MOTION`; `BLIP_SOUND=none` mutes), the
 config file, the built-in defaults. A preset's own `seconds` and `style` beat the top-level ones.
 A custom preset starts from `info` and replaces what it sets. Its name must match `[a-z][a-z0-9-]*`
-and must not be `run` or `demo`. Unknown keys print a warning; wrong types exit 4.
+and must not be `run`, `demo` or `history`. Unknown keys print a warning; wrong types exit 4.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
 such as `[preset.ok]`, and values that are single-line strings, decimal integers, floats or
@@ -239,9 +265,9 @@ PNGs in `Tests/Snapshots`; they run on macOS and skip cards that have no referen
 card, `__render --at 0.2` draws its entrance 0.2 seconds in, to check a motion frame by frame.
 
 On a Mac, `scripts/mac-check.sh` builds, runs every test, records any missing snapshot references
-into `Tests/Snapshots`, shows each preset on screen once, then runs `blip demo`. It works with only
-the Command Line Tools installed; Xcode is not needed. It never overwrites a reference: to
-regenerate one on purpose, delete its PNG and run the script again.
+into `Tests/Snapshots`, shows each preset on screen once, runs `blip demo`, then lists the last
+cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
+never overwrites a reference: to regenerate one on purpose, delete its PNG and run the script again.
 
 ## License
 
