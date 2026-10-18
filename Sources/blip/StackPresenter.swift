@@ -55,6 +55,9 @@ final class StackPresenter: CardPresenting {
         /// A leaving card keeps its place until its drop starts to rise, so the cards below never
         /// run into it while it gathers.
         var holdsPlaceUntil = Double.infinity
+        /// Set when the card should go as soon as nothing is still flowing into it; whether by a
+        /// click on its button.
+        var dismissed: Bool?
         var sound: CardSound?
 
         init(card: Card, own: Bool, layers: IslandLayers, animator: IslandAnimator, phase: Phase) {
@@ -107,7 +110,7 @@ final class StackPresenter: CardPresenting {
 
     /// The gap between two cards in the stack.
     private static let gap: Double = 10
-    /// The least time between two cards dropping in.
+    /// The least time between two cards dropping in; a card also waits until the stack is still.
     private static let entranceSpacing = 0.35
     /// Keyframes per second when sampling the springs, as for a single card.
     private static let framesPerSecond = 240.0
@@ -215,7 +218,7 @@ final class StackPresenter: CardPresenting {
     /// Moves every card but `incoming` to its place in the stack at `time`, unless the pointer is on
     /// it. Returns whether any card moved; the caller plays the motion.
     @discardableResult
-    private func place(at time: Double, except incoming: Entry? = nil) -> Bool {
+    private func place(at time: Double, except incoming: Entry? = nil, with spring: Spring = IslandAnimator.settle) -> Bool {
         guard !hovering else {
             needsLayout = true
             return false
@@ -225,7 +228,7 @@ final class StackPresenter: CardPresenting {
         var moved = false
         for entry in live where entry !== incoming {
             guard let top = tops[ObjectIdentifier(entry)], abs(entry.animator.targetTop - top) > 0.25 else { continue }
-            entry.animator.move(to: top, at: time)
+            entry.animator.move(to: top, at: time, with: spring)
             moved = true
         }
         return moved
@@ -342,7 +345,7 @@ final class StackPresenter: CardPresenting {
             let below = live.first
             entries.insert(entry, at: below.flatMap { first in entries.firstIndex { $0 === first } } ?? 0)
             if !hovering, let below {
-                place(at: time, except: entry)
+                place(at: time, except: entry, with: IslandAnimator.makeRoom)
                 delay = Self.delay(clearing: below, for: animator, top: layers.metrics.pillTop, at: time)
             }
         }
@@ -376,7 +379,8 @@ final class StackPresenter: CardPresenting {
             _ = trial.enter(at: time + delay, top: top)
             return stride(from: time, through: trial.end, by: 1.0 / 60).allSatisfy { t in
                 let shape = trial.shape(at: t)
-                return shape.pillTop + shape.pillHeight <= below.animator.shape(at: t).pillTop - 2
+                // A few points: the new capsule's bounce overshoots into the gap for a moment.
+                return shape.pillTop + shape.pillHeight <= below.animator.shape(at: t).pillTop - 3
             }
         }
         // Waiting longer only ever helps, so the shortest wait that clears is found by halving.
@@ -445,7 +449,10 @@ final class StackPresenter: CardPresenting {
     /// Brings in this blip's next card, or a newer blip's, when there is room and the pointer is away.
     private func admit() {
         let time = now
-        guard !hovering, time - lastEntrance >= Self.entranceSpacing else { return }
+        // One card at a time, into a stack at rest, so a new drop never shoves cards still settling.
+        guard !hovering, time - lastEntrance >= Self.entranceSpacing,
+              entries.allSatisfy({ $0.animator.end <= time })
+        else { return }
         if adopting, time - lastAdoptionCheck >= 0.25, !ScreenLock.isLocked {
             lastAdoptionCheck = time
             let candidates = CardQueue.adoptable()
@@ -490,7 +497,9 @@ final class StackPresenter: CardPresenting {
                 if time - start >= last { entry.phase = .shown }
             case .shown:
                 if !hovering, time >= entry.countdownFrom { entry.remaining -= elapsed }
-                if entry.remaining <= 0 { leave(entry, clicked: false) }
+                if entry.remaining <= 0 || entry.dismissed != nil, !isFilling(entry) {
+                    leave(entry, clicked: entry.dismissed ?? false)
+                }
             case .leaving:
                 // Its drop has started to rise: the cards below can close the gap behind it.
                 if entry.holdsPlaceUntil.isFinite, time >= entry.holdsPlaceUntil {
@@ -500,7 +509,7 @@ final class StackPresenter: CardPresenting {
             }
         }
         let gone = entries.filter { entry in
-            if case let .leaving(until) = entry.phase { return time >= until + 0.02 }
+            if case let .leaving(until) = entry.phase { return time >= until + 0.02 || isSwallowed(entry, at: time) }
             return false
         }
         CATransaction.begin()
@@ -510,7 +519,8 @@ final class StackPresenter: CardPresenting {
             entries.removeAll { $0 === entry }
         }
         CATransaction.commit()
-        if released || needsLayout, place(at: time + Self.lead) { replan(from: time) }
+        let moved = (released || needsLayout) && place(at: time + Self.lead)
+        if moved || !gone.isEmpty { replan(from: time) }
         if !gone.isEmpty { updateAccessibility() }
 
         // Done once nothing is on screen, nothing of its own is left, and the queue had nothing new.
@@ -567,12 +577,30 @@ final class StackPresenter: CardPresenting {
             let half = layout.ringSize / 2 + 4
             if abs(island.x - layout.ringCenter.x) <= half, abs(island.y - layout.ringCenter.y) <= half + 4 {
                 CardActions.perform(action, console: console)
-                leave(entry, clicked: true)
+                entry.dismissed = true
                 return
             }
         }
         if let target = entry.card.activate { CardActions.activate(target, console: console) }
-        leave(entry, clicked: false)
+        entry.dismissed = entry.dismissed ?? false
+    }
+
+    /// Whether a leaving card's drop is still on its way into `entry`, which must then stay until it
+    /// has merged: shrinking around it would uncover it.
+    private func isFilling(_ entry: Entry) -> Bool {
+        entries.contains { $0.isLeaving && $0.anchor === entry }
+    }
+
+    /// Whether a leaving card's drop is hidden inside what it went back into, far enough in that
+    /// taking it away leaves no trace on the outline.
+    private func isSwallowed(_ entry: Entry, at time: Double) -> Bool {
+        let shape = entry.animator.shape(at: time)
+        guard shape.pillWidth <= entry.layers.metrics.dropSize + 1 else { return false }
+        let depth = entry.layers.metrics.blend / 2
+        let bottom = entry.anchor.map {
+            DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.layers.metrics).bottom
+        } ?? entry.layers.metrics.notchHeight
+        return shape.pillTop + shape.pillHeight <= bottom - depth
     }
 
     private func updateAccessibility() {

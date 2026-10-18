@@ -233,10 +233,16 @@ public struct IslandAnimator: Sendable {
     }
 
     /// Moves the open capsule so its top is at `top`, starting at `time`: a card in a stack closing
-    /// the gap one above it left.
-    public mutating func move(to top: Double, at time: Double) {
-        dropCenter.animate(to: top + metrics.pillHeight / 2, with: Spring(duration: 0.45, bounce: 0.12), at: time)
+    /// the gap one above it left, or making room for a new one.
+    public mutating func move(to top: Double, at time: Double, with spring: Spring = IslandAnimator.settle) {
+        dropCenter.animate(to: top + metrics.pillHeight / 2, with: spring, at: time)
     }
+
+    /// How a card in a stack glides into a gap.
+    public static let settle = Spring(duration: 0.45, bounce: 0.12)
+    /// How cards in a stack get out of the way of a new one: quick, so the new drop can follow
+    /// almost at once, and without bounce, so they never swing back towards it.
+    public static let makeRoom = Spring(duration: 0.32)
 
     /// Where the capsule's top is heading.
     public var targetTop: Double { dropCenter.target - metrics.pillHeight / 2 }
