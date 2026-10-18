@@ -97,7 +97,11 @@ struct HUDDisplay: CardDisplay {
         case .wait:
             let missed = ScreenLock.isLocked
             record(cards, missed: missed)
-            if missed { waitForUnlock() }
+            if missed {
+                // This drip blocks its script until then, so say why.
+                console.warn("the screen is locked, so drip waits for the unlock to show the card (Ctrl-C to stop)")
+                waitForUnlock()
+            }
             return cards
         case .pool:
             let held = HeldCards(environment: environment)
