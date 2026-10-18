@@ -86,7 +86,7 @@ first non-empty line is the title and the remaining lines, joined with a space, 
 unless `--detail` is given. With a title on the command line, stdin is left alone.
 
 **Long text.** Whitespace runs collapse to one space, line breaks included. The title and the detail
-have no length limit, and the history keeps them whole. The card is never wider than 640 points.
+have no length limit, and the history keeps the first 16,384 characters of each. The card is never wider than 640 points.
 Text too wide for it wraps, at every position: the title to at most two lines and the detail to at
 most three, breaking between words, between Japanese or Chinese characters, or inside a word too
 long for a line. When text is still left over, the last line ends in an ellipsis. Text that fits on

@@ -49,6 +49,17 @@ final class HistoryTests {
         #expect(lines.count == 3)
     }
 
+    @Test func keepsTheStartOfVeryLongText() throws {
+        let history = CardHistory(path: try scratch().appending("/history.jsonl"))
+        var long = card(String(repeating: "t", count: 20_000))
+        long.detail = String(repeating: "d", count: 4 * 1024 * 1024)
+        try history.record([long], missed: false)
+        let kept = try #require(history.entries().first?.card)
+        #expect(kept.title.count == CardHistory.textLimit)
+        #expect(kept.title.hasSuffix("…"))
+        #expect(kept.detail?.count == CardHistory.textLimit)
+    }
+
     @Test func historyIsPrivate() throws {
         let directory = try scratch().appending("/state")
         let history = CardHistory(path: directory + "/history.jsonl")

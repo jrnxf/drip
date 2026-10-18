@@ -52,6 +52,9 @@ public struct HistoryEntry: Equatable, Sendable, Codable {
 public struct CardHistory {
     /// The most entries kept.
     public static let limit = 1000
+    /// The most characters of a title or a detail an entry keeps. A hook card's detail is the
+    /// agent's whole last message, and every card rewrites the file.
+    public static let textLimit = 16 * 1024
 
     public var path: String
     public var limit: Int
@@ -69,7 +72,12 @@ public struct CardHistory {
     /// Adds the cards, dropping the oldest entries beyond `limit`. Safe to call from many drips at once.
     public func record(_ cards: [Card], missed: Bool, at time: Date = Date()) throws {
         guard !cards.isEmpty else { return }
-        let added = try cards.map { try HistoryListing.json(HistoryEntry(time: time, missed: missed, card: $0)) }
+        let added = try cards.map { card in
+            var kept = card
+            kept.title = CardText.truncate(card.title, limit: Self.textLimit)
+            kept.detail = card.detail.map { CardText.truncate($0, limit: Self.textLimit) }
+            return try HistoryListing.json(HistoryEntry(time: time, missed: missed, card: kept))
+        }
         try StateFiles.locked(path) {
             let lines = StateFiles.lines(atPath: path) + added
             try StateFiles.write(lines.suffix(limit).map { $0 + "\n" }.joined(), toPath: path)
