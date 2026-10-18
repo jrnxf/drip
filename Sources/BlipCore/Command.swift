@@ -198,7 +198,7 @@ public struct BlipCommand: ParsableCommand {
         usage: """
             blip [KIND] [TITLE] [options]
             blip run [options] -- <command> [args...]
-            blip hook claude|codex [options]
+            blip hook claude|codex [options] [payload]
             blip demo [options]
             blip --version | --help
             """,
