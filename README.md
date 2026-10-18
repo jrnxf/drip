@@ -116,7 +116,9 @@ A card that comes up while the screen is locked would play to nobody, so blip ho
 screen unlocks. Then one or two held cards show as they are, and three or more show as one card,
 `5 cards while you were away`, with their titles newest first. It takes the look and sound of the
 newest `fail` card among them, else the newest `warn` card, else the newest card, so a failure
-still reads as one. A blip that waits for its card, with `--wait` or a `--button` question, keeps
+still reads as one. Of held cards with the same `--id`, only the newest shows. A click on the
+summary brings forward the app the held cards came from, or nothing when they came from different
+apps. A blip that waits for its card, with `--wait` or a `--button` question, keeps
 waiting until the unlock and then shows its card on its own.
 
 Every card is also kept in `$XDG_STATE_HOME/blip/history.jsonl`, or
