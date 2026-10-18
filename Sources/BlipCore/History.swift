@@ -229,6 +229,8 @@ public enum MissedSummary {
         card.detail = CardText.line(held.reversed().map(\.title).joined(separator: " · "), limit: Defaults.detailLimit)
         card.seconds = held.map(\.seconds).max() ?? card.seconds
         card.action = nil
+        card.id = nil
+        card.activate = Set(held.map(\.activate)).count == 1 ? held[0].activate : nil
         return [card]
     }
 
