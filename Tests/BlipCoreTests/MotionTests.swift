@@ -175,6 +175,39 @@ struct IslandTests {
         }
     }
 
+    /// In a stack, a drop forms hidden inside the capsule above, necks out of its bottom, settles in
+    /// its own place below, and on the way out goes back into the middle of that capsule.
+    @Test func aDropGrowsOutOfTheCapsuleAboveAndGoesBackIntoIt() {
+        var above = IslandAnimator(metrics: metrics)
+        above.open()
+        let parent = DropletAnchor.capsule(above.shape(at: 0), metrics: metrics)
+        let top = parent.bottom + 10
+        var animator = IslandAnimator(metrics: metrics, anchor: parent)
+        let start = animator.shape(at: 0)
+        #expect(start.pillTop > parent.centerY - parent.halfHeight)
+        #expect(start.pillTop + start.pillHeight < parent.bottom)
+        _ = animator.enter(at: 0, top: top)
+        let times = Array(stride(from: 0.0, to: animator.end, by: 0.002))
+        #expect(times.contains { DropletField(metrics: metrics, shape: animator.shape(at: $0), anchor: parent).touchesNotch
+            && animator.shape(at: $0).pillTop > parent.bottom - 1 })
+        let settled = animator.shape(at: animator.end)
+        #expect(abs(settled.pillTop - top) < 0.5)
+        #expect(!DropletField(metrics: metrics, shape: settled, anchor: parent).touchesNotch)
+
+        _ = animator.exit(at: animator.end, into: parent)
+        let gone = animator.shape(at: animator.end)
+        #expect(abs(gone.pillTop + gone.pillHeight / 2 - parent.centerY) < 0.5)
+    }
+
+    @Test func anOpenCapsuleMovesToANewPlaceInTheStack() {
+        var animator = IslandAnimator(metrics: metrics)
+        animator.open(top: 120)
+        #expect(animator.targetTop == 120)
+        animator.move(to: metrics.pillTop, at: 0)
+        #expect(abs(animator.targetTop - metrics.pillTop) < 1e-9)
+        #expect(abs(animator.shape(at: animator.end).pillTop - metrics.pillTop) < 0.5)
+    }
+
     @Test func theFallingDropOutgrowsItsNeck() throws {
         // A real drop's bulb is wider than the neck it hangs from just before it breaks.
         var animator = IslandAnimator(metrics: metrics)

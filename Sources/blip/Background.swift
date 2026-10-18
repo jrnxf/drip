@@ -47,7 +47,7 @@ enum BackgroundBlip {
             close(writing)
             return false
         }
-        CardQueue.enqueue(pid: pid, cards: request.cards)
+        CardQueue.enqueue(pid: pid, cards: request.cards, adoptable: true)
         // A closed pipe must fail the write, not kill blip.
         signal(SIGPIPE, SIG_IGN)
         let written = data.withUnsafeBytes { buffer -> Bool in
@@ -74,9 +74,9 @@ enum BackgroundBlip {
 /// the blips were run, instead of on top of each other.
 ///
 /// Each showing blip holds a ticket: a file named for when it was queued and its pid, holding its
-/// cards that carry an id. The oldest ticket whose process is still alive shows; a blip that dies
-/// leaves a ticket that the others skip and clean up. `CardReplacement` decides which cards a
-/// newer card with the same id replaces.
+/// cards. The oldest ticket whose process is still alive shows; a blip that dies leaves a ticket
+/// that the others skip and clean up. `CardReplacement` decides which cards a newer card with the
+/// same id replaces, and `CardAdoption` which cards a blip showing a stack at the notch takes over.
 enum CardQueue {
     /// The longest a blip waits for its turn before showing its cards anyway.
     static let patience: TimeInterval = 120
@@ -90,17 +90,18 @@ enum CardQueue {
     private static var leavesAtExit = false
 
     /// Queues the cards of the process `pid`. A foreground blip queues its background blip itself,
-    /// before returning, so the order is the order blips were run in.
-    static func enqueue(pid: pid_t, cards: [Card]) {
+    /// before returning, so the order is the order blips were run in. Only a background blip's cards
+    /// are `adoptable`.
+    static func enqueue(pid: pid_t, cards: [Card], adoptable: Bool = false) {
         try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         let stamp = UInt64(Date().timeIntervalSince1970 * 1_000_000_000)
-        let replaceable = cards.filter { $0.id != nil }
-        let contents = replaceable.isEmpty ? Data() : (try? JSONEncoder().encode(replaceable)) ?? Data()
+        let contents = (try? JSONEncoder().encode(TicketContents(cards: cards, adoptable: adoptable))) ?? Data()
         write(contents, to: QueueTicket.name(stamp: stamp, pid: pid))
     }
 
-    /// Waits until every blip queued earlier has shown its cards, queuing `cards`, or the cards it
-    /// queued before when nil. The ticket goes when this process exits.
+    /// Waits until every blip queued earlier has shown its cards, or until a showing blip has
+    /// adopted all of this one's, queuing `cards`, or the cards it queued before when nil. The
+    /// ticket goes when this process exits.
     static func waitForTurn(cards: [Card]? = nil) {
         let me = getpid()
         if let cards { self.cards = cards }
@@ -111,9 +112,32 @@ enum CardQueue {
             atexit { CardQueue.leave() }
         }
         let deadline = Date().addingTimeInterval(patience)
-        while Date() < deadline, !isFirst(me) {
+        while Date() < deadline, !isFirst(me), !isFullyAdopted {
             usleep(50_000)
         }
+    }
+
+    /// Whether a showing blip adopted every card of this process's ticket.
+    static var isFullyAdopted: Bool {
+        guard let mine else { return false }
+        return load().first(where: { $0.name == mine.name })?.isFullyAdopted ?? false
+    }
+
+    /// Whether a showing blip adopted the card at `index` of this process's ticket.
+    static func isAdopted(index: Int) -> Bool {
+        guard let mine else { return false }
+        return claims(of: mine.name).contains(CardAdoption.claimKey(index: index))
+    }
+
+    /// The newer cards a stack showing for this process's ticket can adopt, oldest first.
+    static func adoptable() -> [(ticket: String, index: Int, card: Card)] {
+        guard let mine else { return [] }
+        return CardAdoption.candidates(after: mine.name, queue: load(), isAlive: isAlive)
+    }
+
+    /// Marks the card at `index` of `ticket` as adopted, so its own blip skips it.
+    static func adopt(index: Int, in ticket: String) {
+        claim(CardAdoption.claimKey(index: index), in: ticket)
     }
 
     /// Whether a newer card with the same id has replaced `card`, so it should not be shown.
@@ -163,8 +187,11 @@ enum CardQueue {
     private static func load() -> [QueueTicket] {
         tickets().map { ticket in
             var ticket = ticket
-            if let data = FileManager.default.contents(atPath: path(ticket.name)), !data.isEmpty {
-                ticket.cards = (try? JSONDecoder().decode([Card].self, from: data)) ?? []
+            if let data = FileManager.default.contents(atPath: path(ticket.name)), !data.isEmpty,
+               let contents = TicketContents.decode(data)
+            {
+                ticket.cards = contents.cards
+                ticket.adoptable = contents.adoptable
             }
             ticket.claimed = claims(of: ticket.name)
             return ticket
@@ -200,3 +227,4 @@ enum CardQueue {
     }
 }
 #endif
+

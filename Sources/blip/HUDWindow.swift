@@ -21,13 +21,19 @@ struct HUDDisplay: CardDisplay {
             return ExitStatus.noGUISession
         }
         CardQueue.waitForTurn(cards: cards)
-        guard let cards = holdWhileLocked(cards, locked: locked, console: console), !cards.isEmpty else {
+        // Cards a stack at the notch adopted are on screen already: they only go in the history.
+        let adopted = cards.indices.filter(CardQueue.isAdopted)
+        if !adopted.isEmpty { record(adopted.map { cards[$0] }, missed: false, locked: locked, console: console) }
+        let cards = cards.indices.filter { !adopted.contains($0) }.map { cards[$0] }
+        guard !cards.isEmpty, let cards = holdWhileLocked(cards, locked: locked, console: console), !cards.isEmpty
+        else {
             return ExitStatus.shown
         }
+        var adopting = false
         if case .pool = locked {
             // However long the cards were held, a background blip never outlives them by much.
-            let longest = cards.reduce(0) { $0 + $1.seconds } + 600
-            DispatchQueue.global().asyncAfter(deadline: .now() + longest) { exit(ExitStatus.shown) }
+            BackgroundWatchdog.extend(by: cards.reduce(0) { $0 + $1.seconds } + 600)
+            adopting = true
         }
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
@@ -41,6 +47,12 @@ struct HUDDisplay: CardDisplay {
             if CardQueue.isReplaced(card) {
                 unanswered = unanswered || card.asksQuestion
                 return next()
+            }
+            if let stack = StackPresenter.make(for: card, rest: &remaining, adopting: adopting, console: console) {
+                return stack.start { ok in
+                    failed = failed || !ok
+                    next()
+                }
             }
             let presenter = CardPresenters.make(for: card, console: console)
             let watch = ReplacementWatch(presenter: presenter, card: card)
@@ -69,16 +81,20 @@ struct HUDDisplay: CardDisplay {
         return show(request.cards, locked: .wait(record: request.record), console: console)
     }
 
+    private func record(_ cards: [Card], missed: Bool, locked: LockedScreen, console: Console) {
+        do {
+            try locked.record(cards, missed: missed, in: CardHistory(environment: ProcessInfo.processInfo.environment))
+        } catch {
+            console.warn("cannot record the card in the history: \(error)")
+        }
+    }
+
     /// Records the cards in the history, first holding them while the screen is locked. Returns the
     /// cards to show now, in this blip's turn, or nil when another blip shows them on the unlock.
     private func holdWhileLocked(_ cards: [Card], locked: LockedScreen, console: Console) -> [Card]? {
         let environment = ProcessInfo.processInfo.environment
         func record(_ cards: [Card], missed: Bool) {
-            do {
-                try locked.record(cards, missed: missed, in: CardHistory(environment: environment))
-            } catch {
-                console.warn("cannot record the card in the history: \(error)")
-            }
+            self.record(cards, missed: missed, locked: locked, console: console)
         }
         /// Gives up the turn until the screen unlocks, so other blips can hold their cards too, and
         /// waits again if it locks before the turn comes back.

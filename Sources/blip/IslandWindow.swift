@@ -237,7 +237,8 @@ final class IslandLayers {
 
     /// Every layer's model values at one instant.
     struct Frame {
-        var path: CGPath
+        /// Nil leaves the shape alone, for a card whose outline a stack draws.
+        var path: CGPath?
         var iconPosition: CGPoint
         var iconScale: CGFloat
         var ringPosition: CGPoint
@@ -248,12 +249,12 @@ final class IslandLayers {
         var clipRadius: CGFloat
     }
 
-    func frame(_ islandShape: IslandShape, layout: IslandContentLayout) -> Frame {
+    func frame(_ islandShape: IslandShape, layout: IslandContentLayout, withPath: Bool = true) -> Frame {
         let clip = CGRect(
             x: centerX - islandShape.pillWidth / 2, y: islandShape.pillTop, width: islandShape.pillWidth,
             height: islandShape.pillHeight)
         return Frame(
-            path: IslandPath.make(islandShape, metrics: metrics, centerX: centerX),
+            path: withPath ? IslandPath.make(islandShape, metrics: metrics, centerX: centerX) : nil,
             iconPosition: CGPoint(x: centerX + layout.iconCenter.x, y: layout.iconCenter.y),
             iconScale: CGFloat(layout.iconSize) / iconSide,
             ringPosition: CGPoint(x: centerX + layout.ringCenter.x, y: layout.ringCenter.y),
@@ -266,7 +267,7 @@ final class IslandLayers {
     func apply(_ frame: Frame) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        shape.path = frame.path
+        if let path = frame.path { shape.path = path }
         icon.position = frame.iconPosition
         icon.transform = CATransform3DMakeScale(frame.iconScale, frame.iconScale, 1)
         ring.position = frame.ringPosition
@@ -322,9 +323,19 @@ final class IslandLayers {
 enum IslandPath {
     static func make(_ shape: IslandShape, metrics: IslandMetrics, centerX: CGFloat) -> CGPath {
         let path = CGMutablePath()
-        let x = { (value: Double) in centerX + CGFloat(value) }
+        addNotch(to: path, metrics: metrics, centerX: centerX)
+        let field = DropletField(metrics: metrics, shape: shape)
+        if field.touchesNotch {
+            addTraced(field, to: path, centerX: centerX)
+        } else {
+            addCapsule(shape, metrics: metrics, to: path, centerX: centerX)
+        }
+        return path
+    }
 
-        // The notch: down the left side, across the bottom, up the right side.
+    /// The notch: down the left side, across the bottom, up the right side.
+    static func addNotch(to path: CGMutablePath, metrics: IslandMetrics, centerX: CGFloat) {
+        let x = { (value: Double) in centerX + CGFloat(value) }
         let left = x(-metrics.notchWidth / 2), right = x(metrics.notchWidth / 2)
         let height = CGFloat(metrics.notchHeight)
         let radius = CGFloat(min(metrics.notchRadius, metrics.notchHeight / 2, metrics.notchWidth / 2))
@@ -335,22 +346,25 @@ enum IslandPath {
             tangent1End: CGPoint(x: right, y: height), tangent2End: CGPoint(x: right, y: 0), radius: radius)
         path.addLine(to: CGPoint(x: right, y: 0))
         path.closeSubpath()
+    }
 
-        let field = DropletField(metrics: metrics, shape: shape)
-        if field.touchesNotch {
-            // Traced from just inside the notch, where the notch's own shape covers the cut.
-            let top = metrics.notchHeight - 4 * metrics.scale
-            for loop in field.outline(above: top, cell: 0.5) {
-                guard let first = loop.first else { continue }
-                path.move(to: CGPoint(x: x(first.x), y: CGFloat(first.y)))
-                for point in loop.dropFirst() { path.addLine(to: CGPoint(x: x(point.x), y: CGFloat(point.y))) }
-                path.closeSubpath()
-            }
-            return path
+    /// The drop melted into its anchor, traced from just inside the anchor, where the anchor's own
+    /// shape covers the cut.
+    static func addTraced(_ field: DropletField, to path: CGMutablePath, centerX: CGFloat) {
+        let x = { (value: Double) in centerX + CGFloat(value) }
+        let top = field.anchor.bottom - 4 * field.metrics.scale
+        for loop in field.outline(above: top, cell: 0.5) {
+            guard let first = loop.first else { continue }
+            path.move(to: CGPoint(x: x(first.x), y: CGFloat(first.y)))
+            for point in loop.dropFirst() { path.addLine(to: CGPoint(x: x(point.x), y: CGFloat(point.y))) }
+            path.closeSubpath()
         }
+    }
 
-        // Free of the notch, the drop is an exact capsule, or a rounded box once it is taller than its
-        // corners; same winding: down the left, across the bottom, up the right, back across the top.
+    /// Free of its anchor, the drop is an exact capsule, or a rounded box once it is taller than its
+    /// corners; same winding: down the left, across the bottom, up the right, back across the top.
+    static func addCapsule(_ shape: IslandShape, metrics: IslandMetrics, to path: CGMutablePath, centerX: CGFloat) {
+        let x = { (value: Double) in centerX + CGFloat(value) }
         let top = CGFloat(shape.pillTop), pillHeight = CGFloat(shape.pillHeight)
         let pillLeft = x(-shape.pillWidth / 2), pillRight = x(shape.pillWidth / 2), bottom = top + pillHeight
         let pillRadius = CGFloat(shape.pillRadius(metrics))
@@ -363,7 +377,6 @@ enum IslandPath {
             path.addArc(tangent1End: corners[index], tangent2End: corners[index + 1], radius: pillRadius)
         }
         path.closeSubpath()
-        return path
     }
 }
 
