@@ -150,8 +150,8 @@ screen unlocks. Then one or two held cards show as they are, and three or more s
 newest `fail` card among them, else the newest `warn` card, else the newest card, so a failure
 still reads as one. Of held cards with the same `--id`, only the newest shows. A click on the
 summary brings forward the app the held cards came from, or nothing when they came from different
-apps. A drip that waits for its card, with `--wait` or a `--button` question, keeps
-waiting until the unlock and then shows its card on its own.
+apps. A drip that waits for its card, with `--wait` or a `--button` question, warns that the
+screen is locked, keeps waiting until the unlock and then shows its card on its own.
 
 Every card is also kept in `$XDG_STATE_HOME/drip/history.jsonl`, or
 `~/.local/state/drip/history.jsonl`, one JSON object per line, readable only by you. drip keeps
