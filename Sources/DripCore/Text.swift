@@ -1,11 +1,12 @@
 /// Text helpers shared by the CLI and the renderer.
 public enum CardText {
-    /// Collapses every run of whitespace, line breaks included, to one space, drops other control
-    /// characters, and trims both ends.
+    /// Collapses every run of whitespace, line breaks included, to one space, drops terminal escape
+    /// sequences (the colors of piped command output) and other control characters, and trims both
+    /// ends.
     public static func normalize(_ text: String) -> String {
         var result = ""
         var pendingSpace = false
-        for character in text {
+        for character in withoutEscapeSequences(text) {
             if character.isWhitespace {
                 pendingSpace = true
             } else if !character.unicodeScalars.allSatisfy({ $0.properties.generalCategory == .control }) {
@@ -15,6 +16,48 @@ public enum CardText {
             }
         }
         return result
+    }
+
+    /// `text` without ANSI escape sequences: CSI sequences such as colors (`ESC [ 31 m`, or the
+    /// one-character CSI), OSC sequences such as terminal titles and hyperlinks (up to BEL or
+    /// `ESC \`), and two-character escapes. An unfinished sequence runs to the end of the text.
+    static func withoutEscapeSequences(_ text: String) -> String {
+        guard text.unicodeScalars.contains(where: { $0 == "\u{1B}" || $0 == "\u{9B}" || $0 == "\u{9D}" }) else {
+            return text
+        }
+        var scalars = String.UnicodeScalarView()
+        var iterator = text.unicodeScalars.makeIterator()
+        // Skips a CSI sequence's parameters and intermediates, up to and including its final byte.
+        func skipControlSequence() {
+            while let next = iterator.next(), !(0x40...0x7E).contains(next.value) {}
+        }
+        // Skips an OSC sequence's text, up to and including its terminator.
+        func skipOperatingSystemCommand() {
+            while let next = iterator.next() {
+                if next == "\u{07}" || next == "\u{9C}" { return }
+                if next == "\u{1B}" {
+                    _ = iterator.next()
+                    return
+                }
+            }
+        }
+        while let scalar = iterator.next() {
+            switch scalar {
+            case "\u{9B}":
+                skipControlSequence()
+            case "\u{9D}":
+                skipOperatingSystemCommand()
+            case "\u{1B}":
+                switch iterator.next() {
+                case "[": skipControlSequence()
+                case "]": skipOperatingSystemCommand()
+                default: break
+                }
+            default:
+                scalars.append(scalar)
+            }
+        }
+        return String(scalars)
     }
 
     /// Cuts `text` to at most `limit` user-perceived characters, ending in a single ellipsis when

@@ -1,4 +1,5 @@
 import DripCore
+import Foundation
 import Testing
 
 struct HookTests {
@@ -31,6 +32,59 @@ struct HookTests {
             """)
         #expect(event == AgentHook.Event(
             kind: "ok", title: "api is done", detail: "Fixed the flaky test.\n\nAll 42 tests pass.", id: "claude:s1"))
+    }
+
+    @Test func theLastMessageLosesItsMarkdown() throws {
+        func detail(_ message: String) throws -> String? {
+            let payload = try JSONSerialization.data(withJSONObject: [
+                "hook_event_name": "Stop", "last_assistant_message": message,
+            ])
+            return try AgentHook.event(agent: .claude, payload: String(decoding: payload, as: UTF8.self)).detail
+        }
+        #expect(try detail("""
+            ## Summary
+
+            I refactored the **billing** module and *renamed* `retryCount`.
+
+            ```swift
+            let retries = 3
+            ```
+
+            - Updated [the docs](https://example.com/docs "Docs")
+            * [x] ~~Removed~~ the flag
+            > All 236 tests pass.
+
+            ---
+            1. Next: ship it
+            """) == """
+            Summary
+
+            I refactored the billing module and renamed retryCount.
+
+            let retries = 3
+
+            Updated the docs
+            Removed the flag
+            All 236 tests pass.
+
+            1. Next: ship it
+            """)
+        // Code keeps its text; snake_case, lone asterisks and globs keep theirs.
+        #expect(try detail("Ran `__init__` and `**kwargs` in snake_case_name") == "Ran __init__ and **kwargs in snake_case_name")
+        #expect(try detail("2 * 3 = 6, and *.swift or *.md files") == "2 * 3 = 6, and *.swift or *.md files")
+        #expect(try detail("__dunder__ and __bold text__") == "dunder and bold text")
+    }
+
+    @Test func aHugeMessageIsReadQuickly() throws {
+        let line = "**bold** *it* `code` [link](https://example.com) __u__ ~~s~~ * 2 ** 3 "
+        let message = String(repeating: line, count: AgentHook.payloadLimit / line.utf8.count / 2)
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "hook_event_name": "Stop", "last_assistant_message": message,
+        ])
+        let start = Date()
+        let event = try AgentHook.event(agent: .claude, payload: String(decoding: payload, as: UTF8.self))
+        #expect(event.detail?.hasPrefix("bold it code link u s * 2 ** 3") == true)
+        #expect(Date().timeIntervalSince(start) < 5)
     }
 
     @Test func codexNotifyIsDone() throws {

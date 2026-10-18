@@ -10,8 +10,21 @@ struct TextTests {
     }
 
     @Test func normalizeDropsControlCharacters() {
-        #expect(CardText.normalize("a\u{07}b\u{1B}c") == "abc")
-        #expect(CardText.normalize("\u{1B}[31mred\u{1B}[0m") == "[31mred[0m")
+        #expect(CardText.normalize("a\u{07}b\u{7F}c") == "abc")
+    }
+
+    @Test func normalizeDropsEscapeSequences() {
+        // The colors of piped command output, such as `cargo build 2>&1 | tail -1 | drip fail`.
+        #expect(CardText.normalize("\u{1B}[1;31merror\u{1B}[0m: build failed") == "error: build failed")
+        #expect(CardText.normalize("\u{1B}[38;5;208mo\u{1B}[48;2;0;0;0mk\u{1B}[m") == "ok")
+        #expect(CardText.normalize("\u{9B}31mred\u{9B}0m") == "red")
+        // A terminal title, and a hyperlink ended by BEL and by ESC \.
+        #expect(CardText.normalize("\u{1B}]0;title\u{07}text") == "text")
+        #expect(CardText.normalize("\u{1B}]8;;https://example.com\u{1B}\\link\u{1B}]8;;\u{1B}\\") == "link")
+        // Two-character escapes, and a sequence cut off at the end.
+        #expect(CardText.normalize("a\u{1B}7b\u{1B}8c") == "abc")
+        #expect(CardText.normalize("done\u{1B}[3") == "done")
+        #expect(CardText.normalize("a\u{1B}") == "a")
     }
 
     @Test func truncateLeavesShortTextAlone() {
