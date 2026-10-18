@@ -13,9 +13,21 @@ struct QueueTests {
         #expect(ticket.claimed.isEmpty)
     }
 
+    @Test func aTicketKeepsWhenItsProcessStarted() throws {
+        let name = QueueTicket.name(stamp: 999, pid: 40, start: 1_792_357_665_123_456)
+        #expect(name == "00000000000000000999-40-1792357665123456")
+        let ticket = try #require(QueueTicket(name: name))
+        #expect(ticket.pid == 40)
+        #expect(ticket.start == 1_792_357_665_123_456)
+        #expect(try #require(QueueTicket(name: QueueTicket.name(stamp: 999, pid: 40))).start == nil)
+        #expect(QueueTicket.name(stamp: 999, pid: 40) < QueueTicket.name(stamp: 1_000, pid: 7, start: 1))
+    }
+
     @Test func onlyTicketNamesAreTickets() {
         for name in ["00000000000000000999-40.claimed", ".00000000000000000999-40.40.tmp", "999-40",
-                     "00000000000000000999-", "00000000000000000999-4x", "00000000000000000999-40-1", "x"] {
+                     "00000000000000000999-", "00000000000000000999-4x", "00000000000000000999-40-",
+                     "00000000000000000999-40-1x", "00000000000000000999-40-1-2",
+                     "00000000000000000999-40-123.claimed", "x"] {
             #expect(QueueTicket(name: name) == nil, "\(name)")
         }
         #expect(QueueTicket.claimName(for: "00000000000000000999-40") == "00000000000000000999-40.claimed")
@@ -34,7 +46,7 @@ struct QueueTests {
         #expect(!CardReplacement.isReplaced(
             card("a"), in: mine, queue: [ticket(1, pid: 20, card("a")), mine], isAlive: { _ in true }))
         #expect(!CardReplacement.isReplaced(
-            card("a"), in: mine, queue: [mine, ticket(3, pid: 20, card("a"))], isAlive: { $0 != 20 }))
+            card("a"), in: mine, queue: [mine, ticket(3, pid: 20, card("a"))], isAlive: { $0.pid != 20 }))
         #expect(!CardReplacement.isReplaced(
             card(nil), in: mine, queue: [mine, ticket(3, pid: 20, card(nil))], isAlive: { _ in true }))
     }
@@ -52,7 +64,7 @@ struct QueueTests {
             ticket(5, pid: 50, card("a", title: "dead")),
         ]
         let found = try #require(CardReplacement.replacement(
-            for: card("a"), after: queue[0].name, queue: queue, isAlive: { $0 != 50 }))
+            for: card("a"), after: queue[0].name, queue: queue, isAlive: { $0.pid != 50 }))
         #expect(found.ticket == queue[3].name)
         #expect(found.card.title == "newest")
     }
