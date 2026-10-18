@@ -152,6 +152,8 @@ public struct IslandAnimator: Sendable {
     public let metrics: IslandMetrics
     /// What the drop forms inside: the notch, or the capsule of the card above it in a stack.
     public let anchor: DropletAnchor?
+    /// When the drop, gathered round on the way out, starts to rise; nil before `exit`.
+    public private(set) var riseTime: Double?
     private var dropCenter, pillWidth, pillHeight, progress, blend: SpringValue
 
     /// The drop waits deep inside the notch, too deep to make it bulge, or in the middle of the
@@ -220,8 +222,10 @@ public struct IslandAnimator: Sendable {
         blend.animate(to: m.blend, with: Spring(duration: 0.3), at: rise)
         // Aimed past its resting place, so it is swallowed at speed instead of easing in, and the
         // notch's bulge goes flat as quickly as liquid would. A capsule above is shallower than the
-        // notch, so the drop aims for its middle, where it hides whole.
-        let swallowed = anchor.map(\.centerY) ?? m.dropTop + m.dropSize / 2 - m.dropSize
+        // notch, so the drop aims for just under its top, where it still hides whole.
+        let swallowed = anchor.map { $0.centerY - $0.halfHeight + m.dropSize / 2 + 2 * m.scale }
+            ?? m.dropTop + m.dropSize / 2 - m.dropSize
+        riseTime = rise
         dropCenter.animate(to: swallowed, with: Spring(duration: 0.4), at: rise)
         return IslandCues(
             sides: 0, title: IslandCues.lines(m.titleLines, from: 0, step: 0),

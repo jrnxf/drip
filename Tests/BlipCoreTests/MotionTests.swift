@@ -195,8 +195,11 @@ struct IslandTests {
         #expect(!DropletField(metrics: metrics, shape: settled, anchor: parent).touchesNotch)
 
         _ = animator.exit(at: animator.end, into: parent)
+        #expect(animator.riseTime != nil)
+        // Swallowed whole, just under the capsule's top.
         let gone = animator.shape(at: animator.end)
-        #expect(abs(gone.pillTop + gone.pillHeight / 2 - parent.centerY) < 0.5)
+        #expect(gone.pillTop >= parent.centerY - parent.halfHeight)
+        #expect(gone.pillTop < parent.centerY - parent.halfHeight + 4 * metrics.scale)
     }
 
     @Test func anOpenCapsuleMovesToANewPlaceInTheStack() {

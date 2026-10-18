@@ -9,9 +9,6 @@ struct HUDDisplay: CardDisplay {
         GlassSupport.isAvailable ? .glass : .hud
     }
 
-    var hasNotch: Bool {
-        CardPresenters.targetScreen().flatMap(NotchGeometry.init(screen:)) != nil
-    }
 
     /// Shows the cards one after another and returns once the last has gone.
     func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
@@ -274,10 +271,11 @@ final class ReplacementWatch {
 }
 
 enum CardPresenters {
-    /// An island at the notch when the card asks for one and the screen has a notch; a panel otherwise.
+    /// An island when the card asks for the notch: from the notch, or from the top edge of a screen
+    /// without one. A panel otherwise.
     static func make(for card: Card, console: Console) -> CardPresenting {
-        if card.position == .notch, let screen = targetScreen(), let notch = NotchGeometry(screen: screen) {
-            return IslandPresenter(card: card, notch: notch, console: console)
+        if card.position == .notch, let screen = targetScreen() {
+            return IslandPresenter(card: card, notch: NotchGeometry.island(on: screen), console: console)
         }
         return CardPresenter(card: card, console: console)
     }

@@ -6,9 +6,6 @@ protocol CardDisplay {
     /// The style for cards that set none: `glass` where the system has it.
     var automaticStyle: CardStyle { get }
 
-    /// Whether the screen a card would appear on has a camera notch.
-    var hasNotch: Bool { get }
-
     /// Shows the cards one after another, after any other blip's, and returns once the last has
     /// gone, with the exit status to report. `locked` says what happens while the screen is locked.
     func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32
@@ -181,14 +178,10 @@ struct BlipCLI {
                 if card.position == .notch { card.position = .bottom }
                 cards.append(card)
             }
-            if display.hasNotch {
-                var notchFlags = flags
-                notchFlags.position = .notch
-                notchFlags.detail = flags.detail ?? "position = \"notch\""
-                cards.append(try resolver.resolve(kind: presets[0], title: "blip demo: notch", flags: notchFlags))
-            } else {
-                console.warn("this screen has no notch, so the notch card is skipped")
-            }
+            var notchFlags = flags
+            notchFlags.position = .notch
+            notchFlags.detail = flags.detail ?? "position = \"notch\""
+            cards.append(try resolver.resolve(kind: presets[0], title: "blip demo: notch", flags: notchFlags))
             return display.show(display.prepare(cards, console: console), locked: .ignore, console: console)
         } catch {
             return report(error, console)
@@ -252,7 +245,6 @@ struct BlipCLI {
 /// Used where AppKit is missing: every card fails as if there were no GUI session.
 struct UnavailableDisplay: CardDisplay {
     var automaticStyle: CardStyle { Defaults.style }
-    var hasNotch: Bool { false }
 
     func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
         console.error("no GUI session: blip shows cards only on macOS")

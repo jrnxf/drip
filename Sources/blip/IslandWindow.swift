@@ -25,6 +25,20 @@ struct NotchGeometry {
         top = screen.frame.maxY
     }
 
+    /// Where an island hangs on `screen`: from its notch, or on a screen without one, from the middle
+    /// of its top edge, as if from a notch of no height. The drop then forms above the screen and
+    /// oozes out of its edge, and nothing is drawn for the notch itself.
+    static func island(on screen: NSScreen) -> NotchGeometry {
+        NotchGeometry(screen: screen) ?? NotchGeometry(edgeOf: screen)
+    }
+
+    private init(edgeOf screen: NSScreen) {
+        width = 160
+        height = 0
+        midX = screen.frame.midX
+        top = screen.frame.maxY
+    }
+
     init(width: CGFloat, height: CGFloat) {
         self.width = width
         self.height = height
@@ -318,6 +332,109 @@ final class IslandLayers {
     }
 }
 
+extension IslandLayers {
+    /// Plays `frames`, sampled evenly over `duration` from `begin`, as keyframe animations, and
+    /// leaves the model at the last frame. Frames without a path leave the shape alone.
+    func play(_ frames: [Frame], duration: Double, begin: CFTimeInterval? = nil) {
+        func keyframes(_ keyPath: String, _ values: [Any], discrete: Bool = false) -> CAKeyframeAnimation {
+            let animation = CAKeyframeAnimation(keyPath: keyPath)
+            animation.values = values
+            animation.duration = duration
+            animation.calculationMode = discrete ? .discrete : .linear
+            if let begin { animation.beginTime = begin }
+            return animation
+        }
+        guard let last = frames.last else { return }
+        apply(last)
+        // A traced droplet changes its number of points from frame to frame, so its frames can't be
+        // blended; at 240 a second, every display frame still gets its own.
+        let paths = frames.compactMap(\.path)
+        if paths.count == frames.count { shape.add(keyframes("path", paths, discrete: true), forKey: "island") }
+        content.add(keyframes("bounds", frames.map { NSValue(rect: $0.clip) }), forKey: "island")
+        content.add(
+            keyframes("position", frames.map { NSValue(point: CGPoint(x: $0.clip.midX, y: $0.clip.midY)) }),
+            forKey: "island.position")
+        content.add(keyframes("cornerRadius", frames.map(\.clipRadius)), forKey: "island.radius")
+        icon.add(keyframes("position", frames.map { NSValue(point: $0.iconPosition) }), forKey: "island")
+        icon.add(keyframes("transform.scale", frames.map(\.iconScale)), forKey: "island.scale")
+        ring.add(keyframes("position", frames.map { NSValue(point: $0.ringPosition) }), forKey: "island")
+        ring.add(keyframes("transform.scale", frames.map(\.ringScale)), forKey: "island.scale")
+        text.add(keyframes("position", frames.map { NSValue(point: $0.textPosition) }), forKey: "island")
+    }
+
+    /// Fades the content in or out at the cues, counted from `begin`: 180 ms in with a 4-point rise
+    /// for each line of text, 120 ms out.
+    func fade(_ cues: IslandCues, into visible: Bool, at begin: CFTimeInterval = CACurrentMediaTime()) {
+        var parts: [(CALayer, Double?, Bool)] = [
+            (icon, metrics.hasIcon ? cues.sides : nil, false), (ring, cues.sides, false),
+        ]
+        parts += zip(textLines, cues.title + cues.detail).map { line, cue -> (CALayer, Double?, Bool) in
+            (line, cue, true)
+        }
+        for (layer, cue, isText) in parts {
+            guard let cue else { continue }
+            let duration = visible ? (isText ? 0.25 : 0.18) : IslandCues.fadeOut
+            let opacity = CABasicAnimation(keyPath: "opacity")
+            opacity.fromValue = visible ? 0 : 1
+            opacity.toValue = visible ? 1 : 0
+            let group = CAAnimationGroup()
+            group.animations = [opacity]
+            if visible, isText {
+                let rise = CABasicAnimation(keyPath: "transform.translation.y")
+                rise.fromValue = 4
+                rise.toValue = 0
+                group.animations?.append(rise)
+            }
+            group.beginTime = begin + cue
+            group.duration = duration
+            group.timingFunction = CardPresenters.easeOut
+            group.fillMode = .backwards
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.opacity = visible ? 1 : 0
+            CATransaction.commit()
+            layer.add(group, forKey: "fade")
+        }
+    }
+
+    /// Drains the countdown ring from `fraction` full to empty over `seconds`, starting at `begin`.
+    func drain(from fraction: Double = 1, over seconds: Double, at begin: CFTimeInterval = CACurrentMediaTime()) {
+        let drain = CABasicAnimation(keyPath: "strokeEnd")
+        drain.fromValue = fraction
+        drain.toValue = 0
+        drain.beginTime = begin
+        drain.duration = max(seconds, 0.01)
+        drain.fillMode = .both
+        drain.timingFunction = CAMediaTimingFunction(name: .linear)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        ringProgress.strokeEnd = 0
+        // A fresh clock: the new drain replaces whatever a pause left behind.
+        ringProgress.speed = 1
+        ringProgress.timeOffset = 0
+        ringProgress.beginTime = 0
+        CATransaction.commit()
+        ringProgress.add(drain, forKey: "drain")
+    }
+
+    /// Freezes or resumes every animation on `layer`, where it is.
+    static func pause(_ layer: CALayer, paused: Bool) {
+        if paused {
+            guard layer.speed != 0 else { return }
+            let time = layer.convertTime(CACurrentMediaTime(), from: nil)
+            layer.speed = 0
+            layer.timeOffset = time
+        } else {
+            guard layer.speed == 0 else { return }
+            let offset = layer.timeOffset
+            layer.speed = 1
+            layer.timeOffset = 0
+            layer.beginTime = 0
+            layer.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) - offset
+        }
+    }
+}
+
 /// The island's outline as one path: the notch, and the drop, traced where it melts into the notch.
 /// Every part winds the same way, so overlaps fill as a union.
 enum IslandPath {
@@ -488,10 +605,10 @@ final class IslandPresenter: CardPresenting {
         let started = CACurrentMediaTime()
         // The sound lands as the island first shows: the drop starts hidden in the notch.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [self] in sound?.play() }
-        fade(enterCues, into: true, layers: layers)
+        layers.fade(enterCues, into: true)
         // The countdown starts once the title's first line has faded in, however many lines follow.
         let visible = (enterCues.title.first ?? enterCues.sides) + 0.25
-        drain(after: visible, layers: layers)
+        layers.drain(over: card.seconds, at: CACurrentMediaTime() + visible)
         departure = springingDeparture(animator, started: started, layers: layers)
         openAt = started + visible
         schedule(after: visible + card.seconds)
@@ -530,7 +647,7 @@ final class IslandPresenter: CardPresenting {
 
         let motion = CardPresenters.motion(for: card)
         if motion == .full {
-            drain(after: 0, layers: layers)
+            layers.drain(over: card.seconds)
             departure = springingDeparture(animator, started: CACurrentMediaTime(), layers: layers)
         } else {
             departure = fadingDeparture(motion)
@@ -563,7 +680,7 @@ final class IslandPresenter: CardPresenting {
             let now = CACurrentMediaTime() - started
             let exitCues = animator.exit(at: now)
             play(animator, from: now, layers: layers)
-            fade(exitCues, into: false, layers: layers)
+            layers.fade(exitCues, into: false)
             DispatchQueue.main.asyncAfter(deadline: .now() + max(animator.end - now, 0) + 0.02) { [self] in
                 finish()
             }
@@ -615,9 +732,9 @@ final class IslandPresenter: CardPresenting {
         if inside {
             // Hold the card and freeze the ring.
             pending?.cancel()
-            pause(layers?.ringProgress, paused: true)
+            layers.map { IslandLayers.pause($0.ringProgress, paused: true) }
         } else {
-            pause(layers?.ringProgress, paused: false)
+            layers.map { IslandLayers.pause($0.ringProgress, paused: false) }
             schedule(after: 1.5)
         }
     }
@@ -635,21 +752,6 @@ final class IslandPresenter: CardPresenting {
         leave(clicked: false)
     }
 
-    private func pause(_ layer: CALayer?, paused: Bool) {
-        guard let layer else { return }
-        if paused {
-            let time = layer.convertTime(CACurrentMediaTime(), from: nil)
-            layer.speed = 0
-            layer.timeOffset = time
-        } else {
-            let offset = layer.timeOffset
-            layer.speed = 1
-            layer.timeOffset = 0
-            layer.beginTime = 0
-            layer.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) - offset
-        }
-    }
-
     private func finish() {
         panel?.orderOut(nil)
         sound?.waitUntilDone { [self] in onFinish?(true) }
@@ -663,81 +765,7 @@ final class IslandPresenter: CardPresenting {
             let shape = animator.shape(at: start + (end - start) * Double(index) / Double(count))
             return layers.frame(shape, layout: animator.content(for: shape))
         }
-        let duration = end - start
-        func keyframes(_ keyPath: String, _ values: [Any], discrete: Bool = false) -> CAKeyframeAnimation {
-            let animation = CAKeyframeAnimation(keyPath: keyPath)
-            animation.values = values
-            animation.duration = duration
-            animation.calculationMode = discrete ? .discrete : .linear
-            return animation
-        }
-        guard let last = frames.last else { return }
-        layers.apply(last)
-        // A traced droplet changes its number of points from frame to frame, so its frames can't be
-        // blended; at 240 a second, every display frame still gets its own.
-        layers.shape.add(keyframes("path", frames.map(\.path), discrete: true), forKey: "island")
-        layers.content.add(keyframes("bounds", frames.map { NSValue(rect: $0.clip) }), forKey: "island")
-        layers.content.add(
-            keyframes("position", frames.map { NSValue(point: CGPoint(x: $0.clip.midX, y: $0.clip.midY)) }),
-            forKey: "island.position")
-        layers.content.add(keyframes("cornerRadius", frames.map(\.clipRadius)), forKey: "island.radius")
-        layers.icon.add(keyframes("position", frames.map { NSValue(point: $0.iconPosition) }), forKey: "island")
-        layers.icon.add(keyframes("transform.scale", frames.map(\.iconScale)), forKey: "island.scale")
-        layers.ring.add(keyframes("position", frames.map { NSValue(point: $0.ringPosition) }), forKey: "island")
-        layers.ring.add(keyframes("transform.scale", frames.map(\.ringScale)), forKey: "island.scale")
-        layers.text.add(keyframes("position", frames.map { NSValue(point: $0.textPosition) }), forKey: "island")
-    }
-
-    /// Fades the content in or out at the cues: 180 ms in with a 4-point rise for each line of text,
-    /// 120 ms out.
-    private func fade(_ cues: IslandCues, into visible: Bool, layers: IslandLayers) {
-        var parts: [(CALayer, Double?, Bool)] = [
-            (layers.icon, layers.metrics.hasIcon ? cues.sides : nil, false), (layers.ring, cues.sides, false),
-        ]
-        parts += zip(layers.textLines, cues.title + cues.detail).map { line, cue -> (CALayer, Double?, Bool) in
-            (line, cue, true)
-        }
-        let now = CACurrentMediaTime()
-        for (layer, cue, isText) in parts {
-            guard let cue else { continue }
-            let duration = visible ? (isText ? 0.25 : 0.18) : IslandCues.fadeOut
-            let opacity = CABasicAnimation(keyPath: "opacity")
-            opacity.fromValue = visible ? 0 : 1
-            opacity.toValue = visible ? 1 : 0
-            let group = CAAnimationGroup()
-            group.animations = [opacity]
-            if visible, isText {
-                let rise = CABasicAnimation(keyPath: "transform.translation.y")
-                rise.fromValue = 4
-                rise.toValue = 0
-                group.animations?.append(rise)
-            }
-            group.beginTime = now + cue
-            group.duration = duration
-            group.timingFunction = CardPresenters.easeOut
-            group.fillMode = .backwards
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            layer.opacity = visible ? 1 : 0
-            CATransaction.commit()
-            layer.add(group, forKey: "fade")
-        }
-    }
-
-    /// Drains the countdown ring over the card's seconds, starting `delay` from now.
-    private func drain(after delay: Double, layers: IslandLayers) {
-        let drain = CABasicAnimation(keyPath: "strokeEnd")
-        drain.fromValue = 1
-        drain.toValue = 0
-        drain.beginTime = CACurrentMediaTime() + delay
-        drain.duration = card.seconds
-        drain.fillMode = .both
-        drain.timingFunction = CAMediaTimingFunction(name: .linear)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layers.ringProgress.strokeEnd = 0
-        CATransaction.commit()
-        layers.ringProgress.add(drain, forKey: "drain")
+        layers.play(frames, duration: end - start)
     }
 
     private func fadePanel(to alpha: CGFloat, duration: Double, completion: (() -> Void)? = nil) {

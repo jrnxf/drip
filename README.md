@@ -1,7 +1,7 @@
 # blip
 
 A HUD from the shell for macOS: one command shows a brief native card growing out of the camera
-notch, or near the top of a screen without one, with an icon, a title, an optional detail, a
+notch, or out of the top edge of a screen without one, with an icon, a title, an optional detail, a
 colored accent and a system sound, then takes it away again. A glance tells you what finished and
 how it went: a build, a deploy, a test run, a backup, a script, an agent. blip returns at once, so
 it never slows the script that calls it.
@@ -52,7 +52,7 @@ blip --version | --help
 | `--sound NAME\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. | the preset's |
 | `--icon SYMBOL\|none` | An SF Symbol name. Unknown names fall back to the preset's icon with a warning. | the preset's |
 | `--color HEX\|NAME` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
-| `--position bottom\|center\|top\|notch` | Where the card sits. `notch` grows it out of the camera notch, and falls back to `top` on a screen without one. | `notch` |
+| `--position bottom\|center\|top\|notch` | Where the card sits. `notch` grows it out of the camera notch, or out of the middle of the top edge on a screen without one. | `notch` |
 | `--size compact\|regular\|large` | Scales fonts, icon and padding by 0.85, 1.0 or 1.25. | `regular` |
 | `--style hud\|glass\|wash\|terminal` | How the card is drawn; see [Styles](#styles). | `glass` on macOS 26, `hud` before |
 | `--motion full\|subtle\|none` | `full` plays each style's entrance and exit, `subtle` only fades, `none` neither. Reduce Motion in System Settings caps it at `subtle`. | `full` |
@@ -82,7 +82,7 @@ long for a line. When text is still left over, the last line ends in an ellipsis
 one line looks as it always has. The card stays up for `--seconds` however many lines it has.
 
 **blip demo** plays every style at your configured position (the bottom when that is the notch),
-then, on a screen with a notch, the notch card, two seconds each unless `--seconds`, `BLIP_SECONDS`
+then the notch card, two seconds each unless `--seconds`, `BLIP_SECONDS`
 or the config's `seconds` say otherwise, and silent unless `--sound` or `BLIP_SOUND` is given.
 Options apply to every card, so `blip demo --style wash` shows only wash.
 
@@ -229,7 +229,18 @@ Any other agent or tool: wrap what it runs in `blip run`, or call blip from its 
 At `--position notch` the card is drawn as one black shape with the notch, with a countdown ring
 draining over `--seconds`. A drop forms under the notch, stretches on a neck, breaks free and widens
 into a capsule just below the menu bar. It leaves the same way, pulled back up into the notch. A card
-whose text wraps grows into a taller capsule with rounded corners.
+whose text wraps grows into a taller capsule with rounded corners. On a screen without a notch the
+drop forms above the screen and oozes out of the middle of its top edge instead, and goes back into
+it the same way.
+
+**Several cards at once (experimental).** Notch cards that come in while one is showing stack below
+it, up to `BLIP_STACK_MAX` (3) at a time; the rest wait their turn. With `BLIP_STACK=chain`, the
+default, each new card drops out of the bottom of the last one and the oldest goes back into the
+notch first, the others moving up behind it. With `BLIP_STACK=push` a new card drops out of the
+notch once the others have moved down out of its way. `BLIP_STACK=off` shows one card at a time.
+While the pointer is on any card in the stack, nothing moves: every countdown stops, gaps stay open
+and new cards wait. A click on a card dismisses it. Only the cards of blips that returned at once
+stack; a card that waits (`--wait`, or a question) waits its turn.
 
 ### Exit codes
 
