@@ -17,6 +17,11 @@ enum CardLines {
         _ text: String, attributes: [NSAttributedString.Key: Any], width: CGFloat, maxLines: Int,
         measure: ((String) -> Double)? = nil
     ) -> [String] {
+        // More than a card's lines can hold: a few lines never show more than this, and AppKit
+        // measures text past about 40,000 points as 4 points wide, which would leave a long agent
+        // message on one cut-off line.
+        let cap = max(maxLines, 1) * 400
+        let text = text.index(text.startIndex, offsetBy: cap, limitedBy: text.endIndex).map { String(text[..<$0]) } ?? text
         let natural = { Double(ceil(NSAttributedString(string: $0, attributes: attributes).size().width)) }
         let measure = measure ?? natural
         let breakWidth = Double(width) - max(measure(text) - natural(text), 0)

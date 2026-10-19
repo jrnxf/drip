@@ -5,6 +5,9 @@
 /// that are single-line basic or literal strings, decimal integers, floats and booleans. Any other
 /// TOML syntax is an error naming its line.
 public enum TOML {
+    /// The most keys a table header has.
+    public static let headerDepth = 2
+
     public static func parse(_ text: String) throws -> TOMLTable {
         let root = TableNode(line: 1)
         var current = root
@@ -136,6 +139,11 @@ private struct LineParser {
         if peek() == "[" { throw error("arrays of tables are not supported") }
         var path: [String] = []
         repeat {
+            // config.toml's deepest table is [preset.NAME]; a deeper one is a mistake, and one
+            // thousands of keys deep would exhaust the stack.
+            if path.count == TOML.headerDepth {
+                throw error("table headers have at most \(TOML.headerDepth) keys, such as [preset.ok]")
+            }
             skipWhitespace()
             path.append(try parseKey())
             skipWhitespace()
@@ -203,6 +211,9 @@ private struct LineParser {
             throw error("arrays are not supported")
         case "{"?:
             throw error("inline tables are not supported")
+        case "#"? where peek(1).map({ $0.properties.isASCIIHexDigit }) == true:
+            // color = #a78bfa: the # starts a comment.
+            throw error("expected a value; a color needs quotes, as in \"#a78bfa\", since # starts a comment")
         default:
             return try parseToken()
         }
@@ -224,6 +235,11 @@ private struct LineParser {
         if token.contains(":") || Self.isDate(token) { throw error("date-times are not supported") }
         if ["0x", "0o", "0b"].contains(where: { token.hasPrefix($0) }) {
             throw error("hexadecimal, octal and binary integers are not supported")
+        }
+        if !["inf", "nan"].contains(token),
+           token.unicodeScalars.allSatisfy({ $0.properties.isAlphabetic || "-_.".unicodeScalars.contains($0) }) {
+            // Such as position = top: a word without its quotes.
+            throw error("invalid value '\(token)'; a string needs quotes: \"\(token)\"")
         }
         throw error("invalid value '\(token)'")
     }

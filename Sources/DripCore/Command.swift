@@ -71,7 +71,8 @@ public struct CardOptions: ParsableArguments {
     var size: CardSize?
 
     @Option(help: ArgumentHelp(
-        "hud, glass, wash or terminal. (default: glass on macOS 26, hud before)", valueName: "style"))
+        "hud, glass, wash or terminal. A notch card is always black. (default: glass on macOS 26, hud before)",
+        valueName: "style"))
     var style: CardStyle?
 
     @Option(help: ArgumentHelp(
@@ -110,9 +111,6 @@ public struct CardOptions: ParsableArguments {
         if let seconds, !Defaults.secondsRange.contains(seconds) {
             throw ValidationError("--seconds must be between 0.5 and 60.")
         }
-        if let open, open.trimmingCharacters(in: .whitespaces).isEmpty {
-            throw ValidationError("--open needs a URL or a path.")
-        }
         if let open, let separator = open.range(of: "://") {
             // A URL needs a scheme such as https before its "://"; a path never contains one.
             let scheme = open[..<separator.lowerBound]
@@ -136,8 +134,26 @@ public struct CardOptions: ParsableArguments {
     public var flags: CardFlags {
         CardFlags(
             detail: detail, seconds: seconds, sound: sound, icon: icon, color: color, position: position,
-            size: size, style: style, motion: motion, wait: wait, quiet: quiet, open: open,
-            button: button, id: id, activate: activate)
+            size: size, style: style, motion: motion, wait: wait, quiet: quiet,
+            open: opensNothing ? nil : open.map { Self.target($0, from: FileManager.default.currentDirectoryPath) },
+            button: opensNothing ? nil : button, id: id, activate: activate)
+    }
+
+    /// `--open` was given with nothing to open, as `--open "$CI_URL"` when the variable is empty.
+    /// The card then has no button at all, rather than a --button question nobody meant to ask, and
+    /// `drip run` still runs its command.
+    public var opensNothing: Bool {
+        open?.trimmingCharacters(in: .whitespaces).isEmpty == true
+    }
+
+    /// What `--open` names, as the button opens it: a URL as given, and a path with `~` expanded
+    /// and made absolute from `directory`. The button may be clicked in another drip, started
+    /// somewhere else, or replayed from the history later.
+    static func target(_ open: String, from directory: String) -> String {
+        guard !open.contains("://") else { return open }
+        let path = (open as NSString).expandingTildeInPath
+        guard !path.hasPrefix("/") else { return path }
+        return ((directory as NSString).appendingPathComponent(path) as NSString).standardizingPath
     }
 }
 
@@ -198,7 +214,8 @@ public struct DripCommand: ParsableCommand {
             drip --version | --help
             """,
         discussion: """
-            Presets: ok, warn, fail and info, plus any defined in $XDG_CONFIG_HOME/drip/config.toml.
+            Presets: ok, warn, fail and info, plus any defined in $XDG_CONFIG_HOME/drip/config.toml \
+            or ~/.config/drip/config.toml.
 
             When no TITLE is given and stdin is not a terminal, drip reads stdin: the first \
             non-empty line is the title and the remaining lines are the detail, unless --detail \
@@ -218,7 +235,9 @@ public struct DripCommand: ParsableCommand {
             Cards that come up while the screen is locked wait for the unlock; three or more \
             become one card. drip history lists every card, the missed ones marked.
 
-            Exit codes: 0 shown, 2 usage error, 3 no GUI session, 4 invalid config file.
+            Exit codes: 0 shown, 1 drip hook could not make a card, 2 usage error, 3 no GUI \
+            session, 4 invalid config file, 5 drip waited for a card with a button and it was not \
+            clicked.
             """,
         version: dripVersion
     )
@@ -254,7 +273,7 @@ public struct RunCommand: ParsableCommand {
 
     public func validate() throws {
         if command.isEmpty {
-            throw ValidationError("Missing the command to run after --.")
+            throw ValidationError("Missing the command to run: put it after --, as in drip run -- make test.")
         }
     }
 }
@@ -294,7 +313,8 @@ public struct DemoCommand: ParsableCommand {
         abstract: "Play every style, then the notch card, so you can pick by feel.",
         usage: "drip demo [options]",
         discussion: """
-            Styles play at your configured position, or --position. The notch card plays only on a \
+            Styles play at your configured position, or --position, at the bottom when that is the \
+            notch. The notch card plays only on a \
             screen with a notch. Cards are silent unless --sound or DRIP_SOUND is given. --style \
             narrows the demo to one style.
             """
@@ -321,7 +341,7 @@ public struct HistoryCommand: ParsableCommand {
     @Flag(help: "Only cards that came up while the screen was locked.")
     public var missed = false
 
-    @Flag(help: "Print each card as a line of JSON, as it is stored.")
+    @Flag(help: "Print each card as one flat line of JSON, for scripts.")
     public var json = false
 
     @Flag(help: "Show the cards again instead of listing them.")
@@ -405,6 +425,11 @@ public enum CommandLineParser {
             return parse(RenderCommand.self, Array(arguments.dropFirst())).map(Invocation.render)
         case "__background":
             return .invocation(.background)
+        // What people type for help and the version; a card titled "help" is never what they meant.
+        case "help" where arguments.count == 1:
+            return parse(["--help"])
+        case "version" where arguments.count == 1:
+            return parse(["--version"])
         default:
             return parse(DripCommand.self, arguments).map(Invocation.show)
         }
@@ -413,12 +438,59 @@ public enum CommandLineParser {
     private static func parse<Command: ParsableCommand>(
         _ type: Command.Type, _ arguments: [String], failure: Int32 = ExitStatus.usage
     ) -> Result<Command, ParseFailure> {
+        let attached = attachingTextValues(arguments)
         do {
-            return .success(try type.parse(arguments))
+            return .success(try type.parse(attached))
         } catch {
             let status = type.exitCode(for: error) == .success ? 0 : failure
-            return .failure(ParseFailure(status: status, message: type.fullMessage(for: error)))
+            var message = type.fullMessage(for: error)
+            if status != 0, message.hasPrefix("Error: Invalid option") || message.hasPrefix("Error: Unknown option"),
+               let text = dashLeadingText(in: attached) {
+                // Text such as "--- FAIL: TestFoo" read as an option: say where it goes instead.
+                let usage = message.split(separator: "\n", maxSplits: 1).dropFirst().first.map { "\n" + $0 } ?? ""
+                message = "Error: '\(text)' starts with a dash, so it reads as an option. Put text that starts "
+                    + "with a dash after --, as in: drip fail -- '\(text)'" + usage
+            }
+            return .failure(ParseFailure(status: status, message: message))
         }
+    }
+}
+
+extension CommandLineParser {
+    /// The options whose values are free text, often a script's own output.
+    private static let textOptions = ["-d": "--detail", "--detail": "--detail", "--button": "--button", "--id": "--id"]
+
+    /// The first argument before `--` that starts with a dash but is text, not an option: it holds
+    /// a space, or starts with three dashes. Options never do.
+    static func dashLeadingText(in arguments: [String]) -> String? {
+        arguments.prefix { $0 != "--" }.first { argument in
+            argument.hasPrefix("-") && (argument.hasPrefix("---") || argument.contains(" "))
+                && !textOptions.values.contains { argument.hasPrefix($0 + "=") }
+        }
+    }
+
+    /// Joins each text option to the argument after it, as `--detail=<text>`, so text that starts
+    /// with a dash, such as `-d "$err"` when the error reads "--- FAIL: TestFoo", is the option's
+    /// value instead of an unknown option. Arguments after `--` are left alone.
+    static func attachingTextValues(_ arguments: [String]) -> [String] {
+        var result: [String] = []
+        var index = arguments.startIndex
+        while index < arguments.endIndex {
+            let argument = arguments[index]
+            if argument == "--" {
+                result += arguments[index...]
+                break
+            }
+            // An empty value stays apart: `--detail=` would read as a missing value.
+            if let name = textOptions[argument], index + 1 < arguments.endIndex, !arguments[index + 1].isEmpty {
+                result.append("\(name)=\(arguments[index + 1])")
+                index += 2
+            } else {
+                result.append(argument)
+                index += 1
+            }
+        }
+        return result
     }
 }
 

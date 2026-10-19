@@ -25,9 +25,10 @@ struct HUDDisplay: CardDisplay {
             return ExitStatus.shown
         }
         if case .pool = locked {
-            // However long the cards were held, a background drip never outlives them by much.
+            // However long the cards were held, a background drip never outlives them by much. It
+            // exits from the main thread, between AppKit's own work rather than in the middle of it.
             let longest = cards.reduce(0) { $0 + $1.seconds } + 600
-            DispatchQueue.global().asyncAfter(deadline: .now() + longest) { exit(ExitStatus.shown) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + longest) { exit(ExitStatus.shown) }
         }
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
@@ -96,7 +97,11 @@ struct HUDDisplay: CardDisplay {
         case .wait:
             let missed = ScreenLock.isLocked
             record(cards, missed: missed)
-            if missed { waitForUnlock() }
+            if missed {
+                // This drip blocks its script until then, so say why.
+                console.warn("the screen is locked, so drip waits for the unlock to show the card (Ctrl-C to stop)")
+                waitForUnlock()
+            }
             return cards
         case .pool:
             let held = HeldCards(environment: environment)

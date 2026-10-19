@@ -7,7 +7,8 @@ import Darwin
 import Glibc
 #endif
 
-struct RunTests {
+// One at a time: a test changes how this process handles SIGINT.
+@Suite(.serialized) struct RunTests {
     @Test func duration() {
         #expect(RunSummary.duration(seconds: 0) == "0.0s")
         #expect(RunSummary.duration(seconds: 3.14) == "3.1s")
@@ -46,6 +47,18 @@ struct RunTests {
         #expect(CommandRunner.run(["sh", "-c", "kill -TERM $$"]).status == 128 + SIGTERM)
         // The command gets the default SIGINT handler back even though drip ignores it.
         #expect(CommandRunner.run(["sh", "-c", "kill -INT $$"]).status == 128 + SIGINT)
+        #expect(CommandRunner.run(["sh", "-c", "kill -INT $$"]).signal == SIGINT)
+        #expect(CommandRunner.run(["sh", "-c", "exit 130"]).signal == nil)
+    }
+
+    @Test func runnerKeepsSignalsIgnoredThatWereIgnored() {
+        // As for `drip run -- job &` in a script: the shell started drip with SIGINT ignored.
+        let previous = signal(SIGINT, SIG_IGN)
+        defer { signal(SIGINT, previous) }
+        let outcome = CommandRunner.run(["sh", "-c", "kill -INT $$; exit 7"])
+        #expect(outcome.status == 7)
+        // With nothing to end it, drip carries on.
+        CommandRunner.endLikeTheCommand(CommandRunner.Outcome(status: 130, signal: SIGINT))
     }
 
     @Test func runnerReportsAMissingCommand() {
@@ -87,6 +100,26 @@ struct StandardInputTests {
         #expect(read("aé", limit: 2) == "a")
     }
 
+    @Test func readsPastTheLimitToTheEnd() throws {
+        // A writer with more than the limit to say, as in `./backup.sh | drip ok`: every write gets
+        // through, instead of the writer dying of a closed pipe.
+        signal(SIGPIPE, SIG_IGN)
+        var descriptors: [Int32] = [0, 0]
+        try #require(pipe(&descriptors) == 0)
+        let chunk = [UInt8](repeating: UInt8(ascii: "a"), count: 50 * 1024)
+        let written = Written()
+        let writer = Thread {
+            for _ in 0..<4 { written.results.append(write(descriptors[1], chunk, chunk.count)) }
+            close(descriptors[1])
+        }
+        writer.start()
+        // Returns at end of file, which comes only after the writer's last write.
+        let text = StandardInput.read(from: descriptors[0], limit: StandardInput.limit)
+        close(descriptors[0])
+        #expect(text == String(repeating: "a", count: StandardInput.limit))
+        #expect(written.results == Array(repeating: chunk.count, count: 4))
+    }
+
     private func read(_ text: String, limit: Int) -> String? {
         var descriptors: [Int32] = [0, 0]
         #expect(pipe(&descriptors) == 0)
@@ -98,4 +131,9 @@ struct StandardInputTests {
         defer { close(descriptors[0]) }
         return StandardInput.read(from: descriptors[0], limit: limit)
     }
+}
+
+/// What a writer thread's calls returned, read once the thread has closed its end of the pipe.
+private final class Written: @unchecked Sendable {
+    var results: [Int] = []
 }

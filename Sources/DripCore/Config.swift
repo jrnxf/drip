@@ -110,11 +110,17 @@ public enum ConfigLoader {
         return ((base as NSString).appendingPathComponent("drip") as NSString).appendingPathComponent("config.toml")
     }
 
+    /// The largest config file drip reads. A real one is a few hundred bytes.
+    public static let sizeLimit = 1024 * 1024
+
     /// Loads the config file; a missing file is an empty config.
     public static func load(environment: [String: String]) throws -> ConfigFile {
         let path = path(environment: environment)
         guard FileManager.default.fileExists(atPath: path) else {
             return ConfigFile(config: Config(), warnings: [])
+        }
+        if let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int, size > sizeLimit {
+            throw ConfigError(path: path, line: nil, key: nil, message: "the file is larger than 1 MB")
         }
         guard let data = FileManager.default.contents(atPath: path) else {
             throw ConfigError(path: path, line: nil, key: nil, message: "cannot read the file")
@@ -155,7 +161,15 @@ private struct ConfigReader {
             case "seconds": config.seconds = try seconds(item, key: key)
             case "position": config.position = try choice(item, key: key, Position.self)
             case "size": config.size = try choice(item, key: key, CardSize.self)
-            case "sound": config.sound = try boolean(item, key: key)
+            case "sound":
+                guard case let .boolean(value) = item.value else {
+                    // The top-level sound only mutes; a sound name belongs to a preset.
+                    throw wrongType(
+                        item, key: key,
+                        expected: "true or false (false mutes every preset; a preset takes a name, as in "
+                            + "[preset.ok] sound = \"Hero\")")
+                }
+                config.sound = value
             case "style": config.style = try choice(item, key: key, CardStyle.self)
             // droplet is the only notch motion now, so an old `notch` setting is ignored, not an error.
             case "notch":

@@ -31,7 +31,7 @@ struct SnapshotTests {
         })
     }
 
-    /// Text past the character limits: the title wraps to two lines and the detail to two, in a card
+    /// Long text: the title wraps to two lines and the detail to three, in a card
     /// no wider than 640 points.
     @Test func longTextWrapsWithin640Points() throws {
         let long = String(repeating: "A very long title that keeps going ", count: 9)

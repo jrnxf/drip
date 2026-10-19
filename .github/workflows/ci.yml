@@ -8,20 +8,34 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
     # Pushes already cover branches in this repository; pull requests run only from forks.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
-    # Linux builds and tests DripCore. The macOS build, rendering and snapshot tests run on a Mac
-    # with scripts/mac-check.sh.
+    # Linux builds and tests DripCore. The rendering and snapshot tests run on a Mac with
+    # scripts/mac-check.sh.
     runs-on: ubuntu-latest
     container: swift:6.2-noble
     steps:
       - uses: actions/checkout@v4
+      # .build holds absolute paths (its module cache), so the key names the checkout's path: a
+      # cache from before a rename would not build.
       - uses: actions/cache@v4
         with:
           path: .build
-          key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: swiftpm-${{ runner.os }}-
+          key: swiftpm-${{ runner.os }}-${{ github.repository }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: swiftpm-${{ runner.os }}-${{ github.repository }}-
       - run: swift build --build-tests
       - run: swift test --skip-build
+
+  macos:
+    # The release build, the way the Homebrew formula makes it.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release
+      - run: .build/release/drip --version

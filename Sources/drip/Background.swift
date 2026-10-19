@@ -81,7 +81,14 @@ enum CardQueue {
     /// The longest a drip waits for its turn before showing its cards anyway.
     static let patience: TimeInterval = 120
 
-    private static let directory = (NSTemporaryDirectory() as NSString).appendingPathComponent("drip-queue")
+    /// In the user's own temporary directory, whatever `TMPDIR` says, so drips started from a shell
+    /// with its own `TMPDIR` (a Nix shell, say) still line up with every other drip.
+    private static let directory: String = {
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        let base = confstr(_CS_DARWIN_USER_TEMP_DIR, &buffer, buffer.count) > 0
+            ? String(cString: buffer) : NSTemporaryDirectory()
+        return (base as NSString).appendingPathComponent("drip-queue")
+    }()
 
     /// This process's ticket, once it has waited for its turn.
     private(set) static var mine: QueueTicket?
@@ -92,11 +99,12 @@ enum CardQueue {
     /// Queues the cards of the process `pid`. A foreground drip queues its background drip itself,
     /// before returning, so the order is the order drips were run in.
     static func enqueue(pid: pid_t, cards: [Card]) {
-        try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let stamp = UInt64(Date().timeIntervalSince1970 * 1_000_000_000)
         let replaceable = cards.filter { $0.id != nil }
         let contents = replaceable.isEmpty ? Data() : (try? JSONEncoder().encode(replaceable)) ?? Data()
-        write(contents, to: QueueTicket.name(stamp: stamp, pid: pid))
+        write(contents, to: QueueTicket.name(stamp: stamp, pid: pid, start: HeldCards.processStartTime(pid)))
     }
 
     /// Waits until every drip queued earlier has shown its cards, queuing `cards`, or the cards it
@@ -142,15 +150,20 @@ enum CardQueue {
     private static func isFirst(_ pid: pid_t) -> Bool {
         for ticket in tickets() {
             if ticket.pid == pid { return true }
-            if isAlive(ticket.pid) { return false }
+            if isAlive(ticket) { return false }
             remove(ticket.name)
         }
         // The ticket is gone, so there is nothing left to wait for.
         return true
     }
 
-    private static func isAlive(_ pid: Int32) -> Bool {
-        kill(pid, 0) == 0 || errno != ESRCH
+    /// Whether the drip that queued `ticket` still runs: its pid is alive and, when the ticket says
+    /// when it started, started then. A drip killed before it could remove its ticket leaves one
+    /// whose pid another process may get, which would otherwise hold up every card for `patience`.
+    /// Every ticket is this user's, so a pid that cannot be signaled is not a drip.
+    private static func isAlive(_ ticket: QueueTicket) -> Bool {
+        guard let start = ticket.start else { return kill(ticket.pid, 0) == 0 }
+        return HeldCards.processStartTime(ticket.pid) == start
     }
 
     /// The tickets in queue order, without reading them.

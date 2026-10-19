@@ -95,7 +95,8 @@ struct ConfigTests {
         assertError("seconds = \"4\"", line: 1, key: "seconds", message: "expected a number, got a string")
         assertError("\nposition = 1", line: 2, key: "position", message: "expected a string, got an integer")
         assertError("size = true", line: 1, key: "size", message: "expected a string, got a boolean")
-        assertError("sound = \"none\"", line: 1, key: "sound", message: "expected true or false, got a string")
+        assertError("sound = \"none\"", line: 1, key: "sound", message: "expected true or false (false mutes every "
+            + "preset; a preset takes a name, as in [preset.ok] sound = \"Hero\"), got a string")
         assertError("preset = 1", line: 1, key: "preset", message: "expected a table, got an integer")
         assertError("[preset]\nok = \"x\"", line: 2, key: "preset.ok", message: "expected a table, got a string")
         assertError("[preset.ok]\nicon = 1", line: 2, key: "preset.ok.icon", message: "expected a string, got an integer")
@@ -160,6 +161,11 @@ struct ConfigTests {
         try Data([0xFF, 0xFE]).write(to: drip.appendingPathComponent("config.toml"))
         let error = #expect(throws: ConfigError.self) { try ConfigLoader.load(environment: environment) }
         #expect(error?.message == "the file is not UTF-8")
+
+        try Data(repeating: UInt8(ascii: "#"), count: ConfigLoader.sizeLimit + 1)
+            .write(to: drip.appendingPathComponent("config.toml"))
+        let huge = #expect(throws: ConfigError.self) { try ConfigLoader.load(environment: environment) }
+        #expect(huge?.message == "the file is larger than 1 MB")
     }
 
     @Test func errorDescription() {

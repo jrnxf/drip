@@ -36,8 +36,13 @@ struct Console {
         if !quiet { error("warning: \(message)") }
     }
 
+    /// Warns about card options that were given but say nothing.
+    func warnAbout(_ options: CardOptions) {
+        if options.opensNothing { warn("--open is empty, so the card has no button") }
+    }
+
     func error(_ message: String) {
-        FileHandle.standardError.write(Data("drip: \(message)\n".utf8))
+        FileHandle.standardError.write(Data("drip: \(CardText.printable(message))\n".utf8))
     }
 }
 
@@ -51,7 +56,7 @@ struct DripCLI {
             if status == 0 {
                 print(message)
             } else {
-                FileHandle.standardError.write(Data((message + "\n").utf8))
+                FileHandle.standardError.write(Data((CardText.printable(message) + "\n").utf8))
             }
             return status
         case let .invocation(.show(command)):
@@ -74,6 +79,7 @@ struct DripCLI {
     private func show(_ command: DripCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        console.warnAbout(command.options)
         do {
             let card = try makeResolver(console).resolve(
                 kind: command.kind, title: command.title, flags: flags, standardInput: StandardInput.read)
@@ -88,10 +94,15 @@ struct DripCLI {
     private func hook(_ command: HookCommand) -> Int32 {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        console.warnAbout(command.options)
         let status: Int32
         do {
-            guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit) else {
+            // One byte past the limit tells a payload that was cut from one that fits.
+            guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit + 1) else {
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
+            }
+            if payload.utf8.count > AgentHook.payloadLimit {
+                throw UsageError("the hook payload is larger than 4 MB")
             }
             let event = try AgentHook.event(agent: command.agent, payload: payload)
             flags.id = flags.id ?? event.id
@@ -130,6 +141,7 @@ struct DripCLI {
     private func run(_ command: RunCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        console.warnAbout(command.options)
         let resolver: CardResolver
         do {
             resolver = try makeResolver(console)
@@ -153,6 +165,8 @@ struct DripCLI {
         } catch {
             _ = report(error, console)
         }
+        // The card is on its way; Ctrl-C now stops the script that ran drip, as it would the command.
+        CommandRunner.endLikeTheCommand(outcome)
         return outcome.status
     }
 
@@ -161,6 +175,7 @@ struct DripCLI {
     private func demo(_ command: DemoCommand) -> Int32 {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        console.warnAbout(command.options)
         do {
             let resolver = try makeResolver(console)
             // Short and silent, unless a flag, the environment or the config says otherwise.
@@ -206,7 +221,7 @@ struct DripCLI {
         }
         do {
             for entry in entries {
-                print(command.json ? try HistoryListing.json(entry) : HistoryListing.line(entry))
+                print(command.json ? try HistoryListing.publicJSON(entry) : HistoryListing.line(entry))
             }
         } catch {
             return report(error, console)
@@ -217,6 +232,7 @@ struct DripCLI {
     private func render(_ command: RenderCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
+        console.warnAbout(command.options)
         do {
             // Renderings must not depend on the machine, so the automatic style is always hud here.
             let card = try makeResolver(console, automaticStyle: .hud)

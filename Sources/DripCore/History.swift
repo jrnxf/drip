@@ -52,6 +52,9 @@ public struct HistoryEntry: Equatable, Sendable, Codable {
 public struct CardHistory {
     /// The most entries kept.
     public static let limit = 1000
+    /// The most characters of a title or a detail an entry keeps. A hook card's detail is the
+    /// agent's whole last message, and every card rewrites the file.
+    public static let textLimit = 16 * 1024
 
     public var path: String
     public var limit: Int
@@ -69,7 +72,12 @@ public struct CardHistory {
     /// Adds the cards, dropping the oldest entries beyond `limit`. Safe to call from many drips at once.
     public func record(_ cards: [Card], missed: Bool, at time: Date = Date()) throws {
         guard !cards.isEmpty else { return }
-        let added = try cards.map { try HistoryListing.json(HistoryEntry(time: time, missed: missed, card: $0)) }
+        let added = try cards.map { card in
+            var kept = card
+            kept.title = CardText.truncate(card.title, limit: Self.textLimit)
+            kept.detail = card.detail.map { CardText.truncate($0, limit: Self.textLimit) }
+            return try HistoryListing.json(HistoryEntry(time: time, missed: missed, card: kept))
+        }
         try StateFiles.locked(path) {
             let lines = StateFiles.lines(atPath: path) + added
             try StateFiles.write(lines.suffix(limit).map { $0 + "\n" }.joined(), toPath: path)
@@ -109,6 +117,48 @@ public enum HistoryListing {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = .sortedKeys
         return String(decoding: try encoder.encode(entry), as: UTF8.self)
+    }
+
+    /// What `drip history --json` prints for an entry: one flat object, each card setting written
+    /// the way its flag takes it, so scripts can read it. The history file's own encoding is drip's.
+    public static func publicJSON(_ entry: HistoryEntry) throws -> String {
+        let card = entry.card
+        let shown = PublicEntry(
+            time: entry.time, missed: entry.missed,
+            card: PublicCard(
+                kind: card.kind, title: card.title, detail: card.detail, icon: card.icon.argument,
+                color: card.color.argument, sound: card.sound.argument, seconds: card.seconds,
+                position: card.position.rawValue, size: card.size.rawValue, style: card.style.rawValue,
+                motion: card.motion.rawValue, button: card.action?.label, open: card.action?.open, id: card.id,
+                activate: card.activate))
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return String(decoding: try encoder.encode(shown), as: UTF8.self)
+    }
+
+    private struct PublicEntry: Encodable {
+        var time: Date
+        var missed: Bool
+        var card: PublicCard
+    }
+
+    private struct PublicCard: Encodable {
+        var kind: String
+        var title: String
+        var detail: String?
+        var icon: String
+        var color: String
+        var sound: String
+        var seconds: Double
+        var position: String
+        var size: String
+        var style: String
+        var motion: String
+        var button: String?
+        var open: String?
+        var id: String?
+        var activate: String?
     }
 
     /// The card to show again. A question's button goes, since nothing waits for its answer now; a
@@ -279,6 +329,37 @@ enum StateFiles {
         else { throw StateError("cannot write \(temporary)") }
         guard rename(temporary, path) == 0 else {
             throw StateError("cannot replace \(path): \(String(cString: strerror(errno)))")
+        }
+    }
+}
+
+extension Icon {
+    /// The icon as `--icon` takes it.
+    var argument: String {
+        switch self {
+        case .none: return "none"
+        case let .symbol(name): return name
+        }
+    }
+}
+
+extension CardColor {
+    /// The color as `--color` takes it: a name, or `#rrggbb`.
+    var argument: String {
+        switch self {
+        case let .system(name): return name.rawValue
+        case let .rgb(red, green, blue): return "#" + [red, green, blue].map { String(format: "%02x", $0) }.joined()
+        }
+    }
+}
+
+extension Sound {
+    /// The sound as `--sound` takes it: a name, a path, or `none`.
+    var argument: String {
+        switch self {
+        case .none: return "none"
+        case let .named(name): return name
+        case let .file(path): return path
         }
     }
 }

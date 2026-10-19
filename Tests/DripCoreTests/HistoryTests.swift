@@ -49,6 +49,35 @@ final class HistoryTests {
         #expect(lines.count == 3)
     }
 
+    @Test func theJSONListingIsFlat() throws {
+        var deploy = card("deployed", kind: "deploy")
+        deploy.detail = "api 1.4.2"
+        deploy.color = .rgb(red: 0xA7, green: 0x8B, blue: 0xFA)
+        deploy.sound = .file("/tmp/ding.aiff")
+        deploy.action = CardAction(label: "View run", open: "https://example.com/run/1")
+        deploy.id = "deploy"
+        let entry = HistoryEntry(time: Date(timeIntervalSince1970: 1_800_000_000), missed: true, card: deploy)
+        #expect(try HistoryListing.publicJSON(entry) == ##"{"card":{"button":"View run","color":"#a78bfa","##
+            + ##""detail":"api 1.4.2","icon":"paperplane.fill","id":"deploy","kind":"deploy","motion":"full","##
+            + ##""open":"https://example.com/run/1","position":"notch","seconds":4.5,"size":"regular","##
+            + ##""sound":"/tmp/ding.aiff","style":"hud","title":"deployed"},"missed":true,"##
+            + ##""time":"2027-01-15T08:00:00Z"}"##)
+        let quiet = HistoryEntry(time: entry.time, missed: false, card: card("ok", kind: "ok"))
+        #expect(try HistoryListing.publicJSON(quiet).contains(#""color":"green""#))
+        #expect(try HistoryListing.publicJSON(quiet).contains(#""sound":"Glass""#))
+    }
+
+    @Test func keepsTheStartOfVeryLongText() throws {
+        let history = CardHistory(path: try scratch().appending("/history.jsonl"))
+        var long = card(String(repeating: "t", count: 20_000))
+        long.detail = String(repeating: "d", count: 4 * 1024 * 1024)
+        try history.record([long], missed: false)
+        let kept = try #require(history.entries().first?.card)
+        #expect(kept.title.count == CardHistory.textLimit)
+        #expect(kept.title.hasSuffix("…"))
+        #expect(kept.detail?.count == CardHistory.textLimit)
+    }
+
     @Test func historyIsPrivate() throws {
         let directory = try scratch().appending("/state")
         let history = CardHistory(path: directory + "/history.jsonl")

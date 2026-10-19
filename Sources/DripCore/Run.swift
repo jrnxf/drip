@@ -39,13 +39,22 @@ public enum CommandRunner {
         public var status: Int32
         /// Why the command could not be started, if it could not.
         public var error: String?
+        /// The signal that ended the command, if one did.
+        public var signal: Int32?
+
+        public init(status: Int32, error: String? = nil, signal: Int32? = nil) {
+            self.status = status
+            self.error = error
+            self.signal = signal
+        }
     }
 
     /// Runs `command`, looking it up on PATH, and waits for it to finish.
     ///
     /// Like a shell running a foreground job, drip ignores SIGINT and SIGQUIT while the command
     /// runs, so Ctrl-C stops the command and drip still reports how it ended. The command gets
-    /// the default handlers back, and no blocked signals whatever thread spawns it.
+    /// the default handlers back, unless drip was started with them ignored (as a job started
+    /// with `&` in a script is), and no blocked signals whatever thread spawns it.
     public static func run(_ command: [String]) -> Outcome {
         precondition(!command.isEmpty, "the command must not be empty")
 
@@ -65,8 +74,8 @@ public enum CommandRunner {
         defer { posix_spawnattr_destroy(&attributes) }
         var defaults = sigset_t()
         sigemptyset(&defaults)
-        sigaddset(&defaults, SIGINT)
-        sigaddset(&defaults, SIGQUIT)
+        if !isIgnored(previousInterrupt) { sigaddset(&defaults, SIGINT) }
+        if !isIgnored(previousQuit) { sigaddset(&defaults, SIGQUIT) }
         posix_spawnattr_setsigdefault(&attributes, &defaults)
         var unblocked = sigset_t()
         sigemptyset(&unblocked)
@@ -93,7 +102,27 @@ public enum CommandRunner {
         }
         // The W* macros are not available in Swift: the low 7 bits hold the signal, if any.
         let terminatingSignal = status & 0x7F
-        return Outcome(
-            status: terminatingSignal == 0 ? (status >> 8) & 0xFF : 128 + terminatingSignal, error: nil)
+        return terminatingSignal == 0
+            ? Outcome(status: (status >> 8) & 0xFF)
+            : Outcome(status: 128 + terminatingSignal, signal: terminatingSignal)
+    }
+
+    /// Ends this process with SIGINT or SIGQUIT when `outcome` says the command died of it, as a
+    /// shell's job does: a shell stops a script or a loop on Ctrl-C only when its job died of the
+    /// signal, not when it exited 130. Returns when there is nothing to do, or when this process
+    /// was started with the signal ignored.
+    public static func endLikeTheCommand(_ outcome: Outcome) {
+        guard let terminating = outcome.signal, terminating == SIGINT || terminating == SIGQUIT else { return }
+        let previous = signal(terminating, SIG_DFL)
+        if isIgnored(previous) {
+            signal(terminating, previous)
+            return
+        }
+        kill(getpid(), terminating)
+    }
+
+    private static func isIgnored(_ handler: (@convention(c) (Int32) -> Void)?) -> Bool {
+        guard let handler else { return false }
+        return unsafeBitCast(handler, to: Int.self) == unsafeBitCast(SIG_IGN, to: Int.self)
     }
 }

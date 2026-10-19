@@ -1,0 +1,40 @@
+name: Release
+
+# Publishing a GitHub release points the Homebrew formula at its tag. The formula builds drip from
+# the tag's source archive, so the release needs no binary. Setup: jrnxf/homebrew-tap's
+# docs/automatic-updates.md, which issues the TAP_DEPLOY_KEY secret. Formula/drip.rb must already
+# exist in the tap before the first release: the bump script only updates a formula, it never adds one.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  tap:
+    name: Update the tap formula
+    # A pre-release is for trying out; the formula follows full releases only.
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to a commit: this job holds the key that can push to the tap brew installs from.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: jrnxf/homebrew-tap
+          ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
+      - run: scripts/bump-formula.sh drip "$TAG"
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+      - run: |
+          # The tap PR that adds the formula for the first release already points it at the tag.
+          if git diff --quiet; then
+            echo "Formula/drip.rb already points at $TAG"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "drip $TAG"
+          git push
+        env:
+          TAG: ${{ github.event.release.tag_name }}

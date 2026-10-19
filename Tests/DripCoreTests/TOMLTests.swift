@@ -103,6 +103,8 @@ struct TOMLTests {
         assertError("a = 1\n[a.b]", line: 2, contains: "already a value")
         assertError("[t\nx = 1", line: 1, contains: "expected ']'")
         assertError("x = trueish", line: 1, contains: "invalid value")
+        assertError("position = top", line: 1, contains: "invalid value 'top'; a string needs quotes: \"top\"")
+        assertError("color = #a78bfa", line: 1, contains: "a color needs quotes, as in \"#a78bfa\"")
         assertError("= 1", line: 1, contains: "expected a key")
         assertError("a = \"\u{01}\"", line: 1, contains: "control characters")
     }
@@ -115,6 +117,10 @@ struct TOMLTests {
         assertError("a = 1\n\"quoted\" = 1", line: 2, contains: "quoted keys are not supported")
         assertError("a = 1\n'quoted' = 1", line: 2, contains: "quoted keys are not supported")
         assertError("a = 1\n[preset.\"ok\"]", line: 2, contains: "quoted keys are not supported")
+        assertError("a = 1\n[preset.ok.sound]", line: 2, contains: "at most 2 keys")
+        // A header thousands of keys deep is an error, not a crash.
+        let deep = "[" + Array(repeating: "a", count: 50_000).joined(separator: ".") + "]"
+        assertError(deep, line: 1, contains: "at most 2 keys")
         assertError("a = 1\nb = \"\"\"\nx\"\"\"", line: 2, contains: "multi-line strings are not supported")
         assertError("a = 1\nb = '''x'''", line: 2, contains: "multi-line strings are not supported")
         assertError("a = 1\nb = 1979-05-27", line: 2, contains: "date-times are not supported")
