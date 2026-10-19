@@ -182,7 +182,9 @@ struct DripCLI {
             }
             if flags.sound == nil, resolver.environment.sound == nil { flags.sound = Sound.none }
             let cards = try DemoCommand.cards(resolver, flags: flags)
-            return display.show(display.prepare(cards, console: console), locked: .ignore, console: console)
+            let status = display.show(display.prepare(cards, console: console), locked: .ignore, console: console)
+            // The demo's button is there to try, not a question: leaving it alone is no failure.
+            return status == ExitStatus.notClicked ? ExitStatus.shown : status
         } catch {
             return report(error, console)
         }

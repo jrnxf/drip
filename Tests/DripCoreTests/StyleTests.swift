@@ -126,13 +126,26 @@ struct StyleCommandTests {
     @Test func demoDropsSeveralNotchCards() throws {
         let cards = try DemoCommand.cards(
             CardResolver(), flags: CardFlags(position: .bottom, id: "shared"))
-        #expect(cards.map(\.kind) == ["ok", "warn", "fail"])
+        #expect(cards.map(\.kind) == ["ok", "warn", "fail", "info"])
         #expect(Set(cards.map(\.title)).count == cards.count)
         for card in cards {
             #expect(card.position == .notch)
             #expect(card.id == nil)
             #expect(card.detail != nil)
         }
+    }
+
+    @Test func demoEndsWithACardWithAButton() throws {
+        let cards = try DemoCommand.cards(CardResolver(), flags: CardFlags())
+        #expect(cards.dropLast().allSatisfy { $0.action == nil })
+        #expect(cards.last?.action?.label == "Open")
+        #expect(cards.last?.action?.open == "https://github.com/jrnxf/drip")
+        #expect(cards.last?.asksQuestion == false)
+    }
+
+    @Test func demoButtonFlagsApplyToEveryCard() throws {
+        let cards = try DemoCommand.cards(CardResolver(), flags: CardFlags(open: "https://example.com"))
+        #expect(cards.allSatisfy { $0.action?.open == "https://example.com" })
     }
 
     @Test func demoDetailReplacesEverySample() throws {

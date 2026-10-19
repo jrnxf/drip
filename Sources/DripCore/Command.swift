@@ -319,11 +319,13 @@ public struct DemoCommand: ParsableCommand {
             """
     )
 
-    /// The cards the demo drops, in order: one of each kind a build or an agent sends.
-    public static let samples: [(kind: String, title: String, detail: String)] = [
-        ("ok", "Build finished", "make test: 246 passed in 3.2s"),
-        ("warn", "drip needs you", "Claude needs your permission to use Bash"),
-        ("fail", "Deploy failed", "staging: health check timed out after 30s"),
+    /// The cards the demo drops, in order: one of each kind a build or an agent sends, the last
+    /// with a button.
+    public static let samples: [(kind: String, title: String, detail: String, open: String?)] = [
+        ("ok", "Build finished", "make test: 246 passed in 3.2s", nil),
+        ("warn", "drip needs you", "Claude needs your permission to use Bash", nil),
+        ("fail", "Deploy failed", "staging: health check timed out after 30s", nil),
+        ("info", "Report uploaded", "q3-review.pdf is on the file server", "https://github.com/jrnxf/drip"),
     ]
 
     /// The warnings to print before the demo: which flags do nothing.
@@ -343,6 +345,10 @@ public struct DemoCommand: ParsableCommand {
         return try samples.map { sample in
             var cardFlags = flags
             cardFlags.detail = flags.detail ?? sample.detail
+            if let open = sample.open, flags.open == nil, flags.button == nil {
+                cardFlags.open = open
+                cardFlags.button = "Open"
+            }
             return try resolver.resolve(kind: sample.kind, title: sample.title, flags: cardFlags)
         }
     }

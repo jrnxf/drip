@@ -115,11 +115,12 @@ three, breaking between words, between Japanese or Chinese characters, or inside
 for a line. When text is still left over, the last line ends in an ellipsis. The card stays up for
 `--seconds` however many lines it has.
 
-**drip demo** drops three cards from the notch one after another, the way queued cards show: ok,
-warn, then fail. Each stays two seconds unless `--seconds`, `DRIP_SECONDS` or the config's
-`seconds` say otherwise, and they are silent unless `--sound` or `DRIP_SOUND` is given. Every card
-is a notch card, so `--position` and `--style` do not apply. `--id` is ignored, so no card
-replaces another. Other options apply to every card.
+**drip demo** drops four cards from the notch one after another, the way queued cards show: ok,
+warn, fail, then an info card with an Open button that opens drip's GitHub page. Each stays two
+seconds unless `--seconds`, `DRIP_SECONDS` or the config's `seconds` say otherwise, and they are
+silent unless `--sound` or `DRIP_SOUND` is given. Every card is a notch card, so `--position` and
+`--style` do not apply. `--id` is ignored, so no card replaces another. Other options apply to
+every card, and `--open` or `--button` replace the last card's button.
 
 **Returning at once.** drip checks everything first (flags, config, stdin, sounds and icons), so a
 mistake still prints its message and exit status. Then it hands the card to a background drip and
