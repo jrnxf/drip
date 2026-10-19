@@ -26,7 +26,9 @@ case $developer in
     ;;
 esac
 DRIP_RECORD_SNAPSHOTS=1 swift test "$@"
-swift build
+# The cards below are for looking at, so they come from a release build: a debug build samples the
+# notch's springs too slowly to keep up, and the drop never oozes out of the notch.
+swift build -c release
 
 new=$(git status --porcelain --untracked-files=all -- Tests/Snapshots)
 if [ -n "$new" ]; then
@@ -49,21 +51,21 @@ TOML
 unset DRIP_SECONDS DRIP_POSITION DRIP_SIZE DRIP_SOUND DRIP_STYLE DRIP_MOTION
 for kind in ok warn fail info deploy; do
     echo "Showing the $kind card"
-    XDG_CONFIG_HOME="$config" .build/debug/drip "$kind" "drip $kind" --detail "mac-check: the $kind preset"
+    XDG_CONFIG_HOME="$config" .build/release/drip "$kind" "drip $kind" --detail "mac-check: the $kind preset"
 done
 
 echo "Playing drip demo"
-XDG_CONFIG_HOME="$config" .build/debug/drip demo
+XDG_CONFIG_HOME="$config" .build/release/drip demo
 
 # The demo waits for its cards, so the queue is empty: the first hook card is on screen when the
 # second arrives, and the second takes its place.
 echo "Showing a Claude hook card, then a newer one from the same session in its place; click it to come back here"
 hook() {
-    XDG_CONFIG_HOME="$config" .build/debug/drip hook claude --seconds 8
+    XDG_CONFIG_HOME="$config" .build/release/drip hook claude --seconds 8
 }
 printf '{"hook_event_name":"Notification","notification_type":"permission_prompt","session_id":"mac-check","cwd":"%s","message":"Claude needs your permission to use Bash"}' "$PWD" | hook
 sleep 3
 printf '{"hook_event_name":"Stop","session_id":"mac-check","cwd":"%s","last_assistant_message":"mac-check: this card took the place of the one before"}' "$PWD" | hook
 
 echo "The last cards in the history"
-.build/debug/drip history | tail -n 5
+.build/release/drip history | tail -n 5
