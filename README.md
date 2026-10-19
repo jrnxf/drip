@@ -1,7 +1,7 @@
 # drip
 
 <p align="center">
-  <img src="docs/demo.gif" width="400" alt="Three drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then drip needs you, with Claude needs your permission to use Bash, then Deploy failed, with staging: health check timed out after 30s">
+  <img src="docs/demo.gif" width="400" alt="Two drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then drip needs you, with Claude needs your permission to use Bash">
 </p>
 
 A HUD from the shell for macOS: one command shows a brief native card growing out of the camera
@@ -118,8 +118,9 @@ for a line. When text is still left over, the last line ends in an ellipsis. The
 **drip demo** drops three cards from the notch one after another, the way queued cards show: ok,
 warn, then fail. Each stays two seconds unless `--seconds`, `DRIP_SECONDS` or the config's
 `seconds` say otherwise, and they are silent unless `--sound` or `DRIP_SOUND` is given. Every card
-is a notch card, so `--position` does not apply; on a screen without a notch the cards show near the
-top, as any notch card does there. Other options apply to every card.
+is a notch card, so `--position` does not apply, and `--style` applies only on a screen without a
+notch, where the cards show near the top as any notch card does. `--id` is ignored, so no card
+replaces another. Other options apply to every card.
 
 **Returning at once.** drip checks everything first (flags, config, stdin, sounds and icons), so a
 mistake still prints its message and exit status. Then it hands the card to a background drip and

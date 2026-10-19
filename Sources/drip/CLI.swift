@@ -177,6 +177,9 @@ struct DripCLI {
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         if flags.position != nil { console.warn("drip demo shows only notch cards, so --position does nothing") }
+        if flags.style != nil, display.hasNotch {
+            console.warn("drip demo shows only notch cards, so --style does nothing")
+        }
         do {
             let resolver = try makeResolver(console)
             // Short and silent, unless a flag, the environment or the config says otherwise.

@@ -313,9 +313,10 @@ public struct DemoCommand: ParsableCommand {
         abstract: "Drop a few cards from the notch one after another, as queued cards show.",
         usage: "drip demo [options]",
         discussion: """
-            Every card is a notch card, so --position does not apply; on a screen without a notch \
-            the cards show near the top, as any notch card does there. Cards are silent unless \
-            --sound or DRIP_SOUND is given. Other options apply to every card.
+            Every card is a notch card, so --position does not apply, and --style applies only on a \
+            screen without a notch, where the cards show near the top as any notch card does. Cards \
+            are silent unless --sound or DRIP_SOUND is given. --id is ignored, so no card replaces \
+            another. Other options apply to every card.
             """
     )
 
