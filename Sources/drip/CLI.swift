@@ -170,12 +170,13 @@ struct DripCLI {
         return outcome.status
     }
 
-    /// Every style at the configured position (bottom when that is the notch), then the notch card
-    /// when the screen has a notch. Silent unless --sound or DRIP_SOUND is given.
+    /// A few notch cards, one after another, the way queued cards show. Silent unless --sound or
+    /// DRIP_SOUND is given.
     private func demo(_ command: DemoCommand) -> Int32 {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
+        DemoCommand.warnings(flags: flags, hasNotch: display.hasNotch).forEach(console.warn)
         do {
             let resolver = try makeResolver(console)
             // Short and silent, unless a flag, the environment or the config says otherwise.
@@ -183,27 +184,7 @@ struct DripCLI {
                 flags.seconds = 2
             }
             if flags.sound == nil, resolver.environment.sound == nil { flags.sound = Sound.none }
-            // Every demo card would share one id and replace the one before.
-            flags.id = nil
-            let presets = Preset.builtIn.map(\.name)
-            var cards: [Card] = []
-            for (index, style) in CardStyle.allCases.enumerated() where flags.style == nil || flags.style == style {
-                var styleFlags = flags
-                styleFlags.style = style
-                styleFlags.detail = flags.detail ?? "style = \"\(style.rawValue)\""
-                var card = try resolver.resolve(
-                    kind: presets[index % presets.count], title: "drip demo: \(style.rawValue)", flags: styleFlags)
-                if card.position == .notch { card.position = .bottom }
-                cards.append(card)
-            }
-            if display.hasNotch {
-                var notchFlags = flags
-                notchFlags.position = .notch
-                notchFlags.detail = flags.detail ?? "position = \"notch\""
-                cards.append(try resolver.resolve(kind: presets[0], title: "drip demo: notch", flags: notchFlags))
-            } else {
-                console.warn("this screen has no notch, so the notch card is skipped")
-            }
+            let cards = try DemoCommand.cards(resolver, flags: flags)
             return display.show(display.prepare(cards, console: console), locked: .ignore, console: console)
         } catch {
             return report(error, console)

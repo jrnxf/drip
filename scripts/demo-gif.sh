@@ -1,6 +1,6 @@
 #!/bin/sh
-# Draws docs/demo.gif: two notch cards in turn, frame by frame with the hidden `drip __render --at`,
-# which draws the same layers the island shows. Needs ImageMagick (`magick`).
+# Draws docs/demo.gif: the three notch cards drip demo drops, in turn, frame by frame with the hidden
+# `drip __render --at`, which draws the same layers the island shows. Needs ImageMagick (`magick`).
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -31,6 +31,7 @@ card() {
 }
 card ok "Build finished" --detail "make test: 246 passed in 3.2s" --position notch
 card warn "drip needs you" --detail "Claude needs your permission to use Bash" --position notch
+card fail "Deploy failed" --detail "staging: health check timed out after 30s" --position notch
 
 # Every frame on one canvas, wide enough for the widest card: the renderer's menu bar and desktop.
 magick -size 800x64 xc:'rgb(199,199,199)' -size 800x174 xc:'rgb(230,230,230)' -append +repage \

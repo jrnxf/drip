@@ -123,6 +123,42 @@ struct StyleCommandTests {
         }
     }
 
+    @Test func demoDropsSeveralNotchCards() throws {
+        let cards = try DemoCommand.cards(
+            CardResolver(), flags: CardFlags(position: .bottom, id: "shared"))
+        #expect(cards.map(\.kind) == ["ok", "warn", "fail"])
+        #expect(Set(cards.map(\.title)).count == cards.count)
+        for card in cards {
+            #expect(card.position == .notch)
+            #expect(card.id == nil)
+            #expect(card.detail != nil)
+        }
+    }
+
+    @Test func demoDetailReplacesEverySample() throws {
+        let cards = try DemoCommand.cards(CardResolver(), flags: CardFlags(detail: "mine"))
+        #expect(cards.allSatisfy { $0.detail == "mine" })
+    }
+
+    @Test func demoWarnsAboutFlagsThatDoNothingAtTheNotch() {
+        let flags = CardFlags(position: .top, style: .glass)
+        #expect(DemoCommand.warnings(flags: flags, hasNotch: true) == [
+            "drip demo shows only notch cards, so --position does nothing",
+            "drip demo shows only notch cards, so --style does nothing",
+        ])
+        #expect(DemoCommand.warnings(flags: CardFlags(), hasNotch: true).isEmpty)
+    }
+
+    @Test func demoWithoutANotchWarnsWhereCardsShowAndKeepsStyle() {
+        #expect(DemoCommand.warnings(flags: CardFlags(style: .glass), hasNotch: false) == [
+            "this screen has no notch, so the cards show at the top",
+        ])
+        #expect(DemoCommand.warnings(flags: CardFlags(position: .top), hasNotch: false) == [
+            "drip demo shows only notch cards, so --position does nothing",
+            "this screen has no notch, so the cards show at the top",
+        ])
+    }
+
     @Test func renderTakesATime() throws {
         guard case let .invocation(.render(command)) = CommandLineParser.parse(
             ["__render", "--out", "x.png", "ok", "t", "--position", "notch", "--at", "0.3"])
