@@ -123,6 +123,26 @@ struct StyleCommandTests {
         }
     }
 
+    @Test func demoPlaysChainThenPushUnlessOneIsNamed() throws {
+        let both = { (arguments: [String]) -> [StackSettings.Mode]? in
+            guard case let .invocation(.demo(command)) = CommandLineParser.parse(arguments) else { return nil }
+            return command.stacks
+        }
+        #expect(both(["demo"]) == [.chain, .push])
+        #expect(both(["demo", "push"]) == [.push])
+        #expect(both(["demo", "--seconds", "3", "chain"]) == [.chain])
+        guard case .exit(ExitStatus.usage, _) = CommandLineParser.parse(["demo", "off"]) else {
+            Issue.record("demo off parsed"); return
+        }
+    }
+
+    @Test func demoHoldsTheReportBackWhateverDripStackSays() {
+        let stack = DemoCommand.stack(.push, environment: ["DRIP_STACK": "off"], config: Config())
+        #expect(stack.mode == .push)
+        #expect(stack.max == 3)
+        #expect(stack.pauses == [0, 0, 0, 3])
+    }
+
     @Test func demoDropsSeveralNotchCards() throws {
         let cards = try DemoCommand.cards(
             CardResolver(), flags: CardFlags(position: .bottom, id: "shared"))

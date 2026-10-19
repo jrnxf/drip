@@ -311,4 +311,10 @@ struct StackSettingsTests {
         #expect(StackSettings.current(environment: ["DRIP_STACK": "push"], config: Config())?.mode == .push)
         #expect(StackSettings.current(environment: ["DRIP_STACK": "off"], config: Config()) == nil)
     }
+
+    @Test func aModeGivenOverridesTheEnvironment() {
+        #expect(StackSettings.current(environment: ["DRIP_STACK": "off"], config: Config(), mode: .push)
+            == StackSettings(mode: .push, max: 3))
+        #expect(StackSettings.current(environment: ["DRIP_STACK": "push"], config: Config(), mode: .chain)?.mode == .chain)
+    }
 }

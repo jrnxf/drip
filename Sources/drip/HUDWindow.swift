@@ -11,7 +11,7 @@ struct HUDDisplay: CardDisplay {
 
 
     /// Shows the cards one after another and returns once the last has gone.
-    func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
+    func show(_ cards: [Card], locked: LockedScreen, stack settings: StackSettings?, console: Console) -> Int32 {
         // Without a GUI session, touching NSApplication can abort or hang, so check first.
         guard CGSessionCopyCurrentDictionary() != nil else {
             console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")
@@ -45,7 +45,8 @@ struct HUDDisplay: CardDisplay {
                 unanswered = unanswered || card.asksQuestion
                 return next()
             }
-            if let stack = StackPresenter.make(for: card, rest: &remaining, adopting: adopting, console: console) {
+            if let stack = StackPresenter.make(
+                for: card, rest: &remaining, adopting: adopting, settings: settings, console: console) {
                 return stack.start { ok in
                     failed = failed || !ok
                     next()

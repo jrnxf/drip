@@ -1,7 +1,7 @@
 # drip
 
 <p align="center">
-  <img src="docs/demo.gif" width="400" alt="Two drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then drip needs you, with Claude needs your permission to use Bash">
+  <img src="docs/demo.gif" width="400" alt="Three drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then Claude needs you, with Claude needs your permission to use Bash, then Deploy failed, with staging: health check timed out after 30s">
 </p>
 
 A HUD from the shell for macOS: one command shows a brief native card growing out of the camera
@@ -21,7 +21,7 @@ drip warn "staging is ready" --button "Promote" && ./promote.sh
 drip ok "shipped" --position top --style glass
 drip info "deploying" --id deploy && drip ok "deployed" --id deploy
 drip hook claude              # from a Claude Code hook: which project needs you, and why
-drip demo                     # a few cards dropping from the notch in turn
+drip demo                     # a few cards dropping from the notch, chained then pushed
 drip history --missed         # what came up while you were away
 ```
 
@@ -35,7 +35,7 @@ drip ok "drip works"
 ```
 
 A green card grows out of the notch, or out of the top edge of a screen without one, and drip
-prints nothing. `drip demo` then drops a few cards from the notch, one after another.
+prints nothing. `drip demo` then drops a few cards from the notch, stacking them under one another.
 
 Homebrew builds drip from source with the Swift in the Command Line Tools, which Homebrew already
 needs, in about a minute. Xcode is not needed.
@@ -63,7 +63,7 @@ screen shares and recordings.
 drip [KIND] [TITLE] [options]
 drip run [options] -- <command> [args...]
 drip hook claude|codex [options] [payload]
-drip demo [options]
+drip demo [chain|push] [options]
 drip history [--missed] [--json | --replay]
 drip --version | --help
 ```
@@ -115,10 +115,12 @@ three, breaking between words, between Japanese or Chinese characters, or inside
 for a line. When text is still left over, the last line ends in an ellipsis. The card stays up for
 `--seconds` however many lines it has.
 
-**drip demo** drops four cards from the notch one after another, the way queued cards show: ok,
-warn, fail, then an info card with an Open button that opens drip's GitHub page. Each stays two
-seconds unless `--seconds`, `DRIP_SECONDS` or the config's `seconds` say otherwise, and they are
-silent unless `--sound` or `DRIP_SOUND` is given. Every card is a notch card, so `--position` and
+**drip demo** drops four cards from the notch one after another, stacking the way queued cards do
+(see [Styles](#styles)): ok, warn, fail, then an info card with an Open
+button that opens drip's GitHub page. It plays them twice, chained and then pushed; `drip demo
+chain` or `drip demo push` plays only that one, whatever `DRIP_STACK` says. Each stays two
+seconds unless `--seconds`, `DRIP_SECONDS` or the config's `seconds` say otherwise, and each plays
+its preset's sound, as a real card would; `--sound none` mutes them. Every card is a notch card, so `--position` and
 `--style` do not apply. `--id` is ignored, so no card replaces another. Other options apply to
 every card, and `--open` or `--button` replace the last card's button.
 

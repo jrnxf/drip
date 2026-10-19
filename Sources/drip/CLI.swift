@@ -7,8 +7,9 @@ protocol CardDisplay {
     var automaticStyle: CardStyle { get }
 
     /// Shows the cards one after another, after any other drip's, and returns once the last has
-    /// gone, with the exit status to report. `locked` says what happens while the screen is locked.
-    func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32
+    /// gone, with the exit status to report. `locked` says what happens while the screen is locked;
+    /// a `stack` given stacks notch cards that way instead of as `DRIP_STACK` says.
+    func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32
 
     /// Hands the cards to a background drip and returns at once, or shows them here when it cannot.
     func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32
@@ -22,6 +23,13 @@ protocol CardDisplay {
         _ card: Card, appearance: RenderCommand.Appearance, at time: Double?, leaving: Bool, to path: String,
         console: Console
     ) -> Int32
+}
+
+extension CardDisplay {
+    /// Shows the cards, stacking notch cards as `DRIP_STACK` says.
+    func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
+        show(cards, locked: locked, stack: nil, console: console)
+    }
 }
 
 /// Writes messages to stderr.
@@ -167,8 +175,8 @@ struct DripCLI {
         return outcome.status
     }
 
-    /// A few notch cards, one after another, the way queued cards show. Silent unless --sound or
-    /// DRIP_SOUND is given.
+    /// A few notch cards, stacking the way queued cards do: chained, then pushed, unless the command
+    /// names one. Each card plays its preset's sound, as a real card would.
     private func demo(_ command: DemoCommand) -> Int32 {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
@@ -176,15 +184,19 @@ struct DripCLI {
         DemoCommand.warnings(flags: flags).forEach(console.warn)
         do {
             let resolver = try makeResolver(console)
-            // Short and silent, unless a flag, the environment or the config says otherwise.
+            // Short, unless a flag, the environment or the config says otherwise.
             if flags.seconds == nil, resolver.environment.seconds == nil, resolver.config.seconds == nil {
                 flags.seconds = 2
             }
-            if flags.sound == nil, resolver.environment.sound == nil { flags.sound = Sound.none }
-            let cards = try DemoCommand.cards(resolver, flags: flags)
-            let status = display.show(display.prepare(cards, console: console), locked: .ignore, console: console)
-            // The demo's button is there to try, not a question: leaving it alone is no failure.
-            return status == ExitStatus.notClicked ? ExitStatus.shown : status
+            let cards = display.prepare(try DemoCommand.cards(resolver, flags: flags), console: console)
+            for mode in command.stacks {
+                let stack = DemoCommand.stack(
+                    mode, environment: ProcessInfo.processInfo.environment, config: resolver.config)
+                let status = display.show(cards, locked: .ignore, stack: stack, console: console)
+                // The demo's button is there to try, not a question: leaving it alone is no failure.
+                if status != ExitStatus.shown, status != ExitStatus.notClicked { return status }
+            }
+            return ExitStatus.shown
         } catch {
             return report(error, console)
         }
@@ -249,7 +261,7 @@ struct DripCLI {
 struct UnavailableDisplay: CardDisplay {
     var automaticStyle: CardStyle { Defaults.style }
 
-    func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
+    func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32 {
         console.error("no GUI session: drip shows cards only on macOS")
         return ExitStatus.noGUISession
     }

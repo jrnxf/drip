@@ -18,6 +18,7 @@ extension Position: ExpressibleByArgument {}
 extension CardSize: ExpressibleByArgument {}
 extension CardStyle: ExpressibleByArgument {}
 extension Motion: ExpressibleByArgument {}
+extension StackSettings.Mode: ExpressibleByArgument {}
 
 extension CardColor: ExpressibleByArgument {
     public init?(argument: String) {
@@ -209,7 +210,7 @@ public struct DripCommand: ParsableCommand {
             drip [KIND] [TITLE] [options]
             drip run [options] -- <command> [args...]
             drip hook claude|codex [options] [payload]
-            drip demo [options]
+            drip demo [chain|push] [options]
             drip history [--missed] [--json | --replay]
             drip --version | --help
             """,
@@ -230,7 +231,8 @@ public struct DripCommand: ParsableCommand {
             A click on the card brings forward the app drip was run from, such as the terminal, \
             unless --activate says otherwise.
 
-            drip demo drops a few cards from the notch one after another, as queued cards show.
+            drip demo drops a few cards from the notch, stacking as queued cards do: chained, \
+            then pushed, unless one of chain or push is given.
 
             Cards that come up while the screen is locked wait for the unlock; three or more \
             become one card. drip history lists every card, the missed ones marked.
@@ -306,27 +308,37 @@ public struct HookCommand: ParsableCommand {
     public init() {}
 }
 
-/// `drip demo [options]`: drops a few cards from the notch one after another.
+/// `drip demo [chain|push] [options]`: drops a few cards from the notch, stacking them each way.
 public struct DemoCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "drip demo",
-        abstract: "Drop a few cards from the notch one after another, as queued cards show.",
-        usage: "drip demo [options]",
+        abstract: "Drop a few cards from the notch, stacking as queued cards do.",
+        usage: "drip demo [chain|push] [options]",
         discussion: """
-            Every card is a notch card, so --position and --style do not apply; on a screen without a \
-            notch the cards grow out of the middle of its top edge. Cards are silent unless --sound or DRIP_SOUND is given. --id is ignored, so no card replaces \
+            Plays the cards twice: chained, each new card dropping out of the one above, then pushed, \
+            each new card dropping out of the notch as the others move down. chain or push plays only \
+            that one, whatever DRIP_STACK says. Every card is a notch card, so --position and --style do not apply; on a screen without a \
+            notch the cards grow out of the middle of its top edge. Each card plays its preset's sound; --sound none mutes them. --id is ignored, so no card replaces \
             another. Other options apply to every card.
             """
     )
 
     /// The cards the demo drops, in order: one of each kind a build or an agent sends, the last
-    /// with a button.
-    public static let samples: [(kind: String, title: String, detail: String, open: String?)] = [
-        ("ok", "Build finished", "make test: 246 passed in 3.2s", nil),
-        ("warn", "drip needs you", "Claude needs your permission to use Bash", nil),
-        ("fail", "Deploy failed", "staging: health check timed out after 30s", nil),
-        ("info", "Report uploaded", "q3-review.pdf is on the file server", "https://github.com/jrnxf/drip"),
+    /// with a button. `pause` is how long a card waits, at the least, after the one before it.
+    public static let samples: [(kind: String, title: String, detail: String, open: String?, pause: Double)] = [
+        ("ok", "Build finished", "make test: 246 passed in 3.2s", nil, 0),
+        ("warn", "Claude needs you", "Claude needs your permission to use Bash", nil, 0),
+        ("fail", "Deploy failed", "staging: health check timed out after 30s", nil, 0),
+        ("info", "Report uploaded", "q3-review.pdf is on the file server", "https://github.com/jrnxf/drip", 3),
     ]
+
+    /// How the demo stacks its cards `mode`'s way, whatever `DRIP_STACK` says, the report held back.
+    public static func stack(_ mode: StackSettings.Mode, environment: [String: String], config: Config) -> StackSettings {
+        var settings = StackSettings.current(environment: environment, config: config, mode: mode)
+            ?? StackSettings(mode: mode, max: Defaults.stackMax)
+        settings.pauses = samples.map(\.pause)
+        return settings
+    }
 
     /// The warnings to print before the demo: which flags do nothing.
     public static func warnings(flags: CardFlags) -> [String] {
@@ -351,6 +363,14 @@ public struct DemoCommand: ParsableCommand {
             }
             return try resolver.resolve(kind: sample.kind, title: sample.title, flags: cardFlags)
         }
+    }
+
+    @Argument(help: ArgumentHelp("How the cards stack: chain or push. (default: both, in turn)", valueName: "stack"))
+    public var stack: StackSettings.Mode?
+
+    /// The ways the demo stacks its cards, in turn.
+    public var stacks: [StackSettings.Mode] {
+        stack.map { [$0] } ?? StackSettings.Mode.allCases
     }
 
     @OptionGroup public var options: CardOptions

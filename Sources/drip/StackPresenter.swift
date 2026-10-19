@@ -66,6 +66,8 @@ final class StackPresenter: CardPresenting {
     /// Whether to adopt newer drips' cards: only a background drip, which reports nothing about them.
     private let adopting: Bool
     private var waiting: [Card]
+    /// How many of this drip's own cards have dropped in, for `settings.pauses`.
+    private var admitted = 0
     /// Top to bottom, leaving cards included.
     private var entries: [Entry] = []
     private var panel: IslandPanel?
@@ -108,11 +110,13 @@ final class StackPresenter: CardPresenting {
     private static let maximumLead = 0.5
 
     /// A stack for `card` and the notch cards that follow it in `rest`, which it takes; nil when
-    /// stacking is off, the card is not for the notch, or motion is reduced.
+    /// stacking is off, the card is not for the notch, or motion is reduced. `settings` given
+    /// replace `DRIP_STACK`'s.
     static func make(
-        for card: Card, rest: inout ArraySlice<Card>, adopting: Bool, console: Console
+        for card: Card, rest: inout ArraySlice<Card>, adopting: Bool, settings: StackSettings?,
+        console: Console
     ) -> StackPresenter? {
-        guard let settings = StackSettings.current(environment: ProcessInfo.processInfo.environment),
+        guard let settings = settings ?? StackSettings.current(environment: ProcessInfo.processInfo.environment),
               card.position == .notch,
               CardPresenters.motion(for: card) == .full,
               let screen = CardPresenters.targetScreen()
@@ -475,8 +479,10 @@ final class StackPresenter: CardPresenting {
                 return
             }
         }
-        guard live.count < settings.max, let card = waiting.first else { return }
+        let pause = admitted < settings.pauses.count ? settings.pauses[admitted] : 0
+        guard live.count < settings.max, let card = waiting.first, time - lastEntrance >= pause else { return }
         waiting.removeFirst()
+        admitted += 1
         if CardQueue.isReplaced(card) { return }
         enter(card, own: true)
     }
