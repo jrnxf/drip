@@ -176,10 +176,7 @@ struct DripCLI {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
-        if flags.position != nil { console.warn("drip demo shows only notch cards, so --position does nothing") }
-        if flags.style != nil, display.hasNotch {
-            console.warn("drip demo shows only notch cards, so --style does nothing")
-        }
+        DemoCommand.warnings(flags: flags, hasNotch: display.hasNotch).forEach(console.warn)
         do {
             let resolver = try makeResolver(console)
             // Short and silent, unless a flag, the environment or the config says otherwise.
@@ -187,9 +184,6 @@ struct DripCLI {
                 flags.seconds = 2
             }
             if flags.sound == nil, resolver.environment.sound == nil { flags.sound = Sound.none }
-            if !display.hasNotch {
-                console.warn("this screen has no notch, so the cards show at the top")
-            }
             let cards = try DemoCommand.cards(resolver, flags: flags)
             return display.show(display.prepare(cards, console: console), locked: .ignore, console: console)
         } catch {

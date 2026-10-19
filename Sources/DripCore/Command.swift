@@ -327,6 +327,16 @@ public struct DemoCommand: ParsableCommand {
         ("fail", "Deploy failed", "staging: health check timed out after 30s"),
     ]
 
+    /// The warnings to print before the demo: which flags do nothing, and where cards show on a
+    /// screen without a notch.
+    public static func warnings(flags: CardFlags, hasNotch: Bool) -> [String] {
+        var warnings: [String] = []
+        if flags.position != nil { warnings.append("drip demo shows only notch cards, so --position does nothing") }
+        if flags.style != nil, hasNotch { warnings.append("drip demo shows only notch cards, so --style does nothing") }
+        if !hasNotch { warnings.append("this screen has no notch, so the cards show at the top") }
+        return warnings
+    }
+
     /// The demo's cards, all at the notch. --detail replaces every sample's detail.
     public static func cards(_ resolver: CardResolver, flags: CardFlags) throws -> [Card] {
         var flags = flags
