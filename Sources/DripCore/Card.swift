@@ -144,6 +144,9 @@ public struct Preset: Equatable, Sendable {
 public enum Defaults {
     public static let seconds = 4.5
     public static let secondsRange: ClosedRange<Double> = 0.5...60
+    /// The most notch cards on screen at once.
+    public static let stackMax = 3
+    public static let stackMaxRange: ClosedRange<Int> = 1...6
     public static let position = Position.notch
     public static let size = CardSize.regular
     /// The style when nothing sets one and the display has no better default.

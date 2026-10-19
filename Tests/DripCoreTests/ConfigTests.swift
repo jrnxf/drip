@@ -287,3 +287,28 @@ struct PrecedenceTests {
         #expect(try resolver.resolveRun(command: ["false"], status: 1, seconds: 1, flags: CardFlags()).seconds == 10)
     }
 }
+
+struct StackSettingsTests {
+    private let path = "/home/me/.config/drip/config.toml"
+
+    @Test func configReadsStackMaxWithinRange() throws {
+        #expect(try ConfigLoader.parse("stack_max = 5", path: path).config.stackMax == 5)
+        let tooMany = #expect(throws: ConfigError.self) { try ConfigLoader.parse("stack_max = 7", path: path) }
+        #expect(tooMany?.description == "\(path):1: stack_max: must be between 1 and 6")
+        let text = #expect(throws: ConfigError.self) { try ConfigLoader.parse("stack_max = \"3\"", path: path) }
+        #expect(text?.description == "\(path):1: stack_max: expected a whole number, got a string")
+    }
+
+    @Test func stackMaxComesFromTheEnvironmentThenTheConfigThenThree() {
+        let config = Config(stackMax: 5)
+        #expect(StackSettings.current(environment: [:], config: Config()) == StackSettings(mode: .chain, max: 3))
+        #expect(StackSettings.current(environment: [:], config: config)?.max == 5)
+        #expect(StackSettings.current(environment: ["DRIP_STACK_MAX": "2"], config: config)?.max == 2)
+        #expect(StackSettings.current(environment: ["DRIP_STACK_MAX": "40"], config: config)?.max == 6)
+    }
+
+    @Test func stackModeComesFromTheEnvironment() {
+        #expect(StackSettings.current(environment: ["DRIP_STACK": "push"], config: Config())?.mode == .push)
+        #expect(StackSettings.current(environment: ["DRIP_STACK": "off"], config: Config()) == nil)
+    }
+}

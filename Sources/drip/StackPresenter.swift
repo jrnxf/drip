@@ -3,27 +3,6 @@ import AppKit
 import DripCore
 import QuartzCore
 
-/// How cards stack at the notch, from `DRIP_STACK` and `DRIP_STACK_MAX`. An experiment: `chain`
-/// (the default) drops each new card from the bottom of the last, `push` drops it from the notch and
-/// pushes the others down, and `off` shows one card at a time.
-struct StackSettings {
-    enum Mode: String {
-        case chain, push
-    }
-
-    var mode: Mode
-    /// The most cards on screen at once; the rest wait their turn.
-    var max: Int
-
-    /// Nil when stacking is off.
-    static func current(environment: [String: String] = ProcessInfo.processInfo.environment) -> StackSettings? {
-        let value = environment["DRIP_STACK"]?.lowercased() ?? Mode.chain.rawValue
-        guard let mode = Mode(rawValue: value) else { return nil }
-        let max = environment["DRIP_STACK_MAX"].flatMap(Int.init) ?? 3
-        return StackSettings(mode: mode, max: min(Swift.max(max, 1), 6))
-    }
-}
-
 /// Shows several cards at the notch at once, one below another, each grown out of the notch or out
 /// of the card above it, and adopts newer drips' notch cards from the queue while it shows.
 ///
@@ -125,7 +104,8 @@ final class StackPresenter: CardPresenting {
     static func make(
         for card: Card, rest: inout ArraySlice<Card>, adopting: Bool, console: Console
     ) -> StackPresenter? {
-        guard let settings = StackSettings.current(), card.position == .notch,
+        guard let settings = StackSettings.current(environment: ProcessInfo.processInfo.environment),
+              card.position == .notch,
               CardPresenters.motion(for: card) == .full,
               let screen = CardPresenters.targetScreen()
         else { return nil }

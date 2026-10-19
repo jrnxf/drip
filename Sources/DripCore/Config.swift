@@ -29,12 +29,14 @@ public struct Config: Equatable {
     public var sound: Bool?
     public var style: CardStyle?
     public var motion: Motion?
+    /// The most notch cards on screen at once.
+    public var stackMax: Int?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
 
     public init(
         seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Bool? = nil,
-        style: CardStyle? = nil, motion: Motion? = nil,
+        style: CardStyle? = nil, motion: Motion? = nil, stackMax: Int? = nil,
         presets: [String: PresetOverride] = [:]
     ) {
         self.seconds = seconds
@@ -43,6 +45,7 @@ public struct Config: Equatable {
         self.sound = sound
         self.style = style
         self.motion = motion
+        self.stackMax = stackMax
         self.presets = presets
     }
 
@@ -175,6 +178,12 @@ private struct ConfigReader {
             case "notch":
                 warnings.append("\(path):\(item.line): 'notch' is no longer used; droplet is the only notch motion")
             case "motion": config.motion = try choice(item, key: key, Motion.self)
+            case "stack_max":
+                guard case let .integer(value) = item.value else { throw wrongType(item, key: key, expected: "a whole number") }
+                guard Defaults.stackMaxRange.contains(Int(clamping: value)) else {
+                    throw ConfigError(path: path, line: item.line, key: key, message: "must be between 1 and 6")
+                }
+                config.stackMax = Int(value)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
             }

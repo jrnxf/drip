@@ -280,14 +280,14 @@ notch. A card whose text wraps grows into a taller capsule with rounded corners.
 a notch the drop forms above the screen and oozes out of the middle of its top edge instead, and
 goes back into it the same way.
 
-**Several cards at once (experimental).** Notch cards that come in while one is showing stack below
-it, up to `DRIP_STACK_MAX` (3) at a time; the rest wait their turn. With `DRIP_STACK=chain`, the
-default, each new card drops out of the bottom of the last one and the oldest goes back into the
-notch first, the others moving up behind it. With `DRIP_STACK=push` a new card drops out of the
-notch once the others have moved down out of its way. `DRIP_STACK=off` shows one card at a time.
-While the pointer is on any card in the stack, nothing moves: every countdown stops, gaps stay open
-and new cards wait. A click on a card dismisses it. Only the cards of drips that returned at once
-stack; a card that waits (`--wait`, or a question) waits its turn.
+**Several cards at once.** Notch cards that come in while one is showing stack below it, up to 3 at
+a time (`stack_max` in the [config](#config), or `DRIP_STACK_MAX`); the rest wait their turn. With
+`DRIP_STACK=chain`, the default, each new card drops out of the bottom of the last one and the
+oldest goes back into the notch first, the others moving up behind it. With `DRIP_STACK=push` a new
+card drops out of the notch once the others have moved down out of its way. `DRIP_STACK=off` shows
+one card at a time. While the pointer is on any card in the stack, nothing moves: every countdown
+stops, gaps stay open and new cards wait. A click on a card dismisses it. Only the cards of drips
+that returned at once stack; a card that waits (`--wait`, or a question) waits its turn.
 
 ### Exit codes
 
@@ -311,12 +311,13 @@ drip reads `$XDG_CONFIG_HOME/drip/config.toml`, or `~/.config/drip/config.toml`.
 optional, and a missing file is fine.
 
 ```toml
-seconds  = 4.5
-position = "notch"           # bottom | center | top | notch
-size     = "regular"         # compact | regular | large
-sound    = true              # false mutes every preset
-style    = "glass"           # hud | glass | wash | terminal (default: glass on macOS 26, hud before)
-motion   = "full"            # full | subtle | none
+seconds   = 4.5
+position  = "notch"           # bottom | center | top | notch
+size      = "regular"         # compact | regular | large
+sound     = true              # false mutes every preset
+style     = "glass"           # hud | glass | wash | terminal (default: glass on macOS 26, hud before)
+motion    = "full"            # full | subtle | none
+stack_max = 3                 # most notch cards on screen at once, 1 to 6
 
 [preset.ok]                  # override a built-in preset, any subset of keys
 sound = "Hero"
@@ -332,10 +333,11 @@ seconds = 6
 ```
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_POSITION`,
-`DRIP_SIZE`, `DRIP_SOUND`, `DRIP_STYLE`, `DRIP_MOTION`; `DRIP_SOUND=none` mutes), the config file,
-the built-in defaults. A preset's own `seconds` and `style` beat the top-level ones. A custom preset
-starts from `info` and replaces what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be
-`run`, `hook`, `demo` or `history`. Unknown keys print a warning; wrong types exit 4.
+`DRIP_SIZE`, `DRIP_SOUND`, `DRIP_STYLE`, `DRIP_MOTION`, `DRIP_STACK_MAX`; `DRIP_SOUND=none` mutes),
+the config file, the built-in defaults. A preset's own `seconds` and `style` beat the top-level
+ones. A custom preset starts from `info` and replaces what it sets. Its name must match
+`[a-z][a-z0-9-]*` and must not be `run`, `hook`, `demo` or `history`. Unknown keys print a warning;
+wrong types exit 4.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
 of one or two keys such as `[preset.ok]`, and values that are single-line strings, decimal
