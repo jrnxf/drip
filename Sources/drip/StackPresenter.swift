@@ -532,8 +532,20 @@ final class StackPresenter: CardPresenting {
         }
     }
 
+    /// Whether `point`, in island coordinates, is on `entry`'s button as it is drawn now.
+    private func onButton(of entry: Entry, at point: CGPoint) -> Bool {
+        guard entry.card.action != nil else { return false }
+        let layout = entry.animator.content(for: entry.animator.shape(at: now))
+        let half = layout.ringSize / 2 + 4
+        return abs(point.x - layout.ringCenter.x) <= half && abs(point.y - layout.ringCenter.y) <= half + 4
+    }
+
     private func updateHover() {
-        let inside = pointer.flatMap(entry(at:)) != nil
+        let under = pointer.flatMap(entry(at:))
+        for entry in live {
+            entry.layers.setButtonHovered(entry === under && pointer.map { onButton(of: entry, at: $0) } == true)
+        }
+        let inside = under != nil
         guard inside != hovering else { return }
         hovering = inside
         if inside {
@@ -556,14 +568,10 @@ final class StackPresenter: CardPresenting {
     private func click(at point: CGPoint) {
         let island = CGPoint(x: point.x - size.width / 2, y: size.height - point.y)
         guard let entry = entry(at: island) else { return }
-        if let action = entry.card.action {
-            let layout = entry.animator.content(for: entry.animator.shape(at: now))
-            let half = layout.ringSize / 2 + 4
-            if abs(island.x - layout.ringCenter.x) <= half, abs(island.y - layout.ringCenter.y) <= half + 4 {
-                CardActions.perform(action, console: console)
-                entry.dismissed = true
-                return
-            }
+        if let action = entry.card.action, onButton(of: entry, at: island) {
+            CardActions.perform(action, console: console)
+            entry.dismissed = true
+            return
         }
         if let target = entry.card.activate { CardActions.activate(target, console: console) }
         entry.dismissed = entry.dismissed ?? false

@@ -64,6 +64,9 @@ final class IslandLayers {
     /// The countdown ring, or a button in its place.
     let ring = CALayer()
     let ringProgress = CAShapeLayer()
+    /// The button's capsule and its two fills, plain and under the pointer.
+    private var buttonFill: CAShapeLayer?
+    private var buttonColors: (plain: CGColor, hover: CGColor)?
     let text = CALayer()
     /// One text layer per line of the title, and of the detail.
     let titleLines: [CATextLayer]
@@ -178,9 +181,14 @@ final class IslandLayers {
         fill.path = CGPath(
             roundedRect: ring.bounds, cornerWidth: size.height / 2, cornerHeight: size.height / 2, transform: nil)
         let rgb = accent.rgb(in: NSAppearance(named: .aqua) ?? .currentDrawing())
-        fill.fillColor = NSColor(WashPalette(accent: rgb).top).cgColor
+        let plain = NSColor(WashPalette(accent: rgb).top)
+        // Lightened on hover as much as the button on a card away from the notch.
+        let hover = plain.blended(withFraction: 0.12, of: .white) ?? plain
+        fill.fillColor = plain.cgColor
         fill.contentsScale = scale
         ring.addSublayer(fill)
+        buttonFill = fill
+        buttonColors = (plain.cgColor, hover.cgColor)
         let text = CATextLayer()
         text.string = label
         let textSize = label.size()
@@ -189,6 +197,17 @@ final class IslandLayers {
             width: ceil(textSize.width), height: ceil(textSize.height))
         text.contentsScale = scale
         ring.addSublayer(text)
+    }
+
+    /// Shows the button lightened while the pointer is on it, at once, as the other cards' button.
+    func setButtonHovered(_ hovered: Bool) {
+        guard let buttonFill, let buttonColors else { return }
+        let color = hovered ? buttonColors.hover : buttonColors.plain
+        guard buttonFill.fillColor != color else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        buttonFill.fillColor = color
+        CATransaction.commit()
     }
 
     /// The countdown ring: a faint track and the accent arc that drains.
@@ -752,6 +771,7 @@ final class IslandPresenter: CardPresenting {
 
     private func pointer(at point: CGPoint) {
         guard departure != nil, card.isClickable else { return }
+        layers?.setButtonHovered(card.action != nil && onButton(point))
         let inside = onIsland(point)
         guard inside != hovering else { return }
         hovering = inside
