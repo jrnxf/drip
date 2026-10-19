@@ -1,7 +1,7 @@
 # drip
 
 <p align="center">
-  <img src="docs/demo.gif" width="400" alt="Two drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then drip needs you, with Claude needs your permission to use Bash">
+  <img src="docs/demo.gif" width="400" alt="Three drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then drip needs you, with Claude needs your permission to use Bash, then Deploy failed, with staging: health check timed out after 30s">
 </p>
 
 A HUD from the shell for macOS: one command shows a brief native card growing out of the camera
@@ -21,7 +21,7 @@ drip warn "staging is ready" --button "Promote" && ./promote.sh
 drip ok "shipped" --position top --style glass
 drip info "deploying" --id deploy && drip ok "deployed" --id deploy
 drip hook claude              # from a Claude Code hook: which project needs you, and why
-drip demo                     # every style and the notch card, to pick by feel
+drip demo                     # a few cards dropping from the notch in turn
 drip history --missed         # what came up while you were away
 ```
 
@@ -35,7 +35,7 @@ drip ok "drip works"
 ```
 
 A green card grows out of the notch, or shows near the top of a screen without one, and drip
-prints nothing. `drip demo` then plays every style, to pick one by feel.
+prints nothing. `drip demo` then drops a few cards from the notch, one after another.
 
 Homebrew builds drip from source with the Swift in the Command Line Tools, which Homebrew already
 needs, in about a minute. Xcode is not needed.
@@ -115,11 +115,11 @@ three, breaking between words, between Japanese or Chinese characters, or inside
 for a line. When text is still left over, the last line ends in an ellipsis. The card stays up for
 `--seconds` however many lines it has.
 
-**drip demo** plays every style at your configured position (the bottom when that is the notch),
-then, on a screen with a notch, the notch card, two seconds each unless `--seconds`, `DRIP_SECONDS`
-or the config's `seconds` say otherwise, and silent unless `--sound` or `DRIP_SOUND` is given.
-Options apply to every card, so `drip demo --style wash` shows the wash card, then the notch card on
-a screen with one.
+**drip demo** drops three cards from the notch one after another, the way queued cards show: ok,
+warn, then fail. Each stays two seconds unless `--seconds`, `DRIP_SECONDS` or the config's
+`seconds` say otherwise, and they are silent unless `--sound` or `DRIP_SOUND` is given. Every card
+is a notch card, so `--position` does not apply; on a screen without a notch the cards show near the
+top, as any notch card does there. Other options apply to every card.
 
 **Returning at once.** drip checks everything first (flags, config, stdin, sounds and icons), so a
 mistake still prints its message and exit status. Then it hands the card to a background drip and

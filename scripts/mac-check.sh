@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds and tests drip on a Mac, records any missing snapshot references, then shows each preset
-# card on screen once, plays every style and the notch card with drip demo, shows a Claude hook
+# card on screen once, drops the notch cards of drip demo in turn, shows a Claude hook
 # card that a newer card from the same session replaces in place, and lists the history.
 #
 # Existing references are never overwritten: to regenerate one on purpose, delete its PNG in

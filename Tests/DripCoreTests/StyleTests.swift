@@ -123,6 +123,24 @@ struct StyleCommandTests {
         }
     }
 
+    @Test func demoDropsSeveralNotchCards() throws {
+        let cards = try DemoCommand.cards(
+            CardResolver(), flags: CardFlags(position: .bottom, id: "shared"))
+        #expect(cards.count >= 3)
+        #expect(Set(cards.map(\.kind)).count == cards.count)
+        #expect(Set(cards.map(\.title)).count == cards.count)
+        for card in cards {
+            #expect(card.position == .notch)
+            #expect(card.id == nil)
+            #expect(card.detail != nil)
+        }
+    }
+
+    @Test func demoDetailReplacesEverySample() throws {
+        let cards = try DemoCommand.cards(CardResolver(), flags: CardFlags(detail: "mine"))
+        #expect(cards.allSatisfy { $0.detail == "mine" })
+    }
+
     @Test func renderTakesATime() throws {
         guard case let .invocation(.render(command)) = CommandLineParser.parse(
             ["__render", "--out", "x.png", "ok", "t", "--position", "notch", "--at", "0.3"])

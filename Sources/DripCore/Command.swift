@@ -230,7 +230,7 @@ public struct DripCommand: ParsableCommand {
             A click on the card brings forward the app drip was run from, such as the terminal, \
             unless --activate says otherwise.
 
-            drip demo plays every style, then the notch card, so you can pick by feel.
+            drip demo drops a few cards from the notch one after another, as queued cards show.
 
             Cards that come up while the screen is locked wait for the unlock; three or more \
             become one card. drip history lists every card, the missed ones marked.
@@ -306,19 +306,38 @@ public struct HookCommand: ParsableCommand {
     public init() {}
 }
 
-/// `drip demo [options]`: shows every style, then the notch card, one after another.
+/// `drip demo [options]`: drops a few cards from the notch one after another.
 public struct DemoCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "drip demo",
-        abstract: "Play every style, then the notch card, so you can pick by feel.",
+        abstract: "Drop a few cards from the notch one after another, as queued cards show.",
         usage: "drip demo [options]",
         discussion: """
-            Styles play at your configured position, or --position, at the bottom when that is the \
-            notch. The notch card plays only on a \
-            screen with a notch. Cards are silent unless --sound or DRIP_SOUND is given. --style \
-            narrows the demo to one style.
+            Every card is a notch card, so --position does not apply; on a screen without a notch \
+            the cards show near the top, as any notch card does there. Cards are silent unless \
+            --sound or DRIP_SOUND is given. Other options apply to every card.
             """
     )
+
+    /// The cards the demo drops, in order: one of each kind a build or an agent sends.
+    public static let samples: [(kind: String, title: String, detail: String)] = [
+        ("ok", "Build finished", "make test: 246 passed in 3.2s"),
+        ("warn", "drip needs you", "Claude needs your permission to use Bash"),
+        ("fail", "Deploy failed", "staging: health check timed out after 30s"),
+    ]
+
+    /// The demo's cards, all at the notch. --detail replaces every sample's detail.
+    public static func cards(_ resolver: CardResolver, flags: CardFlags) throws -> [Card] {
+        var flags = flags
+        flags.position = .notch
+        // Every demo card would share one id and replace the one before.
+        flags.id = nil
+        return try samples.map { sample in
+            var cardFlags = flags
+            cardFlags.detail = flags.detail ?? sample.detail
+            return try resolver.resolve(kind: sample.kind, title: sample.title, flags: cardFlags)
+        }
+    }
 
     @OptionGroup public var options: CardOptions
 
