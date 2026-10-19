@@ -150,24 +150,33 @@ public struct IslandCues: Equatable, Sendable {
 /// free on a neck and spreads into a capsule below the menu bar, then is pulled back up into the notch.
 public struct IslandAnimator: Sendable {
     public let metrics: IslandMetrics
+    /// What the drop forms inside: the notch, or the capsule of the card above it in a stack.
+    public let anchor: DropletAnchor?
+    /// When the drop, gathered round on the way out, starts to rise; nil before `exit`.
+    public private(set) var riseTime: Double?
     private var dropCenter, pillWidth, pillHeight, progress, blend: SpringValue
 
-    public init(metrics: IslandMetrics) {
+    /// The drop waits deep inside the notch, too deep to make it bulge, or in the middle of the
+    /// capsule `anchor`, which is shallower than the notch.
+    public init(metrics: IslandMetrics, anchor: DropletAnchor? = nil) {
         self.metrics = metrics
-        dropCenter = SpringValue(metrics.dropTop + metrics.dropSize / 2)
+        self.anchor = anchor
+        dropCenter = SpringValue(anchor?.centerY ?? metrics.dropTop + metrics.dropSize / 2)
         pillWidth = SpringValue(metrics.seedSize)
         pillHeight = SpringValue(metrics.seedSize)
         progress = SpringValue(0)
         blend = SpringValue(metrics.blend)
     }
 
-    /// Starts the entrance at `time` and returns when the content fades in.
-    public mutating func enter(at time: Double) -> IslandCues {
+    /// Starts the entrance at `time` and returns when the content fades in. The capsule settles with
+    /// its top at `top`, below the notch unless given.
+    public mutating func enter(at time: Double, top: Double? = nil) -> IslandCues {
         let m = metrics
+        let anchorBottom = anchor?.bottom ?? m.notchHeight
         // The drop swells under the notch, stretches into a neck as it falls, and pinches off; only
         // then does it spread into the capsule, while the notch pulls its half of the neck back in.
         let fall = Spring(duration: 0.62, bounce: 0.2)
-        let center = m.pillTop + m.pillHeight / 2
+        let center = (top ?? m.pillTop) + m.pillHeight / 2
         dropCenter.animate(to: center, with: fall, at: time)
         // The notch feeds the drop as it hangs, so the bulb outgrows its neck.
         let feed = Spring(duration: 0.3)
@@ -176,7 +185,7 @@ public struct IslandAnimator: Sendable {
         let start = dropCenter.value(at: time)
         let detached = Self.firstTime(after: time) { t in
             start + (center - start) * fall.progress(at: t - time) - m.dropSize / 2
-                >= m.notchHeight + m.blend / 3
+                >= anchorBottom + m.blend / 3
         }
         blend.animate(to: 0, with: Spring(duration: 0.35), at: detached)
         let grow = Spring(duration: 0.5, bounce: 0.15)
@@ -193,9 +202,10 @@ public struct IslandAnimator: Sendable {
                 m.detailLines, from: roomy + 0.04 + Double(max(m.titleLines - 1, 0)) * step, step: step))
     }
 
-    /// Starts the exit at `time`, faster than the entrance and without bounce, back into the notch.
-    /// Returns when the content fades out.
-    public mutating func exit(at time: Double) -> IslandCues {
+    /// Starts the exit at `time`, faster than the entrance and without bounce, back into the notch,
+    /// or into the capsule above it when given that capsule's `anchor`. Returns when the content
+    /// fades out.
+    public mutating func exit(at time: Double, into anchor: DropletAnchor? = nil) -> IslandCues {
         let m = metrics
         // The capsule gathers back into a round drop, which only then rises; the notch reaches for it,
         // they merge and the notch swallows it.
@@ -211,17 +221,37 @@ public struct IslandAnimator: Sendable {
         }
         blend.animate(to: m.blend, with: Spring(duration: 0.3), at: rise)
         // Aimed past its resting place, so it is swallowed at speed instead of easing in, and the
-        // notch's bulge goes flat as quickly as liquid would.
-        dropCenter.animate(to: m.dropTop + m.dropSize / 2 - m.dropSize, with: Spring(duration: 0.4), at: rise)
+        // notch's bulge goes flat as quickly as liquid would. A capsule above is shallower than the
+        // notch, so the drop aims for just under its top, where it still hides whole.
+        let swallowed = anchor.map { $0.centerY - $0.halfHeight + m.dropSize / 2 + 2 * m.scale }
+            ?? m.dropTop + m.dropSize / 2 - m.dropSize
+        riseTime = rise
+        dropCenter.animate(to: swallowed, with: Spring(duration: 0.4), at: rise)
         return IslandCues(
             sides: 0, title: IslandCues.lines(m.titleLines, from: 0, step: 0),
             detail: IslandCues.lines(m.detailLines, from: 0, step: 0))
     }
 
-    /// Jumps straight to fully open, for reduced motion and offscreen rendering.
-    public mutating func open() {
+    /// Moves the open capsule so its top is at `top`, starting at `time`: a card in a stack closing
+    /// the gap one above it left, or making room for a new one.
+    public mutating func move(to top: Double, at time: Double, with spring: Spring = IslandAnimator.settle) {
+        dropCenter.animate(to: top + metrics.pillHeight / 2, with: spring, at: time)
+    }
+
+    /// How a card in a stack glides into a gap.
+    public static let settle = Spring(duration: 0.45, bounce: 0.12)
+    /// How cards in a stack get out of the way of a new one: quick, so the new drop can follow
+    /// almost at once, and without bounce, so they never swing back towards it.
+    public static let makeRoom = Spring(duration: 0.32)
+
+    /// Where the capsule's top is heading.
+    public var targetTop: Double { dropCenter.target - metrics.pillHeight / 2 }
+
+    /// Jumps straight to fully open, for reduced motion and offscreen rendering, with the capsule's
+    /// top at `top`, below the notch unless given.
+    public mutating func open(top: Double? = nil) {
         let m = metrics
-        dropCenter.jump(to: m.pillTop + m.pillHeight / 2)
+        dropCenter.jump(to: (top ?? m.pillTop) + m.pillHeight / 2)
         pillWidth.jump(to: m.pillWidth)
         pillHeight.jump(to: m.pillHeight)
         blend.jump(to: 0)

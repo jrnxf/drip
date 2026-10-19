@@ -5,28 +5,61 @@ import Foundation
 // falls, the bridge between them thins into a neck that pinches off on its own; as it rises, the two
 // reach for each other and merge. No neck is drawn by hand.
 
-/// The notch and the drop as one field, negative inside.
+/// What a drop grows out of and goes back into: the notch, or the capsule of the card above it in a
+/// stack. A rounded box centered on x = 0.
+public struct DropletAnchor: Equatable, Sendable {
+    public var centerY: Double
+    public var halfWidth: Double
+    public var halfHeight: Double
+    public var radius: Double
+
+    public init(centerY: Double, halfWidth: Double, halfHeight: Double, radius: Double) {
+        self.centerY = centerY
+        self.halfWidth = halfWidth
+        self.halfHeight = halfHeight
+        self.radius = radius
+    }
+
+    /// The notch, as a box reaching as far above the screen as it reaches below the top.
+    public static func notch(_ metrics: IslandMetrics) -> DropletAnchor {
+        DropletAnchor(
+            centerY: 0, halfWidth: metrics.notchWidth / 2, halfHeight: metrics.notchHeight,
+            radius: metrics.notchRadius)
+    }
+
+    /// A card's capsule as `shape` draws it.
+    public static func capsule(_ shape: IslandShape, metrics: IslandMetrics) -> DropletAnchor {
+        DropletAnchor(
+            centerY: shape.pillTop + shape.pillHeight / 2, halfWidth: shape.pillWidth / 2,
+            halfHeight: shape.pillHeight / 2, radius: shape.pillRadius(metrics))
+    }
+
+    public var bottom: Double { centerY + halfHeight }
+}
+
+/// The anchor and the drop as one field, negative inside.
 public struct DropletField: Sendable {
     public let metrics: IslandMetrics
     public let shape: IslandShape
+    public let anchor: DropletAnchor
 
-    public init(metrics: IslandMetrics, shape: IslandShape) {
+    public init(metrics: IslandMetrics, shape: IslandShape, anchor: DropletAnchor? = nil) {
         self.metrics = metrics
         self.shape = shape
+        self.anchor = anchor ?? .notch(metrics)
     }
 
-    /// Whether the drop is close enough to the notch for the two to melt together. Otherwise the
-    /// drop is a plain capsule, hidden behind the notch or floating free of it.
+    /// Whether the drop is close enough to its anchor for the two to melt together. Otherwise the
+    /// drop is a plain capsule, hidden behind the anchor or floating free of it.
     public var touchesNotch: Bool {
         let top = shape.pillTop, bottom = shape.pillTop + shape.pillHeight
-        return shape.blend > 0.01 && top < metrics.notchHeight + shape.blend
-            && bottom > metrics.notchHeight - shape.blend
+        return shape.blend > 0.01 && top < anchor.bottom + shape.blend && bottom > anchor.bottom - shape.blend
     }
 
     public func value(x: Double, y: Double) -> Double {
         let notch = Self.roundedBox(
-            x: x, y: y, centerX: 0, centerY: 0, halfWidth: metrics.notchWidth / 2,
-            halfHeight: metrics.notchHeight, radius: metrics.notchRadius)
+            x: x, y: y, centerX: 0, centerY: anchor.centerY, halfWidth: anchor.halfWidth,
+            halfHeight: anchor.halfHeight, radius: anchor.radius)
         let halfWidth = shape.pillWidth / 2, halfHeight = shape.pillHeight / 2
         let drop = Self.roundedBox(
             x: x, y: y, centerX: 0, centerY: shape.pillTop + halfHeight, halfWidth: halfWidth,
@@ -53,11 +86,11 @@ public struct DropletField: Sendable {
         return outside + min(max(qx, qy), 0) - r
     }
 
-    /// The outline of everything below `top` (a line inside the notch) and within a blend of the drop,
+    /// The outline of everything below `top` (a line inside the anchor) and within a blend of the drop,
     /// as closed loops wound the same way as the notch's own path. `cell` is the grid's spacing.
     public func outline(above top: Double, cell: Double) -> [[IslandPoint]] {
         let halfWidth = shape.pillWidth / 2 + shape.blend + 2 * cell
-        let bottom = max(shape.pillTop + shape.pillHeight, metrics.notchHeight) + shape.blend + 2 * cell
+        let bottom = max(shape.pillTop + shape.pillHeight, anchor.bottom) + shape.blend + 2 * cell
         guard bottom > top else { return [] }
         let columns = Int((2 * halfWidth / cell).rounded(.up)) + 1
         let rows = Int(((bottom - top) / cell).rounded(.up)) + 1

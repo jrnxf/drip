@@ -9,9 +9,6 @@ struct HUDDisplay: CardDisplay {
         GlassSupport.isAvailable ? .glass : .hud
     }
 
-    var hasNotch: Bool {
-        CardPresenters.targetScreen().flatMap(NotchGeometry.init(screen:)) != nil
-    }
 
     /// Shows the cards one after another and returns once the last has gone.
     func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
@@ -21,14 +18,19 @@ struct HUDDisplay: CardDisplay {
             return ExitStatus.noGUISession
         }
         CardQueue.waitForTurn(cards: cards)
-        guard let cards = holdWhileLocked(cards, locked: locked, console: console), !cards.isEmpty else {
+        // Cards a stack at the notch adopted are on screen already: they only go in the history.
+        let adopted = cards.indices.filter(CardQueue.isAdopted)
+        if !adopted.isEmpty { record(adopted.map { cards[$0] }, missed: false, locked: locked, console: console) }
+        let cards = cards.indices.filter { !adopted.contains($0) }.map { cards[$0] }
+        guard !cards.isEmpty, let cards = holdWhileLocked(cards, locked: locked, console: console), !cards.isEmpty
+        else {
             return ExitStatus.shown
         }
+        var adopting = false
         if case .pool = locked {
-            // However long the cards were held, a background drip never outlives them by much. It
-            // exits from the main thread, between AppKit's own work rather than in the middle of it.
-            let longest = cards.reduce(0) { $0 + $1.seconds } + 600
-            DispatchQueue.main.asyncAfter(deadline: .now() + longest) { exit(ExitStatus.shown) }
+            // However long the cards were held, a background drip never outlives them by much.
+            BackgroundWatchdog.extend(by: cards.reduce(0) { $0 + $1.seconds } + 600)
+            adopting = true
         }
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
@@ -42,6 +44,12 @@ struct HUDDisplay: CardDisplay {
             if CardQueue.isReplaced(card) {
                 unanswered = unanswered || card.asksQuestion
                 return next()
+            }
+            if let stack = StackPresenter.make(for: card, rest: &remaining, adopting: adopting, console: console) {
+                return stack.start { ok in
+                    failed = failed || !ok
+                    next()
+                }
             }
             let presenter = CardPresenters.make(for: card, console: console)
             let watch = ReplacementWatch(presenter: presenter, card: card)
@@ -70,16 +78,20 @@ struct HUDDisplay: CardDisplay {
         return show(request.cards, locked: .wait(record: request.record), console: console)
     }
 
+    private func record(_ cards: [Card], missed: Bool, locked: LockedScreen, console: Console) {
+        do {
+            try locked.record(cards, missed: missed, in: CardHistory(environment: ProcessInfo.processInfo.environment))
+        } catch {
+            console.warn("cannot record the card in the history: \(error)")
+        }
+    }
+
     /// Records the cards in the history, first holding them while the screen is locked. Returns the
     /// cards to show now, in this drip's turn, or nil when another drip shows them on the unlock.
     private func holdWhileLocked(_ cards: [Card], locked: LockedScreen, console: Console) -> [Card]? {
         let environment = ProcessInfo.processInfo.environment
         func record(_ cards: [Card], missed: Bool) {
-            do {
-                try locked.record(cards, missed: missed, in: CardHistory(environment: environment))
-            } catch {
-                console.warn("cannot record the card in the history: \(error)")
-            }
+            self.record(cards, missed: missed, locked: locked, console: console)
         }
         /// Gives up the turn until the screen unlocks, so other drips can hold their cards too, and
         /// waits again if it locks before the turn comes back.
@@ -263,10 +275,11 @@ final class ReplacementWatch {
 }
 
 enum CardPresenters {
-    /// An island at the notch when the card asks for one and the screen has a notch; a panel otherwise.
+    /// An island when the card asks for the notch: from the notch, or from the top edge of a screen
+    /// without one. A panel otherwise.
     static func make(for card: Card, console: Console) -> CardPresenting {
-        if card.position == .notch, let screen = targetScreen(), let notch = NotchGeometry(screen: screen) {
-            return IslandPresenter(card: card, notch: notch, console: console)
+        if card.position == .notch, let screen = targetScreen() {
+            return IslandPresenter(card: card, notch: NotchGeometry.island(on: screen), console: console)
         }
         return CardPresenter(card: card, console: console)
     }

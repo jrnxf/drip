@@ -142,21 +142,11 @@ struct StyleCommandTests {
 
     @Test func demoWarnsAboutFlagsThatDoNothingAtTheNotch() {
         let flags = CardFlags(position: .top, style: .glass)
-        #expect(DemoCommand.warnings(flags: flags, hasNotch: true) == [
+        #expect(DemoCommand.warnings(flags: flags) == [
             "drip demo shows only notch cards, so --position does nothing",
             "drip demo shows only notch cards, so --style does nothing",
         ])
-        #expect(DemoCommand.warnings(flags: CardFlags(), hasNotch: true).isEmpty)
-    }
-
-    @Test func demoWithoutANotchWarnsWhereCardsShowAndKeepsStyle() {
-        #expect(DemoCommand.warnings(flags: CardFlags(style: .glass), hasNotch: false) == [
-            "this screen has no notch, so the cards show at the top",
-        ])
-        #expect(DemoCommand.warnings(flags: CardFlags(position: .top), hasNotch: false) == [
-            "drip demo shows only notch cards, so --position does nothing",
-            "this screen has no notch, so the cards show at the top",
-        ])
+        #expect(DemoCommand.warnings(flags: CardFlags()).isEmpty)
     }
 
     @Test func renderTakesATime() throws {

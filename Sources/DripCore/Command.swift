@@ -63,7 +63,7 @@ public struct CardOptions: ParsableArguments {
     var color: CardColor?
 
     @Option(help: ArgumentHelp(
-        "bottom, center, top or notch. notch falls back to top without a notch. (default: notch)",
+        "bottom, center, top or notch. Without a notch, notch grows from the top edge. (default: notch)",
         valueName: "position"))
     var position: Position?
 
@@ -313,9 +313,8 @@ public struct DemoCommand: ParsableCommand {
         abstract: "Drop a few cards from the notch one after another, as queued cards show.",
         usage: "drip demo [options]",
         discussion: """
-            Every card is a notch card, so --position does not apply, and --style applies only on a \
-            screen without a notch, where the cards show near the top as any notch card does. Cards \
-            are silent unless --sound or DRIP_SOUND is given. --id is ignored, so no card replaces \
+            Every card is a notch card, so --position and --style do not apply; on a screen without a \
+            notch the cards grow out of the middle of its top edge. Cards are silent unless --sound or DRIP_SOUND is given. --id is ignored, so no card replaces \
             another. Other options apply to every card.
             """
     )
@@ -327,13 +326,11 @@ public struct DemoCommand: ParsableCommand {
         ("fail", "Deploy failed", "staging: health check timed out after 30s"),
     ]
 
-    /// The warnings to print before the demo: which flags do nothing, and where cards show on a
-    /// screen without a notch.
-    public static func warnings(flags: CardFlags, hasNotch: Bool) -> [String] {
+    /// The warnings to print before the demo: which flags do nothing.
+    public static func warnings(flags: CardFlags) -> [String] {
         var warnings: [String] = []
         if flags.position != nil { warnings.append("drip demo shows only notch cards, so --position does nothing") }
-        if flags.style != nil, hasNotch { warnings.append("drip demo shows only notch cards, so --style does nothing") }
-        if !hasNotch { warnings.append("this screen has no notch, so the cards show at the top") }
+        if flags.style != nil { warnings.append("drip demo shows only notch cards, so --style does nothing") }
         return warnings
     }
 

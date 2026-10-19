@@ -6,9 +6,6 @@ protocol CardDisplay {
     /// The style for cards that set none: `glass` where the system has it.
     var automaticStyle: CardStyle { get }
 
-    /// Whether the screen a card would appear on has a camera notch.
-    var hasNotch: Bool { get }
-
     /// Shows the cards one after another, after any other drip's, and returns once the last has
     /// gone, with the exit status to report. `locked` says what happens while the screen is locked.
     func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32
@@ -176,7 +173,7 @@ struct DripCLI {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
-        DemoCommand.warnings(flags: flags, hasNotch: display.hasNotch).forEach(console.warn)
+        DemoCommand.warnings(flags: flags).forEach(console.warn)
         do {
             let resolver = try makeResolver(console)
             // Short and silent, unless a flag, the environment or the config says otherwise.
@@ -249,7 +246,6 @@ struct DripCLI {
 /// Used where AppKit is missing: every card fails as if there were no GUI session.
 struct UnavailableDisplay: CardDisplay {
     var automaticStyle: CardStyle { Defaults.style }
-    var hasNotch: Bool { false }
 
     func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
         console.error("no GUI session: drip shows cards only on macOS")

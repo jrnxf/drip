@@ -58,8 +58,8 @@ public enum Sound: Equatable, Sendable, Codable {
     }
 }
 
-/// Where the card sits on the screen. `notch` grows the card out of the camera notch, and falls back
-/// to `top` on a screen without one.
+/// Where the card sits on the screen. `notch` grows the card out of the camera notch, or out of the
+/// middle of the top edge on a screen without one.
 public enum Position: String, CaseIterable, Sendable, Codable {
     case bottom, center, top, notch
 }

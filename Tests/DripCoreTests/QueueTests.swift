@@ -1,4 +1,5 @@
 import DripCore
+import Foundation
 import Testing
 
 struct QueueTests {
@@ -115,6 +116,70 @@ struct QueueTests {
         ]
         #expect(CardReplacement.latest(cards).map(\.title) == ["plain", "deploy", "plain", "is done"])
         #expect(CardReplacement.latest([]).isEmpty)
+    }
+
+    // MARK: Adoption into a stack at the notch
+
+    @Test func aStackAdoptsNewerNotchCardsFromLiveBackgroundDripsOldestFirst() {
+        let mine = ticket(1, pid: 10, notch(nil))
+        var elsewhere = card(nil, title: "elsewhere")
+        elsewhere.position = .bottom
+        let queue = [
+            mine, adoptable(2, pid: 20, notch(nil, title: "b"), elsewhere),
+            adoptable(3, pid: 30, notch(nil, title: "c")),
+        ]
+        let found = CardAdoption.candidates(after: mine.name, queue: queue, isAlive: { _ in true })
+        #expect(found.map(\.card.title) == ["b", "c"])
+        #expect(found.map(\.index) == [0, 0])
+    }
+
+    @Test func aStackNeverAdoptsWaitingDripsQuestionsClaimedCardsDeadDripsOrOlderTickets() {
+        let mine = ticket(2, pid: 10, notch(nil))
+        var question = notch(nil)
+        question.action = CardAction(label: "OK", open: nil)
+        var claimed = adoptable(4, pid: 40, notch(nil))
+        claimed.claimed = [CardAdoption.claimKey(index: 0)]
+        let queue = [
+            adoptable(1, pid: 15, notch(nil)), mine, ticket(3, pid: 30, notch(nil)), claimed,
+            adoptable(5, pid: 50, question), adoptable(6, pid: 60, notch(nil)),
+        ]
+        #expect(CardAdoption.candidates(after: mine.name, queue: queue, isAlive: { $0.pid != 60 }).isEmpty)
+    }
+
+    @Test func aStackSkipsACardThatANewerOneWithTheSameIDReplaces() {
+        let mine = ticket(1, pid: 10, notch(nil))
+        let queue = [mine, adoptable(2, pid: 20, notch("x", title: "old")), adoptable(3, pid: 30, notch("x", title: "new"))]
+        let found = CardAdoption.candidates(after: mine.name, queue: queue, isAlive: { _ in true })
+        #expect(found.map(\.card.title) == ["new"])
+    }
+
+    @Test func aTicketIsFullyAdoptedOnceEveryCardIsClaimed() {
+        var two = adoptable(1, pid: 10, notch(nil), notch(nil))
+        #expect(!two.isFullyAdopted)
+        two.claimed = [CardAdoption.claimKey(index: 0)]
+        #expect(!two.isFullyAdopted)
+        two.claimed.insert(CardAdoption.claimKey(index: 1))
+        #expect(two.isFullyAdopted)
+        #expect(!ticket(2, pid: 20).isFullyAdopted)
+    }
+
+    @Test func ticketContentsReadBothFormats() throws {
+        let cards = [notch("a")]
+        let current = try JSONEncoder().encode(TicketContents(cards: cards, adoptable: true))
+        #expect(TicketContents.decode(current) == TicketContents(cards: cards, adoptable: true))
+        let older = try JSONEncoder().encode(cards)
+        #expect(TicketContents.decode(older) == TicketContents(cards: cards, adoptable: false))
+        #expect(TicketContents.decode(Data("nope".utf8)) == nil)
+    }
+
+    private func notch(_ id: String?, title: String = "hi") -> Card {
+        var card = card(id, title: title)
+        card.position = .notch
+        return card
+    }
+
+    private func adoptable(_ stamp: UInt64, pid: Int32, _ cards: Card...) -> QueueTicket {
+        QueueTicket(name: QueueTicket.name(stamp: stamp, pid: pid), cards: cards, adoptable: true)!
     }
 
     private func card(_ id: String?, title: String = "hi") -> Card {

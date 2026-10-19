@@ -5,7 +5,7 @@
 </p>
 
 A HUD from the shell for macOS: one command shows a brief native card growing out of the camera
-notch, or near the top of a screen without one, with an icon, a title, an optional detail, a
+notch, or out of the top edge of a screen without one, with an icon, a title, an optional detail, a
 colored accent and a system sound, then takes it away again. A glance tells you what finished and
 how it went: a build, a deploy, a test run, a backup, a script, an agent. drip returns at once, so
 it never slows the script that calls it.
@@ -34,7 +34,7 @@ brew install jrnxf/tap/drip
 drip ok "drip works"
 ```
 
-A green card grows out of the notch, or shows near the top of a screen without one, and drip
+A green card grows out of the notch, or out of the top edge of a screen without one, and drip
 prints nothing. `drip demo` then drops a few cards from the notch, one after another.
 
 Homebrew builds drip from source with the Swift in the Command Line Tools, which Homebrew already
@@ -77,7 +77,7 @@ drip --version | --help
 | `--sound NAME\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. Unknown names print a warning and play nothing. | the preset's |
 | `--icon SYMBOL\|none` | An SF Symbol name. Unknown names fall back to the preset's icon with a warning. | the preset's |
 | `--color HEX\|NAME` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
-| `--position bottom\|center\|top\|notch` | Where the card sits. `notch` grows it out of the camera notch, and falls back to `top` on a screen without one. | `notch` |
+| `--position bottom\|center\|top\|notch` | Where the card sits. `notch` grows it out of the camera notch, or out of the middle of the top edge on a screen without one. | `notch` |
 | `--size compact\|regular\|large` | Scales fonts, icon and padding by 0.85, 1.0 or 1.25. | `regular` |
 | `--style hud\|glass\|wash\|terminal` | How the card is drawn away from the notch; a notch card is always black. See [Styles](#styles). | `glass` on macOS 26, `hud` before |
 | `--motion full\|subtle\|none` | `full` plays each style's entrance and exit, `subtle` only fades, `none` neither. Reduce Motion in System Settings caps it at `subtle`. | `full` |
@@ -118,8 +118,7 @@ for a line. When text is still left over, the last line ends in an ellipsis. The
 **drip demo** drops three cards from the notch one after another, the way queued cards show: ok,
 warn, then fail. Each stays two seconds unless `--seconds`, `DRIP_SECONDS` or the config's
 `seconds` say otherwise, and they are silent unless `--sound` or `DRIP_SOUND` is given. Every card
-is a notch card, so `--position` does not apply, and `--style` applies only on a screen without a
-notch, where the cards show near the top as any notch card does. `--id` is ignored, so no card
+is a notch card, so `--position` and `--style` do not apply. `--id` is ignored, so no card
 replaces another. Other options apply to every card.
 
 **Returning at once.** drip checks everything first (flags, config, stdin, sounds and icons), so a
@@ -273,11 +272,22 @@ Any other agent or tool: wrap what it runs in `drip run`, or call drip from its 
 | `wash` | The whole card in the accent color, as a gradient, darkened just enough that the white text reaches WCAG AA contrast (4.5:1) for any color. A `fail` card shakes once. |
 | `terminal` | A solid dark card with an accent stripe, the kind in small capitals above the title, and monospaced text. No icon. |
 
-At `--position notch`, on a screen with a notch, the card is drawn as one black shape with the notch
-whatever `--style` says, with a countdown ring draining over `--seconds` (with `--motion full`; a
-button takes its place). Styles apply at the other positions, and where `notch` falls back to `top`. A drop forms under the notch, stretches on a neck, breaks free and widens
-into a capsule just below the menu bar. It leaves the same way, pulled back up into the notch. A card
-whose text wraps grows into a taller capsule with rounded corners.
+At `--position notch` the card is drawn as one black shape with the notch whatever `--style` says,
+with a countdown ring draining over `--seconds` (with `--motion full`; a button takes its place).
+Styles apply at the other positions. A drop forms under the notch, stretches on a neck, breaks free
+and widens into a capsule just below the menu bar. It leaves the same way, pulled back up into the
+notch. A card whose text wraps grows into a taller capsule with rounded corners. On a screen without
+a notch the drop forms above the screen and oozes out of the middle of its top edge instead, and
+goes back into it the same way.
+
+**Several cards at once (experimental).** Notch cards that come in while one is showing stack below
+it, up to `DRIP_STACK_MAX` (3) at a time; the rest wait their turn. With `DRIP_STACK=chain`, the
+default, each new card drops out of the bottom of the last one and the oldest goes back into the
+notch first, the others moving up behind it. With `DRIP_STACK=push` a new card drops out of the
+notch once the others have moved down out of its way. `DRIP_STACK=off` shows one card at a time.
+While the pointer is on any card in the stack, nothing moves: every countdown stops, gaps stay open
+and new cards wait. A click on a card dismisses it. Only the cards of drips that returned at once
+stack; a card that waits (`--wait`, or a question) waits its turn.
 
 ### Exit codes
 
