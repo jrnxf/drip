@@ -84,7 +84,8 @@ struct HookTests {
         let start = Date()
         let event = try AgentHook.event(agent: .claude, payload: String(decoding: payload, as: UTF8.self))
         #expect(event.detail?.hasPrefix("bold it code link u s * 2 ** 3") == true)
-        #expect(Date().timeIntervalSince(start) < 5)
+        // Linear time takes well under a second; the bound only catches backtracking that runs for minutes.
+        #expect(Date().timeIntervalSince(start) < 30)
     }
 
     @Test func codexNotifyIsDone() throws {

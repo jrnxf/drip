@@ -95,12 +95,15 @@ drip --version | --help
 | `fail` | `xmark.circle.fill` | red | Basso |
 | `info` | `info.circle.fill` | blue | Tink |
 
-**stdin.** When no title is given and stdin is not a terminal, drip reads stdin (up to 64 KB): the
-first non-empty line is the title and the remaining lines, joined with a space, are the detail,
-unless `--detail` is given. With a title on the command line, stdin is left alone.
+**stdin.** When no title is given and stdin is not a terminal, drip reads stdin to the end, keeping
+the first 64 KB, so the command writing it is never cut short: the first non-empty line is the title
+and the remaining lines, joined with a space, are the detail, unless `--detail` is given. A writer
+that never ends, such as `tail -f`, never shows a card. With a title on the command line, stdin is
+left alone.
 
 **Text that starts with a dash.** `-d`, `--button` and `--id` take their next argument whatever it
-starts with, so `-d "$err"` works when the error reads `--- FAIL: TestFoo`. A title that starts with
+starts with, so `-d "$err"` works when the error reads `--- FAIL: TestFoo`, and `--id --wait` is an
+id, not a missing value. A title that starts with
 a dash goes after `--`: `drip fail -- "$line"`.
 
 **Long text.** Whitespace runs collapse to one space, line breaks included. Terminal escape

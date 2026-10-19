@@ -341,7 +341,7 @@ public struct HistoryCommand: ParsableCommand {
     @Flag(help: "Only cards that came up while the screen was locked.")
     public var missed = false
 
-    @Flag(help: "Print each card as a line of JSON, as it is stored.")
+    @Flag(help: "Print each card as one flat line of JSON, for scripts.")
     public var json = false
 
     @Flag(help: "Show the cards again instead of listing them.")
