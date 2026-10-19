@@ -77,6 +77,12 @@ final class StackPresenter: CardPresenting {
     private var scale: CGFloat = 2
     private var timer: Timer?
     private var started: CFTimeInterval = 0
+    /// Whether the stack has put its first frames on screen; until then its clock holds while it
+    /// samples, so the first drop never starts partway through.
+    private var playing = false
+    /// How long after it is decided a change starts moving: `minimumLead`, or longer when sampling
+    /// the springs took longer than that last time, as in a debug build or on a busy Mac.
+    private var lead = minimumLead
     private var lastTick: Double = 0
     private var lastAdoptionCheck = -Double.infinity
     /// Whether the last look at the queue found cards to adopt.
@@ -93,11 +99,13 @@ final class StackPresenter: CardPresenting {
     private static let entranceSpacing = 0.35
     /// Keyframes per second when sampling the springs, as for a single card.
     private static let framesPerSecond = 240.0
-    /// How long after it is decided a change starts moving. Sampling the springs takes the main
-    /// thread a moment, and the keyframes start at the moment of the decision, so a change that
+    /// The least time after it is decided a change starts moving. Sampling the springs takes the
+    /// main thread a moment, and the keyframes start at the moment of the decision, so a change that
     /// started at once would lose its first frames; until it starts, the samples carry on where the
     /// stack was already heading.
-    private static let lead = 0.06
+    private static let minimumLead = 0.06
+    /// The longest `lead`, so a very slow sample never holds a change back for long.
+    private static let maximumLead = 0.5
 
     /// A stack for `card` and the notch cards that follow it in `rest`, which it takes; nil when
     /// stacking is off, the card is not for the notch, or motion is reduced.
@@ -218,7 +226,7 @@ final class StackPresenter: CardPresenting {
     /// independent, so they are taken on every core at once; a card already at rest by `start` gets
     /// no keyframes.
     private func replan(from start: Double) {
-        let begin = started + start
+        let sampling = CACurrentMediaTime()
         let end = max(entries.map(\.animator.end).max() ?? start, start + 0.05)
         let count = Int(((end - start) * Self.framesPerSecond).rounded(.up)) + 1
         let cards = entries.map { entry in
@@ -246,6 +254,14 @@ final class StackPresenter: CardPresenting {
                 }
             }
         }
+        let cost = CACurrentMediaTime() - sampling
+        lead = min(max(Self.minimumLead, cost * 1.5), Self.maximumLead)
+        if !playing {
+            // Nothing is on screen yet: the clock waits for the samples instead of skipping ahead.
+            started += max(CACurrentMediaTime() - (started + start), 0)
+            playing = true
+        }
+        let begin = started + start
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         let values = paths.compactMap { $0 }
@@ -313,7 +329,7 @@ final class StackPresenter: CardPresenting {
     /// cards under it have moved down out of its way.
     private func enter(_ card: Card, own: Bool) {
         let decided = now
-        let time = decided + Self.lead
+        let time = decided + lead
         let layers = makeLayers(for: card)
         let above = settings.mode == .chain ? live.last : nil
         let anchor = above.map { DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.layers.metrics) }
@@ -344,13 +360,14 @@ final class StackPresenter: CardPresenting {
         CATransaction.setDisableActions(true)
         container.addSublayer(layers.root)
         CATransaction.commit()
+        lastEntrance = decided
+        // First, since the first plan may move the clock.
+        replan(from: decided)
         layers.fade(cues, into: true, at: started + start)
         layers.drain(over: card.seconds, at: started + entry.countdownFrom)
         // The sound lands as the drop first shows.
         entry.sound = CardSound(card.sound, console: console)
-        DispatchQueue.main.asyncAfter(deadline: .now() + (start - decided) + 0.05) { entry.sound?.play() }
-        lastEntrance = decided
-        replan(from: decided)
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(start - now, 0) + 0.05) { entry.sound?.play() }
         updateAccessibility()
     }
 
@@ -382,7 +399,7 @@ final class StackPresenter: CardPresenting {
         guard !entry.isLeaving else { return }
         if entry.own, entry.card.action != nil, !clicked { CardActions.missed = true }
         let decided = now
-        let time = decided + Self.lead
+        let time = decided + lead
         let position = entries.firstIndex { $0 === entry } ?? 0
         let above = entries[..<position].last { !$0.isLeaving }
         entry.anchor = above
@@ -425,7 +442,7 @@ final class StackPresenter: CardPresenting {
         if hovering { IslandLayers.pause(layers.ringProgress, paused: true) }
         entry.sound = CardSound(card.sound, console: console)
         entry.sound?.play()
-        place(at: time + Self.lead)
+        place(at: time + lead)
         replan(from: time)
         updateAccessibility()
     }
@@ -503,7 +520,7 @@ final class StackPresenter: CardPresenting {
             entries.removeAll { $0 === entry }
         }
         CATransaction.commit()
-        let moved = (released || needsLayout) && place(at: time + Self.lead)
+        let moved = (released || needsLayout) && place(at: time + lead)
         if moved || !gone.isEmpty { replan(from: time) }
         if !gone.isEmpty { updateAccessibility() }
 
