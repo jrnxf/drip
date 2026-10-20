@@ -435,8 +435,10 @@ final class StackPresenter: CardPresenting {
 
     /// Shows `card` in place of the one `entry` shows: the capsule springs to the new card's size
     /// where it is, the cards below make room or close up, what changed crossfades and a new state's
-    /// colour settles, and its countdown restarts, the ring refilling first.
+    /// colour settles, and its countdown restarts, the ring refilling first. With motion reduced, the
+    /// size changes at once and the changes only crossfade.
     private func swap(_ entry: Entry, for card: Card) {
+        let motion = CardPresenters.motion(for: card)
         let decided = now
         let time = decided + lead
         let old = entry.layers
@@ -450,6 +452,7 @@ final class StackPresenter: CardPresenting {
         container.insertSublayer(layers.root, below: old.root)
         CATransaction.commit()
         entry.animator.resize(to: layers.metrics, at: time)
+        if motion != .full { entry.animator.open(top: entry.animator.targetTop) }
         entry.card = card
         entry.layers = layers
         entry.retiring = old
@@ -457,7 +460,7 @@ final class StackPresenter: CardPresenting {
         entry.countdownFrom = time
         place(at: time)
         replan(from: decided)
-        let lingers = layers.takeOver(from: old, motion: .full, at: started + time)
+        let lingers = layers.takeOver(from: old, motion: motion, at: started + time)
         entry.retiringUntil = time + lingers
         layers.refill(from: ringFraction, over: card.seconds, at: started + time)
         if hovering { IslandLayers.pause(layers.ringProgress, paused: true) }
