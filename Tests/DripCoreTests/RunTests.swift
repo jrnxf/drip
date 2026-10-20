@@ -108,9 +108,10 @@ struct StandardInputTests {
         try #require(pipe(&descriptors) == 0)
         let chunk = [UInt8](repeating: UInt8(ascii: "a"), count: 50 * 1024)
         let written = Written()
+        let input = descriptors[1]
         let writer = Thread {
-            for _ in 0..<4 { written.results.append(write(descriptors[1], chunk, chunk.count)) }
-            close(descriptors[1])
+            for _ in 0..<4 { written.results.append(write(input, chunk, chunk.count)) }
+            close(input)
         }
         writer.start()
         // Returns at end of file, which comes only after the writer's last write.

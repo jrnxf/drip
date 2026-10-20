@@ -1,7 +1,8 @@
 #!/bin/sh
 # Builds and tests drip on a Mac, records any missing snapshot references, then shows each preset
 # card on screen once, drops the notch cards of drip demo in turn, shows a Claude hook
-# card that a newer card from the same session replaces in place, and lists the history.
+# card that a newer card from the same session replaces in place, turns a deploy card into its next
+# step and then into ok and fail in place, and lists the history.
 #
 # Existing references are never overwritten: to regenerate one on purpose, delete its PNG in
 # Tests/Snapshots and run this script again.
@@ -66,6 +67,24 @@ hook() {
 printf '{"hook_event_name":"Notification","notification_type":"permission_prompt","session_id":"mac-check","cwd":"%s","message":"Claude needs your permission to use Bash"}' "$PWD" | hook
 sleep 3
 printf '{"hook_event_name":"Stop","session_id":"mac-check","cwd":"%s","last_assistant_message":"mac-check: this card took the place of the one before"}' "$PWD" | hook
+
+# Each newer card takes the place of the one on screen: the card springs to its size, and a new
+# state's colour settles over the old one as its icon pops in.
+echo "Turning a deploy card into its next step, then into ok, in place"
+deploy() {
+    XDG_CONFIG_HOME="$config" .build/release/drip "$@" --id mac-check-deploy
+}
+sleep 9
+deploy info "deploying api" --detail "step 1 of 2 · building image"
+sleep 1.5
+deploy info "deploying api" --detail "step 2 of 2 · pushing image"
+sleep 1.5
+deploy ok "api deployed"
+sleep 6
+echo "Turning a deploy card into fail, in place"
+deploy info "deploying api" --detail "./deploy.sh is running"
+sleep 1.5
+deploy fail "deploy failed" --detail "./deploy.sh exited with status 1"
 
 echo "The last cards in the history"
 .build/release/drip history | tail -n 5

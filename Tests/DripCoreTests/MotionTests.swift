@@ -318,6 +318,133 @@ struct IslandTests {
     }
 }
 
+/// A card replaced in place by one with the same id.
+struct IslandUpdateTests {
+    /// "deploying api" over "./deploy.sh is running".
+    private let running = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 125, textHeight: 35)
+    /// "deploy failed" over a longer detail: wider, as tall.
+    private let failed = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 190, textHeight: 35)
+    /// "api deployed" with no detail: narrower and shorter.
+    private let deployed = IslandMetrics(
+        notchWidth: 185, notchHeight: 32, textWidth: 88, textHeight: 17, detailLines: 0)
+
+    private func opened(_ metrics: IslandMetrics, top: Double? = nil) -> IslandAnimator {
+        var animator = IslandAnimator(metrics: metrics)
+        animator.open(top: top)
+        return animator
+    }
+
+    @Test func theCapsuleSpringsToTheNewSizeWithItsTopStill() {
+        for (from, to) in [(running, failed), (running, deployed), (deployed, failed)] {
+            for top in [nil, 120.0] {
+                var animator = opened(from, top: top)
+                let before = animator.shape(at: 0).pillTop
+                animator.resize(to: to, at: 0)
+                #expect(animator.metrics == to)
+                let times = Array(stride(from: 0.0, through: animator.end, by: 0.005))
+                #expect(times.allSatisfy { abs(animator.shape(at: $0).pillTop - before) < 1e-9 })
+                // It moves at once, rather than waiting.
+                #expect(animator.shape(at: 0.03).pillWidth != from.pillWidth)
+                let settled = animator.shape(at: animator.end)
+                #expect(abs(settled.pillWidth - to.pillWidth) < 0.1)
+                #expect(abs(settled.pillHeight - to.pillHeight) < 0.1)
+                #expect(settled.progress == 1)
+                #expect(animator.end < 1)
+            }
+        }
+    }
+
+    /// The icon and the ring ride the capsule's ends, for the new card and the one fading out alike,
+    /// and the text column is exactly the room between them.
+    @Test func theContentRidesTheEndsOfTheSpringingCapsule() {
+        var animator = opened(running)
+        animator.resize(to: failed, at: 0)
+        for time in stride(from: 0.0, through: animator.end, by: 0.01) {
+            let shape = animator.shape(at: time)
+            let left = -shape.pillWidth / 2, right = shape.pillWidth / 2
+            for metrics in [failed, running] {
+                let content = animator.content(for: shape, metrics: metrics)
+                #expect(abs(content.iconCenter.x - content.iconSize / 2 - (left + 14)) < 1e-9, "\(time)")
+                #expect(abs(content.ringCenter.x + content.ringSize / 2 - (right - 14)) < 1e-9, "\(time)")
+                #expect(abs(content.textX + content.textRoom + 10 - (content.ringCenter.x - content.ringSize / 2)) < 1e-9)
+            }
+        }
+        let settled = animator.content(for: animator.shape(at: animator.end))
+        #expect(settled.textRoom >= failed.textWidth - 0.1)
+    }
+
+    /// While the capsule grows, the text column is narrower than the new text: the text is cut short
+    /// of the ring, never drawn under it.
+    @Test func growingTextIsHeldShortOfTheRing() {
+        var animator = opened(running)
+        animator.resize(to: failed, at: 0)
+        let early = animator.content(for: animator.shape(at: 0.05))
+        #expect(early.textRoom < failed.textWidth)
+        #expect(early.textX + early.textRoom < early.ringCenter.x - early.ringSize / 2)
+    }
+
+    /// A second update while the capsule is still springing carries on from where it is, at the
+    /// speed it had.
+    @Test func aSecondUpdateCarriesOnWithoutAJump() {
+        var animator = opened(running)
+        animator.resize(to: failed, at: 0)
+        let change = 0.12
+        var interrupted = animator
+        interrupted.resize(to: deployed, at: change)
+        let step = 0.001
+        let width = { (a: IslandAnimator, t: Double) in a.shape(at: t).pillWidth }
+        #expect(abs(width(interrupted, change) - width(animator, change)) < 1e-9)
+        let speedBefore = (width(animator, change) - width(animator, change - step)) / step
+        let speedAfter = (width(interrupted, change + step) - width(interrupted, change)) / step
+        #expect(abs(speedAfter - speedBefore) < 0.05 * abs(speedBefore) + 1)
+        #expect(abs(interrupted.shape(at: interrupted.end).pillWidth - deployed.pillWidth) < 0.1)
+    }
+
+    /// The entrance is unchanged: the content still sits where the open capsule puts it.
+    @Test func aCardThatWasNeverResizedLaysOutForItsOpenCapsule() {
+        var animator = IslandAnimator(metrics: running)
+        _ = animator.enter(at: 0)
+        let content = animator.content(for: animator.shape(at: 0.2))
+        #expect(content.iconCenter.x == -running.pillWidth / 2 + 14 + 12)
+        #expect(content.textRoom == running.pillWidth - 48 - 10 - 20 - 14)
+    }
+
+    @Test func theNewTextIsNeverLaterThanARebuild() {
+        // A rebuilt island faded its text in over 0.18 s.
+        #expect(IslandUpdate.fadeIn <= 0.18)
+        #expect(IslandUpdate.reducedFade <= 0.18)
+        #expect(IslandUpdate.fadeOut < IslandUpdate.fadeIn)
+    }
+
+    @Test func aStateChangeIsANewIconOrColor() {
+        let info = Card(preset: .info, title: "deploying api", detail: "step 1 of 2")
+        var step = info
+        step.detail = "step 2 of 2"
+        #expect(!IslandUpdate.changesState(from: info, to: step))
+        #expect(IslandUpdate.changesState(from: info, to: Card(preset: .ok, title: "api deployed")))
+        var recolored = info
+        recolored.color = .system(.purple)
+        #expect(IslandUpdate.changesState(from: info, to: recolored))
+        var reiconed = info
+        reiconed.icon = .none
+        #expect(IslandUpdate.changesState(from: info, to: reiconed))
+    }
+
+    @Test func linesThatDidNotChangeStay() {
+        #expect(IslandUpdate.unchanged(
+            oldTitle: ["deploying api"], oldDetail: ["step 1 of 2"],
+            newTitle: ["deploying api"], newDetail: ["step 2 of 2"]) == [true, false])
+        // A detail that now wraps moves the block: nothing keeps its place.
+        #expect(IslandUpdate.unchanged(
+            oldTitle: ["deploying api"], oldDetail: ["step 1"],
+            newTitle: ["deploying api"], newDetail: ["step 2 of 2, pushing the image", "to the registry"])
+            == [false, false, false])
+        #expect(IslandUpdate.unchanged(
+            oldTitle: ["deploying api"], oldDetail: ["./deploy.sh is running"],
+            newTitle: ["api deployed"], newDetail: []) == [false])
+    }
+}
+
 struct DropletOutlineTests {
     @Test func aTracedCircleIsRoundAndWoundLikeTheNotch() throws {
         let metrics = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 34)

@@ -85,13 +85,20 @@ public struct IslandShape: Equatable, Sendable {
     public var progress: Double
     /// How strongly the drop and the notch melt together; 0 keeps them apart.
     public var blend: Double
+    /// The width the content is laid out for; nil for the open capsule's. It follows the capsule
+    /// only while the island springs from one card's size to the next.
+    public var contentWidth: Double?
 
-    public init(pillTop: Double, pillWidth: Double, pillHeight: Double, progress: Double, blend: Double = 0) {
+    public init(
+        pillTop: Double, pillWidth: Double, pillHeight: Double, progress: Double, blend: Double = 0,
+        contentWidth: Double? = nil
+    ) {
         self.pillTop = pillTop
         self.pillWidth = pillWidth
         self.pillHeight = pillHeight
         self.progress = progress
         self.blend = blend
+        self.contentWidth = contentWidth
     }
 
     /// The drop's corner radius: fully round until it reaches the capsule's corners.
@@ -120,6 +127,9 @@ public struct IslandContentLayout: Equatable, Sendable {
     /// The text block's leading edge and vertical center.
     public var textX: Double
     public var textCenterY: Double
+    /// How wide the text may show, from `textX` to just short of the ring: the text column the
+    /// content is laid out for.
+    public var textRoom: Double
 }
 
 /// When each part of the content fades, in seconds after the shape starts moving.
@@ -146,15 +156,60 @@ public struct IslandCues: Equatable, Sendable {
     }
 }
 
+/// How a card at the notch turns into the card that replaces it in place, one with the same id: the
+/// island springs to the new card's size, what changed crossfades, and a new state's colour settles
+/// over the old with the icon popping as it lands.
+public enum IslandUpdate {
+    /// The capsule's size, its top held still, and the content riding its ends.
+    public static let resize = Spring(duration: 0.4, bounce: 0.1)
+    /// Text and parts that changed: the old fade out quicker than the new fade in, and both start at
+    /// once, so the new text is never later than when the island was simply rebuilt (0.18 s).
+    public static let fadeOut = 0.10
+    public static let fadeIn = 0.18
+    /// A new state's icon and ring colour settling over the old one's.
+    public static let settle = 0.24
+    /// The new state's icon lands from this scale, on `pop`.
+    public static let popScale = 0.86
+    public static let pop = Spring(duration: 0.4, bounce: 0.35)
+    /// The countdown ring refilling from where it was before it drains again.
+    public static let refill = 0.24
+    /// With motion reduced, the size changes at once and every change crossfades this long.
+    public static let reducedFade = 0.15
+    /// The soft edge at the end of the text column, so text the capsule is still growing to hold
+    /// fades out short of the ring instead of running under it, in points at regular size.
+    public static let textEdge = 8.0
+
+    /// Whether `new` shows a different state than `old`: another icon or another colour.
+    public static func changesState(from old: Card, to new: Card) -> Bool {
+        old.icon != new.icon || old.color != new.color
+    }
+
+    /// For each line of the new card, title lines first, whether it shows the same text in the same
+    /// place as the old card's line, and so stays while the others change. Lines only keep their
+    /// places when the title and the detail wrap to as many lines as before.
+    public static func unchanged(
+        oldTitle: [String], oldDetail: [String], newTitle: [String], newDetail: [String]
+    ) -> [Bool] {
+        guard oldTitle.count == newTitle.count, oldDetail.count == newDetail.count else {
+            return Array(repeating: false, count: newTitle.count + newDetail.count)
+        }
+        return zip(oldTitle + oldDetail, newTitle + newDetail).map { $0 == $1 }
+    }
+}
+
 /// Moves the island through its entrance and exit with springs: a drop forms under the notch, breaks
 /// free on a neck and spreads into a capsule below the menu bar, then is pulled back up into the notch.
 public struct IslandAnimator: Sendable {
-    public let metrics: IslandMetrics
+    /// The card's sizes; a card replaced in place hands over to the new card's.
+    public private(set) var metrics: IslandMetrics
     /// What the drop forms inside: the notch, or the capsule of the card above it in a stack.
     public let anchor: DropletAnchor?
     /// When the drop, gathered round on the way out, starts to rise; nil before `exit`.
     public private(set) var riseTime: Double?
     private var dropCenter, pillWidth, pillHeight, progress, blend: SpringValue
+    /// The width the content is laid out for: the open capsule's, until a resize springs it along
+    /// with the capsule.
+    private var contentWidth: SpringValue
 
     /// The drop waits deep inside the notch, too deep to make it bulge, or in the middle of the
     /// capsule `anchor`, which is shallower than the notch.
@@ -166,6 +221,7 @@ public struct IslandAnimator: Sendable {
         pillHeight = SpringValue(metrics.seedSize)
         progress = SpringValue(0)
         blend = SpringValue(metrics.blend)
+        contentWidth = SpringValue(metrics.pillWidth)
     }
 
     /// Starts the entrance at `time` and returns when the content fades in. The capsule settles with
@@ -244,6 +300,19 @@ public struct IslandAnimator: Sendable {
     /// almost at once, and without bounce, so they never swing back towards it.
     public static let makeRoom = Spring(duration: 0.32)
 
+    /// Springs the open capsule from its card's size to `metrics`, a new card's, starting at `time`,
+    /// with its top where it is heading. The icon and the ring ride the capsule's ends, and the text
+    /// column widens or narrows with it.
+    public mutating func resize(to metrics: IslandMetrics, at time: Double, with spring: Spring = IslandUpdate.resize) {
+        let top = targetTop
+        self.metrics = metrics
+        // The center moves half as far as the bottom, on the same spring, so the top holds still.
+        dropCenter.animate(to: top + metrics.pillHeight / 2, with: spring, at: time)
+        pillWidth.animate(to: metrics.pillWidth, with: spring, at: time)
+        pillHeight.animate(to: metrics.pillHeight, with: spring, at: time)
+        contentWidth.animate(to: metrics.pillWidth, with: spring, at: time)
+    }
+
     /// Where the capsule's top is heading.
     public var targetTop: Double { dropCenter.target - metrics.pillHeight / 2 }
 
@@ -256,11 +325,12 @@ public struct IslandAnimator: Sendable {
         pillHeight.jump(to: m.pillHeight)
         blend.jump(to: 0)
         progress.jump(to: 1)
+        contentWidth.jump(to: m.pillWidth)
     }
 
     /// When every spring has settled.
     public var end: Double {
-        [dropCenter, pillWidth, pillHeight, progress, blend].compactMap(\.end).max() ?? 0
+        [dropCenter, pillWidth, pillHeight, progress, blend, contentWidth].compactMap(\.end).max() ?? 0
     }
 
     public func shape(at time: Double) -> IslandShape {
@@ -275,7 +345,7 @@ public struct IslandAnimator: Sendable {
         let center = dropCenter.value(at: time)
         return IslandShape(
             pillTop: center - tall / 2, pillWidth: width, pillHeight: tall, progress: opened,
-            blend: max(blend.value(at: time), 0))
+            blend: max(blend.value(at: time), 0), contentWidth: contentWidth.value(at: time))
     }
 
     /// The first time from `start`, in 1 ms steps and within 2 s, at which `condition` holds.
@@ -286,13 +356,21 @@ public struct IslandAnimator: Sendable {
     }
 
     public func content(for shape: IslandShape) -> IslandContentLayout {
-        let m = metrics
-        // Everything sits where the open capsule puts it, and the growing capsule reveals it.
-        let left = -m.pillWidth / 2, right = m.pillWidth / 2
+        content(for: shape, metrics: metrics)
+    }
+
+    /// Where the content of a card of `metrics` sits in `shape`: the card being replaced, while it
+    /// fades out of the island springing to the new card's size.
+    public func content(for shape: IslandShape, metrics m: IslandMetrics) -> IslandContentLayout {
+        // Everything sits where the open capsule puts it, and the growing capsule reveals it. While
+        // the capsule springs to a new card's size, the content follows its ends.
+        let width = shape.contentWidth ?? m.pillWidth
+        let left = -width / 2, right = width / 2
         let centerY = shape.pillTop + shape.pillHeight / 2
         return IslandContentLayout(
             iconCenter: IslandPoint(left + m.pillPadding + m.pillIcon / 2, centerY), iconSize: m.pillIcon,
             ringCenter: IslandPoint(right - m.pillPadding - m.pillRing / 2, centerY), ringSize: m.pillRing,
-            textX: left + m.pillTextX, textCenterY: centerY)
+            textX: left + m.pillTextX, textCenterY: centerY,
+            textRoom: width - m.pillTextX - m.pillGap - m.pillRing - m.pillPadding)
     }
 }
