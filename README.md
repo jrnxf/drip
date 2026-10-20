@@ -136,7 +136,7 @@ id replaces an older one that is still waiting its turn, so a burst of updates s
 latest. When the older card is already on screen, the newer one takes its place there: the card
 springs to its new size, the text that changed crossfades, a new state's colour settles over the
 old one as its icon pops in, its sound plays, and its time starts again. With reduced motion the
-size changes at once and only the crossfade remains. A card that asks a question (`--button`
+size changes at once and only the crossfade remains; with `--motion none` it all changes at once. A card that asks a question (`--button`
 without `--open`) never changes in place, and neither does one that would sit somewhere else
 (another `--position`); the newer card then waits its turn. A question replaced before it showed
 exits 5.
