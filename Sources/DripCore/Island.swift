@@ -186,11 +186,15 @@ public enum IslandUpdate {
 
     /// For each line of the new card, title lines first, whether it shows the same text in the same
     /// place as the old card's line, and so stays while the others change. Lines only keep their
-    /// places when the title and the detail wrap to as many lines as before.
+    /// places when the title and the detail wrap to as many lines as before, in a block as tall, at
+    /// the same size and as far from the capsule's left end, so with an icon or without one as before.
     public static func unchanged(
-        oldTitle: [String], oldDetail: [String], newTitle: [String], newDetail: [String]
+        oldTitle: [String], oldDetail: [String], newTitle: [String], newDetail: [String],
+        from old: IslandMetrics, to new: IslandMetrics
     ) -> [Bool] {
-        guard oldTitle.count == newTitle.count, oldDetail.count == newDetail.count else {
+        guard oldTitle.count == newTitle.count, oldDetail.count == newDetail.count,
+              old.scale == new.scale, old.textHeight == new.textHeight, old.pillTextX == new.pillTextX
+        else {
             return Array(repeating: false, count: newTitle.count + newDetail.count)
         }
         return zip(oldTitle + oldDetail, newTitle + newDetail).map { $0 == $1 }

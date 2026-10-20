@@ -433,15 +433,34 @@ struct IslandUpdateTests {
     @Test func linesThatDidNotChangeStay() {
         #expect(IslandUpdate.unchanged(
             oldTitle: ["deploying api"], oldDetail: ["step 1 of 2"],
-            newTitle: ["deploying api"], newDetail: ["step 2 of 2"]) == [true, false])
+            newTitle: ["deploying api"], newDetail: ["step 2 of 2"], from: running, to: failed) == [true, false])
         // A detail that now wraps moves the block: nothing keeps its place.
         #expect(IslandUpdate.unchanged(
             oldTitle: ["deploying api"], oldDetail: ["step 1"],
-            newTitle: ["deploying api"], newDetail: ["step 2 of 2, pushing the image", "to the registry"])
-            == [false, false, false])
+            newTitle: ["deploying api"], newDetail: ["step 2 of 2, pushing the image", "to the registry"],
+            from: running, to: running) == [false, false, false])
         #expect(IslandUpdate.unchanged(
             oldTitle: ["deploying api"], oldDetail: ["./deploy.sh is running"],
-            newTitle: ["api deployed"], newDetail: []) == [false])
+            newTitle: ["api deployed"], newDetail: [], from: running, to: deployed) == [false])
+    }
+
+    /// The same text somewhere else, or at another size, crosses instead of jumping there.
+    @Test func linesThatMoveDoNotStay() {
+        func unchanged(to new: IslandMetrics) -> [Bool] {
+            IslandUpdate.unchanged(
+                oldTitle: ["deploying api"], oldDetail: [], newTitle: ["deploying api"], newDetail: [],
+                from: deployed, to: new)
+        }
+        #expect(unchanged(to: deployed) == [true])
+        var withoutIcon = deployed
+        withoutIcon.hasIcon = false
+        #expect(unchanged(to: withoutIcon) == [false])
+        var larger = deployed
+        larger.scale = 1.2
+        #expect(unchanged(to: larger) == [false])
+        var taller = deployed
+        taller.textHeight += 3
+        #expect(unchanged(to: taller) == [false])
     }
 }
 

@@ -522,7 +522,7 @@ extension IslandLayers {
         }
         var kept = IslandUpdate.unchanged(
             oldTitle: strings(old.titleLines), oldDetail: strings(old.detailLines),
-            newTitle: strings(titleLines), newDetail: strings(detailLines))
+            newTitle: strings(titleLines), newDetail: strings(detailLines), from: old.metrics, to: metrics)
         // A right-to-left line hugs the block's right edge, which moves when the block's width does.
         for (index, line) in textLines.enumerated() where line.alignmentMode == .right && textSize.width != old.textSize.width {
             kept[index] = false
