@@ -1,0 +1,12 @@
+{
+  "name": "drip-web",
+  "private": true,
+  "scripts": {
+    "build": "./build.sh",
+    "test": "./test.sh",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.3"
+  }
+}

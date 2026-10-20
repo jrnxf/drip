@@ -129,9 +129,13 @@ struct Island {
 
 /// Runs a drip command line as the CLI would, up to the point where it hands cards to the screen.
 ///
-/// Request: `{"args": [...], "config": "<toml>", "notch": {"width": w, "height": h},
+/// Request: `{"args": [...], "env": {"DRIP_STACK": "push"}, "config": "<toml>", "notch": {"width": w, "height": h},
 /// "run": {"status": n, "seconds": s}, "stdin": "<text piped in>"}`. `run` is the outcome of the command `drip run` wraps,
 /// which the page fakes; without it a `drip run` reply asks for it.
+///
+/// The cards come in `deliveries`, shown one after another as the app shows them: each with its
+/// `stack` settings, or none when the cards show one at a time. `adopting` says whether the stack
+/// takes in later commands' cards while it shows, as the background drip does; `drip demo` does not.
 @_expose(wasm, "drip_command")
 @_cdecl("drip_command")
 public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> UnsafePointer<UInt8> {
@@ -139,6 +143,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
     let args = input["args"] as? [String] ?? []
     let notch = input["notch"] as? [String: Double] ?? [:]
     let notchWidth = notch["width"] ?? 185, notchHeight = notch["height"] ?? 32
+    let environment = input["env"] as? [String: String] ?? [:]
 
     var warnings: [String] = []
     var resolver = CardResolver()
@@ -152,10 +157,23 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         }
     }
 
+    func delivery(_ cards: [Card], stack: StackSettings?, adopting: Bool) -> [String: Any] {
+        var delivery: [String: Any] = [
+            "cards": cards.map { island(for: $0, notchWidth: notchWidth, notchHeight: notchHeight) },
+            "adopting": adopting,
+        ]
+        // As the app: a stack only for notch cards with full motion.
+        if let stack, let first = cards.first, first.position == .notch, first.motion == .full {
+            delivery["stack"] = ["mode": stack.mode.rawValue, "max": stack.max, "pauses": stack.pauses] as [String: Any]
+        }
+        return delivery
+    }
     func cards(_ cards: [Card], extra: [String: Any] = [:]) -> UnsafePointer<UInt8> {
         var reply = extra
         reply["warnings"] = warnings
-        reply["cards"] = cards.map { island(for: $0, notchWidth: notchWidth, notchHeight: notchHeight) }
+        reply["deliveries"] = [
+            delivery(cards, stack: StackSettings.current(environment: environment, config: resolver.config), adopting: true)
+        ]
         return send(reply)
     }
     func failure(_ error: Error, status: Int32 = ExitStatus.usage) -> UnsafePointer<UInt8> {
@@ -184,10 +202,16 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         } catch { return failure(error) }
     case let .invocation(.demo(command)):
         var flags = command.options.flags
+        // Short, unless a flag or the config says otherwise.
         if flags.seconds == nil, resolver.config.seconds == nil { flags.seconds = 2 }
         warnings += DemoCommand.warnings(flags: flags)
         do {
-            return cards(try DemoCommand.cards(resolver, flags: flags), extra: ["pauses": DemoCommand.samples.map(\.pause)])
+            let cards = try DemoCommand.cards(resolver, flags: flags)
+            // Chained, then pushed, unless the command names one; each a stack of its own cards.
+            let deliveries = command.stacks.map { mode in
+                delivery(cards, stack: DemoCommand.stack(mode, environment: environment, config: resolver.config), adopting: false)
+            }
+            return send(["warnings": warnings, "deliveries": deliveries])
         } catch { return failure(error) }
     case let .invocation(.hook(command)):
         var flags = command.options.flags
@@ -346,23 +370,8 @@ public func dripFrame(_ handle: Int32, _ time: Double) -> UnsafePointer<Double> 
     if let island = islands[handle] {
         let animator = island.animator, metrics = animator.metrics
         let shape = animator.shape(at: time)
-        let layout = animator.content(for: shape)
         let field = DropletField(metrics: metrics, shape: shape)
-        let touches = field.touchesNotch
-        frameBuffer += [
-            shape.pillTop, shape.pillWidth, shape.pillHeight, shape.progress, shape.blend,
-            shape.contentWidth ?? metrics.pillWidth, shape.pillRadius(metrics),
-            layout.iconCenter.x, layout.iconCenter.y, layout.iconSize,
-            layout.ringCenter.x, layout.ringCenter.y, layout.ringSize,
-            layout.textX, layout.textCenterY, layout.textRoom, touches ? 1 : 0,
-        ]
-        // As `IslandPath.addTraced` does: from just inside the notch, on a half-point grid.
-        let loops = touches ? field.outline(above: field.anchor.bottom - 4 * metrics.scale, cell: 0.5) : []
-        frameBuffer.append(Double(loops.count))
-        for loop in loops {
-            frameBuffer.append(Double(loop.count))
-            for point in loop { frameBuffer += [point.x, point.y] }
-        }
+        appendFrame(shape: shape, metrics: metrics, layout: animator.content(for: shape), traced: field.touchesNotch ? field : nil)
     }
     return frameBuffer.withUnsafeBufferPointer { $0.baseAddress ?? UnsafePointer(bitPattern: 8)! }
 }
@@ -376,6 +385,165 @@ public func dripFrameLength() -> Int32 { Int32(frameBuffer.count) }
 @_cdecl("drip_spring")
 public func dripSpring(_ duration: Double, _ bounce: Double, _ time: Double) -> Double {
     Spring(duration: duration, bounce: bounce).progress(at: time)
+}
+
+// MARK: - The stack
+
+/// The cards stacked at the notch, laid out as their islands; one stack at a time.
+nonisolated(unsafe) var stack: CardStack?
+/// Whether the stack takes in later commands' cards.
+nonisolated(unsafe) var stackAdopts = false
+/// The islands of the stack's own cards still waiting, in order.
+nonisolated(unsafe) var stackOwn: [Int32] = []
+/// Later commands' islands, waiting for the stack to take them.
+nonisolated(unsafe) var stackAdoptable: [Int32] = []
+/// The island each card of the stack shows, by `CardStack.Entry.id`.
+nonisolated(unsafe) var stackIslands: [Int: Int32] = [:]
+nonisolated(unsafe) var stackClock = 0.0
+
+/// Starts a stack of the islands `handles`, from a delivery's settings: `{"mode": "chain", "max": 3,
+/// "pauses": [...], "adopting": true, "handles": [...]}`. Its clock starts at 0.
+@_expose(wasm, "drip_stack_start")
+@_cdecl("drip_stack_start")
+public func dripStackStart(_ pointer: UnsafePointer<UInt8>, _ length: Int32) {
+    let input = request(pointer, length)
+    let handles = (input["handles"] as? [Double] ?? []).map { Int32($0) }.filter { islands[$0] != nil }
+    let settings = StackSettings(
+        mode: StackSettings.Mode(rawValue: input["mode"] as? String ?? "") ?? .chain,
+        max: Int(input["max"] as? Double ?? Double(Defaults.stackMax)),
+        pauses: input["pauses"] as? [Double] ?? [])
+    stack = CardStack(settings: settings, cards: handles.compactMap { islands[$0]?.card })
+    stackAdopts = input["adopting"] as? Bool ?? false
+    stackOwn = handles
+    stackAdoptable = []
+    stackIslands = [:]
+    stackClock = 0
+}
+
+/// Hands a later command's island to the stack, which takes it in when there is room. Returns 0
+/// when the stack does not take cards in.
+@_expose(wasm, "drip_stack_adopt")
+@_cdecl("drip_stack_adopt")
+public func dripStackAdopt(_ handle: Int32) -> Int32 {
+    guard stack != nil, stackAdopts, islands[handle] != nil else { return 0 }
+    stackAdoptable.append(handle)
+    return 1
+}
+
+/// Moves the stack's clock to `time`, as the app's stack does every tick: lets a card in when the
+/// stack is ready for one, a later command's first, then counts down, sends cards off and closes the
+/// gaps. Replies `{"entered": [{handle, start, cues, countdownFrom}], "left": [{handle, cues, time,
+/// clicked}], "gone": [handle], "done": bool}`; `done` once nothing is left to show.
+@_expose(wasm, "drip_stack_step")
+@_cdecl("drip_stack_step")
+public func dripStackStep(_ time: Double) -> UnsafePointer<UInt8> {
+    guard let stack else { return send(["done": true]) }
+    let elapsed = max(time - stackClock, 0)
+    stackClock = time
+    var entered: [[String: Any]] = []
+    func enter(_ handle: Int32, own: Bool) {
+        guard let island = islands[handle] else { return }
+        let entry = stack.enter(island.card, metrics: island.animator.metrics, own: own, decided: time, at: time)
+        stackIslands[entry.id] = handle
+        guard case let .entering(start, entryCues) = entry.phase else { return }
+        entered.append(["handle": handle, "start": start, "cues": cues(entryCues), "countdownFrom": entry.countdownFrom])
+    }
+    if stack.isReady(at: time) {
+        if let handle = stackAdoptable.first, stack.waiting.isEmpty, stack.hasRoom {
+            stackAdoptable.removeFirst()
+            enter(handle, own: false)
+        } else if stack.nextOwn(at: time) != nil {
+            enter(stackOwn.removeFirst(), own: true)
+        }
+    }
+    let changes = stack.advance(to: time, elapsed: elapsed, lead: 0)
+    let left: [[String: Any]] = changes.left.compactMap { left in
+        stackIslands[left.entry.id].map {
+            ["handle": $0, "cues": cues(left.cues), "time": left.time, "clicked": left.clicked]
+        }
+    }
+    let gone = changes.gone.compactMap { stackIslands.removeValue(forKey: $0.id) }
+    let done = stack.entries.isEmpty && stack.waiting.isEmpty && stackAdoptable.isEmpty
+    if done { dripStackEnd() }
+    return send(["entered": entered, "left": left, "gone": gone, "done": done])
+}
+
+/// Ends the stack at once, as when the page is reset.
+@_expose(wasm, "drip_stack_end")
+@_cdecl("drip_stack_end")
+public func dripStackEnd() {
+    stack = nil
+    stackOwn = []
+    stackAdoptable = []
+    stackIslands = [:]
+}
+
+/// The pointer at x, y (x from the notch's center, y down from the screen's top) at `time`, or off
+/// the stack when `inside` is 0. While it is on a card nothing moves and no countdown runs. Replies
+/// with the island under it, 0 for none, and whether it is on that card's button.
+@_expose(wasm, "drip_stack_pointer")
+@_cdecl("drip_stack_pointer")
+public func dripStackPointer(_ x: Double, _ y: Double, _ inside: Int32, _ time: Double) -> UnsafePointer<UInt8> {
+    guard let stack else { return send(["handle": 0, "button": false]) }
+    let point = IslandPoint(x, y)
+    let under = inside != 0 ? stack.entry(at: point, time: time) : nil
+    stack.hover(under != nil)
+    return send([
+        "handle": under.flatMap { stackIslands[$0.id] } ?? 0,
+        "button": under.map { stack.isOnButton(of: $0, at: point, time: time) } ?? false,
+    ])
+}
+
+/// A click at x, y at `time`: on a button it runs the button's action, anywhere else on a card it
+/// brings the sending app forward, and either way that card goes. Replies as `drip_stack_pointer`.
+@_expose(wasm, "drip_stack_click")
+@_cdecl("drip_stack_click")
+public func dripStackClick(_ x: Double, _ y: Double, _ time: Double) -> UnsafePointer<UInt8> {
+    guard let stack else { return send(["handle": 0, "button": false]) }
+    let point = IslandPoint(x, y)
+    guard let entry = stack.entry(at: point, time: time) else { return send(["handle": 0, "button": false]) }
+    let button = stack.isOnButton(of: entry, at: point, time: time)
+    entry.dismissed = button || (entry.dismissed ?? false)
+    return send(["handle": stackIslands[entry.id] ?? 0, "button": button])
+}
+
+/// Every card of the stack at `time`, top to bottom, leaving cards included, as doubles: the card
+/// count, then for each card its island's handle, the seconds left on its countdown, where its
+/// capsule's top is heading, and its frame as `drip_frame` lays one out, the outline traced where its
+/// drop melts into the notch or the card above it. The page reads `drip_frame_length` doubles.
+@_expose(wasm, "drip_stack_frame")
+@_cdecl("drip_stack_frame")
+public func dripStackFrame(_ time: Double) -> UnsafePointer<Double> {
+    frameBuffer.removeAll(keepingCapacity: true)
+    let entries = stack?.entries ?? []
+    let pieces = stack?.outline.pieces(at: time) ?? []
+    frameBuffer.append(Double(entries.count))
+    for (entry, piece) in zip(entries, pieces) {
+        frameBuffer += [Double(stackIslands[entry.id] ?? 0), entry.remaining, entry.animator.targetTop]
+        let shape = entry.animator.shape(at: time)
+        var field: DropletField?
+        if case let .traced(traced) = piece { field = traced }
+        appendFrame(shape: shape, metrics: entry.metrics, layout: entry.animator.content(for: shape), traced: field)
+    }
+    return frameBuffer.withUnsafeBufferPointer { $0.baseAddress ?? UnsafePointer(bitPattern: 8)! }
+}
+
+/// One island's frame, as `drip_frame` lays it out.
+func appendFrame(shape: IslandShape, metrics: IslandMetrics, layout: IslandContentLayout, traced field: DropletField?) {
+    frameBuffer += [
+        shape.pillTop, shape.pillWidth, shape.pillHeight, shape.progress, shape.blend,
+        shape.contentWidth ?? metrics.pillWidth, shape.pillRadius(metrics),
+        layout.iconCenter.x, layout.iconCenter.y, layout.iconSize,
+        layout.ringCenter.x, layout.ringCenter.y, layout.ringSize,
+        layout.textX, layout.textCenterY, layout.textRoom, field != nil ? 1 : 0,
+    ]
+    // As `IslandPath.addTraced` does: from just inside what it melts into, on a half-point grid.
+    let loops = field.map { $0.outline(above: $0.anchor.bottom - 4 * metrics.scale, cell: 0.5) } ?? []
+    frameBuffer.append(Double(loops.count))
+    for loop in loops {
+        frameBuffer.append(Double(loop.count))
+        for point in loop { frameBuffer += [point.x, point.y] }
+    }
 }
 
 @_expose(wasm, "drip_version")

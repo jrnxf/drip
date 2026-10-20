@@ -372,6 +372,23 @@ never overwrites a reference: to regenerate one on purpose, delete its PNG and r
 `scripts/demo-gif.sh` draws the animation at the top of this file frame by frame with
 `__render --at`, from the same layers the notch card shows, so it needs no screen recording.
 
+### The web page
+
+[drip.jrnxf.co](https://drip.jrnxf.co) runs DripCore itself, compiled to WebAssembly, and paints
+what it computes: the command line, the cards, their springs and outlines, and the stack. It lives
+in `web`:
+
+```sh
+web/build.sh  # the page and the engine into web/dist
+web/test.sh   # the DripCore tests, compiled to WebAssembly, under wasmtime
+```
+
+Both need Swift 6.4.1 with its matching Wasm SDK; `web/tools.sh` pins them and, on x86_64 Linux,
+downloads what is missing. Under WASI, DripCore builds against FoundationEssentials, and
+`Sources/DripCore/WASICompat.swift` fills in the little it lacks. CI runs `web/test.sh`, and Cloudflare's
+Workers Builds runs `web/build.sh` and deploys the `drip-web` Worker on every push to main that
+touches `web`, `Sources/DripCore` or the package.
+
 ## License
 
 MIT

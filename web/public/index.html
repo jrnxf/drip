@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>drip</title>
+<meta name="description" content="drip shows a brief native card from the shell, grown out of your Mac's notch. This page runs drip's own engine, compiled to WebAssembly.">
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0b0b0d;
+    --panel: #141417;
+    --panel-2: #1b1b1f;
+    --line: #2a2a30;
+    --text: #ececf1;
+    --muted: #9a9aa6;
+    --faint: #66666f;
+    --accent: #30d158;
+    --term: #0e0e10;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--sans); }
+  main { max-width: 920px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 28px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; font-weight: 650; }
+  .lede { color: var(--muted); margin: 0 0 24px; max-width: 62ch; }
+  .lede b { color: var(--text); font-weight: 600; }
+
+  .screen {
+    position: relative; border-radius: 14px 14px 0 0; overflow: hidden; height: var(--screen-height, 230px);
+    transition: height .35s cubic-bezier(.23, 1, .32, 1);
+    background:
+      radial-gradient(120% 140% at 15% 0%, #3b2f6b 0%, transparent 55%),
+      radial-gradient(110% 120% at 90% 10%, #0f4c5c 0%, transparent 60%),
+      linear-gradient(180deg, #1a1830, #0d1220);
+    border: 1px solid var(--line); border-bottom: 0;
+  }
+  .menubar {
+    position: absolute; inset: 0 0 auto 0; height: calc(32px * var(--fit, 1)); display: flex; align-items: center;
+    justify-content: space-between; padding: 0 14px; font-size: 13px; color: rgba(255,255,255,.86);
+    background: rgba(20,20,28,.35); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  }
+  .menubar span { margin-right: 16px; }
+  @media (max-width: 560px) { .menubar .left span { display: none; } }
+  .menubar .left b { font-weight: 650; }
+  #island { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  .terminal {
+    border: 1px solid var(--line); border-radius: 0 0 14px 14px; background: var(--term);
+    font: 13px/1.55 var(--mono); overflow: hidden;
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line); color: var(--faint); font: 12px var(--sans);
+  }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #3a3a40; }
+  .titlebar .name { margin-left: 8px; }
+  #scroll { height: 260px; overflow-y: auto; padding: 12px 14px 4px; white-space: pre-wrap; word-break: break-word; }
+  .line { min-height: 1.55em; }
+  .prompt { color: var(--accent); }
+  .err { color: #ff6b62; }
+  .dim { color: var(--faint); }
+  .ok { color: #8be39b; }
+  .inputline { display: flex; gap: 8px; padding: 0 14px 12px; align-items: baseline; }
+  #input {
+    flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--text);
+    font: inherit; caret-color: var(--accent); padding: 0;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 28px; }
+  .chip {
+    font: 12.5px/1 var(--mono); color: var(--text); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 999px; padding: 8px 12px; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .chip:hover { border-color: #44444c; background: var(--panel-2); }
+  .chip:active { transform: scale(.97); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 560px) { .screen { height: var(--screen-height, 170px); } }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 23px; } #scroll { height: 220px; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .panel h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--muted); letter-spacing: .02em; text-transform: uppercase; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0; font: 12.5px/1.5 var(--mono); }
+  dt { color: var(--faint); }
+  dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  textarea {
+    width: 100%; min-height: 150px; resize: vertical; background: var(--term); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: 12.5px/1.5 var(--mono);
+  }
+  label.toggle { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--muted); font-size: 13px; cursor: pointer; }
+  canvas#plot { width: 100%; height: 120px; display: block; margin-top: 4px; }
+  .notes { color: var(--muted); font-size: 14px; margin-top: 28px; }
+  .notes li { margin: 4px 0; }
+  code { font: 12.5px var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+  #loading { position: absolute; left: 50%; top: 110px; transform: translateX(-50%); color: rgba(255,255,255,.7); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>drip, running in your browser</h1>
+  <p class="lede">This page loads <b>drip's own engine</b>, DripCore, compiled from the same Swift sources to WebAssembly.
+    Type a <code>drip</code> command: the engine parses it, resolves the card, wraps the text and springs the island out of the notch.
+    Send a few at once and they stack, up to three, each dropping out of the one above.
+    The page only paints what the engine computes, frame by frame.</p>
+
+  <div class="screen" id="screen" role="img" aria-label="A Mac screen's top edge, where the island drops from the notch">
+    <div class="menubar"><div class="left"><b>Terminal</b><span></span><span>Shell</span><span>Edit</span><span>View</span></div><div id="clock"></div></div>
+    <canvas id="island"></canvas>
+    <div id="loading">loading the drip engine…</div>
+  </div>
+  <div class="terminal">
+    <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="name">zsh, in a browser</span></div>
+    <div id="scroll"></div>
+    <div class="inputline"><span class="prompt">~ $</span><input id="input" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Command line" disabled></div>
+  </div>
+
+  <div class="chips" id="chips"></div>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Engine, live</h2>
+      <dl id="live"></dl>
+      <canvas id="plot"></canvas>
+      <label class="toggle"><input type="checkbox" id="outline"> show the traced outline points</label>
+      <label class="toggle"><input type="checkbox" id="slow"> slow motion (quarter speed)</label>
+    </section>
+    <section class="panel">
+      <h2>~/.config/drip/config.toml</h2>
+      <textarea id="config" spellcheck="false"># Read by the real TOML parser on every command.
+[preset.deploy]
+icon  = "paperplane.fill"
+color = "#a78bfa"
+seconds = 6</textarea>
+      <dl id="load" style="margin-top:12px"></dl>
+    </section>
+  </div>
+
+  <ul class="notes">
+    <li>Real: the command line (swift-argument-parser), presets, config, flags, <code>drip run</code>'s title and timing, line wrapping, the island's sizes, every spring and the liquid outline traced by marching squares.</li>
+    <li>Drawn by the page: the paint. Icons stand in for SF Symbols, fonts are the browser's system font, and there is no sound.</li>
+    <li>Stacks: cards sent while others show stack below them, chained (each drops out of the card above) or pushed (<code>DRIP_STACK=push drip …</code>, each drops out of the notch and pushes the others down). The engine places them, holds a fourth until there is room, and stops every countdown while the pointer is on a card.</li>
+    <li>Not here: other positions and styles (every card is a notch card), cards replaced in place, history.</li>
+  </ul>
+</main>
+
+
+<script type="module">
+import { loadDrip } from "./drip-engine.js";
+
+// The engine, named by its content when the site is built (web/build.sh).
+const WASM = "__DRIP_WASM__";
+
+const FONT = getComputedStyle(document.documentElement).getPropertyValue("--sans");
+const fonts = [(s) => `600 ${14 * s}px ${FONT}`, (s) => `400 ${12 * s}px ${FONT}`, (s) => `600 ${12.5 * s}px ${FONT}`];
+const measurer = document.createElement("canvas").getContext("2d");
+function measure(font, scale, text) { measurer.font = fonts[font](scale); return measurer.measureText(text).width; }
+
+// The accents as the island shows them, on black: the dark-appearance system colors.
+const SYSTEM = { green: "#30d158", orange: "#ff9f0a", red: "#ff453a", blue: "#0a84ff", purple: "#bf5af2", pink: "#ff375f", yellow: "#ffd60a", gray: "#8e8e93" };
+const accentOf = (color) => color.system ? SYSTEM[color.system._0] : `rgb(${color.rgb.red},${color.rgb.green},${color.rgb.blue})`;
+
+// ---- terminal ----
+const scroll = document.getElementById("scroll"), input = document.getElementById("input");
+function print(text, cls = "") {
+  for (const part of String(text).split("\n")) {
+    const div = document.createElement("div"); div.className = "line " + cls; div.textContent = part; scroll.append(div);
+  }
+  scroll.scrollTop = scroll.scrollHeight;
+}
+function echo(command) {
+  const div = document.createElement("div"); div.className = "line";
+  const p = document.createElement("span"); p.className = "prompt"; p.textContent = "~ $ ";
+  div.append(p, command); scroll.append(div); scroll.scrollTop = scroll.scrollHeight;
+}
+// Splits a command line as a POSIX shell would, quotes and backslashes included; pipes split stages.
+function shellSplit(line) {
+  const stages = [[]]; let word = null, quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      else if (c === "\\" && quote === '"' && i + 1 < line.length) word += line[++i];
+      else word += c;
+    } else if (c === "'" || c === '"') { quote = c; word ??= ""; }
+    else if (c === "\\" && i + 1 < line.length) { word = (word ?? "") + line[++i]; }
+    else if (/\s/.test(c)) { if (word !== null) { stages.at(-1).push(word); word = null; } }
+    else if (c === "|") { if (word !== null) { stages.at(-1).push(word); word = null; } stages.push([]); }
+    else word = (word ?? "") + c;
+  }
+  if (quote) throw new Error("unmatched " + quote);
+  if (word !== null) stages.at(-1).push(word);
+  return stages;
+}
+
+// A chip runs its lines one after another, as fast as they can be typed.
+const examples = [
+  [`drip "build done"`],
+  [`drip demo`],
+  [`drip ok "Build finished" -d "make test: 246 passed"`, `drip warn "Claude needs you" -d "permission to use Bash"`, `drip fail "Deploy failed" -d "staging: health check timed out"`, `drip info "Backup done" -d "412 files, 3.1 GB"`],
+  [`DRIP_STACK=push drip demo push`],
+  [`drip run -- npm test`],
+  [`drip run -- make deploy-fail`],
+  [`drip ok "Release 1.4 is out" --open https://github.com/jrnxf/drip`],
+  [`printf 'Backup done\\n412 files, 3.1 GB to nas' | drip ok`],
+  [`drip deploy "shipped to prod"`],
+  [`drip warn "Disk almost full" -d "12 GB left on Macintosh HD" --size large`],
+  [`drip hook claude '{"hook_event_name":"Stop","cwd":"/home/user/my-app","last_assistant_message":"All **246** tests pass. Pushed \`fix/notch\`."}'`],
+  [`drip --seconds 99 "too long"`],
+  [`drip --help`],
+];
+const chips = document.getElementById("chips");
+for (const lines of examples) {
+  const label = lines.length > 1 ? `${lines.length} drips at once` : lines[0];
+  const b = document.createElement("button"); b.className = "chip"; b.textContent = label.length > 58 ? label.slice(0, 55) + "…" : label;
+  b.title = lines.join("\n");
+  b.onclick = async () => { if (input.disabled) return; for (const line of lines) await run(line); };
+  chips.append(b);
+}
+
+const history = []; let historyIndex = 0;
+input.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") { const line = input.value; input.value = ""; if (line.trim()) { history.push(line); historyIndex = history.length; } run(line); }
+  else if (event.key === "ArrowUp" && historyIndex > 0) { input.value = history[--historyIndex]; event.preventDefault(); }
+  else if (event.key === "ArrowDown") { historyIndex = Math.min(historyIndex + 1, history.length); input.value = history[historyIndex] ?? ""; }
+  else if (event.key === "l" && event.ctrlKey) { scroll.textContent = ""; event.preventDefault(); }
+});
+
+// What `drip run` wraps never runs here; it pretends, and drip times the pretend.
+const fakeOutput = {
+  npm: ["", "> my-app@1.0.0 test", "> vitest run", "", " ✓ src/notch.test.ts (31 tests) 412ms", " ✓ src/queue.test.ts (18 tests) 205ms", "", " Test Files  2 passed (2)", "      Tests  49 passed (49)"],
+  make: ["swift build -c release", "Compiling DripCore Spring.swift", "Build complete!"],
+};
+function fakeRun(command) {
+  const joined = command.join(" ");
+  const fails = /fail|false|error|exit [1-9]/.test(joined);
+  const lines = fails ? [...(fakeOutput[command[0]] ?? []).slice(0, 2), "error: health check timed out"] : (fakeOutput[command[0]] ?? [`(pretending to run ${joined})`]);
+  const seconds = 1.2 + Math.random() * 1.8;
+  return { lines, seconds, status: fails ? (command[0] === "false" ? 1 : 2) : 0 };
+}
+
+let drip;
+const configText = () => document.getElementById("config").value;
+const notch = { width: 185, height: 32 };
+
+async function run(line) {
+  echo(line);
+  let stages;
+  try { stages = shellSplit(line); } catch (error) { print(`zsh: ${error.message}`, "err"); return; }
+  if (!stages[0].length) return;
+  let stdin;
+  if (stages.length > 1) {
+    const first = stages[0];
+    if (first[0] === "echo") stdin = first.slice(1).join(" ") + "\n";
+    else if (first[0] === "printf") stdin = (first[1] ?? "").replace(/\\n/g, "\n");
+    else { print(`zsh: only echo and printf can pipe into drip here`, "err"); return; }
+    stages = stages.slice(1);
+  }
+  // `NAME=value drip …` sets drip's environment, as DRIP_STACK=push.
+  const words = stages[0].slice(), env = {};
+  while (words.length > 1 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) {
+    const word = words.shift(), at = word.indexOf("=");
+    env[word.slice(0, at)] = word.slice(at + 1);
+  }
+  const [program, ...args] = words;
+  if (program === "clear") { scroll.textContent = ""; return; }
+  if (program !== "drip") { print(`zsh: command not found: ${program}  (this terminal only runs drip)`, "err"); return; }
+
+  let reply = drip.command({ args, env, config: configText(), notch, stdin });
+  if (reply.run) {
+    input.disabled = true;
+    const outcome = fakeRun(reply.run);
+    const started = performance.now();
+    for (const l of outcome.lines) { print(l, "dim"); await sleep(outcome.seconds * 1000 / (outcome.lines.length + 1)); }
+    await sleep(Math.max(0, outcome.seconds * 1000 - (performance.now() - started)));
+    input.disabled = false; input.focus();
+    reply = drip.command({ args, env, config: configText(), notch, run: { status: outcome.status, seconds: (performance.now() - started) / 1000 } });
+  }
+  if (reply.message !== undefined) { print(reply.message, reply.exit === 0 ? "" : "err"); return; }
+  for (const warning of reply.warnings ?? []) print(`drip: warning: ${warning}`, "dim");
+  if (reply.status) print(`zsh: exit ${reply.status}`, "dim");
+  deliveries.push(...reply.deliveries);
+}
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ---- island ----
+// Each command's cards arrive as a delivery. A delivery with stack settings starts a stack, which
+// the engine runs: it lets cards in, places them, counts them down and sends them off. While it
+// shows, it takes in later commands' cards, as the app's background drip does. Cards that do not
+// stack (reduced motion, DRIP_STACK=off) show one at a time.
+const canvas = document.getElementById("island"), ctx = canvas.getContext("2d");
+const layer = document.createElement("canvas"), lctx = layer.getContext("2d");
+const textLayer = document.createElement("canvas"), tctx = textLayer.getContext("2d");
+const screen = document.getElementById("screen");
+const deliveries = [];
+// { kind: "stack", start, cards: Map(handle -> card), bottom } or { kind: "single", queue, current }
+let showing = null;
+let clock = 0, lastNow = performance.now();
+// For screenshots: holds the clock `frozen` seconds into what is showing.
+let frozen = null;
+let pointer = null;
+
+function bezier(x1, y1, x2, y2) {
+  const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx, cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
+  const x = (t) => ((ax * t + bx) * t + cx) * t, y = (t) => ((ay * t + by) * t + cy) * t, dx = (t) => (3 * ax * t + 2 * bx) * t + cx;
+  return (p) => { if (p <= 0) return 0; if (p >= 1) return 1; let t = p; for (let i = 0; i < 8; i++) { const d = dx(t); if (Math.abs(d) < 1e-6) break; t -= (x(t) - p) / d; } return y(Math.min(Math.max(t, 0), 1)); };
+}
+const easeOut = bezier(0.23, 1, 0.32, 1);
+const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
+
+// How much the screen is scaled down: never, unless a card would not fit the page's width.
+let fit = 1;
+function fitFor(card) {
+  const W = canvas.getBoundingClientRect().width;
+  return Math.min(1, (W - 16) / Math.max(card ? card.metrics.maxWidth + 16 : 0, 380));
+}
+function setFit(value) { fit = value; screen.style.setProperty("--fit", fit); }
+// The screen grows to hold the stack, and settles back once it has gone.
+let screenHeight = 0;
+function holdDown(bottom) {
+  const base = innerWidth <= 560 ? 170 : 230, height = Math.max(base, Math.ceil((bottom + 24) * fit));
+  if (height !== screenHeight) { screenHeight = height; screen.style.setProperty("--screen-height", height + "px"); }
+}
+
+// A card as the page draws it; its times are its own, from when it starts to drop in.
+function prepare(card) {
+  return { ...card, accent: accentOf(card.card.color), ringSide: card.metrics.actionWidth || 22 * card.metrics.scale, start: Infinity };
+}
+
+function startNext() {
+  const delivery = deliveries.shift();
+  const cards = delivery.cards.map(prepare);
+  setFit(Math.min(...cards.map(fitFor)));
+  if (delivery.stack) {
+    showing = { kind: "stack", start: clock, cards: new Map(cards.map((card) => [card.handle, card])), bottom: 0, settings: delivery.stack };
+    drip.stack.start({ ...delivery.stack, adopting: delivery.adopting }, cards.map((card) => card.handle));
+  } else {
+    showing = { kind: "single", queue: cards, current: null };
+  }
+}
+
+// Later commands' stacking cards join the stack that shows, which lets them in when there is room.
+function adopt() {
+  while (showing?.kind === "stack" && deliveries[0]?.stack && deliveries[0].adopting) {
+    const cards = deliveries[0].cards.map(prepare);
+    if (!cards.every((card) => drip.stack.adopt(card.handle))) return;
+    deliveries.shift();
+    for (const card of cards) showing.cards.set(card.handle, card);
+    setFit(Math.min(fit, ...cards.map(fitFor)));
+  }
+}
+
+// One card on its own, with reduced motion as the app shows it.
+function begin(card) {
+  const motion = card.card.motion;
+  card.start = clock;
+  if (motion === "full") {
+    card.cues = drip.enter(card.handle, 0);
+    card.visible = (card.cues.title[0] ?? card.cues.sides) + 0.25;
+  } else {
+    drip.open(card.handle);
+    card.cues = { sides: 0, title: card.titleLines.map(() => 0), detail: card.detailLines.map(() => 0) };
+    card.visible = 0.15;
+    card.panelFade = motion === "none" ? 0 : 0.15;
+  }
+  card.exitAt = card.visible + card.seconds;
+  return card;
+}
+function leave(card, at) {
+  if (card.exitCues) return;
+  card.exitAt = at;
+  if (card.card.motion === "full") { card.exitCues = drip.exit(card.handle, at); card.done = drip.end(card.handle) + 0.05; }
+  else { card.exitCues = { sides: 0, title: [], detail: [] }; card.done = at + (card.panelFade || 0) + 0.02; }
+}
+
+function resize() {
+  const rect = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  for (const c of [canvas, layer, textLayer]) { c.width = Math.round(rect.width * dpr); c.height = Math.round(rect.height * dpr); }
+}
+new ResizeObserver(resize).observe(canvas);
+addEventListener("resize", () => { if (!showing) setFit(fitFor(null)); });
+
+function roundedRect(c, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+function notchPath(c, m) {
+  const left = -m.notchWidth / 2, right = m.notchWidth / 2, h = m.notchHeight;
+  const r = Math.min(m.notchRadius, h / 2, m.notchWidth / 2);
+  c.moveTo(left, -1); c.arcTo(left, h, right, h, r); c.arcTo(right, h, right, 0, r); c.lineTo(right, -1); c.closePath();
+}
+function drawIcon(c, name, accent, cx, cy, size) {
+  if (size <= 0) return;
+  const r = size / 2;
+  c.save(); c.translate(cx, cy);
+  c.fillStyle = accent; c.beginPath(); c.arc(0, 0, r * 0.96, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = "#fff"; c.fillStyle = "#fff"; c.lineCap = "round"; c.lineJoin = "round"; c.lineWidth = size * 0.11;
+  c.beginPath();
+  if (name.startsWith("checkmark")) { c.moveTo(-r * 0.42, r * 0.02); c.lineTo(-r * 0.12, r * 0.32); c.lineTo(r * 0.44, -r * 0.3); c.stroke(); }
+  else if (name.startsWith("xmark")) { const a = r * 0.34; c.moveTo(-a, -a); c.lineTo(a, a); c.moveTo(a, -a); c.lineTo(-a, a); c.stroke(); }
+  else if (name.startsWith("exclamationmark")) { c.moveTo(0, -r * 0.46); c.lineTo(0, r * 0.1); c.stroke(); c.beginPath(); c.arc(0, r * 0.42, size * 0.065, 0, Math.PI * 2); c.fill(); }
+  else if (name.startsWith("info")) { c.arc(0, -r * 0.42, size * 0.065, 0, Math.PI * 2); c.fill(); c.beginPath(); c.moveTo(0, -r * 0.1); c.lineTo(0, r * 0.46); c.stroke(); }
+  else if (name.startsWith("paperplane")) { c.moveTo(-r * 0.5, -r * 0.05); c.lineTo(r * 0.5, -r * 0.45); c.lineTo(r * 0.1, r * 0.5); c.lineTo(-r * 0.05, r * 0.08); c.closePath(); c.fill(); }
+  else { c.arc(0, 0, r * 0.28, 0, Math.PI * 2); c.fill(); }
+  c.restore();
+}
+
+// Opacity of a part cued at `cue`: entrance fades over `duration` with drip's ease-out, exit over 0.12 s.
+function partAlpha(card, t, cue, duration) {
+  if (card.exitCues && t >= card.exitAt) {
+    return 1 - easeOut(clamp01((t - card.exitAt - (cue.exit ?? 0)) / 0.12));
+  }
+  if (card.card.motion !== "full") return 1;
+  return easeOut(clamp01((t - cue.enter) / duration));
+}
+
+// The black shape: the traced liquid while the drop touches what it grows out of, a capsule once it
+// floats free. Returns how many outline points it traced.
+function fillShape(f) {
+  ctx.fillStyle = "#000"; ctx.beginPath();
+  let points = 0;
+  if (f.touchesNotch) {
+    for (const loop of f.loops) { ctx.moveTo(loop[0], loop[1]); for (let i = 2; i < loop.length; i += 2) ctx.lineTo(loop[i], loop[i + 1]); ctx.closePath(); points += loop.length / 2; }
+    ctx.fill();
+  } else { roundedRect(ctx, -f.pillWidth / 2, f.pillTop, f.pillWidth, f.pillHeight, f.pillRadius); ctx.fill(); }
+  if (document.getElementById("outline").checked && f.touchesNotch) {
+    ctx.fillStyle = "#30d158";
+    for (const loop of f.loops) for (let i = 0; i < loop.length; i += 2) ctx.fillRect(loop[i] - 0.4, loop[i + 1] - 0.4, 0.8, 0.8);
+  }
+  return points;
+}
+
+// A card's icon, ring or button, and text, drawn whole and revealed by its capsule, as the app clips
+// them. `t` is the card's own time and `ring` how much of its countdown is left.
+function drawContent(card, f, t, ring, W, H) {
+  const dpr = devicePixelRatio || 1, m = card.metrics;
+  for (const c of [lctx, tctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, layer.width, layer.height); c.setTransform(dpr * fit, 0, 0, dpr * fit, dpr * W / 2, 0); }
+  const cues = card.cues;
+  const exitSides = card.exitCues?.sides ?? 0;
+  lctx.save();
+  lctx.globalAlpha = m.hasIcon ? partAlpha(card, t, { enter: cues.sides, exit: exitSides }, 0.18) : 0;
+  drawIcon(lctx, card.card.icon.symbol?._0 ?? "", card.accent, f.icon.x, f.icon.y, f.icon.size);
+  lctx.globalAlpha = partAlpha(card, t, { enter: cues.sides, exit: exitSides }, 0.18);
+  const k = f.ring.size / card.ringSide;
+  lctx.translate(f.ring.x, f.ring.y); lctx.scale(k, k);
+  if (card.card.action) {
+    const w = card.ringSide, h = 26 * m.scale, c = card.buttonColor;
+    const hover = card.hover ? 0.12 : 0;
+    lctx.fillStyle = `rgb(${[0, 1, 2].map((i) => Math.round(255 * (c[i] + (1 - c[i]) * hover))).join(",")})`;
+    roundedRect(lctx, -w / 2, -h / 2, w, h, h / 2); lctx.fill();
+    lctx.fillStyle = "#fff"; lctx.font = fonts[2](m.scale); lctx.textAlign = "center"; lctx.textBaseline = "middle";
+    lctx.fillText(card.card.action.label, 0, 0.5);
+  } else {
+    const r = card.ringSide / 2 - 1.6;
+    lctx.lineWidth = 2.4 * m.scale; lctx.strokeStyle = card.accent;
+    lctx.save(); lctx.globalAlpha *= 0.28; lctx.beginPath(); lctx.arc(0, 0, r, 0, Math.PI * 2); lctx.stroke(); lctx.restore();
+    if (ring > 0.001) { lctx.lineCap = "round"; lctx.beginPath(); lctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + ring * Math.PI * 2); lctx.stroke(); }
+  }
+  lctx.restore();
+
+  // Text: one line per layer, stacked from the block's top, fading and rising in on its cue, and cut
+  // with a soft edge at the end of the column.
+  let y = f.textCenterY - m.textHeight / 2;
+  const lines = [
+    ...card.titleLines.map((text, i) => ({ text, font: 0, color: "#fff", height: card.titleLineHeight, cue: cues.title[i], exit: card.exitCues?.title[i] })),
+    ...card.detailLines.map((text, i) => ({ text, font: 1, color: "rgb(158,158,158)", height: card.detailLineHeight, cue: cues.detail[i], exit: card.exitCues?.detail[i], gap: i === 0 ? card.detailSpacing : 0 })),
+  ];
+  for (const line of lines) {
+    y += line.gap ?? 0;
+    const alpha = partAlpha(card, t, { enter: line.cue, exit: line.exit ?? 0 }, 0.25);
+    const rise = card.card.motion === "full" && !(card.exitCues && t >= card.exitAt) ? 4 * (1 - easeOut(clamp01((t - line.cue) / 0.25))) : 0;
+    const size = (line.font === 0 ? 14 : 12) * m.scale;
+    tctx.globalAlpha = alpha; tctx.fillStyle = line.color; tctx.font = fonts[line.font](m.scale); tctx.textBaseline = "alphabetic";
+    tctx.fillText(line.text, f.textX, y + rise + size * 0.952);
+    y += line.height;
+  }
+  tctx.globalAlpha = 1;
+  const edgeEnd = f.textX + f.textRoom + card.textEdge;
+  const gradient = tctx.createLinearGradient(edgeEnd - card.textEdge, 0, edgeEnd, 0);
+  gradient.addColorStop(0, "rgba(0,0,0,0)"); gradient.addColorStop(1, "#000");
+  tctx.globalCompositeOperation = "destination-out";
+  tctx.fillStyle = gradient; tctx.fillRect(edgeEnd - card.textEdge, -50, card.textEdge, H + 100);
+  tctx.fillStyle = "#000"; tctx.fillRect(edgeEnd, -50, 2000, H + 100);
+  tctx.globalCompositeOperation = "source-over";
+  lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.drawImage(textLayer, 0, 0);
+
+  ctx.save();
+  roundedRect(ctx, -f.pillWidth / 2, f.pillTop, f.pillWidth, f.pillHeight, f.pillRadius); ctx.clip();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(layer, 0, 0); ctx.restore();
+}
+
+// The pointer in island coordinates: x from the notch's center, y down from the screen's top.
+function islandPoint(event) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: (event.clientX - rect.left - rect.width / 2) / fit, y: (event.clientY - rect.top) / fit };
+}
+
+function drawStack(s, W, H) {
+  const t = clock - s.start;
+  if (pointer) {
+    const under = drip.stack.pointer(pointer.x, pointer.y, true, t);
+    for (const card of s.cards.values()) card.hover = card.handle === under.handle && under.button;
+    canvas.style.cursor = under.handle ? "pointer" : "";
+  }
+  const changes = drip.stack.step(t);
+  for (const entered of changes.entered ?? []) {
+    Object.assign(s.cards.get(entered.handle), { start: entered.start, cues: entered.cues, countdownFrom: entered.countdownFrom });
+    s.newest = entered.handle;
+  }
+  for (const left of changes.left ?? []) {
+    const card = s.cards.get(left.handle);
+    card.exitCues = left.cues; card.exitAt = left.time - card.start;
+  }
+  for (const handle of changes.gone ?? []) { drip.release(handle); s.cards.delete(handle); }
+
+  const started = performance.now();
+  const frames = drip.stack.frame(t);
+  const computeMs = performance.now() - started;
+  let points = 0, bottom = 0;
+  for (const { frame } of frames) points += fillShape(frame);
+  for (const { handle, remaining, targetTop, frame } of frames) {
+    const card = s.cards.get(handle);
+    drawContent(card, frame, t - card.start, clamp01(remaining / card.seconds), W, H);
+    bottom = Math.max(bottom, targetTop + card.metrics.pillHeight, frame.pillTop + frame.pillHeight);
+  }
+  s.bottom = Math.max(s.bottom, bottom);
+  holdDown(s.bottom);
+  const newest = frames.find((entry) => entry.handle === s.newest);
+  if (newest) plotSample(t - s.cards.get(newest.handle).start, newest.frame, s.cards.get(newest.handle).metrics);
+  s.frames = frames;
+  if (changes.done) showing = null;
+  return [
+    ["stack", `${s.settings.mode}, ${frames.filter((entry) => !s.cards.get(entry.handle).exitCues).length} of ${s.settings.max} shown`],
+    ...(newest ? frameRows(newest.frame, t - s.cards.get(newest.handle).start, points) : []),
+    ["engine frame", computeMs.toFixed(2) + " ms"],
+  ];
+}
+
+function drawSingle(s, W, H) {
+  if (!s.current) {
+    if (!s.queue.length) { showing = null; return null; }
+    s.current = begin(s.queue.shift());
+  }
+  const card = s.current, t = clock - card.start;
+  if (!card.exitCues && t >= card.exitAt) leave(card, card.exitAt);
+  const started = performance.now();
+  const f = drip.frame(card.handle, t);
+  const computeMs = performance.now() - started;
+  let panel = 1;
+  if (card.card.motion !== "full" && card.panelFade !== undefined) {
+    panel = card.panelFade === 0 ? 1 : clamp01(t / card.panelFade);
+    if (card.exitCues) panel = card.panelFade === 0 ? (t < card.exitAt ? 1 : 0) : 1 - clamp01((t - card.exitAt) / card.panelFade);
+  }
+  ctx.globalAlpha = panel;
+  const points = fillShape(f);
+  drawContent(card, f, t, 1 - clamp01((t - card.visible) / card.seconds), W, H);
+  ctx.globalAlpha = 1;
+  holdDown(f.pillTop + f.pillHeight);
+  card.lastFrame = f;
+  plotSample(t, f, card.metrics);
+  if (card.exitCues && t >= card.done) { drip.release(card.handle); s.current = null; }
+  return [...frameRows(f, t, points), ["engine frame", computeMs.toFixed(2) + " ms"]];
+}
+
+function frame(now) {
+  const speed = document.getElementById("slow").checked ? 0.25 : 1;
+  if (drip) {
+    if (!showing && deliveries.length) startNext();
+    adopt();
+  }
+  if (frozen !== null && showing) clock = (showing.start ?? showing.current?.start ?? clock) + frozen;
+  else clock += Math.min((now - lastNow) / 1000, 0.1) * speed;
+  lastNow = now;
+  const dpr = devicePixelRatio || 1, W = canvas.width / dpr, H = canvas.height / dpr;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.setTransform(dpr * fit, 0, 0, dpr * fit, dpr * W / 2, 0);
+
+  // The hardware notch.
+  ctx.fillStyle = "#000"; ctx.beginPath(); notchPath(ctx, { notchWidth: notch.width, notchHeight: notch.height, notchRadius: Math.min(10, notch.height / 3) }); ctx.fill();
+
+  let rows = null;
+  if (showing?.kind === "stack") rows = drawStack(showing, W, H);
+  else if (showing?.kind === "single") rows = drawSingle(showing, W, H);
+  if (!showing) { holdDown(0); canvas.style.cursor = ""; }
+  showLive(rows);
+  requestAnimationFrame(frame);
+}
+
+// Pointing at a stack holds it still; clicking a card sends it off, and its button runs its action.
+canvas.addEventListener("pointermove", (event) => {
+  pointer = islandPoint(event);
+  if (showing?.kind === "single" && showing.current) {
+    showing.current.hover = hitButton(showing.current, pointer);
+    canvas.style.cursor = showing.current.hover ? "pointer" : "";
+  }
+});
+canvas.addEventListener("pointerleave", () => {
+  pointer = null;
+  if (showing?.kind === "stack") {
+    drip.stack.pointer(0, 0, false, clock - showing.start);
+    for (const card of showing.cards.values()) card.hover = false;
+  }
+  canvas.style.cursor = "";
+});
+canvas.addEventListener("click", (event) => {
+  const point = islandPoint(event);
+  let card;
+  if (showing?.kind === "stack") {
+    const clicked = drip.stack.click(point.x, point.y, clock - showing.start);
+    if (!clicked.handle || !clicked.button) return;
+    card = showing.cards.get(clicked.handle);
+  } else if (showing?.kind === "single" && showing.current && hitButton(showing.current, point)) {
+    card = showing.current;
+    leave(card, clock - card.start);
+  } else return;
+  const action = card.card.action;
+  print(action.open ? `drip: opened ${action.open}` : "drip: the button was clicked (exit 0)", "dim");
+  if (action.open && /^https?:\/\//.test(action.open)) open(action.open, "_blank", "noopener");
+});
+function hitButton(card, point) {
+  const f = card.lastFrame;
+  if (!f || !card.card.action || f.progress < 0.9) return false;
+  const k = f.ring.size / card.ringSide, w = card.ringSide * k, h = 26 * card.metrics.scale * k;
+  return Math.abs(point.x - f.ring.x) <= w / 2 && Math.abs(point.y - f.ring.y) <= h / 2;
+}
+
+// ---- readouts ----
+const live = document.getElementById("live");
+let liveTick = 0;
+function frameRows(f, t, points) {
+  return [
+    ["t", t.toFixed(2) + " s"], ["capsule", `${f.pillWidth.toFixed(1)} × ${f.pillHeight.toFixed(1)} pt`],
+    ["top", f.pillTop.toFixed(1) + " pt"], ["open", f.progress.toFixed(3)], ["melt (blend)", f.blend.toFixed(2) + " pt"],
+    ["outline", f.touchesNotch ? `${points} points` : "free capsule"],
+  ];
+}
+function showLive(rows) {
+  if (++liveTick % 4) return;
+  rows ??= [["island", "at rest"], ["waiting", deliveries.reduce((n, d) => n + d.cards.length, 0) + " cards"]];
+  live.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+}
+const plot = document.getElementById("plot"), pctx = plot.getContext("2d");
+let samples = [];
+function plotSample(t, f, m) {
+  if (!samples.length || t < samples.at(-1).t) samples = [];
+  samples.push({ t, w: f.pillWidth / m.pillWidth, open: f.progress, y: (f.pillTop + f.pillHeight / 2) / (m.pillTop + m.pillHeight / 2) });
+  const dpr = devicePixelRatio || 1, w = plot.clientWidth, h = plot.clientHeight;
+  plot.width = w * dpr; plot.height = h * dpr; pctx.scale(dpr, dpr);
+  const span = Math.max(1.6, samples.at(-1).t);
+  pctx.strokeStyle = "#2a2a30"; pctx.beginPath(); pctx.moveTo(0, h * 0.25); pctx.lineTo(w, h * 0.25); pctx.stroke();
+  const series = [["w", "#0a84ff", "width"], ["open", "#30d158", "open"], ["y", "#ff9f0a", "drop center"]];
+  series.forEach(([key, color, name], i) => {
+    pctx.strokeStyle = color; pctx.lineWidth = 1.5; pctx.beginPath();
+    samples.forEach((s, j) => { const x = s.t / span * w, y = h * 0.25 + (1 - s[key]) * h * 0.6; j ? pctx.lineTo(x, y) : pctx.moveTo(x, y); });
+    pctx.stroke(); pctx.fillStyle = color; pctx.font = `11px ${FONT}`; pctx.fillText(name, 4 + i * 80, 12);
+  });
+}
+
+// For checking the page from a script: run commands, hold the clock, and read the stack.
+window.__drip = {
+  run: (line) => run(line),
+  freeze: (t) => { frozen = t; },
+  thaw: () => { frozen = null; },
+  reset: () => {
+    drip.stack.end();
+    if (showing?.kind === "stack") for (const handle of showing.cards.keys()) drip.release(handle);
+    if (showing?.kind === "single") for (const card of [showing.current, ...showing.queue]) if (card) drip.release(card.handle);
+    showing = null; deliveries.length = 0;
+  },
+  stack: () => showing?.kind === "stack"
+    ? showing.frames?.map(({ handle, frame }) => ({ title: showing.cards.get(handle).card.title, top: frame.pillTop, height: frame.pillHeight, leaving: !!showing.cards.get(handle).exitCues, traced: frame.touchesNotch }))
+    : null,
+};
+
+// ---- load ----
+function tick() { document.getElementById("clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
+tick(); setInterval(tick, 10000);
+resize(); setFit(fitFor(null)); holdDown(0);
+requestAnimationFrame((now) => { lastNow = now; frame(now); });
+
+// Compiles the engine as it downloads; a server that sends it with another type than
+// application/wasm gets it compiled from its bytes instead.
+async function compileEngine() {
+  const url = new URL(WASM, location.href).href;
+  try {
+    return await WebAssembly.compileStreaming(fetch(url));
+  } catch (error) {
+    console.warn("streaming compile failed, compiling from the bytes:", error);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`${WASM}: HTTP ${response.status}`);
+    return await WebAssembly.compile(await response.arrayBuffer());
+  }
+}
+
+const loadRows = [];
+const showLoad = () => document.getElementById("load").innerHTML = loadRows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+try {
+  const t0 = performance.now();
+  const module = await compileEngine();
+  const t1 = performance.now();
+  drip = await loadDrip(module, measure);
+  const t2 = performance.now();
+  const timing = performance.getEntriesByName(new URL(WASM, location.href).href).at(-1);
+  const mb = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
+  loadRows.push(["engine", `DripCore ${drip.version}`]);
+  if (timing?.decodedBodySize) loadRows.push(["wasm", timing.transferSize ? `${mb(timing.decodedBodySize)}, ${mb(timing.transferSize)} sent` : mb(timing.decodedBodySize)]);
+  loadRows.push(["download and compile", `${Math.round(t1 - t0)} ms`], ["start", `${Math.round(t2 - t1)} ms`]);
+  showLoad();
+  window.__dripLoad = { download: t1 - t0, start: t2 - t1, transferSize: timing?.transferSize, decodedBodySize: timing?.decodedBodySize };
+  document.getElementById("loading").remove();
+  input.disabled = false; input.focus();
+  print(`drip ${drip.version}, compiled to WebAssembly, loaded in ${Math.round(t2 - t0)} ms. Try a command below, or type one.`, "dim");
+  run(`drip ok "Build finished" -d "make test: 246 passed in 3.2s"`);
+} catch (error) {
+  document.getElementById("loading").textContent = "the drip engine did not load: " + error.message;
+  console.error(error);
+}
+</script>
+</body>
+</html>
