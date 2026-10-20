@@ -38,6 +38,9 @@ final class StackPresenter: CardPresenting {
         /// click on its button.
         var dismissed: Bool?
         var sound: CardSound?
+        /// The card this one replaced in place, fading out on top of it until `retiringUntil`.
+        var retiring: IslandLayers?
+        var retiringUntil = -Double.infinity
 
         init(card: Card, own: Bool, layers: IslandLayers, animator: IslandAnimator, phase: Phase) {
             self.card = card
@@ -239,6 +242,7 @@ final class StackPresenter: CardPresenting {
                 anchor: entry.anchor.flatMap { anchor in entries.firstIndex { $0 === anchor } })
         }
         let layers = entries.map(\.layers)
+        let retiring = entries.map(\.retiring)
         let moving = entries.map { $0.animator.end > start }
         let centerX = size.width / 2
         var paths = [CGPath?](repeating: nil, count: count)
@@ -256,6 +260,16 @@ final class StackPresenter: CardPresenting {
                     let shape = cards[card].animator.shape(at: time)
                     samples[index] = layer.frame(shape, layout: cards[card].animator.content(for: shape), withPath: false)
                 }
+            }
+        }
+        // A card replaced in place keeps to the capsule springing to the new card's size as it fades.
+        var retiringFrames = [[IslandLayers.Frame]](repeating: [], count: cards.count)
+        for card in cards.indices where moving[card] {
+            guard let old = retiring[card] else { continue }
+            retiringFrames[card] = (0..<count).map { index in
+                let time = start + (end - start) * Double(index) / Double(count - 1)
+                let shape = cards[card].animator.shape(at: time)
+                return old.frame(shape, layout: cards[card].animator.content(for: shape, metrics: old.metrics), withPath: false)
             }
         }
         let cost = CACurrentMediaTime() - sampling
@@ -279,6 +293,7 @@ final class StackPresenter: CardPresenting {
         for (card, layer) in zip(cards.indices, layers) {
             if moving[card] {
                 layer.play(frames[card].compactMap { $0 }, duration: end - start, begin: begin)
+                if let old = retiring[card] { old.play(retiringFrames[card], duration: end - start, begin: begin) }
             } else {
                 let shape = cards[card].animator.shape(at: start)
                 layer.apply(layer.frame(shape, layout: cards[card].animator.content(for: shape), withPath: false))
@@ -418,36 +433,39 @@ final class StackPresenter: CardPresenting {
         updateAccessibility()
     }
 
-    /// Shows `card` in place of the one `entry` shows: fully open where it is, text fading in, its
-    /// countdown restarted.
+    /// Shows `card` in place of the one `entry` shows: the capsule springs to the new card's size
+    /// where it is, the cards below make room or close up, what changed crossfades and a new state's
+    /// colour settles, and its countdown restarts, the ring refilling first. With motion reduced, the
+    /// size changes at once and the changes only crossfade.
     private func swap(_ entry: Entry, for card: Card) {
-        let time = now
+        let motion = CardPresenters.motion(for: card)
+        let decided = now
+        let time = decided + lead
+        let old = entry.layers
         let layers = makeLayers(for: card)
-        var animator = IslandAnimator(metrics: layers.metrics, anchor: nil)
-        animator.open(top: entry.animator.shape(at: time).pillTop)
-        layers.showContent()
+        let ringFraction = old.card.action == nil ? old.ringFraction : 0
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        container.replaceSublayer(entry.layers.root, with: layers.root)
-        // With the swap, so the new text never shows for a frame before it fades in.
-        let fadeIn = CABasicAnimation(keyPath: "opacity")
-        fadeIn.fromValue = 0
-        fadeIn.toValue = 1
-        fadeIn.duration = 0.18
-        fadeIn.timingFunction = CardPresenters.easeOut
-        layers.text.add(fadeIn, forKey: "replace")
+        // One card fading out at a time: one replaced again before it had gone goes at once.
+        entry.retiring?.root.removeFromSuperlayer()
+        // Under the old card, which fades off it.
+        container.insertSublayer(layers.root, below: old.root)
         CATransaction.commit()
+        entry.animator.resize(to: layers.metrics, at: time)
+        if motion != .full { entry.animator.open(top: entry.animator.targetTop) }
         entry.card = card
         entry.layers = layers
-        entry.animator = animator
+        entry.retiring = old
         entry.remaining = card.seconds
         entry.countdownFrom = time
-        layers.drain(over: card.seconds)
+        place(at: time)
+        replan(from: decided)
+        let lingers = layers.takeOver(from: old, motion: motion, at: started + time)
+        entry.retiringUntil = time + lingers
+        layers.refill(from: ringFraction, over: card.seconds, at: started + time)
         if hovering { IslandLayers.pause(layers.ringProgress, paused: true) }
         entry.sound = CardSound(card.sound, console: console)
         entry.sound?.play()
-        place(at: time + lead)
-        replan(from: time)
         updateAccessibility()
     }
 
@@ -521,6 +539,10 @@ final class StackPresenter: CardPresenting {
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        for entry in entries where entry.retiring != nil && (time >= entry.retiringUntil || entry.isLeaving) {
+            entry.retiring?.root.removeFromSuperlayer()
+            entry.retiring = nil
+        }
         for entry in gone {
             entry.layers.root.removeFromSuperlayer()
             entries.removeAll { $0 === entry }

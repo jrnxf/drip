@@ -133,8 +133,10 @@ exits. Cards from every drip queue up and show one after another, in the order t
 
 `--id` names what a card is about, such as a deploy or an agent session. A newer card with the same
 id replaces an older one that is still waiting its turn, so a burst of updates shows only the
-latest. When the older card is already on screen, the newer one takes its place there: the text
-changes, its sound plays, and its time starts again. A card that asks a question (`--button`
+latest. When the older card is already on screen, the newer one takes its place there: the card
+springs to its new size, the text that changed crossfades, a new state's colour settles over the
+old one as its icon pops in, its sound plays, and its time starts again. With reduced motion the
+size changes at once and only the crossfade remains; with `--motion none` it all changes at once. A card that asks a question (`--button`
 without `--open`) never changes in place, and neither does one that would sit somewhere else
 (another `--position`); the newer card then waits its turn. A question replaced before it showed
 exits 5.

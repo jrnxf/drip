@@ -68,12 +68,17 @@ final class IslandLayers {
     private var buttonFill: CAShapeLayer?
     private var buttonColors: (plain: CGColor, hover: CGColor)?
     let text = CALayer()
+    /// Ends the text column short of the ring, with a soft edge: text the capsule is still growing to
+    /// hold fades out there instead of running under the ring.
+    private let textMask = CAGradientLayer()
     /// One text layer per line of the title, and of the detail.
     let titleLines: [CATextLayer]
     let detailLines: [CATextLayer]
     private let iconSide: CGFloat
     private let ringSide: CGFloat
     private let textSize: CGSize
+    /// The soft edge at the end of the text column.
+    private let textEdge: CGFloat
 
     init(card: Card, notch: NotchGeometry, scale: CGFloat, console: Console) {
         self.card = card
@@ -134,6 +139,7 @@ final class IslandLayers {
         size = CGSize(width: ceil(metrics.maxWidth) + 40, height: ceil(metrics.maxHeight))
         iconSide = 28 * sizeScale
         ringSide = buttonSize?.width ?? 22 * sizeScale
+        textEdge = CGFloat(IslandUpdate.textEdge) * sizeScale
 
         root.frame = CGRect(origin: .zero, size: size)
         root.isGeometryFlipped = true
@@ -172,6 +178,19 @@ final class IslandLayers {
         text.anchorPoint = CGPoint(x: 0, y: 0.5)
         for line in titleLines + detailLines { text.addSublayer(line) }
         content.addSublayer(text)
+
+        // Opaque from far left of the text to its right end, which is pinned to the column's end, then
+        // clear over the soft edge. Wider than any capsule, so it only ever cuts the text's end, and
+        // taller than the text, so a line rising into place is never cut.
+        let reach = 2 * CGFloat(CardMetrics.maxWidth)
+        textMask.bounds = CGRect(x: 0, y: 0, width: reach, height: textSize.height + 2 * 40 * sizeScale)
+        textMask.anchorPoint = CGPoint(x: 1, y: 0.5)
+        textMask.startPoint = CGPoint(x: 0, y: 0.5)
+        textMask.endPoint = CGPoint(x: 1, y: 0.5)
+        textMask.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+        textMask.locations = [0, NSNumber(value: Double((reach - textEdge) / reach)), 1]
+        textMask.contentsScale = scale
+        text.mask = textMask
     }
 
     /// The button that stands where the ring would: a capsule in the darkened accent.
@@ -277,6 +296,8 @@ final class IslandLayers {
         var ringPosition: CGPoint
         var ringScale: CGFloat
         var textPosition: CGPoint
+        /// Where the text column ends, soft edge included, from the text's leading edge.
+        var textEnd: CGFloat
         /// The content's clip, in the root's coordinates: the drop.
         var clip: CGRect
         var clipRadius: CGFloat
@@ -293,6 +314,7 @@ final class IslandLayers {
             ringPosition: CGPoint(x: centerX + layout.ringCenter.x, y: layout.ringCenter.y),
             ringScale: CGFloat(layout.ringSize) / ringSide,
             textPosition: CGPoint(x: centerX + layout.textX, y: layout.textCenterY),
+            textEnd: CGFloat(layout.textRoom) + textEdge,
             clip: clip, clipRadius: CGFloat(islandShape.pillRadius(metrics)))
     }
 
@@ -311,6 +333,7 @@ final class IslandLayers {
         ring.position = frame.ringPosition
         ring.transform = CATransform3DMakeScale(frame.ringScale, frame.ringScale, 1)
         text.position = frame.textPosition
+        textMask.position = CGPoint(x: frame.textEnd, y: textSize.height / 2)
         // Bounds that start where the frame does keep the content in the root's coordinates.
         content.bounds = frame.clip
         content.position = CGPoint(x: frame.clip.midX, y: frame.clip.midY)
@@ -384,6 +407,9 @@ extension IslandLayers {
         ring.add(keyframes("position", frames.map { NSValue(point: $0.ringPosition) }), forKey: "island")
         ring.add(keyframes("transform.scale", frames.map(\.ringScale)), forKey: "island.scale")
         text.add(keyframes("position", frames.map { NSValue(point: $0.textPosition) }), forKey: "island")
+        let middle = textSize.height / 2
+        textMask.add(
+            keyframes("position", frames.map { NSValue(point: CGPoint(x: $0.textEnd, y: middle)) }), forKey: "island")
     }
 
     /// Fades the content in or out at the cues, counted from `begin`: 180 ms in with a 4-point rise
@@ -441,6 +467,147 @@ extension IslandLayers {
         ringProgress.beginTime = 0
         ringProgress.add(drain, forKey: "drain")
         CATransaction.commit()
+    }
+
+    /// Refills the countdown ring from `fraction` full to full, then drains it, all over `seconds`
+    /// from `begin`: a card replaced in place restarts its countdown without the ring jumping.
+    func refill(from fraction: Double, over seconds: Double, at begin: CFTimeInterval = CACurrentMediaTime()) {
+        let refill = min(IslandUpdate.refill, seconds / 2)
+        let fill = CABasicAnimation(keyPath: "strokeEnd")
+        fill.fromValue = fraction
+        fill.toValue = 1
+        fill.duration = refill
+        fill.timingFunction = CardPresenters.easeOut
+        let drain = CABasicAnimation(keyPath: "strokeEnd")
+        drain.fromValue = 1
+        drain.toValue = 0
+        drain.beginTime = refill
+        drain.duration = max(seconds - refill, 0.01)
+        drain.timingFunction = CAMediaTimingFunction(name: .linear)
+        let group = CAAnimationGroup()
+        group.animations = [fill, drain]
+        group.beginTime = begin
+        group.duration = max(seconds, 0.01)
+        group.fillMode = .both
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        ringProgress.strokeEnd = 0
+        ringProgress.speed = 1
+        ringProgress.timeOffset = 0
+        ringProgress.beginTime = 0
+        ringProgress.add(group, forKey: "drain")
+        CATransaction.commit()
+    }
+
+    /// How full the countdown ring is drawn right now.
+    var ringFraction: Double {
+        Double((ringProgress.presentation() ?? ringProgress).strokeEnd)
+    }
+
+    /// Takes the island over from `old`, the card this one replaces in place, from `begin`, while the
+    /// island springs from `old`'s size to this card's. `old` sits on top of this card's layers: its
+    /// lines that changed fade out as the new ones fade in, and its lines that did not are dropped at
+    /// once, the new ones in their place. A new state's icon is uncovered as the old one fades, so
+    /// its colour settles over the old one's, and it lands with a small pop; the ring takes its
+    /// colour the same way. With motion reduced, the changes only crossfade; with no motion, they
+    /// happen at once. Returns how long until `old` can go.
+    func takeOver(from old: IslandLayers, motion: Motion, at begin: CFTimeInterval) -> Double {
+        showContent()
+        let full = motion == .full
+        let fadeIn = full ? IslandUpdate.fadeIn : IslandUpdate.reducedFade
+        let fadeOut = full ? IslandUpdate.fadeOut : IslandUpdate.reducedFade
+        let settle = full ? IslandUpdate.settle : IslandUpdate.reducedFade
+        func strings(_ lines: [CATextLayer]) -> [String] {
+            lines.map { ($0.string as? NSAttributedString)?.string ?? "" }
+        }
+        var kept = IslandUpdate.unchanged(
+            oldTitle: strings(old.titleLines), oldDetail: strings(old.detailLines),
+            newTitle: strings(titleLines), newDetail: strings(detailLines), from: old.metrics, to: metrics)
+        // A right-to-left line hugs the block's right edge, which moves when the block's width does.
+        for (index, line) in textLines.enumerated() where line.alignmentMode == .right && textSize.width != old.textSize.width {
+            kept[index] = false
+        }
+        let newState = IslandUpdate.changesState(from: old.card, to: card)
+        let bothRings = old.card.action == nil && card.action == nil
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        old.shape.isHidden = true
+        guard motion != .none else {
+            for layer in [old.icon, old.ring] + old.textLines.map({ $0 as CALayer }) { layer.opacity = 0 }
+            return 0
+        }
+        func fade(_ layer: CALayer, from: Float, to: Float, over duration: Double) {
+            let animation = CABasicAnimation(keyPath: "opacity")
+            animation.fromValue = from
+            animation.toValue = to
+            animation.beginTime = begin
+            animation.duration = duration
+            animation.timingFunction = CardPresenters.easeOut
+            animation.fillMode = .backwards
+            layer.opacity = to
+            layer.add(animation, forKey: "replace")
+        }
+        // Lines that stay are this card's from the start; the others cross.
+        for (index, line) in textLines.enumerated() where !kept[index] {
+            fade(line, from: 0, to: 1, over: fadeIn)
+        }
+        for (index, line) in old.textLines.enumerated() {
+            if index < kept.count, kept[index] {
+                line.opacity = 0
+            } else {
+                fade(line, from: line.opacity, to: 0, over: fadeOut)
+            }
+        }
+        // The new icon waits underneath, whole, as the old one fades off it.
+        if newState {
+            fade(old.icon, from: old.icon.opacity, to: 0, over: settle)
+            if full, metrics.hasIcon {
+                let pop = CASpringAnimation(keyPath: "transform.scale")
+                let spring = IslandUpdate.pop
+                pop.mass = 1
+                pop.stiffness = spring.stiffness
+                pop.damping = spring.damping
+                pop.duration = spring.settlingTime
+                let scale = (icon.value(forKeyPath: "transform.scale") as? NSNumber)?.doubleValue ?? 1
+                // On top of whatever scale the island gives the icon.
+                pop.isAdditive = true
+                pop.fromValue = (IslandUpdate.popScale - 1) * scale
+                pop.toValue = 0
+                pop.beginTime = begin
+                pop.fillMode = .backwards
+                icon.add(pop, forKey: "pop")
+            }
+        } else {
+            old.icon.opacity = 0
+        }
+        if bothRings {
+            // One ring, which takes the new colour from the old.
+            old.ring.opacity = 0
+            if newState { tint(ring, from: old.ring, over: settle, at: begin) }
+        } else {
+            fade(ring, from: 0, to: 1, over: fadeIn)
+            fade(old.ring, from: old.ring.opacity, to: 0, over: fadeOut)
+        }
+        return max(fadeIn, fadeOut, settle) + 0.02
+    }
+
+    /// Blends `ring`'s strokes from `old`'s colours to their own over `duration` from `begin`.
+    private func tint(_ ring: CALayer, from old: CALayer, over duration: Double, at begin: CFTimeInterval) {
+        let strokes = (ring.sublayers ?? []).compactMap { $0 as? CAShapeLayer }
+        let previous = (old.sublayers ?? []).compactMap { $0 as? CAShapeLayer }
+        for (stroke, before) in zip(strokes, previous) {
+            guard let from = before.strokeColor, let to = stroke.strokeColor else { continue }
+            let animation = CABasicAnimation(keyPath: "strokeColor")
+            animation.fromValue = from
+            animation.toValue = to
+            animation.beginTime = begin
+            animation.duration = duration
+            animation.timingFunction = CardPresenters.easeOut
+            animation.fillMode = .backwards
+            stroke.add(animation, forKey: "replace")
+        }
     }
 
     /// Freezes or resumes every animation on `layer`, where it is.
@@ -573,6 +740,12 @@ final class IslandPresenter: CardPresenting {
     private var panel: IslandPanel?
     private var sound: CardSound?
     private var layers: IslandLayers?
+    /// The card this one replaced in place, while it fades out on top.
+    private var retiring: IslandLayers?
+    /// With full motion, every spring the island has followed, on the clock that began at `started`;
+    /// each new target springs from wherever the last one left things.
+    private var animator: IslandAnimator?
+    private var started: CFTimeInterval = 0
     private var onFinish: ((Bool) -> Void)?
     /// When the card is fully in.
     private var openAt = CFTimeInterval.infinity
@@ -592,7 +765,7 @@ final class IslandPresenter: CardPresenting {
         let layers = IslandLayers(card: card, notch: notch, scale: scale, console: console)
         layers.maskNotch()
         self.layers = layers
-        let frame = self.frame(for: layers)
+        let frame = self.frame(holding: [layers])
         let panel = IslandPanel(
             contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         // Above the menu bar, so the island can cover it.
@@ -646,65 +819,115 @@ final class IslandPresenter: CardPresenting {
         let enterCues = animator.enter(at: 0)
         play(animator, from: 0, layers: layers)
         let started = CACurrentMediaTime()
+        self.animator = animator
+        self.started = started
         // The sound lands as the island first shows: the drop starts hidden in the notch.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [self] in sound?.play() }
         layers.fade(enterCues, into: true)
         // The countdown starts once the title's first line has faded in, however many lines follow.
         let visible = (enterCues.title.first ?? enterCues.sides) + 0.25
         layers.drain(over: card.seconds, at: CACurrentMediaTime() + visible)
-        departure = springingDeparture(animator, started: started, layers: layers)
+        departure = springingDeparture()
         openAt = started + visible
         schedule(after: visible + card.seconds)
     }
 
     var canReplace: Bool { departure != nil && CACurrentMediaTime() >= openAt }
 
-    /// Rebuilds the island for `card` fully open, with its text fading in, and restarts the ring.
+    /// Turns the island into `card`'s, the card that replaces this one in place: it springs to the
+    /// new card's size while what changed crossfades and a new state's colour settles, and the ring
+    /// refills and starts its countdown again. With motion reduced, the size changes at once and the
+    /// changes only crossfade.
     func replace(with card: Card) {
         guard canReplace, let panel, let view = panel.contentView, let old = layers else { return }
         self.card = card
+        let motion = CardPresenters.motion(for: card)
         let layers = IslandLayers(card: card, notch: notch, scale: old.root.contentsScale, console: console)
         layers.maskNotch()
         self.layers = layers
-        var animator = IslandAnimator(metrics: layers.metrics)
-        animator.open()
-        let open = animator.shape(at: 0)
-        layers.apply(layers.frame(open, layout: animator.content(for: open)))
-        layers.showContent()
+        // A card replaced again before it had faded out goes at once.
+        retiring?.root.removeFromSuperlayer()
+        retiring = old
+        let ringFraction = old.card.action == nil ? old.ringFraction : 0
+
+        // The panel holds both islands while one turns into the other; the new one goes under the old,
+        // which fades off it.
+        let frame = self.frame(holding: [old, layers])
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        old.root.removeFromSuperlayer()
-        view.layer?.addSublayer(layers.root)
-        // With the swap, so the new text never shows for a frame before it fades in.
-        let fadeIn = CABasicAnimation(keyPath: "opacity")
-        fadeIn.fromValue = 0
-        fadeIn.toValue = 1
-        fadeIn.duration = 0.18
-        fadeIn.timingFunction = CardPresenters.easeOut
-        layers.text.add(fadeIn, forKey: "replace")
+        view.layer?.insertSublayer(layers.root, below: old.root)
+        panel.setFrame(frame, display: false)
+        place(old, in: frame)
+        place(layers, in: frame)
+        if motion == .full {
+            // Springs on from wherever the island is; one shown with motion reduced starts a clock now.
+            var animator: IslandAnimator
+            if let current = self.animator {
+                animator = current
+            } else {
+                animator = IslandAnimator(metrics: old.metrics)
+                animator.open()
+                started = CACurrentMediaTime()
+            }
+            let now = CACurrentMediaTime() - started
+            animator.resize(to: layers.metrics, at: now)
+            self.animator = animator
+            play(animator, from: now, layers: layers, retiring: old)
+        } else {
+            var open = IslandAnimator(metrics: layers.metrics)
+            open.open()
+            let shape = open.shape(at: 0)
+            layers.apply(layers.frame(shape, layout: open.content(for: shape)))
+            old.apply(old.frame(shape, layout: open.content(for: shape, metrics: old.metrics), withPath: false))
+            animator = nil
+        }
+        let lingers = layers.takeOver(from: old, motion: motion, at: CACurrentMediaTime())
         CATransaction.commit()
-        panel.setFrame(frame(for: layers), display: true)
+        retire(old, after: lingers)
+
         panel.ignoresMouseEvents = !card.isClickable
         view.setAccessibilityLabel(CardText.spoken(title: card.title, detail: card.detail))
         hovering = false
         sound = CardSound(card.sound, console: console)
         sound?.play()
 
-        let motion = CardPresenters.motion(for: card)
         if motion == .full {
-            layers.drain(over: card.seconds)
-            departure = springingDeparture(animator, started: CACurrentMediaTime(), layers: layers)
+            layers.refill(from: ringFraction, over: card.seconds)
+            departure = springingDeparture()
         } else {
+            layers.drain(over: card.seconds)
             departure = fadingDeparture(motion)
         }
         schedule(after: card.seconds)
         pointer(at: view.convert(panel.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil))
     }
 
-    /// The panel's frame for the island's layers: centered on the notch, hanging from the top.
-    private func frame(for layers: IslandLayers) -> NSRect {
-        NSRect(
-            x: (notch.midX - layers.size.width / 2).rounded(), y: notch.top - layers.size.height,
+    /// Takes `old` away once it has faded out, unless it is already gone.
+    private func retire(_ old: IslandLayers, after seconds: Double) {
+        let remove = { [weak self, weak old] in
+            guard let self, let old, self.retiring === old else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            old.root.removeFromSuperlayer()
+            CATransaction.commit()
+            self.retiring = nil
+        }
+        guard seconds > 0 else { return remove() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: remove)
+    }
+
+    /// The panel's frame for `islands`: wide and tall enough for each, centered on the notch, hanging
+    /// from the top.
+    private func frame(holding islands: [IslandLayers]) -> NSRect {
+        let width = islands.map(\.size.width).max() ?? 0
+        let height = islands.map(\.size.height).max() ?? 0
+        return NSRect(x: (notch.midX - width / 2).rounded(), y: notch.top - height, width: width, height: height)
+    }
+
+    /// Hangs `layers` from the top of a panel with `frame`, centered in it.
+    private func place(_ layers: IslandLayers, in frame: NSRect) {
+        layers.root.frame = CGRect(
+            x: (frame.width - layers.size.width) / 2, y: frame.height - layers.size.height,
             width: layers.size.width, height: layers.size.height)
     }
 
@@ -717,13 +940,14 @@ final class IslandPresenter: CardPresenting {
 
     /// The exit for full motion: back into the notch, springing from wherever `animator` has things
     /// on the clock that began at `started`.
-    private func springingDeparture(
-        _ animator: IslandAnimator, started: CFTimeInterval, layers: IslandLayers
-    ) -> () -> Void {
-        var animator = animator
-        return { [self] in
+    private func springingDeparture() -> () -> Void {
+        { [self] in
+            guard var animator, let layers else { return finish() }
+            retiring?.root.removeFromSuperlayer()
+            retiring = nil
             let now = CACurrentMediaTime() - started
             let exitCues = animator.exit(at: now)
+            self.animator = animator
             play(animator, from: now, layers: layers)
             layers.fade(exitCues, into: false)
             DispatchQueue.main.asyncAfter(deadline: .now() + max(animator.end - now, 0) + 0.02) { [self] in
@@ -755,10 +979,15 @@ final class IslandPresenter: CardPresenting {
         departure()
     }
 
+    /// A point in the view in the island's own coordinates: y down from the top of its layers.
+    private func islandPoint(_ point: CGPoint, in layers: IslandLayers) -> CGPoint {
+        CGPoint(x: point.x - layers.root.frame.minX, y: layers.root.frame.maxY - point.y)
+    }
+
     /// Whether a point in the view is on the island as it is drawn right now.
     private func onIsland(_ point: CGPoint) -> Bool {
         guard let layers, let path = (layers.shape.presentation() ?? layers.shape).path else { return false }
-        return path.contains(CGPoint(x: point.x, y: layers.size.height - point.y))
+        return path.contains(islandPoint(point, in: layers))
     }
 
     /// Whether a point in the view is on the button as it is drawn right now.
@@ -766,7 +995,7 @@ final class IslandPresenter: CardPresenting {
         guard let layers else { return false }
         let shown = layers.ring.presentation() ?? layers.ring
         let rect = (layers.root.presentation() ?? layers.root).convert(shown.bounds, from: shown)
-        return rect.insetBy(dx: -4, dy: -4).contains(CGPoint(x: point.x, y: layers.size.height - point.y))
+        return rect.insetBy(dx: -4, dy: -4).contains(islandPoint(point, in: layers))
     }
 
     private func pointer(at point: CGPoint) {
@@ -803,15 +1032,22 @@ final class IslandPresenter: CardPresenting {
         sound?.waitUntilDone { [self] in onFinish?(true) }
     }
 
-    /// Samples every spring from `start` until they settle into keyframe animations.
-    private func play(_ animator: IslandAnimator, from start: Double, layers: IslandLayers) {
+    /// Samples every spring from `start` until they settle into keyframe animations, for the card
+    /// and for the card it replaced while that fades out.
+    private func play(
+        _ animator: IslandAnimator, from start: Double, layers: IslandLayers, retiring: IslandLayers? = nil
+    ) {
         let end = max(animator.end, start + 0.05)
         let count = Int(((end - start) * Self.framesPerSecond).rounded(.up))
-        let frames = (0...count).map { index -> IslandLayers.Frame in
-            let shape = animator.shape(at: start + (end - start) * Double(index) / Double(count))
-            return layers.frame(shape, layout: animator.content(for: shape))
+        let shapes = (0...count).map { index in
+            animator.shape(at: start + (end - start) * Double(index) / Double(count))
         }
-        layers.play(frames, duration: end - start)
+        layers.play(shapes.map { layers.frame($0, layout: animator.content(for: $0)) }, duration: end - start)
+        if let retiring {
+            retiring.play(
+                shapes.map { retiring.frame($0, layout: animator.content(for: $0, metrics: retiring.metrics), withPath: false) },
+                duration: end - start)
+        }
     }
 
     private func fadePanel(to alpha: CGFloat, duration: Double, completion: (() -> Void)? = nil) {
