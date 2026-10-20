@@ -1,4 +1,9 @@
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 
 // The droplet is drawn as liquid: the notch and the drop are melted together with a smooth union of
 // their signed distance fields, and the outline is traced where the field crosses zero. As the drop

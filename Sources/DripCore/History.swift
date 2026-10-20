@@ -1,8 +1,15 @@
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif canImport(WASILibc)
+import WASILibc
 #endif
 
 /// Where drip keeps what it remembers between runs: the card history and the cards held while the
@@ -101,11 +108,18 @@ public enum HistoryListing {
 
     /// `2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)`, in local time.
     public static func line(_ entry: HistoryEntry, timeZone: TimeZone = .current) -> String {
+        #if os(WASI)
+        let style = Date.ISO8601FormatStyle(timeZone: timeZone).year().month().day().dateSeparator(.dash)
+            .time(includingFractionalSeconds: false).timeSeparator(.colon)
+        let stamp = String(entry.time.formatted(style).replacing("T", with: " ").prefix(16))
+        #else
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        var line = "\(formatter.string(from: entry.time))  \(entry.card.kind)  \(entry.card.title)"
+        let stamp = formatter.string(from: entry.time)
+        #endif
+        var line = "\(stamp)  \(entry.card.kind)  \(entry.card.title)"
         if let detail = entry.card.detail { line += " - \(detail)" }
         if entry.missed { line += "  (missed)" }
         return line
@@ -309,9 +323,11 @@ enum StateFiles {
         let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
         guard descriptor >= 0 else { throw StateError("cannot open \(lockPath): \(String(cString: strerror(errno)))") }
         defer { close(descriptor) }
+        #if !os(WASI)
         while flock(descriptor, LOCK_EX) != 0 {
             guard errno == EINTR else { throw StateError("cannot lock \(lockPath): \(String(cString: strerror(errno)))") }
         }
+        #endif
         return try body()
     }
 
@@ -348,7 +364,12 @@ extension CardColor {
     var argument: String {
         switch self {
         case let .system(name): return name.rawValue
-        case let .rgb(red, green, blue): return "#" + [red, green, blue].map { String(format: "%02x", $0) }.joined()
+        case let .rgb(red, green, blue):
+            #if os(WASI)
+            return "#" + [red, green, blue].map { ($0 < 16 ? "0" : "") + String($0, radix: 16) }.joined()
+            #else
+            return "#" + [red, green, blue].map { String(format: "%02x", $0) }.joined()
+            #endif
         }
     }
 }

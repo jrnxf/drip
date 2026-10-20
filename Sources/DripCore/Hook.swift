@@ -1,5 +1,10 @@
 import ArgumentParser
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 
 /// Turns a coding agent's hook payload into what its card says.
 ///
@@ -45,10 +50,14 @@ public enum AgentHook {
     /// Reads a payload. Throws a `UsageError` when it is not a JSON object or not an event this agent
     /// sends: a Claude `Notification` or `Stop`, or a Codex `agent-turn-complete`.
     public static func event(agent: Agent, payload: String) throws -> Event {
-        guard let data = payload.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let fields = object as? [String: Any]
-        else {
+        #if os(WASI)
+        let object = try? JSONDecoder().decode([String: LooseString].self, from: Data(payload.utf8))
+        let fields: [String: Any]? = object?.compactMapValues(\.value)
+        #else
+        let object = payload.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) }
+        let fields = object as? [String: Any]
+        #endif
+        guard let fields else {
             throw UsageError("the \(agent.rawValue) hook payload is not a JSON object")
         }
         func string(_ key: String) -> String? {
@@ -97,6 +106,55 @@ public enum AgentHook {
     /// An agent's last message is Markdown; a card shows the words. Drops code fences, rules, and
     /// heading, quote and list markers, and keeps the text of emphasis, links and inline code. Code
     /// spans keep their text as written, so `__init__` stays whole.
+#if os(WASI)
+    static func plainText(_ markdown: String) -> String {
+        let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false).compactMap { line -> String? in
+            let trimmed = String(line).trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { return nil }
+            let rule = trimmed.filter { $0 != " " }
+            if rule.count >= 3, Set(rule).count == 1, let mark = rule.first, "-*_".contains(mark) { return nil }
+            return String(line).replacing(lineMarker, with: "")
+        }
+        let text = lines.joined(separator: "\n")
+        var plain = ""
+        var location = text.startIndex
+        for span in text.matches(of: codeSpan) {
+            plain += withoutEmphasis(String(text[location..<span.range.lowerBound]))
+            plain += String(span.output[1].substring ?? "")
+            location = span.range.upperBound
+        }
+        return plain + withoutEmphasis(String(text[location...]))
+    }
+
+    /// A heading, quote or bullet marker at the start of a line.
+    nonisolated(unsafe) private static let lineMarker = regex(#"^\s*(#{1,6}\s+|(>\s?)+|[-*+]\s+(\[[ xX]\]\s+)?)"#)
+    nonisolated(unsafe) private static let codeSpan = regex(#"`+([^`]+)`+"#)
+    /// Swift's Regex has no lookbehind, so a pattern that must not follow a word character captures
+    /// the character before it, which comes back with the text: `prefixed` patterns keep group 1 and 2.
+    nonisolated(unsafe) private static let emphasis: [(Regex<AnyRegexOutput>, prefixed: Bool)] = [
+        // An image or a link: its text.
+        (regex(#"!?\[([^\]]*)\]\([^)\s]*(\s+"[^"]*")?\)"#), false),
+        (regex(#"\*\*(\S(?:.*?\S)?)\*\*"#), false),
+        (regex(#"(^|[^\w_])__([^\s_](?:.*?[^\s_])?)__(?![\w_])"#), true),
+        (regex(#"(^|[^\w*])\*([^\s*](?:.*?[^\s*])?)\*(?![\w*])"#), true),
+        (regex(#"~~(\S(?:.*?\S)?)~~"#), false),
+    ]
+
+    private static func withoutEmphasis(_ text: String) -> String {
+        emphasis.reduce(text) { text, pattern in
+            text.replacing(pattern.0) { match in
+                let groups = pattern.prefixed ? [1, 2] : [1]
+                return groups.map { String(match.output[$0].substring ?? "") }.joined()
+            }
+        }
+    }
+
+    private static func regex(_ pattern: String) -> Regex<AnyRegexOutput> {
+        // The patterns are constants, and the tests run every one.
+        try! Regex(pattern).anchorsMatchLineEndings()
+    }
+
+#else
     static func plainText(_ markdown: String) -> String {
         let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false).compactMap { line -> String? in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -142,9 +200,21 @@ public enum AgentHook {
             in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: template)
     }
 
+#endif
+
     /// The last component of a working directory, or nil for the root.
     static func projectName(_ path: String) -> String? {
         let name = path.split(separator: "/").last.map(String.init)
         return name?.isEmpty == false ? name : nil
     }
 }
+
+#if os(WASI)
+/// A JSON value kept only when it is a string, as the hook reads its payload.
+private struct LooseString: Decodable {
+    var value: String?
+    init(from decoder: Decoder) throws {
+        value = try? decoder.singleValueContainer().decode(String.self)
+    }
+}
+#endif

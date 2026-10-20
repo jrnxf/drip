@@ -1,4 +1,9 @@
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 
 /// Changes a config file makes to one preset; nil where it keeps the preset's value.
 public struct PresetOverride: Equatable {
@@ -127,6 +132,10 @@ public enum ConfigLoader {
         }
         guard let data = FileManager.default.contents(atPath: path) else {
             throw ConfigError(path: path, line: nil, key: nil, message: "cannot read the file")
+        }
+        // WebAssembly's file system cannot tell a file's size before it is read.
+        if data.count > sizeLimit {
+            throw ConfigError(path: path, line: nil, key: nil, message: "the file is larger than 1 MB")
         }
         guard let text = String(data: data, encoding: .utf8) else {
             throw ConfigError(path: path, line: nil, key: nil, message: "the file is not UTF-8")

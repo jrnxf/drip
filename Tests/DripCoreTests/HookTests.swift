@@ -1,5 +1,10 @@
 import DripCore
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 import Testing
 
 struct HookTests {
@@ -162,3 +167,12 @@ struct HookTests {
         #expect(card.id == "claude:abc")
     }
 }
+
+#if os(WASI)
+/// The payloads these tests build, without Foundation's JSONSerialization.
+private enum JSONSerialization {
+    static func data(withJSONObject object: [String: String]) throws -> Data {
+        try JSONEncoder().encode(object)
+    }
+}
+#endif

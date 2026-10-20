@@ -2,7 +2,12 @@ import DripCore
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 import Testing
 
 struct LayoutTests {

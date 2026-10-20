@@ -1,3 +1,4 @@
+#if !os(WASI) // Files and locks shared between processes; the browser has neither.
 import DripCore
 import Foundation
 import Testing
@@ -315,3 +316,4 @@ final class HistoryTests {
         return path
     }
 }
+#endif

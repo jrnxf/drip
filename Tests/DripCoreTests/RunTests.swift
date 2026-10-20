@@ -1,3 +1,4 @@
+#if !os(WASI) // Spawns processes, which WebAssembly cannot.
 import DripCore
 import Foundation
 import Testing
@@ -138,3 +139,4 @@ struct StandardInputTests {
 private final class Written: @unchecked Sendable {
     var results: [Int] = []
 }
+#endif

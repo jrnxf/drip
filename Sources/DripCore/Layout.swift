@@ -3,7 +3,12 @@
 // CGPoint their Swift initializers, members and Equatable conformance.
 import CoreGraphics
 #endif
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 
 /// The rendering numbers from the spec, scaled for a card size.
 public struct CardMetrics: Equatable, Sendable {

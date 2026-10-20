@@ -1,5 +1,8 @@
 import DripCore
 import Testing
+#if os(WASI)
+@testable import DripCore // Foundation's string helpers, which DripCore fills in on WebAssembly
+#endif
 
 struct TextTests {
     @Test func normalizeCollapsesWhitespace() {

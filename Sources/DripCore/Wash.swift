@@ -1,4 +1,9 @@
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 
 /// An sRGB color with components from 0 to 1.
 public struct SRGBColor: Equatable, Sendable {

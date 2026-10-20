@@ -1,6 +1,14 @@
 import DripCore
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 import Testing
+#if os(WASI)
+@testable import DripCore // Foundation's path helpers, which DripCore fills in on WebAssembly
+#endif
 
 struct ActionTests {
     private func flags(_ arguments: [String]) -> CardFlags? {
@@ -23,8 +31,8 @@ struct ActionTests {
         // A path is made absolute where drip runs, since another drip may show the card, or the
         // history replay it.
         let here = FileManager.default.currentDirectoryPath
-        #expect(try #require(flags(["--open", "coverage/index.html"])).open == here + "/coverage/index.html")
-        #expect(try #require(flags(["--open", "./a/../build.log"])).open == here + "/build.log")
+        #expect(try #require(flags(["--open", "coverage/index.html"])).open == (here as NSString).appendingPathComponent("coverage/index.html"))
+        #expect(try #require(flags(["--open", "./a/../build.log"])).open == (here as NSString).appendingPathComponent("build.log"))
         #expect(try #require(flags(["--open", "~/build.log"])).open == NSHomeDirectory() + "/build.log")
         #expect(try #require(flags(["--open", "/tmp/test.log"])).open == "/tmp/test.log")
         #expect(parsed.button == "View run")

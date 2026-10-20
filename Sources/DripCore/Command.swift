@@ -1,5 +1,10 @@
 import ArgumentParser
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 
 /// Process exit codes. `drip run` exits with the wrapped command's code instead.
 public enum ExitStatus {

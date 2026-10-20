@@ -2,8 +2,15 @@
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif canImport(WASILibc)
+import WASILibc
 #endif
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 
 /// The card `drip run` shows for a finished command.
 public enum RunSummary {
@@ -49,6 +56,7 @@ public enum CommandRunner {
         }
     }
 
+    #if !os(WASI)
     /// Runs `command`, looking it up on PATH, and waits for it to finish.
     ///
     /// Like a shell running a foreground job, drip ignores SIGINT and SIGQUIT while the command
@@ -125,4 +133,5 @@ public enum CommandRunner {
         guard let handler else { return false }
         return unsafeBitCast(handler, to: Int.self) == unsafeBitCast(SIG_IGN, to: Int.self)
     }
+    #endif
 }

@@ -1,5 +1,10 @@
 import DripCore
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 import Testing
 
 struct ConfigTests {
@@ -155,7 +160,7 @@ struct ConfigTests {
 
         let drip = directory.appendingPathComponent("drip")
         try FileManager.default.createDirectory(at: drip, withIntermediateDirectories: true)
-        try "size = \"large\"\n".write(to: drip.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+        try Data("size = \"large\"\n".utf8).write(to: drip.appendingPathComponent("config.toml"))
         #expect(try ConfigLoader.load(environment: environment).config == Config(size: .large))
 
         try Data([0xFF, 0xFE]).write(to: drip.appendingPathComponent("config.toml"))
