@@ -187,10 +187,13 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         }
         return delivery
     }
-    func cards(_ cards: [Card], extra: [String: Any] = [:]) -> UnsafePointer<UInt8> {
+    // As the app: cards drip returns from at once go to the background drip, so a stack showing can
+    // take them in; a question or --wait shows from this drip, in its turn.
+    func cards(_ cards: [Card], wait: Bool, extra: [String: Any] = [:]) -> UnsafePointer<UInt8> {
         var reply = extra
+        let adopting = Delivery.choose(for: cards, wait: wait) == .background
         reply["deliveries"] = [
-            delivery(cards, stack: StackSettings.current(environment: environment, config: resolver.config), adopting: true)
+            delivery(cards, stack: StackSettings.current(environment: environment, config: resolver.config), adopting: adopting)
         ]
         // After the deliveries, which can warn about an icon.
         reply["warnings"] = warnings
@@ -210,7 +213,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             let card = try resolver.resolve(
                 kind: command.kind, title: command.title, rest: command.rest, flags: command.options.flags,
                 standardInput: { input["stdin"] as? String })
-            return cards([card])
+            return cards([card], wait: command.options.flags.wait)
         } catch { return failure(error) }
     case let .invocation(.run(command)):
         warnings += command.options.warnings
@@ -221,7 +224,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             let card = try resolver.resolveRun(
                 command: command.command, status: Int32(run["status"] ?? 0), seconds: run["seconds"] ?? 0,
                 flags: command.options.flags)
-            return cards([card], extra: ["status": Int32(run["status"] ?? 0)])
+            return cards([card], wait: command.options.flags.wait, extra: ["status": Int32(run["status"] ?? 0)])
         } catch { return failure(error) }
     case let .invocation(.demo(command)):
         warnings += command.options.warnings
@@ -249,7 +252,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             flags.detail = flags.detail ?? event.detail
             // No app is installed in a web page.
             flags.icon = flags.icon ?? command.agent.icon { _ in false }
-            return cards([try resolver.resolve(kind: event.kind, title: event.title, flags: flags)])
+            return cards([try resolver.resolve(kind: event.kind, title: event.title, flags: flags)], wait: flags.wait)
         } catch {
             return failure(error, status: ExitStatus.hookFailed, subcommand: HookCommand.configuration.commandName)
         }
