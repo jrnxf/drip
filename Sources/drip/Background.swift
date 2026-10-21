@@ -7,20 +7,37 @@ enum BackgroundDrip {
     /// The hidden command the background drip runs.
     static let command = "__background"
 
-    /// Starts `drip __background` in its own session, with the request on its standard input and
-    /// nothing else inherited, so it outlives this process and never holds a caller's pipe open
-    /// (`out=$(drip ...)` would otherwise wait for it). Returns false when it cannot be started.
+    /// The longest a drip handing its stack on waits for the background drip to show it.
+    static let handOffWait: Int32 = 400
+
+    /// Starts `drip __background` with `request`, as `spawn` and `Spawned.send` do. Returns false
+    /// when it cannot be started.
     static func start(_ request: BackgroundRequest) -> Bool {
-        guard let data = try? request.encoded(), let executable = Bundle.main.executablePath else { return false }
+        spawn(handingOff: request.handOff != nil)?.send(request) ?? false
+    }
+
+    /// Starts `drip __background` in its own session, waiting for a request on its standard input,
+    /// with nothing else inherited, so it outlives this process and never holds a caller's pipe open
+    /// (`out=$(drip ...)` would otherwise wait for it). One `handingOff` a stack says on its
+    /// standard output when it shows the cards. A drip that asks starts one while its question
+    /// shows, so the answer hands its stack on at once. Nil when it cannot be started.
+    static func spawn(handingOff: Bool) -> Spawned? {
+        guard let executable = Bundle.main.executablePath else { return nil }
         var pipe: [Int32] = [0, 0]
-        guard Darwin.pipe(&pipe) == 0 else { return false }
+        guard Darwin.pipe(&pipe) == 0 else { return nil }
         let (reading, writing) = (pipe[0], pipe[1])
+        var shown: [Int32] = [-1, -1]
+        if handingOff, Darwin.pipe(&shown) != 0 { shown = [-1, -1] }
 
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)
         defer { posix_spawn_file_actions_destroy(&actions) }
         posix_spawn_file_actions_adddup2(&actions, reading, 0)
-        posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0)
+        if shown[1] >= 0 {
+            posix_spawn_file_actions_adddup2(&actions, shown[1], 1)
+        } else {
+            posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0)
+        }
         posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
 
         var attributes: posix_spawnattr_t?
@@ -43,25 +60,77 @@ enum BackgroundDrip {
         var pid = pid_t()
         let spawned = posix_spawn(&pid, executable, &actions, &attributes, &arguments, &environment)
         close(reading)
+        if shown[1] >= 0 { close(shown[1]) }
         guard spawned == 0 else {
             close(writing)
-            return false
+            if shown[0] >= 0 { close(shown[0]) }
+            return nil
         }
-        CardQueue.enqueue(pid: pid, cards: request.cards, adoptable: true)
-        // A closed pipe must fail the write, not kill drip.
-        signal(SIGPIPE, SIG_IGN)
-        let written = data.withUnsafeBytes { buffer -> Bool in
-            var offset = 0
-            while offset < buffer.count {
-                let count = write(writing, buffer.baseAddress! + offset, buffer.count - offset)
-                if count < 0, errno == EINTR { continue }
-                guard count > 0 else { return false }
-                offset += count
+        return Spawned(pid: pid, writing: writing, shown: shown[0] >= 0 ? shown[0] : nil)
+    }
+
+    /// A background drip waiting for its request. One never sent a request exits when this
+    /// process does.
+    final class Spawned {
+        private let pid: pid_t
+        private var writing: Int32?
+        private let shown: Int32?
+
+        fileprivate init(pid: pid_t, writing: Int32, shown: Int32?) {
+            self.pid = pid
+            self.writing = writing
+            self.shown = shown
+        }
+
+        deinit {
+            if let writing { close(writing) }
+            if let shown { close(shown) }
+        }
+
+        /// Queues the background drip's cards and hands it `request`. A request that hands a
+        /// stack on takes this drip's place in the queue, and returns once the background drip
+        /// shows the cards, or after `handOffWait` milliseconds, so this drip's stack can go
+        /// without the cards blinking out. Returns false when the request did not get through,
+        /// and only the first request gets through.
+        func send(_ request: BackgroundRequest) -> Bool {
+            guard let writing, let data = try? request.encoded() else { return false }
+            self.writing = nil
+            CardQueue.enqueue(
+                pid: pid, cards: request.cards, adoptable: true,
+                after: request.handOff != nil ? CardQueue.mine?.name : nil)
+            // A closed pipe must fail the write, not kill drip.
+            signal(SIGPIPE, SIG_IGN)
+            let written = data.withUnsafeBytes { buffer -> Bool in
+                var offset = 0
+                while offset < buffer.count {
+                    let count = write(writing, buffer.baseAddress! + offset, buffer.count - offset)
+                    if count < 0, errno == EINTR { continue }
+                    guard count > 0 else { return false }
+                    offset += count
+                }
+                return true
             }
-            return true
+            close(writing)
+            if written, request.handOff != nil, let shown {
+                // The background drip closing its end unsaid means it shows nothing.
+                var waiting = pollfd(fd: shown, events: Int16(POLLIN), revents: 0)
+                var byte: UInt8 = 0
+                if poll(&waiting, 1, handOffWait) > 0, read(shown, &byte, 1) == 0 { return false }
+            }
+            return written
         }
-        close(writing)
-        return written
+    }
+
+    /// Tells the drip that handed its stack on that the cards show here now.
+    static func sayShown() {
+        signal(SIGPIPE, SIG_IGN)
+        var byte: UInt8 = 1
+        _ = write(1, &byte, 1)
+        let null = open("/dev/null", O_WRONLY)
+        if null >= 0 {
+            dup2(null, 1)
+            close(null)
+        }
     }
 
     /// Reads the request a foreground drip wrote to standard input.
@@ -97,20 +166,45 @@ enum CardQueue {
     private static var leavesAtExit = false
 
     /// Queues the cards of the process `pid`. A foreground drip queues its background drip itself,
-    /// before returning, so the order is the order drips were run in. Only a background drip's cards
-    /// are `adoptable`.
-    static func enqueue(pid: pid_t, cards: [Card], adoptable: Bool = false) {
+    /// before returning, so the order is the order drips were run in; one that hands its stack on
+    /// queues it right `after` its own ticket. Only a background drip's cards are `adoptable`.
+    static func enqueue(pid: pid_t, cards: [Card], adoptable: Bool = false, after parent: String? = nil) {
         try? FileManager.default.createDirectory(
             atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let stamp = UInt64(Date().timeIntervalSince1970 * 1_000_000_000)
+        let start = HeldCards.processStartTime(pid)
         let contents = (try? JSONEncoder().encode(TicketContents(cards: cards, adoptable: adoptable))) ?? Data()
-        write(contents, to: QueueTicket.name(stamp: stamp, pid: pid, start: HeldCards.processStartTime(pid)))
+        let name = parent.flatMap { QueueTicket.name(after: $0, pid: pid, start: start) }
+            ?? QueueTicket.name(stamp: stamp, pid: pid, start: start)
+        write(contents, to: name)
     }
 
     /// Waits until every drip queued earlier has shown its cards, or until a showing drip has
-    /// adopted all of this one's, queuing `cards`, or the cards it queued before when nil. The
-    /// ticket goes when this process exits.
+    /// adopted all of this one's, queuing `cards`, or the cards it queued before when nil. Past
+    /// `patience`, it waits on only while an earlier drip's question waits for its answer, which
+    /// never gives way, and never longer than a question waits. The ticket goes when this process
+    /// exits.
     static func waitForTurn(cards: [Card]? = nil) {
+        let me = getpid()
+        join(cards: cards)
+        let start = Date()
+        var deadline = start.addingTimeInterval(patience)
+        let longest = deadline.addingTimeInterval(Defaults.waitLimit)
+        while !isFirst(me), !isFullyAdopted {
+            if Date() >= deadline {
+                guard Date() < longest, let mine,
+                      CardTurns.awaitsAnswer(before: mine.name, queue: load(), isAlive: isAlive)
+                else { break }
+                deadline = Date().addingTimeInterval(1)
+            }
+            usleep(50_000)
+        }
+    }
+
+    /// Takes this process's ticket, queuing `cards`, or the cards it queued before when nil, unless
+    /// it has one already, as a background drip a stack was handed on to does. The ticket goes when
+    /// this process exits.
+    static func join(cards: [Card]? = nil) {
         let me = getpid()
         if let cards { self.cards = cards }
         if tickets().first(where: { $0.pid == me }) == nil { enqueue(pid: me, cards: self.cards) }
@@ -118,10 +212,6 @@ enum CardQueue {
         if !leavesAtExit {
             leavesAtExit = true
             atexit { CardQueue.leave() }
-        }
-        let deadline = Date().addingTimeInterval(patience)
-        while Date() < deadline, !isFirst(me), !isFullyAdopted {
-            usleep(50_000)
         }
     }
 

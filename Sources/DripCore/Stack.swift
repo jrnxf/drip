@@ -1,8 +1,8 @@
 /// How cards stack at the notch. `chain` (the default) drops each new card from the bottom of the
 /// last, `push` drops it from the notch and pushes the others down, and `off` shows one card at a
 /// time.
-public struct StackSettings: Equatable, Sendable {
-    public enum Mode: String, CaseIterable, Sendable {
+public struct StackSettings: Equatable, Sendable, Codable {
+    public enum Mode: String, CaseIterable, Sendable, Codable {
         case chain, push
     }
 

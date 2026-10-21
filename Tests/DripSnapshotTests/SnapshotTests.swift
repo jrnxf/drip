@@ -152,6 +152,17 @@ struct SnapshotTests {
         ])
     }
 
+    /// A question with a no button left of its yes button; at the notch, with no icon or mark.
+    @Test func yesAndNo() throws {
+        let question = ["ask", "Merge drip #23?", "--detail", "my-app · checks green, 1 approval",
+                        "--yes", "Merge", "--no", "Later"]
+        try assertSnapshots(appearances("yes-no-hud", question + ["--style", "hud"]) + [
+            Snapshot(name: "yes-no-wash", arguments: question + ["--style", "wash"]),
+            Snapshot(name: "yes-no-terminal", arguments: question + ["--style", "terminal"]),
+            Snapshot(name: "notch-yes-no", arguments: question + ["--position", "notch"]),
+        ])
+    }
+
     private static let presets: [(kind: String, title: String, detail: String)] = [
         ("ok", "Build finished", "drip: 42 tests passed in 3.1s"),
         ("warn", "Claude needs you", "drip"),

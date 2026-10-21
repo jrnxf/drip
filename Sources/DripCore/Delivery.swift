@@ -31,21 +31,33 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
     public var cards: [Card]
     /// False for cards shown again from the history, which keeps them already.
     public var record: Bool
+    /// Set when the cards are already on screen in a stack that hands them on, to show where they
+    /// are instead of dropping them in again.
+    public var handOff: StackHandOff?
 
     public init(cards: [Card], record: Bool = true) {
         self.cards = cards
         self.record = record
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case cards, record
+    /// A request for the cards `handOff` hands on, which are recorded already.
+    public init(handOff: StackHandOff) {
+        cards = handOff.cards.map(\.card)
+        record = false
+        self.handOff = handOff
     }
 
-    /// A request from a drip that predates `record` is recorded.
+    private enum CodingKeys: String, CodingKey {
+        case cards, record, handOff
+    }
+
+    /// A request from a drip that predates `record` is recorded, and one that predates `handOff`
+    /// hands nothing on.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         cards = try container.decode([Card].self, forKey: .cards)
         record = try container.decodeIfPresent(Bool.self, forKey: .record) ?? true
+        handOff = try container.decodeIfPresent(StackHandOff.self, forKey: .handOff)
     }
 
     /// What the background drip does with the cards while the screen is locked.
@@ -57,6 +69,82 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
 
     public static func decode(_ data: Data) throws -> BackgroundRequest {
         try JSONDecoder().decode(BackgroundRequest.self, from: data)
+    }
+}
+
+/// The cards a stack at the notch hands on to a background drip when the drip that shows it exits,
+/// as a drip that waited for its question's answer does: the background drip shows them on, as
+/// they are, in a stack with the same settings.
+public struct StackHandOff: Equatable, Sendable, Codable {
+    public var settings: StackSettings
+    /// Top to bottom.
+    public var cards: [HandedCard]
+    /// When the cards were as they are, in seconds since 1970, so the drip they are handed on to
+    /// shows them as they are by the time it does; nil to show them as they are.
+    public var time: Double?
+
+    public init(settings: StackSettings, cards: [HandedCard], time: Double? = nil) {
+        self.settings = settings
+        self.cards = cards
+        self.time = time
+    }
+
+    /// A single card at the notch that started to leave at `time`, in seconds since 1970, from an
+    /// open capsule whose top was at `top`: the background drip plays its exit on from there.
+    public static func leaving(_ card: Card, top: Double, at time: Double) -> StackHandOff {
+        StackHandOff(
+            settings: StackSettings(mode: .chain, max: 1),
+            cards: [HandedCard(card: card, top: top, remaining: 0, isWaiting: false, leaving: 0)], time: time)
+    }
+
+    /// The cards as they are at `now`, in seconds since 1970: each `aged` by the time since `time`.
+    public func cards(at now: Double) -> [HandedCard] {
+        guard let time else { return cards }
+        let age = max(now - time, 0)
+        return cards.map { $0.aged(by: age) }
+    }
+}
+
+/// A card handed on as it is on screen.
+public struct HandedCard: Equatable, Sendable, Codable {
+    public var card: Card
+    /// Where its capsule's top is heading, from the notch down; for a card that is leaving, where it
+    /// was when it started to.
+    public var top: Double
+    /// Seconds left on its countdown, or on its wait limit while it still waits.
+    public var remaining: Double
+    public var isWaiting: Bool
+    /// How long ago it started to leave; nil while it shows.
+    public var leaving: Double?
+    /// The springs still taking its top there, as it glides into a gap; none at rest.
+    public var glide: [SpringMotion]
+
+    public init(
+        card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil,
+        glide: [SpringMotion] = []
+    ) {
+        self.card = card
+        self.top = top
+        self.remaining = remaining
+        self.isWaiting = isWaiting
+        self.leaving = leaving
+        self.glide = glide
+    }
+
+    /// Where its capsule's top is drawn.
+    public var drawnTop: Double {
+        glide.reduce(top) { $0 - $1.left }
+    }
+
+    /// The card `age` seconds on: that much less time left, and that much further into leaving and
+    /// on its glide.
+    public func aged(by age: Double) -> HandedCard {
+        var card = self
+        card.remaining = max(remaining - age, 0)
+        card.leaving = leaving.map { $0 + age }
+        card.glide = glide.map { SpringMotion(change: $0.change, spring: $0.spring, elapsed: $0.elapsed + age) }
+            .filter { $0.elapsed < $0.spring.settlingTime }
+        return card
     }
 }
 

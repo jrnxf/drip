@@ -143,8 +143,8 @@ public enum HistoryListing {
                 kind: card.kind, title: card.title, detail: card.detail, icon: card.icon.argument,
                 color: card.color.argument, sound: card.sound.argument, seconds: card.seconds,
                 position: card.position.rawValue, size: card.size.rawValue, style: card.style.rawValue,
-                motion: card.motion.rawValue, button: card.action?.label, open: card.action?.open, id: card.id,
-                activate: card.activate))
+                motion: card.motion.rawValue, button: card.action?.label, no: card.action?.decline,
+                open: card.action?.open, id: card.id, activate: card.activate))
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -170,6 +170,8 @@ public enum HistoryListing {
         var style: String
         var motion: String
         var button: String?
+        /// A question's no button, as `--no` takes it.
+        var no: String?
         var open: String?
         var id: String?
         var activate: String?

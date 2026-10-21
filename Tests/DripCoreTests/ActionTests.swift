@@ -75,6 +75,41 @@ struct ActionTests {
         #expect(usageMessage(["--confirm", "Promote", "--button", "Ship"])?.contains("both name the button") == true)
     }
 
+    /// `--yes` asks as `--confirm` does, and `--no` adds the button that answers no.
+    @Test func yesAndNoAsk() throws {
+        let asked = try #require(flags(["--yes", "Merge", "--no", "Later"]))
+        #expect(asked.button == "Merge")
+        #expect(asked.decline == "Later")
+        #expect(options(["--yes", "Merge", "--no", "Later"])?.warnings == [])
+        let card = try CardResolver().resolve(kind: "ask", title: "Merge drip #23?", flags: asked)
+        #expect(card.action == CardAction(label: "Merge", open: nil, decline: "Later"))
+        #expect(card.asksQuestion && card.waitsForAnswer)
+        #expect(Delivery.choose(for: [card], wait: false) == .wait)
+        // --yes alone is --confirm.
+        #expect(flags(["--yes", "Promote"]) == flags(["--confirm", "Promote"]))
+        #expect(try #require(flags(["--confirm", "Merge", "--no", "Later"])).decline == "Later")
+        // Text that starts with a dash is the label, not an option.
+        #expect(try #require(flags(["--no", "-> later", "--yes", "-> now"])).decline == "-> later")
+        let long = try CardResolver().resolve(
+            kind: "ask", title: "t", flags: CardFlags(button: "y", decline: String(repeating: "n", count: 40)))
+        #expect(long.action?.decline?.count == Defaults.buttonLimit)
+        #expect(usageMessage(["--no", "Later"])?.contains("--no needs --yes") == true)
+        #expect(usageMessage(["--yes", "Merge", "--no", " "])?.contains("--no needs a label") == true)
+        #expect(usageMessage(["--yes", " "])?.contains("--yes needs a label") == true)
+        #expect(usageMessage(["--yes", "Merge", "--confirm", "Merge"])?.contains("both name the button") == true)
+        #expect(usageMessage(["--yes", "Merge", "--button", "Ship"])?.contains("both name the button") == true)
+        #expect(usageMessage(["--yes", "Merge", "--no", "Later", "--open", "https://example.com"])?
+            .contains("--yes asks a question") == true)
+    }
+
+    /// 0 for yes, 1 for no, 5 for no answer at all, as with --confirm.
+    @Test func theExitStatusIsTheAnswer() {
+        #expect(ExitStatus.answered(missed: false, declined: false) == 0)
+        #expect(ExitStatus.answered(missed: false, declined: true) == 1)
+        #expect(ExitStatus.answered(missed: true, declined: false) == 5)
+        #expect(ExitStatus.answered(missed: true, declined: true) == 5)
+    }
+
     /// `--button` without `--open` is the old spelling of `--confirm`, kept through 0.1 with a
     /// warning, so a script that asks with it, as a deploy approval does, still reads exit 0 or 5.
     @Test func buttonWithoutOpenStillAsks() throws {
@@ -136,6 +171,23 @@ struct DeliveryTests {
         let others = [Card(preset: .fail, title: "x"), Card(preset: .info, title: "y")]
         let request = BackgroundRequest(cards: [card] + others)
         #expect(try BackgroundRequest.decode(request.encoded()) == request)
+    }
+
+    @Test func aHandOffSurvivesTheTripToTheBackgroundDrip() throws {
+        let handOff = StackHandOff(settings: StackSettings(mode: .push, max: 2), cards: [
+            HandedCard(card: Card(preset: .ok, title: "done"), top: 42, remaining: 12.5, isWaiting: false),
+            HandedCard(card: Card(preset: .ask, title: "needs you"), top: 98, remaining: 590, isWaiting: true, leaving: 0.04),
+        ])
+        let request = BackgroundRequest(handOff: handOff)
+        #expect(request.cards.map(\.title) == ["done", "needs you"])
+        #expect(!request.record)
+        #expect(try BackgroundRequest.decode(request.encoded()) == request)
+    }
+
+    @Test func aRequestFromBeforeHandOffsHandsNothingOn() throws {
+        let old = try BackgroundRequest.decode(Data(#"{"cards":[],"record":false}"#.utf8))
+        #expect(old == BackgroundRequest(cards: [], record: false))
+        #expect(old.handOff == nil)
     }
 
     @Test func garbageIsNotARequest() {

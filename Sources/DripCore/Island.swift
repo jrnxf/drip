@@ -21,15 +21,18 @@ public struct IslandMetrics: Equatable, Sendable {
     public var titleLines: Int
     public var detailLines: Int
     public var hasIcon: Bool
-    /// A button's width, which takes the countdown ring's place; 0 without one.
+    /// The buttons' width, which takes the countdown ring's place; 0 without one. A question with a
+    /// no button has both: the no button's width, `buttonGap` and the yes button's.
     public var actionWidth: Double
+    /// The no button's width, at the left of `actionWidth`; 0 without one.
+    public var declineWidth: Double
     /// The widest the capsule may get: `CardMetrics.maxWidth`, or less on a screen narrower than that.
     public var widestPill: Double
 
     public init(
         notchWidth: Double, notchHeight: Double, scale: Double = 1, textWidth: Double, textHeight: Double,
         titleLines: Int = 1, detailLines: Int = 1, hasIcon: Bool = true, actionWidth: Double = 0,
-        widestPill: Double = Double(CardMetrics.maxWidth)
+        declineWidth: Double = 0, widestPill: Double = Double(CardMetrics.maxWidth)
     ) {
         self.notchWidth = notchWidth
         self.notchHeight = notchHeight
@@ -40,6 +43,7 @@ public struct IslandMetrics: Equatable, Sendable {
         self.detailLines = detailLines
         self.hasIcon = hasIcon
         self.actionWidth = actionWidth
+        self.declineWidth = declineWidth
         self.widestPill = widestPill
     }
 
@@ -62,6 +66,16 @@ public struct IslandMetrics: Equatable, Sendable {
     /// line is round at the ends however tall its fonts are; one with more lines keeps corners of 30
     /// points instead of swelling into a blob.
     public var pillCornerRadius: Double { titleLines > 1 || detailLines > 1 ? 30 * scale : .infinity }
+    /// The space between a question's no and yes buttons.
+    public var buttonGap: Double { Self.buttonGap * scale }
+    /// The space between a question's no and yes buttons at regular size.
+    public static let buttonGap = 6.0
+
+    /// The width of a card's buttons, as `actionWidth` takes it: the yes button's alone, or the no
+    /// button's, the gap and the yes button's.
+    public static func buttonsWidth(yes: Double, no: Double?, scale: Double) -> Double {
+        no.map { $0 + buttonGap * scale + yes } ?? yes
+    }
     /// The widest a line of text may be: 500 points at regular size in the widest capsule, less when
     /// a button is too wide for both to fit in it. It does not depend on the text.
     public var textColumn: Double {
@@ -188,11 +202,17 @@ public enum IslandUpdate {
     /// fades out short of the ring instead of running under it, in points at regular size.
     public static let textEdge = 8.0
 
-    /// The ring of a card that waits for you, which has no countdown: its arc breathes, down to
-    /// this opacity and back over `breath` seconds. Shallow, so the ring stays the state's colour
-    /// and the mark in it stays easy to read.
-    public static let breathOpacity = 0.7
-    public static let breath = 1.8
+    /// The waiting mark of a card that waits for you, which has no countdown: a white dot of `dot`
+    /// points at regular size, under a soft white halo that starts as the dot and grows to
+    /// `pingScale` times its size as it fades, from `pingOpacity`, over the first `pingSpread` of
+    /// every `ping` seconds, easing out on `pingCurve`'s control points. With motion reduced, the dot
+    /// shows alone.
+    public static let dot = 8.0
+    public static let ping = 2.4
+    public static let pingScale = 2.1
+    public static let pingOpacity = 0.4
+    public static let pingSpread = 0.75
+    public static let pingCurve = (0.0, 0.0, 0.2, 1.0)
 
     /// Whether `new` shows a different state than `old`: another icon or another colour.
     public static func changesState(from old: Card, to new: Card) -> Bool {
@@ -340,6 +360,16 @@ public struct IslandAnimator: Sendable {
 
     /// Where the capsule's top is heading.
     public var targetTop: Double { dropCenter.target - metrics.pillHeight / 2 }
+
+    /// The springs still moving the capsule's top towards `targetTop` at `time`.
+    public func glide(at time: Double) -> [SpringMotion] {
+        dropCenter.motion(at: time)
+    }
+
+    /// Goes on with `glide`, as `glide(at:)` gave it, from `time`, towards the top `top`.
+    public mutating func resume(_ glide: [SpringMotion], to top: Double, at time: Double) {
+        dropCenter.resume(glide, to: top + metrics.pillHeight / 2, at: time)
+    }
 
     /// Jumps straight to fully open, for reduced motion and offscreen rendering, with the capsule's
     /// top at `top`, below the notch unless given.

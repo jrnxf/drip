@@ -4,7 +4,9 @@ import DripCore
 import QuartzCore
 
 /// Shows several cards at the notch at once, one below another, each grown out of the notch or out
-/// of the card above it, and adopts newer drips' notch cards from the queue while it shows.
+/// of the card above it, and adopts newer drips' notch cards from the queue while it shows: a
+/// background drip's stack always, and a stack that waits for its question's answer while that
+/// shows, so other cards stack around the question instead of waiting for it.
 ///
 /// The motion is played the way a single card's is: every spring is sampled 240 times a second into
 /// keyframe animations, which Core Animation plays off the main thread. Whenever the stack changes,
@@ -34,8 +36,20 @@ final class StackPresenter: CardPresenting {
     private var drawings: [Int: Drawing] = [:]
     private let notch: NotchGeometry
     private let console: Console
-    /// Whether to adopt newer drips' cards: only a background drip, which reports nothing about them.
+    /// Whether this is a background drip's stack, which reports nothing about its cards: it adopts
+    /// every newer drip's card it can, and a watchdog makes sure it ends.
     private let adopting: Bool
+    /// Whether one of this drip's own cards is a question that waits for its answer.
+    private let asks: Bool
+    /// Whether one of this drip's own cards asks a question: the drip then exits as soon as its own
+    /// cards have been answered or have started to go, and hands the rest on.
+    private let questions: Bool
+    /// A background drip waiting, while a question shows, to take the stack on once it is answered.
+    private var standby: BackgroundDrip.Spawned?
+    /// What another drip's stack handed on, to show as it is there when this one starts.
+    private var handed: StackHandOff?
+    /// Whether no background drip could take the cards this stack took in, so it shows them itself.
+    private var handOffFailed = false
     private var panel: IslandPanel?
     private var view: IslandView?
     private let container = CALayer()
@@ -97,7 +111,19 @@ final class StackPresenter: CardPresenting {
         stack = CardStack(settings: settings, cards: cards)
         self.notch = notch
         self.adopting = adopting
+        asks = cards.contains(where: \.waitsForAnswer)
+        questions = cards.contains(where: \.asksQuestion)
         self.console = console
+    }
+
+    /// A background drip's stack for the cards another drip's stack handed on; nil without a screen.
+    static func resume(_ handOff: StackHandOff, console: Console) -> StackPresenter? {
+        guard let screen = CardPresenters.targetScreen() else { return nil }
+        let presenter = StackPresenter(
+            cards: [], settings: handOff.settings, notch: NotchGeometry.island(on: screen), adopting: true,
+            console: console)
+        presenter.handed = handOff
+        return presenter
     }
 
     var canReplace: Bool { false }
@@ -144,6 +170,8 @@ final class StackPresenter: CardPresenting {
         panel.orderFrontRegardless()
 
         started = CACurrentMediaTime()
+        if let handed { resumeHanded(handed) }
+        if questions, !adopting { standby = BackgroundDrip.spawn(handingOff: true) }
         // Countdowns, the pointer and the queue; the motion itself runs in Core Animation. The timer
         // keeps the stack alive until `finish` stops it.
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [self] _ in tick() }
@@ -280,7 +308,7 @@ final class StackPresenter: CardPresenting {
         replan(from: decided)
         layers.fade(cues, into: true, at: started + start)
         if entry.isWaiting {
-            layers.hold(breathing: true, at: started + entry.countdownFrom)
+            layers.hold(pinging: true, at: started + entry.countdownFrom)
         } else {
             layers.drain(over: card.seconds, at: started + entry.countdownFrom)
         }
@@ -291,6 +319,41 @@ final class StackPresenter: CardPresenting {
             CardPresenters.announce(card)
         }
         updateAccessibility()
+    }
+
+    /// Shows the cards another drip's stack handed on where they were, as they were: no drop, no
+    /// sound and no announcement, each counting down what it had left, and one that was leaving as
+    /// far into it, all as they are by now. Then tells that drip, so its stack can go.
+    private func resumeHanded(_ handOff: StackHandOff) {
+        let decided = now
+        var resumed: [(entry: CardStack.Entry, exit: IslandCues?, layers: IslandLayers)] = []
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for card in handOff.cards(at: Date().timeIntervalSince1970) {
+            let layers = makeLayers(for: card.card)
+            let (entry, exit) = stack.resume(card, metrics: layers.metrics, at: decided)
+            drawings[entry.id] = Drawing(layers: layers)
+            container.addSublayer(layers.root)
+            resumed.append((entry, exit, layers))
+        }
+        CATransaction.commit()
+        handed = nil
+        replan(from: decided)
+        for (entry, exit, layers) in resumed {
+            layers.showContent()
+            if let exit, let leaving = entry.exit {
+                layers.fade(exit, into: false, at: started + leaving.time)
+            } else if entry.isWaiting {
+                layers.hold(pinging: true, at: started + decided)
+            } else {
+                layers.drain(
+                    from: min(entry.remaining / max(entry.card.seconds, 0.01), 1), over: entry.remaining,
+                    at: started + decided)
+            }
+        }
+        updateAccessibility()
+        CATransaction.flush()
+        BackgroundDrip.sayShown()
     }
 
     /// Shows `card` in place of the one `entry` shows: the capsule springs to the new card's size
@@ -319,7 +382,7 @@ final class StackPresenter: CardPresenting {
         let lingers = layers.takeOver(from: old, motion: motion, at: started + time)
         drawing.retiringUntil = time + lingers
         if entry.isWaiting {
-            layers.hold(from: ringFraction, breathing: true, at: started + time)
+            layers.hold(pinging: true, at: started + time)
         } else {
             layers.refill(from: ringFraction, over: card.seconds, at: started + time)
             if hovering { IslandLayers.pause(layers.ringProgress, paused: true) }
@@ -330,13 +393,22 @@ final class StackPresenter: CardPresenting {
         updateAccessibility()
     }
 
+    /// Whether the stack takes newer drips' cards in now: a background drip's always; one that waits
+    /// for its question's answer only while its own cards show, and only cards that count down. Once
+    /// its own cards have gone, it hands the rest on and exits.
+    private var adoptsNow: Bool { adopting || (asks && stack.holdsOwn) }
+
     /// Brings in this drip's next card, or a newer drip's, when there is room and the pointer is away.
     private func admit() {
         let time = now
         guard stack.isReady(at: time) else { return }
-        if adopting, time - lastAdoptionCheck >= 0.25, !ScreenLock.isLocked {
+        if !adoptsNow {
+            foundAdoptable = false
+            othersWaiting = false
+            needsRoom = false
+        } else if time - lastAdoptionCheck >= 0.25, !ScreenLock.isLocked {
             lastAdoptionCheck = time
-            let candidates = CardQueue.adoptable()
+            let candidates = CardQueue.adoptable().filter { adopting || !$0.card.waits }
             foundAdoptable = !candidates.isEmpty
             // Cards that wait for you give way to newer drips' cards.
             if stack.live.contains(where: \.isWaiting) {
@@ -361,7 +433,7 @@ final class StackPresenter: CardPresenting {
                 }
                 guard stack.waiting.isEmpty, stack.hasRoom else { break }
                 CardQueue.adopt(index: found.index, in: found.ticket)
-                BackgroundWatchdog.extend(by: found.card.duration + 60)
+                if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
                 enter(found.card, own: false)
                 return
             }
@@ -408,7 +480,20 @@ final class StackPresenter: CardPresenting {
         if !changes.left.isEmpty || !changes.gone.isEmpty { updateAccessibility() }
 
         // Done once nothing is on screen, nothing of its own is left, and the queue had nothing new.
-        if stack.entries.isEmpty, stack.waiting.isEmpty, !foundAdoptable { finish() }
+        if adopting || handOffFailed {
+            if stack.entries.isEmpty, stack.waiting.isEmpty, !foundAdoptable { finish() }
+        } else if questions || stack.ownCardsGone, let cards = stack.handOff(at: time) {
+            // A question's answer never waits for its card to go, nor for the cards it took in: a
+            // background drip shows them on, where they are, or this stack does when none can.
+            let request = BackgroundRequest(
+                handOff: StackHandOff(settings: stack.settings, cards: cards, time: Date().timeIntervalSince1970))
+            CATransaction.flush()
+            if cards.isEmpty || (standby.map { $0.send(request) } ?? BackgroundDrip.start(request)) {
+                finish()
+            } else {
+                handOffFailed = true
+            }
+        }
     }
 
     // MARK: The pointer
@@ -426,15 +511,15 @@ final class StackPresenter: CardPresenting {
         stack.entry(at: IslandPoint(Double(point.x), Double(point.y)), time: now)
     }
 
-    /// Whether `point`, in island coordinates, is on `entry`'s button as it is drawn now.
-    private func onButton(of entry: CardStack.Entry, at point: CGPoint) -> Bool {
-        stack.isOnButton(of: entry, at: IslandPoint(Double(point.x), Double(point.y)), time: now)
+    /// The button of `entry` at `point`, in island coordinates, as it is drawn now; nil off them.
+    private func button(of entry: CardStack.Entry, at point: CGPoint) -> CardAnswer? {
+        stack.button(of: entry, at: IslandPoint(Double(point.x), Double(point.y)), time: now)
     }
 
     private func updateHover() {
         let under = pointer.flatMap(entry(at:))
         for entry in stack.live {
-            drawings[entry.id]?.layers.setButtonHovered(entry === under && pointer.map { onButton(of: entry, at: $0) } == true)
+            drawings[entry.id]?.layers.setButtonHovered(entry === under ? pointer.flatMap { button(of: entry, at: $0) } : nil)
         }
         let inside = under != nil
         guard stack.hover(inside) else { return }
@@ -445,7 +530,7 @@ final class StackPresenter: CardPresenting {
             return
         }
         // The stack gave each card a moment to read what was under the pointer before it goes; a
-        // card that waits for you goes on breathing.
+        // card that waits for you goes on waiting.
         let time = now
         for entry in stack.live where !entry.isWaiting {
             let seconds = max(entry.card.seconds, 0.01)
@@ -455,23 +540,47 @@ final class StackPresenter: CardPresenting {
         }
     }
 
-    /// A click on a button runs its action; anywhere else on a card, it brings the sending app
+    /// A click on a button answers with it; anywhere else on a card, it brings the sending app
     /// forward. Either way that card goes.
     private func click(at point: CGPoint) {
         let island = CGPoint(x: point.x - size.width / 2, y: size.height - point.y)
         guard let entry = entry(at: island) else { return }
-        if let action = entry.card.action, onButton(of: entry, at: island) {
-            CardActions.perform(action, console: console)
-            entry.dismissed = true
+        if let answer = button(of: entry, at: island) {
+            press(answer, on: entry)
             return
         }
         if let target = entry.card.activate { CardActions.activate(target, console: console) }
         entry.dismissed = entry.dismissed ?? false
     }
 
+    /// Answers `entry` with one of its buttons, from a click or from VoiceOver.
+    private func press(_ answer: CardAnswer, on entry: CardStack.Entry) {
+        guard let action = entry.card.action, !entry.isLeaving, entry.dismissed == nil else { return }
+        CardActions.answer(answer, to: action, console: console)
+        entry.answer = answer
+        entry.dismissed = true
+        // The answer goes out now, not once the card has gone.
+        tick()
+    }
+
+    /// Reads the cards out whole, and offers each card's buttons as the stack's actions, named with
+    /// the card's title: the stack never takes focus.
     private func updateAccessibility() {
         view?.setAccessibilityLabel(
             stack.live.map { CardText.spoken(title: $0.card.title, detail: $0.card.detail) }.joined(separator: "; "))
+        var actions: [NSAccessibilityCustomAction] = []
+        for entry in stack.live {
+            guard let action = entry.card.action else { continue }
+            for (label, answer) in CardAccessibility.answers(to: action) {
+                actions.append(NSAccessibilityCustomAction(name: "\(label): \(entry.card.title)") {
+                    [weak self, weak entry] () -> Bool in
+                    guard let self, let entry, !entry.isLeaving else { return false }
+                    self.press(answer, on: entry)
+                    return true
+                })
+            }
+        }
+        view?.setAccessibilityCustomActions(actions)
     }
 
     private func finish() {

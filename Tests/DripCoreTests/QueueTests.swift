@@ -29,6 +29,19 @@ struct QueueTests {
         #expect(QueueTicket.name(stamp: 999, pid: 40) < QueueTicket.name(stamp: 1_000, pid: 7, start: 1))
     }
 
+    /// A background drip a stack is handed on to takes its place: right after its ticket, before
+    /// any queued later.
+    @Test func aHandOffTicketSortsRightAfterItsParent() throws {
+        let parent = QueueTicket.name(stamp: 999, pid: 90_000, start: 5)
+        let later = QueueTicket.name(stamp: 1_001, pid: 7)
+        let handOff = try #require(QueueTicket.name(after: parent, pid: 1, start: 6))
+        #expect([later, handOff, parent].sorted() == [parent, handOff, later])
+        let ticket = try #require(QueueTicket(name: handOff))
+        #expect(ticket.pid == 1)
+        #expect(ticket.start == 6)
+        #expect(QueueTicket.name(after: "not a ticket", pid: 1) == nil)
+    }
+
     @Test func onlyTicketNamesAreTickets() {
         for name in ["00000000000000000999-40.claimed", ".00000000000000000999-40.40.tmp", "999-40",
                      "00000000000000000999-", "00000000000000000999-4x", "00000000000000000999-40-",
@@ -181,6 +194,24 @@ struct QueueTests {
         let queue = [mine, adoptable(2, pid: 20, notch("claude:s1", title: "done"))]
         #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }, except: ["claude:s1"]).isEmpty)
         #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }).count == 1)
+    }
+
+    /// A drip queued behind a question waits for its answer, past its usual patience.
+    @Test func aDripQueuedBehindAQuestionWaitsForItsAnswer() {
+        var question = Card(preset: .ask, title: "merge?")
+        question.action = CardAction(label: "Merge", open: nil, decline: "Later")
+        let asking = ticket(1, pid: 10, question)
+        let mine = ticket(3, pid: 30, notch(nil))
+        #expect(CardTurns.awaitsAnswer(before: mine.name, queue: [asking, mine], isAlive: { _ in true }))
+        // Not once the question's drip is gone, nor for one queued after this drip.
+        #expect(!CardTurns.awaitsAnswer(before: mine.name, queue: [asking, mine], isAlive: { $0.pid != 10 }))
+        #expect(!CardTurns.awaitsAnswer(before: asking.name, queue: [asking, mine], isAlive: { _ in true }))
+        // A plain ask gives way, and a question given a time counts it down.
+        var timed = question
+        timed.waitLimit = nil
+        for card in [Card(preset: .ask, title: "needs you"), timed] {
+            #expect(!CardTurns.awaitsAnswer(before: mine.name, queue: [ticket(1, pid: 10, card), mine], isAlive: { _ in true }))
+        }
     }
 
     @Test func aTicketIsFullyAdoptedOnceEveryCardIsClaimed() {

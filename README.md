@@ -18,6 +18,7 @@ git log -1 --format='%s%n%an' | drip ok
 drip run make test
 drip run --open "$CI_URL" --button "View run" ./deploy.sh
 drip warn "staging is ready" --confirm "Promote" && ./promote.sh
+drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23
 drip ask "my-app needs you" --icon app:com.openai.chat
 drip ok "shipped" --position top --style glass
 drip info "deploying" --id deploy && drip ok "deployed" --id deploy
@@ -101,8 +102,9 @@ card: it shows the words, without code fences, heading or list markers, or empha
 The card's icon is the agent's own app's, when it is installed: Claude.app for Claude Code
 (`com.anthropic.claudefordesktop`), and the Codex app or ChatGPT.app for Codex
 (`com.openai.codex`, `com.openai.chat`). Without one it is the maker's mark that drip bundles,
-`mark:claude`, `mark:codex` or `mark:gemini` (see [Icons](#icons)). Either way the ring at the notch
-shows the state, a breathing question while the agent waits on you and a check when it is done.
+`mark:claude`, `mark:codex` or `mark:gemini` (see [Icons](#icons)). Either way the right end of the
+card at the notch shows the state: a white dot that sends out a soft ping while the agent waits on
+you, and a check in a ring when it is done.
 
 **drip hook** is what the hooks run: `drip hook claude`, `drip hook codex` or `drip hook gemini`,
 with the hook's JSON on stdin, or as an argument, as Codex's older `notify` passes it. Card options
@@ -210,7 +212,9 @@ exits 2, or 1 for `drip hook`.
 | `--style hud\|glass\|wash\|terminal` | How the card is drawn away from the notch; a notch card is always black. See [Styles](#styles). | `glass` on macOS 26, `hud` before |
 | `--open URL\|PATH` | Adds a button that opens a URL or a file, a relative path from the directory drip runs in; see [Buttons](#buttons). Empty, as `--open "$CI_URL"` without a URL, it adds no button and warns. | none |
 | `--button LABEL` | The `--open` button's label, up to 24 characters. | `Open` |
-| `--confirm LABEL` | Asks a question with a button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if not. See [Buttons](#buttons). | none |
+| `--yes LABEL` | Asks a question with a yes button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if no button was. See [Buttons](#buttons). | none |
+| `--no LABEL` | With `--yes`, a no button of this label to its left: drip exits 1 if it was clicked. | none |
+| `--confirm LABEL` | The same as `--yes`. | none |
 | `--id ID` | Names what the card is about, up to 200 characters; see [Replacing cards](#replacing-cards). | none |
 | `--activate BUNDLE-ID\|none` | The app a click on the card brings forward, such as `com.apple.Terminal`; see [Clicks](#clicks). | the app drip was run from |
 | `--wait` | Wait until the card has gone before exiting. | off |
@@ -230,11 +234,15 @@ entrance and exit, `subtle` only fades, `none` neither; Reduce Motion in System 
 | `ask` | `questionmark.circle.fill` | purple | Ping |
 
 **Cards that wait.** `ask` is for something waiting on you, such as an agent asking for
-permission. Its card has no countdown: at the notch its ring stays full and breathes, and the card
-stays until you click it or a newer card with the same `--id` replaces it. It gives way to other
-cards: when another card waits for its place, the card counts down its `--seconds` from then like
-any other card, and it never stays longer than 10 minutes. `--seconds`, `DRIP_SECONDS` or the
-preset's `seconds` in the config give an `ask` card a countdown instead.
+permission. Its card has no countdown: at the notch a white dot stands where the ring would be, and
+every 2.4 seconds a soft halo grows out of it to about twice its size and fades (with Reduce Motion,
+the dot alone). The card stays until you click it or a newer card with the same `--id` replaces it.
+It gives way to other cards: when another card waits for its place, the card counts down its
+`--seconds` from then like any other card, and it never stays longer than 10 minutes. A question
+(`--yes`) never gives way: it stays until it is answered, replaced or its 10 minutes are up, other
+cards stack around it, and a card with no room in the stack, or another question, waits its turn.
+`--seconds`, `DRIP_SECONDS` or the preset's `seconds` in the config give an `ask` card a countdown
+instead.
 
 **stdin.** When no title is given and stdin is not a terminal, drip reads stdin to the end, keeping
 the first 64 KB, so the command writing it is never cut short: the first non-empty line is the title
@@ -247,11 +255,12 @@ left alone.
 `--icon` takes an SF Symbol, an image file, an app's own icon or an agent's mark. A picture is drawn
 as it is, never tinted, at the size of the preset's icon; an app's icon loses the margin around its
 rounded square, so its mark fills the same place. When the icon is not the preset's own, a notch
-card shows the state in its ring instead, around the state's mark: a question for `ask`, a check for
-`ok`, and so on. The icon then says who, and the ring what. An `ask` card that waits always carries
-its question in the ring, since it has no countdown to show, so at the notch such a card with the
-preset's own icon shows no icon: the question shows once, in the ring, and the text starts at the
-left. A card with a button shows the button in place of the ring, so it keeps its icon:
+card shows the state in its ring instead, around the state's mark: a check for `ok`, a cross for
+`fail`, and so on. The icon then says who, and the ring what. An `ask` card that waits shows its
+waiting dot there instead, and at the notch such a card with the preset's own icon shows no icon,
+nor does a question with `--yes` and `--no` buttons: the text starts at the left, and the right end
+says it waits for you. A card with one button shows the button in place of the ring, so it keeps its
+icon:
 
 ```sh
 drip ask "my-app needs you" -d "Codex wants to run npm install" --icon app:com.openai.codex
@@ -271,7 +280,7 @@ spark in its colours from [LobeHub's icons](https://lobehub.com/icons/gemini) (M
 The marks are their owners' trademarks, used unaltered to name the agent a card is about. drip is
 not affiliated with Anthropic, OpenAI or Google, and none of them endorses it.
 
-**Text that starts with a dash.** `-d`, `--button`, `--confirm` and `--id` take their next argument whatever it
+**Text that starts with a dash.** `-d`, `--button`, `--confirm`, `--yes`, `--no` and `--id` take their next argument whatever it
 starts with, so `-d "$err"` works when the error reads `--- FAIL: TestFoo`, and `--id --wait` is an
 id, not a missing value. A title that starts with
 a dash goes after `--`: `drip fail -- "$line"`.
@@ -307,7 +316,7 @@ latest. When the older card is already on screen, the newer one takes its place 
 springs to its new size, the text that changed crossfades, a new state's colour settles over the
 old one as its icon pops in, its sound plays, and its time starts again. When the ring carries the
 state and the icon stays, such as an agent's, the icon stays still and the state pops in the ring. With reduced motion the
-size changes at once and only the crossfade remains; with motion `none` it all changes at once. A card that asks a question (`--confirm`)
+size changes at once and only the crossfade remains; with motion `none` it all changes at once. A card that asks a question (`--yes`)
 never changes in place, and neither does one that would sit somewhere else
 (another `--position`); the newer card then waits its turn. A question replaced before it showed
 exits 5.
@@ -331,7 +340,7 @@ newest `fail` card among them, else the newest `ask` card, else the newest `warn
 newest card, so a failure still reads as one. The summary counts down, even when it looks like an
 `ask` card. Of held cards with the same `--id`, only the newest shows. A click on the
 summary brings forward the app the held cards came from, or nothing when they came from different
-apps. A drip that waits for its card, with `--wait` or a `--confirm` question, warns that the
+apps. A drip that waits for its card, with `--wait` or a `--yes` question, warns that the
 screen is locked, keeps waiting until the unlock and then shows its card on its own.
 
 Every card is also kept in `$XDG_STATE_HOME/drip/history.jsonl`, or
@@ -365,15 +374,25 @@ the notch, the button stands where the countdown ring would be. A click on the b
 away; a click anywhere else on the card brings the sending app forward (see [Clicks](#clicks)) and
 takes the card away. Clicking the button never takes focus from the app you are in.
 
-`--confirm` asks a question instead: the card has a button with that label and opens nothing, and
-drip waits, then exits 0 if the button was clicked and 5 if it was not, so the script decides what
-happens:
+`--yes` asks a question instead: the card has a button with that label and opens nothing, and drip
+waits, then exits 0 if the button was clicked. `--no` adds a quieter button to its left that
+answers no: drip exits 1 when it is clicked. At the notch, drip exits as soon as a button is
+clicked, while the card is still on its way out, so the command after it starts at once; a
+background drip plays the card's exit, and any cards stacked with it, on from where they are.
+Elsewhere, or with reduced motion, the card goes at once, with no exit, and drip exits with it. With either, drip exits 5 when
+no button was clicked: the card timed out, a newer card with the same `--id` replaced it, or it was
+clicked away from its buttons. 0 and 1 read as yes and no, so the script decides what happens:
 
 ```sh
+drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23
 drip warn "staging is ready" -d "api 1.4.2" --confirm "Promote" --seconds 10 && ./promote.sh
 ```
 
-Before 0.2, `--button` without `--open` still asks as `--confirm` does, with a warning.
+At the notch the buttons stand where the ring would be, the yes button in the card's colour,
+darkened as for the `wash` style, and the no button in white at 15 %. drip never takes focus, so the
+keyboard answers nothing; VoiceOver offers each button as an action of the card. `--confirm` is
+another spelling of `--yes`. Before 0.2, `--button` without `--open` still asks as `--confirm`
+does, with a warning.
 
 **drip run** runs the command with drip's stdin, stdout and stderr, then shows `ok` with the title
 `<command> finished` on exit 0, or `fail` with `<command> failed (exit N)` otherwise. The detail is
@@ -416,7 +435,7 @@ Coding agents have [a section of their own](#coding-agents).
 | `terminal` | A solid dark card with an accent stripe, the kind in small capitals above the title, and monospaced text. No icon. |
 
 At `--position notch` the card is drawn as one black shape with the notch whatever `--style` says,
-with a countdown ring draining over `--seconds` (with motion `full`; a button takes its place).
+with a countdown ring draining over `--seconds` (with motion `full`; buttons, or a card's waiting dot, take its place).
 Styles apply at the other positions. A drop forms under the notch, stretches on a neck, breaks free
 and widens into a capsule just below the menu bar. It leaves the same way, pulled back up into the
 notch. A card whose text wraps grows into a taller capsule with rounded corners. On a screen without
@@ -430,22 +449,25 @@ card drops out of the bottom of the last one and the oldest goes back into the n
 others moving up behind it. With `push` a new card drops out of the notch once the others have
 moved down out of its way. `off` shows one card at a time. While the pointer is on any card in the stack, nothing moves: every countdown
 stops, gaps stay open and new cards wait. A click on a card dismisses it. Only the cards of drips
-that returned at once stack; a card that waits (`--wait`, or a question) waits its turn.
+that returned at once stack; a card that waits (`--wait`, or a question) waits its turn. While a
+question shows, cards that count down stack around it; a card that waits, or another question,
+waits for its answer. drip exits as soon as the question is answered, so the command after it
+runs at once, and the cards still in the stack play out without it.
 
 ### Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| 0 | The card was shown. |
-| 1 | `drip hook` could not make a card, for any reason; or `drip setup` left the agent's settings alone, or could not write them. |
+| 0 | The card was shown; a question was answered yes, the moment it was clicked. |
+| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason; or `drip setup` left the agent's settings alone, or could not write them. |
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh. |
 | 4 | The config file is invalid; the message names the key and line. |
-| 5 | drip asked with `--confirm` and waited, but the button was not clicked. |
+| 5 | drip asked with `--yes` or `--confirm` and waited, but no button was clicked. |
 
 Without `--wait`, 0 means the card was handed off to be shown. `drip run` exits with the wrapped
-command's exit code (127 when it is not found) as soon as the command ends, or once its card has
-gone with `--wait` or a `--confirm` question. When Ctrl-C ends the command, drip ends with the same
+command's exit code (127 when it is not found) as soon as the command ends, once its card has
+gone with `--wait`, or once a `--yes` question is answered or goes unanswered. When Ctrl-C ends the command, drip ends with the same
 signal, so the script that ran it stops too. A usage error exits 2 before the command runs.
 
 ## Config

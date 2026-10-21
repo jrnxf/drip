@@ -28,7 +28,7 @@ public final class CardStack {
         public internal(set) var remaining: Double
         public internal(set) var countdownFrom: Double = 0
         /// Whether it still waits for you, until it is clicked or replaced, or gives way to a card
-        /// that needs its place and counts down its own time.
+        /// that needs its place and counts down its own time. A question never gives way.
         public internal(set) var isWaiting: Bool
         /// A leaving card keeps its place until its drop starts to rise, so the cards below never
         /// run into it while it gathers.
@@ -36,6 +36,10 @@ public final class CardStack {
         /// Set when the card should go as soon as nothing is still flowing into it; whether by a
         /// click on its button.
         public var dismissed: Bool?
+        /// The button a click landed on, when `dismissed` is true: yes, or a question's no.
+        public var answer: CardAnswer?
+        /// When it started to leave, and its capsule's top then.
+        public internal(set) var exit: (time: Double, top: Double)?
 
         init(id: Int, card: Card, own: Bool, metrics: IslandMetrics, animator: IslandAnimator) {
             self.id = id
@@ -62,7 +66,7 @@ public final class CardStack {
     /// What changed in one step of the stack's clock.
     public struct Changes {
         /// Cards that started to leave at `time`, with their fade cues, and whether their button
-        /// was clicked.
+        /// was clicked. A question's answer is the entry's `answer`.
         public var left: [(entry: Entry, cues: IslandCues, time: Double, clicked: Bool)] = []
         /// Cards gone from the stack, whose drawing can go too.
         public var gone: [Entry] = []
@@ -110,6 +114,51 @@ public final class CardStack {
 
     /// Whether the stack holds fewer cards than it may show at once.
     public var hasRoom: Bool { live.count < settings.max }
+
+    /// Whether any of this drip's own cards is still to come or on screen. A drip that waits for its
+    /// question takes other drips' cards in only while it does, so it can exit soon after the answer.
+    public var holdsOwn: Bool { !waiting.isEmpty || live.contains(where: \.own) }
+
+    /// Whether every one of this drip's own cards has come and gone, leaving included.
+    public var ownCardsGone: Bool { waiting.isEmpty && !entries.contains(where: \.own) }
+
+    /// Once this drip's own cards have all been answered, or have otherwise started to go, every
+    /// card in the stack, top to bottom, as it is at `time`: where each is, what it has left and how
+    /// far into leaving it is. Nil while an own card still shows or is still to come. A drip that
+    /// asks a question hands these on to a background drip, so it exits with the answer in the
+    /// moment it is given, and its card leaves and the cards it took in play out without it.
+    public func handOff(at time: Double) -> [HandedCard]? {
+        guard !holdsOwn else { return nil }
+        return entries.map { entry in
+            HandedCard(
+                card: entry.card, top: entry.exit?.top ?? entry.animator.targetTop,
+                remaining: max(entry.remaining, 0), isWaiting: entry.isWaiting,
+                leaving: entry.exit.map { max(time - $0.time, 0) },
+                glide: entry.exit == nil && entry.isShown ? entry.animator.glide(at: time) : [])
+        }
+    }
+
+    /// Shows `handed`, laid out as `metrics`, at the bottom of the stack at `time`, as it was on
+    /// screen when it was handed on: open where it was, gliding on as it was, with the time it had
+    /// left, and as far into leaving as it was, with its fade cues when it is leaving. Then moves
+    /// every card to its place.
+    @discardableResult
+    public func resume(_ handed: HandedCard, metrics: IslandMetrics, at time: Double) -> (entry: Entry, exit: IslandCues?) {
+        var animator = IslandAnimator(metrics: metrics)
+        animator.open(top: handed.top)
+        animator.resume(handed.glide, to: handed.top, at: time)
+        let entry = Entry(id: nextID, card: handed.card, own: false, metrics: metrics, animator: animator)
+        nextID += 1
+        entry.anchor = settings.mode == .chain ? live.last : nil
+        entry.remaining = handed.remaining
+        entry.isWaiting = handed.isWaiting
+        entry.countdownFrom = time
+        entries.append(entry)
+        lastEntrance = time
+        let exit = handed.leaving.flatMap { leave(entry, at: time - $0) }
+        place(at: time)
+        return (entry, exit)
+    }
 
     /// This drip's next own card, taken off `waiting`, when there is room and its pause is over.
     public func nextOwn(at time: Double) -> Card? {
@@ -216,6 +265,7 @@ public final class CardStack {
         let above = entries[..<position].last { !$0.isLeaving }
         entry.anchor = above
         let anchor = above.map { DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.metrics) }
+        entry.exit = (time, entry.animator.shape(at: time).pillTop)
         let cues = entry.animator.exit(at: time, into: anchor)
         entry.holdsPlaceUntil = entry.animator.riseTime ?? time
         entry.phase = .leaving(until: entry.animator.end)
@@ -256,17 +306,20 @@ public final class CardStack {
     ///
     /// Cards that wait for you give way to other cards: the oldest when a card needs room, its own
     /// or `needsRoom` another drip's, and every card in the stack is waiting; all of them when
-    /// `othersWaiting`, another drip waiting for the stack to finish.
+    /// `othersWaiting`, another drip waiting for the stack to finish. A question never gives way: it
+    /// stays until it is answered, replaced or its wait limit runs out, other cards stack around it,
+    /// and a card with no room waits for it.
     public func advance(
         to time: Double, elapsed: Double, lead: Double, needsRoom: Bool = false, othersWaiting: Bool = false
     ) -> Changes {
         var changes = Changes()
         var released = false
         let waitingCards = live.filter(\.isWaiting)
+        let yielding = waitingCards.filter { !$0.card.waitsForAnswer }
         if othersWaiting {
-            changes.stoppedWaiting = waitingCards
+            changes.stoppedWaiting = yielding
         } else if needsRoom || !waiting.isEmpty, !hasRoom, waitingCards.count == live.count,
-                  let oldest = waitingCards.min(by: { $0.id < $1.id })
+                  let oldest = yielding.min(by: { $0.id < $1.id })
         {
             changes.stoppedWaiting = [oldest]
         }
@@ -335,12 +388,26 @@ public final class CardStack {
         }
     }
 
-    /// Whether `point`, as for `entry(at:time:)`, is on `entry`'s button as it is drawn at `time`.
+    /// Whether `point`, as for `entry(at:time:)`, is on one of `entry`'s buttons as they are drawn at
+    /// `time`.
     public func isOnButton(of entry: Entry, at point: IslandPoint, time: Double) -> Bool {
-        guard entry.card.action != nil else { return false }
+        button(of: entry, at: point, time: time) != nil
+    }
+
+    /// The button of `entry` under `point`, as for `entry(at:time:)`, as it is drawn at `time`: a
+    /// question's no button on the left, its yes button on the right, split halfway across the gap
+    /// between them. Nil off the buttons.
+    public func button(of entry: Entry, at point: IslandPoint, time: Double) -> CardAnswer? {
+        guard entry.card.action != nil else { return nil }
         let layout = entry.animator.content(for: entry.animator.shape(at: time))
         let half = layout.ringSize / 2 + 4
-        return abs(point.x - layout.ringCenter.x) <= half && abs(point.y - layout.ringCenter.y) <= half + 4
+        guard abs(point.x - layout.ringCenter.x) <= half, abs(point.y - layout.ringCenter.y) <= half + 4 else {
+            return nil
+        }
+        let metrics = entry.animator.metrics
+        guard metrics.declineWidth > 0 else { return .yes }
+        let split = layout.ringCenter.x - layout.ringSize / 2 + metrics.declineWidth + metrics.buttonGap / 2
+        return point.x < split ? .no : .yes
     }
 
     // MARK: The outline

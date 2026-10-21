@@ -87,7 +87,8 @@ public struct CardResolver {
         )
         if flags.open != nil || flags.button != nil {
             card.action = CardAction(
-                label: CardText.line(flags.button, limit: Defaults.buttonLimit) ?? "Open", open: flags.open)
+                label: CardText.line(flags.button, limit: Defaults.buttonLimit) ?? "Open", open: flags.open,
+                decline: flags.open == nil ? CardText.line(flags.decline, limit: Defaults.buttonLimit) : nil)
         }
         card.id = flags.id
         card.activate = CardActivation.target(flag: flags.activate, sender: environment.sender)

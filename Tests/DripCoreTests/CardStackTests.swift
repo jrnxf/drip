@@ -161,6 +161,213 @@ struct CardStackTests {
         #expect(stack.entries.isEmpty)
     }
 
+    /// A question never gives way: other cards stack around it, and one with no room waits for it.
+    @Test func aQuestionNeverStopsWaiting() {
+        var question = asking("merge?")
+        question.action = CardAction(label: "Merge", open: nil, decline: "Later")
+        #expect(question.waitsForAnswer)
+
+        // Another drip waits for the stack to finish: the plain ask gives way, the question does not.
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [question, asking("b")])
+        var time = run(stack, until: 3)
+        let changes = stack.advance(to: time, elapsed: 0, lead: 0, othersWaiting: true)
+        #expect(titles(changes.stoppedWaiting) == ["b"])
+        time = run(stack, from: time, until: time + 30, othersWaiting: true)
+        #expect(titles(stack.live) == ["merge?"])
+        #expect(stack.live[0].isWaiting)
+
+        // A full stack of questions and a card that needs room: nothing gives way, so it waits.
+        let full = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [question])
+        var stopped: [String] = []
+        run(full, until: 30, needsRoom: true) { _, changes in stopped += titles(changes.stoppedWaiting) }
+        #expect(stopped.isEmpty)
+        #expect(full.live[0].isWaiting)
+
+        // Beside a plain ask, the plain ask gives way for room instead.
+        let mixed = CardStack(
+            settings: StackSettings(mode: .chain, max: 2), cards: [question, asking("b", seconds: 2), card("c", seconds: 10)])
+        stopped = []
+        run(mixed, until: 12) { _, changes in stopped += titles(changes.stoppedWaiting) }
+        #expect(stopped == ["b"])
+        #expect(titles(mixed.live) == ["merge?", "c"])
+
+        // A question that counts down a time it was given still goes when its time is up.
+        var timed = question
+        timed.waitLimit = nil
+        #expect(!timed.waitsForAnswer)
+    }
+
+    @Test func aStackHoldsItsOwnCardsUntilTheyHaveGone() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 1)])
+        #expect(stack.holdsOwn)
+        var time = run(stack, until: 1)
+        stack.enter(card("adopted", seconds: 10), metrics: metrics, own: false, decided: time, at: time)
+        #expect(stack.holdsOwn)
+        time = run(stack, from: time, until: time + 4)
+        #expect(titles(stack.live) == ["adopted"])
+        #expect(!stack.holdsOwn)
+    }
+
+    /// Answered while a card it took in has long left, a question's stack hands every card on, its
+    /// own on its way out, in the same step of the clock as the answer.
+    @Test func anAnsweredQuestionHandsOnTheCardsItTookIn() throws {
+        var question = asking("merge?")
+        question.action = CardAction(label: "Merge", open: nil, decline: "Later")
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [question])
+        var time = run(stack, until: 2)
+        let done = stack.enter(card("done", seconds: 30), metrics: metrics, own: false, decided: time, at: time)
+        let needsYou = stack.enter(asking("needs you"), metrics: metrics, own: false, decided: time, at: time)
+        time = run(stack, from: time, until: time + 3)
+        #expect(stack.handOff(at: time) == nil)
+
+        // Clicked: the next step of the clock sends the card off and the stack can go at once.
+        let answered = time
+        stack.live[0].answer = .yes
+        stack.live[0].dismissed = true
+        var handed: (time: Double, cards: [HandedCard], left: [Double], tops: [Double])?
+        run(stack, from: time, until: time + 5) { now, _ in
+            guard handed == nil, let cards = stack.handOff(at: now) else { return }
+            handed = (
+                now, cards, [done.remaining, needsYou.remaining],
+                [done, needsYou].map { $0.animator.shape(at: now).pillTop })
+        }
+        let handOff = try #require(handed)
+        #expect(handOff.time - answered < 0.05)
+        #expect(handOff.cards.map(\.card) == [question, card("done", seconds: 30), asking("needs you")])
+        let leaving = try #require(handOff.cards[0].leaving)
+        #expect(leaving < 0.05)
+        let adopted = Array(handOff.cards.dropFirst())
+        #expect(adopted.map(\.remaining) == handOff.left)
+        for (card, top) in zip(adopted, handOff.tops) { #expect(abs(card.drawnTop - top) < 0.1) }
+        #expect(adopted[0].remaining > 25)
+        #expect(adopted.map(\.isWaiting) == [false, true])
+        #expect(adopted.allSatisfy { $0.leaving == nil })
+        #expect(!stack.holdsOwn)
+    }
+
+    /// A single answered card at the notch, handed on, leaves the way it would have alone.
+    @Test func aLeavingIslandHandedOnLeavesAsItWould() throws {
+        let handOff = StackHandOff.leaving(asking("merge?"), top: metrics.pillTop, at: 1_000)
+        let aged = handOff.cards(at: 1_000.1)
+        #expect(abs((aged.first?.leaving ?? 0) - 0.1) < 0.001)
+        let stack = CardStack(settings: handOff.settings)
+        let (entry, cues) = stack.resume(try #require(aged.first), metrics: metrics, at: 50)
+        #expect(cues != nil)
+        #expect(entry.isLeaving)
+
+        var alone = IslandAnimator(metrics: metrics)
+        alone.open()
+        _ = alone.exit(at: 0)
+        let leaving = try #require(aged.first?.leaving)
+        for offset in [0.0, 0.1, 0.3] {
+            let was = alone.shape(at: leaving + offset), now = entry.animator.shape(at: 50 + offset)
+            #expect(abs(was.pillTop - now.pillTop) < 0.01)
+            #expect(abs(was.pillWidth - now.pillWidth) < 0.01)
+        }
+    }
+
+    @Test func aStackWithNoAdoptedCardsHandsOnNothing() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 1)])
+        #expect(stack.handOff(at: 0) == nil)
+        let time = run(stack, until: 4)
+        #expect(stack.entries.isEmpty)
+        #expect(stack.handOff(at: time) == [])
+    }
+
+    /// The cards handed on show in the new stack where they were, in the same order, with the time
+    /// they had left, and a card that was leaving goes on leaving from as far as it had got.
+    @Test func handedOnCardsShowAsTheyWere() throws {
+        let settings = StackSettings(mode: .chain, max: 3)
+        let before = CardStack(settings: settings)
+        var time = 0.0
+        for title in ["a", "b", "c"] {
+            before.enter(card(title, seconds: 30), metrics: metrics, own: false, decided: time, at: time)
+            time = run(before, from: time, until: time + 1)
+        }
+        time = run(before, from: time, until: time + 2)
+        let leaving = before.live[2]
+        leaving.dismissed = true
+        time = run(before, from: time, until: time + 0.1)
+        let handed = try #require(before.handOff(at: time))
+        #expect(handed.map(\.card.title) == ["a", "b", "c"])
+        let fade = try #require(handed[2].leaving)
+        #expect(fade > 0 && fade < 0.2)
+
+        let after = CardStack(settings: settings)
+        let resumed = handed.map { after.resume($0, metrics: metrics, at: 50) }
+        #expect(titles(after.entries) == ["a", "b", "c"])
+        #expect(titles(after.live) == ["a", "b"])
+        #expect(after.entries.map(\.remaining) == handed.map(\.remaining))
+        #expect(resumed.map { $0.exit == nil } == [true, true, false])
+        for (old, new) in zip(before.entries, after.entries) {
+            let was = old.animator.shape(at: time), now = new.animator.shape(at: 50)
+            #expect(abs(was.pillTop - now.pillTop) < 0.01)
+            #expect(abs(was.pillWidth - now.pillWidth) < 0.01)
+            #expect(abs(was.pillHeight - now.pillHeight) < 0.01)
+        }
+        // Both go on as one: the leaving card is gone at the same moment, the others count down.
+        var gone: (before: Double?, after: Double?) = (nil, nil)
+        run(before, from: time, until: time + 2) { now, changes in
+            if gone.before == nil, !changes.gone.isEmpty { gone.before = now - time }
+        }
+        run(after, from: 50, until: 52) { now, changes in
+            if gone.after == nil, !changes.gone.isEmpty { gone.after = now - 50 }
+        }
+        let goneBefore = try #require(gone.before), goneAfter = try #require(gone.after)
+        #expect(abs(goneBefore - goneAfter) < 0.05)
+        #expect(after.live.allSatisfy { $0.remaining < 30 && $0.remaining > 20 })
+    }
+
+    /// Shown a moment after they were handed on, the cards are as they are by then: a leaving card
+    /// further into its exit, every countdown further on, a gliding card further on its way.
+    @Test func handedOnCardsAgeUntilTheyShow() throws {
+        let settings = StackSettings(mode: .chain, max: 3)
+        let before = CardStack(settings: settings)
+        var time = 0.0
+        for title in ["a", "b", "c"] {
+            before.enter(card(title, seconds: 30), metrics: metrics, own: false, decided: time, at: time)
+            time = run(before, from: time, until: time + 1)
+        }
+        time = run(before, from: time, until: time + 2)
+        before.live[0].dismissed = true
+        before.live[2].dismissed = true
+        time = run(before, from: time, until: time + 0.1)
+        let handOff = StackHandOff(settings: settings, cards: try #require(before.handOff(at: time)), time: 1_000)
+        #expect(handOff.cards(at: 1_000) == handOff.cards)
+        #expect(handOff.cards(at: 999) == handOff.cards)
+
+        // b, alone, glides up into a's place once a has risen.
+        time = run(before, from: time, until: time + 0.35)
+        let b = before.live[0]
+        #expect(b.card.title == "b")
+        let moving = try #require(before.handOff(at: time))
+        let gliding = try #require(moving.first { $0.card.title == "b" })
+        #expect(!gliding.glide.isEmpty)
+        #expect(gliding.top == b.animator.targetTop)
+        #expect(abs(gliding.drawnTop - b.animator.shape(at: time).pillTop) < 0.1)
+
+        let age = 0.25
+        let aged = StackHandOff(settings: settings, cards: moving, time: 1_000).cards(at: 1_000 + age)
+        for (was, now) in zip(moving, aged) {
+            #expect(now.remaining == max(was.remaining - age, 0))
+            #expect(now.leaving == was.leaving.map { $0 + age })
+        }
+
+        // Shown on in another stack, it goes on gliding from where it is drawn by then, as fast.
+        let glided = try #require(aged.first { $0.card.title == "b" })
+        let after = CardStack(settings: settings)
+        let resumed = after.resume(glided, metrics: metrics, at: 50).entry
+        func top(_ entry: CardStack.Entry, _ time: Double) -> Double { entry.animator.shape(at: time).pillTop }
+        let step = 1.0 / 240
+        for offset in [0, 0.05, 0.2] {
+            let was = time + age + offset, now = 50 + offset
+            #expect(abs(top(resumed, now) - top(b, was)) < 0.1)
+            #expect(abs((top(resumed, now + step) - top(resumed, now)) - (top(b, was + step) - top(b, was))) < 0.01)
+        }
+        #expect(gliding.aged(by: 5).glide.isEmpty)
+        #expect(gliding.aged(by: 5).drawnTop == gliding.top)
+    }
+
     @Test func aCardThatWaitsWaitsAgainWhenReplacedByOneThatWaits() {
         let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
         let time = run(stack, until: 3)
@@ -259,5 +466,27 @@ struct CardStackTests {
         #expect(stack.isOnButton(of: a, at: ring, time: time))
         #expect(!stack.isOnButton(of: a, at: middle(a), time: time))
         #expect(!stack.isOnButton(of: b, at: b.animator.content(for: b.animator.shape(at: time)).ringCenter, time: time))
+        #expect(stack.button(of: a, at: ring, time: time) == .yes)
+    }
+
+    @Test func aQuestionsNoButtonIsLeftOfItsYesButton() {
+        var question = asking("merge?")
+        question.action = CardAction(label: "Merge", open: nil, decline: "Later")
+        let (no, yes) = (50.0, 60.0)
+        var buttons = metrics
+        buttons.actionWidth = IslandMetrics.buttonsWidth(yes: yes, no: no, scale: 1)
+        buttons.declineWidth = no
+        #expect(buttons.actionWidth == 116)
+        #expect(IslandMetrics.buttonsWidth(yes: yes, no: nil, scale: 1.25) == yes)
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3))
+        let entry = stack.enter(question, metrics: buttons, own: true, decided: 0, at: 0)
+        run(stack, until: 3)
+        let layout = entry.animator.content(for: entry.animator.shape(at: 3))
+        let left = layout.ringCenter.x - layout.ringSize / 2, y = layout.ringCenter.y
+        #expect(stack.button(of: entry, at: IslandPoint(left + no / 2, y), time: 3) == .no)
+        #expect(stack.button(of: entry, at: IslandPoint(left + no + 2, y), time: 3) == .no)
+        #expect(stack.button(of: entry, at: IslandPoint(left + no + 4, y), time: 3) == .yes)
+        #expect(stack.button(of: entry, at: IslandPoint(left + no + 6 + yes / 2, y), time: 3) == .yes)
+        #expect(stack.button(of: entry, at: IslandPoint(left - 20, y), time: 3) == nil)
     }
 }
