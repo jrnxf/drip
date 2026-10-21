@@ -456,7 +456,7 @@
   .deck .row { display: flex; gap: .8%; }
   .deck .row i { flex: 1; border-radius: 3px; background: var(--key); }
   .deck .row i.w { flex: 1.7; } .deck .row i.space { flex: 6.5; }
-  @media (min-width: 861px) {
+  @media (width > 860px) {
     /* A 14-inch MacBook Pro's screen, 1512 by 982 points; the stage draws at its width / 1512. */
     .hero .screen { height: auto; aspect-ratio: 1512 / 982; }
     .deck { display: block; }
@@ -1264,7 +1264,7 @@ const heroRoom = () => getComputedStyle(heroTermBox).position === "absolute"
   ? heroTermBox.getBoundingClientRect().top - heroScreen.getBoundingClientRect().top - 8 : null;
 // On a laptop-sized page the screen is a 14-inch MacBook Pro's, 1512 points wide, so the notch and
 // the cards keep their real size against it; a phone shows a close-up of the notch instead.
-const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (innerWidth > 860 ? W / 1512 : 1), avail: heroRoom });
+const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (matchMedia("(width > 860px)").matches ? W / 1512 : 1), avail: heroRoom });
 for (const keys of ["111111111111111", "w1111111111111", "w111111111111w", "w11111111111w", "ww11s11ww"]) {
   const row = document.createElement("div"); row.className = "row";
   for (const key of keys) { const i = document.createElement("i"); if (key !== "1") i.className = key === "s" ? "space" : "w"; row.append(i); }
