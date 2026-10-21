@@ -669,7 +669,6 @@ class Stage {
       start: this.clock, adopting: delivery.adopting, settings: delivery.stack,
       cards: new Map(cards.map((card) => [card.handle, card])), fit: this.stackFit(cards, delivery.stack),
     };
-    this.setFit(this.stack.fit);
     while (this.deliveries[0]?.stack && this.deliveries[0].adopting && this.stack.adopting) this.offer(this.deliveries.shift());
   }
 
@@ -856,8 +855,10 @@ class Stage {
     const started = this.stack?.start ?? this.current?.start;
     if (this.frozen !== null && started !== undefined && started !== Infinity) this.clock = started + this.frozen;
     else this.clock += Math.min(dt, 0.1);
-    if (!this.stack && !this.current) this.setFit(this.fit + (this.restFit() - this.fit) * (1 - Math.exp(-Math.min(dt, 0.1) * 9)));
-    if (this.stack) this.setFit(this.stack.fit);
+    if (!this.current) {
+      const target = this.stack?.fit ?? this.restFit(), eased = this.fit + (target - this.fit) * (1 - Math.exp(-Math.min(dt, 0.1) * 9));
+      this.setFit(this.frozen !== null || Math.abs(eased - target) < 0.002 ? target : eased);
+    }
     this.paint();
   }
 
