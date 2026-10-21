@@ -7,7 +7,7 @@ protocol CardDisplay {
     var automaticStyle: CardStyle { get }
 
     /// Shows the cards one after another, after any other drip's, and returns once the last has
-    /// gone, with the exit status to report. `locked` says what happens while the screen is locked;
+    /// gone, or as soon as a question is answered, with the exit status to report. `locked` says what happens while the screen is locked;
     /// a `stack` given stacks notch cards that way instead of as `stack` or `DRIP_STACK` says.
     func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32
 
