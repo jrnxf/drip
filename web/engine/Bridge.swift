@@ -256,6 +256,15 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         } catch {
             return failure(error, status: ExitStatus.hookFailed, subcommand: HookCommand.configuration.commandName)
         }
+    case let .invocation(.setup(command)):
+        if command.printOnly {
+            return send(["exit": ExitStatus.shown, "message": AgentSetup.snippet(for: command.agent)])
+        }
+        return send([
+            "exit": ExitStatus.setupFailed,
+            "message": "drip: drip setup adds hooks to your agent's settings on your Mac, not in this page. "
+                + "drip setup \(command.agent.rawValue) --print shows them here.",
+        ])
     case .invocation(.history):
         return send(["exit": 1, "message": "drip: the history lives on your Mac, not in this page"])
     case .invocation(.render), .invocation(.background):

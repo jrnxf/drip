@@ -399,7 +399,7 @@ seconds = 6</textarea>
           <tr><th scope="row">time</th><td>4.5 s by default; <code>--seconds</code> takes 0.5 to 60; an ask card waits for a click</td></tr>
           <tr><th scope="row">buttons</th><td><code>--open</code> opens a URL or a file; <code>--confirm</code> asks, then exits 0 on a click and 5 without one</td></tr>
           <tr><th scope="row">icons</th><td>SF Symbols, image files, app icons, and marks for Claude, Codex and Gemini</td></tr>
-          <tr><th scope="row">agents</th><td><code>drip hook claude</code> or <code>codex</code>, from the agent's own hooks</td></tr>
+          <tr><th scope="row">agents</th><td><code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> adds drip to the agent's own hooks</td></tr>
           <tr><th scope="row">replace</th><td><code>--id</code>: a newer card with the same id takes the older one's place</td></tr>
           <tr><th scope="row">history</th><td><code>drip history</code> lists past cards; <code>--missed</code>, the ones held while the screen was locked</td></tr>
         </table>
@@ -1143,6 +1143,7 @@ const KINDS = {
   ok: "a green check: it worked", warn: "orange: worth a look", fail: "red: it broke", info: "blue: for your information",
   ask: "purple: something waits on you, and the card waits until you click it",
   run: "runs a command and tells you how it went: drip run make test", hook: "reads a coding agent's hook payload: drip hook claude",
+  setup: "adds drip's hooks to a coding agent's settings: drip setup claude --print shows them",
   demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml (see the readout)",
 };
 const COMPLETIONS = [...CHIPS.map((c) => c.line), `drip run make deploy-fail`, `drip --help`, `drip ok "drip works"`, `echo "Backup done" | drip ok`, `drip demo`];
@@ -1291,7 +1292,7 @@ const FEATURES = [
     steps: [{ line: `drip run make test` }],
   },
   {
-    label: "HOOK", title: "Hear from coding agents", body: "Point Claude Code's or Codex's hooks at <code>drip hook</code>. A card names the project and what the agent needs, then says when it has finished.",
+    label: "HOOK", title: "Hear from coding agents", body: "<code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> points the agent's hooks at drip. A card names the project and what the agent needs, then says when it has finished.",
     steps: [
       { shown: "drip hook claude   # Notification", line: `drip hook claude '${CLAUDE("Notification", { notification_type: "permission_prompt", message: "Claude needs your permission to use Bash" })}'` },
       { sleep: 2.6 },

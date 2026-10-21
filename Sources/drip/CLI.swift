@@ -75,6 +75,8 @@ struct DripCLI {
             return demo(command)
         case let .invocation(.hook(command)):
             return hook(command)
+        case let .invocation(.setup(command)):
+            return setup(command)
         case let .invocation(.history(command)):
             return history(command)
         case let .invocation(.render(command)):
@@ -98,8 +100,8 @@ struct DripCLI {
         }
     }
 
-    /// The card for an agent's hook. Never exits 2, which an agent reads as "block": a mistake exits
-    /// 1 instead.
+    /// The card for an agent's hook. Any failure exits 1: an agent reads 2, and Gemini CLI any other
+    /// code, as "block".
     private func hook(_ command: HookCommand) -> Int32 {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
@@ -122,7 +124,34 @@ struct DripCLI {
         } catch {
             status = report(error, console, subcommand: HookCommand.configuration.commandName)
         }
-        return status == ExitStatus.usage ? ExitStatus.hookFailed : status
+        return status == ExitStatus.shown ? status : ExitStatus.hookFailed
+    }
+
+    /// Adds drip's hooks to the agent's settings, or prints them.
+    private func setup(_ command: SetupCommand) -> Int32 {
+        if command.printOnly {
+            print(AgentSetup.snippet(for: command.agent), terminator: "")
+            return ExitStatus.shown
+        }
+        let console = Console()
+        #if os(WASI)
+        console.error("drip setup changes files, which WebAssembly cannot")
+        return ExitStatus.setupFailed
+        #else
+        switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(command.agent) {
+        case let .done(lines, warnings):
+            warnings.forEach(console.warn)
+            lines.forEach { print($0) }
+            return ExitStatus.shown
+        case let .refused(reason, snippet):
+            console.error(reason)
+            print(snippet, terminator: "")
+            return ExitStatus.setupFailed
+        case let .failed(message):
+            console.error(message)
+            return ExitStatus.setupFailed
+        }
+        #endif
     }
 
     /// Everything that can fail is checked here, before the cards are handed off. `record` is false

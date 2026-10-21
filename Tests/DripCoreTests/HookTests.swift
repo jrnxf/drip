@@ -93,6 +93,78 @@ struct HookTests {
         #expect(Date().timeIntervalSince(start) < 30)
     }
 
+    @Test func claudeStopFailureFailsWithTheError() throws {
+        let event = try AgentHook.event(agent: .claude, payload: """
+            {"session_id":"s1","cwd":"/work/my-app","hook_event_name":"StopFailure","error":"rate_limit",
+             "error_details":"429 Too Many Requests","last_assistant_message":"API Error: Rate limit reached"}
+            """)
+        #expect(event == AgentHook.Event(
+            kind: "fail", title: "my-app stopped", detail: "API Error: Rate limit reached", id: "claude:s1"))
+        // Without the message, the details, else the error's name in words.
+        #expect(try AgentHook.event(agent: .claude, payload: """
+            {"hook_event_name":"StopFailure","error":"server_error","error_details":"500 Internal Server Error"}
+            """).detail == "500 Internal Server Error")
+        #expect(try AgentHook.event(agent: .claude, payload: """
+            {"hook_event_name":"StopFailure","error":"billing_error"}
+            """).detail == "billing error")
+        #expect(try AgentHook.event(agent: .claude, payload: #"{"hook_event_name":"StopFailure"}"#)
+            == AgentHook.Event(kind: "fail", title: "Claude stopped"))
+    }
+
+    @Test func codexPermissionRequestNeedsYou() throws {
+        let event = try AgentHook.event(agent: .codex, payload: """
+            {"session_id":"019a","turn_id":"t1","transcript_path":null,"cwd":"/src/web",
+             "hook_event_name":"PermissionRequest","model":"gpt-5.5","permission_mode":"default",
+             "tool_name":"Bash","tool_input":{"command":"npm install","description":null}}
+            """)
+        #expect(event == AgentHook.Event(
+            kind: "ask", title: "web needs you", detail: "Codex wants to run npm install", id: "codex:019a"))
+        func detail(_ input: String) throws -> String? {
+            try AgentHook.event(agent: .codex, payload: """
+                {"hook_event_name":"PermissionRequest","tool_name":"apply_patch","tool_input":\(input)}
+                """).detail
+        }
+        #expect(try detail(#"{"command":"rm -rf build","description":"Clean the build to retry"}"#)
+            == "Clean the build to retry")
+        #expect(try detail(#"{"command":["git","push","--force"]}"#) == "Codex wants to run git push --force")
+        #expect(try detail(#"{"patch":"*** Begin Patch"}"#) == "Codex wants to use apply_patch")
+        #expect(try detail(#"{"command":"  "}"#) == "Codex wants to use apply_patch")
+    }
+
+    @Test func codexStopHookIsDone() throws {
+        let event = try AgentHook.event(agent: .codex, payload: """
+            {"session_id":"019a","turn_id":"t1","cwd":"/src/web","hook_event_name":"Stop",
+             "stop_hook_active":false,"last_assistant_message":"Renamed the **route**."}
+            """)
+        #expect(event == AgentHook.Event(kind: "ok", title: "web is done", detail: "Renamed the route.", id: "codex:019a"))
+        // last_assistant_message is null when Codex has nothing to show.
+        #expect(try AgentHook.event(agent: .codex, payload: """
+            {"hook_event_name":"Stop","last_assistant_message":null}
+            """) == AgentHook.Event(kind: "ok", title: "Codex is done"))
+    }
+
+    @Test func geminiToolPermissionNeedsYou() throws {
+        let event = try AgentHook.event(agent: .gemini, payload: """
+            {"session_id":"g1","transcript_path":"/tmp/t.json","cwd":"/home/user/site",
+             "hook_event_name":"Notification","timestamp":"2026-10-21T12:00:00Z",
+             "notification_type":"ToolPermission","message":"Allow run_shell_command: npm test?",
+             "details":{"tool_name":"run_shell_command"}}
+            """)
+        #expect(event == AgentHook.Event(
+            kind: "ask", title: "site needs you", detail: "Allow run_shell_command: npm test?", id: "gemini:g1"))
+        #expect(try AgentHook.event(agent: .gemini, payload: """
+            {"hook_event_name":"Notification","notification_type":"Other","message":"m"}
+            """).kind == "info")
+    }
+
+    @Test func geminiAfterAgentIsDone() throws {
+        let event = try AgentHook.event(agent: .gemini, payload: """
+            {"session_id":"g1","cwd":"/home/user/site","hook_event_name":"AfterAgent","prompt":"fix it",
+             "prompt_response":"Fixed the `nav` *overflow*.","stop_hook_active":false}
+            """)
+        #expect(event == AgentHook.Event(kind: "ok", title: "site is done", detail: "Fixed the nav overflow.", id: "gemini:g1"))
+    }
+
     @Test func codexNotifyIsDone() throws {
         let event = try AgentHook.event(agent: .codex, payload: """
             {"type":"agent-turn-complete","thread-id":"t-9","turn-id":"1","cwd":"/src/web",
@@ -131,6 +203,10 @@ struct HookTests {
             {"type":"agent-turn-complete","session_id":"s","last_assistant_message":"bye"}
             """)
         #expect(codex == AgentHook.Event(kind: "ok", title: "Codex is done"))
+        let gemini = try AgentHook.event(agent: .gemini, payload: """
+            {"hook_event_name":"AfterAgent","last_assistant_message":"bye"}
+            """)
+        #expect(gemini == AgentHook.Event(kind: "ok", title: "Gemini is done"))
     }
 
     @Test func anUnknownEventIsAnError() {
@@ -142,9 +218,19 @@ struct HookTests {
         for payload in claude {
             #expect(throws: UsageError.self, "\(payload)") { try AgentHook.event(agent: .claude, payload: payload) }
         }
-        let codex = [#"{}"#, #"{"type":"approval-requested"}"#, #"{"hook_event_name":"Stop"}"#]
+        let codex = [
+            #"{}"#, #"{"type":"approval-requested"}"#, #"{"hook_event_name":"SessionStart"}"#,
+            #"{"hook_event_name":"Notification","notification_type":"permission_prompt"}"#,
+        ]
         for payload in codex {
             #expect(throws: UsageError.self, "\(payload)") { try AgentHook.event(agent: .codex, payload: payload) }
+        }
+        let gemini = [
+            #"{}"#, #"{"hook_event_name":"Stop"}"#, #"{"hook_event_name":"BeforeTool","tool_name":"x"}"#,
+            #"{"type":"agent-turn-complete"}"#,
+        ]
+        for payload in gemini {
+            #expect(throws: UsageError.self, "\(payload)") { try AgentHook.event(agent: .gemini, payload: payload) }
         }
     }
 
@@ -175,6 +261,7 @@ struct HookTests {
         // With none installed, the maker's bundled mark, and the ring still carries the state.
         #expect(AgentHook.Agent.claude.icon { _ in false } == .mark("claude"))
         #expect(AgentHook.Agent.codex.icon { _ in false } == .mark("codex"))
+        #expect(AgentHook.Agent.gemini.icon { _ in true } == .mark("gemini"))
         for agent in AgentHook.Agent.allCases {
             var card = Card(preset: .ok, title: "drip is done")
             card.icon = agent.icon { _ in false }

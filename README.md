@@ -21,7 +21,7 @@ drip warn "staging is ready" --confirm "Promote" && ./promote.sh
 drip ask "my-app needs you" --icon app:com.openai.chat
 drip ok "shipped" --position top --style glass
 drip info "deploying" --id deploy && drip ok "deployed" --id deploy
-drip hook claude              # from a Claude Code hook: which project needs you, and why
+drip setup claude             # Claude Code's hooks: which project needs you, and why
 drip demo                     # a few cards dropping from the notch, chained then pushed
 drip history --missed         # what came up while you were away
 ```
@@ -62,12 +62,130 @@ drip ok "drip works"
 no GUI session, so drip exits 3. drip does not follow Focus: cards show during Do Not Disturb, and in
 screen shares and recordings.
 
+## Coding agents
+
+drip shows a card when a coding agent needs you, when it is done, and when its turn dies on an
+error. One command adds drip's hooks to the agent's own settings:
+
+```sh
+drip setup claude   # Claude Code, in ~/.claude/settings.json
+drip setup codex    # Codex, in ~/.codex/hooks.json
+drip setup gemini   # Gemini CLI, in ~/.gemini/settings.json
+```
+
+`drip setup` keeps everything else in the file and its order, backs the old file up next to it as
+`settings.json.drip-backup-<date>-<time>`, and says what it added. Running it again changes nothing.
+`CLAUDE_CONFIG_DIR` and `CODEX_HOME` move the files, as they do for the agents. A settings file that
+is a symlink or read-only, as home-manager and other dotfile managers make, is never written or
+replaced, and neither is one that is not plain JSON, such as one with comments: drip says why,
+prints the hooks to add where the file comes from, and exits 1. `drip setup claude --print` prints
+the hooks without changing anything. Codex runs a new hook only once you trust it: run `/hooks` in
+Codex after `drip setup codex`.
+
+| Agent | Event | Card |
+| --- | --- | --- |
+| Claude Code | `Notification`: a permission prompt or a question | `ask`: `my-app needs you`, with Claude's message |
+| | `Stop`: the turn is done | `ok`: `my-app is done`, with the last thing Claude wrote |
+| | `StopFailure`: a rate limit, an outage or another API error ended the turn | `fail`: `my-app stopped`, with the error, such as `API Error: Rate limit reached` |
+| Codex | `PermissionRequest` | `ask`, such as `Codex wants to run npm install` |
+| | `Stop` | `ok`, with Codex's last message |
+| Gemini CLI | `Notification`: a tool permission | `ask`, with Gemini's message |
+| | `AfterAgent` | `ok`, with Gemini's last response |
+
+The title is the project, from the session's working directory. An `ask` card waits for you. Each
+session's card has the id `<agent>:<session>`, so a session's new card replaces its last one
+instead of queuing behind it: the waiting card turns into the done card in place, and a click on
+the card brings back the terminal the agent runs in. drip keeps the agent's Markdown out of the
+card: it shows the words, without code fences, heading or list markers, or emphasis marks.
+
+The card's icon is the agent's own app's, when it is installed: Claude.app for Claude Code
+(`com.anthropic.claudefordesktop`), and the Codex app or ChatGPT.app for Codex
+(`com.openai.codex`, `com.openai.chat`). Without one it is the maker's mark that drip bundles,
+`mark:claude`, `mark:codex` or `mark:gemini` (see [Icons](#icons)). Either way the ring at the notch
+shows the state, a breathing question while the agent waits on you and a check when it is done.
+
+**drip hook** is what the hooks run: `drip hook claude`, `drip hook codex` or `drip hook gemini`,
+with the hook's JSON on stdin, or as an argument, as Codex's older `notify` passes it. Card options such as `--icon`, `--position` or `--seconds` work as
+usual, as in `drip hook claude --icon ~/.config/drip/claude.png`. A payload it does not know prints
+an error. Any failure, from a usage error to a payload it cannot read, an invalid config or no GUI
+session, exits 1: Claude Code and Codex read exit 2 as "block", and Gemini CLI reads any code but 0
+and 1 that way, which after a turn makes it run the turn again. drip reads up to 4 MB of payload,
+and prints nothing on success, as Gemini CLI needs.
+
+**By hand.** These are the hooks `drip setup claude` adds to `~/.claude/settings.json`, and that
+`drip setup claude --print` prints:
+
+```json
+{
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog",
+        "hooks": [{ "type": "command", "command": "drip hook claude" }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "drip hook claude" }]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [{ "type": "command", "command": "drip hook claude" }]
+      }
+    ]
+  }
+}
+```
+
+The matcher leaves out `idle_prompt`: Claude Code sends it a minute after every finished turn, and
+its card would replace the done card that says what Claude did. `drip setup claude` moves the
+matcher drip's README used to recommend to this one.
+
+Codex takes the same shape in `~/.codex/hooks.json`, with `PermissionRequest` and `Stop` running
+`drip hook codex`, or as `[[hooks.Stop]]` tables in `~/.codex/config.toml`. Its older `notify =
+["drip", "hook", "codex"]` still works, but only for done cards: keep one of the two, or every done
+card shows twice. `drip setup codex` takes drip's `notify` out of `config.toml` for you. Gemini CLI
+takes it in `~/.gemini/settings.json`, with `Notification` and `AfterAgent` running `drip hook
+gemini`.
+
+**Aider** runs a command when it is done and waits for you:
+
+```sh
+aider --notifications --notifications-command 'drip ok "$(basename "$PWD") is done" --id "aider:$PWD"'
+```
+
+or, in `.aider.conf.yml`, `notifications: true` and `notifications-command:` with the same command.
+
+**opencode** loads plugins from `~/.config/opencode/plugins/`. This one, as `drip.js` there, shows
+a card when opencode asks for a permission and when a session is done:
+
+```js
+export const Drip = async ({ $, directory }) => {
+  const project = directory.split("/").pop()
+  return {
+    event: async ({ event }) => {
+      const id = `opencode:${event.properties?.sessionID}`
+      if (event.type === "permission.asked") {
+        const detail = `opencode wants to use ${event.properties.permission}`
+        await $`drip ask ${`${project} needs you`} -d ${detail} --id ${id}`.quiet().nothrow()
+      } else if (event.type === "session.idle") {
+        await $`drip ok ${`${project} is done`} --id ${id}`.quiet().nothrow()
+      }
+    },
+  }
+}
+```
+
+Any other agent or tool: wrap what it runs in `drip run`, or call drip from its hooks.
+
 ## Usage
 
 ```
 drip [KIND] [TITLE] [options]
 drip run [options] [--] <command> [args...]
-drip hook claude|codex [options] [payload]
+drip hook claude|codex|gemini [options] [payload]
+drip setup claude|codex|gemini [--print]
 drip demo [chain|push] [options]
 drip history [--missed] [--json | --replay]
 drip --version | --help
@@ -286,55 +404,7 @@ A git hook, such as `.git/hooks/post-merge`, which drip never slows down:
 drip info "pulled $(git log -1 --format='%h %s')"
 ```
 
-**Coding agents.** Point an agent's hooks at `drip hook` to see a card when it needs you or has
-finished. drip reads the hook's payload: the title is the project, from the session's working
-directory, and whether the agent needs you or is done, such as `drip needs you`. The detail is what
-the agent said: the notification's message, or the last thing it wrote before it stopped. A
-permission prompt or a question is `ask`, so its card waits for you, an idle prompt `info`, and a
-finished turn `ok`. Each session's card has the id `<agent>:<session>`, so a session's new card
-replaces its last one instead of queuing behind it: the waiting card turns into the done card in
-place, and a click on the card brings back the terminal the agent runs in.
-
-The card's icon is the agent's own app's, when it is installed: Claude.app for Claude Code
-(`com.anthropic.claudefordesktop`), and the Codex app or ChatGPT.app for Codex
-(`com.openai.codex`, `com.openai.chat`). Without one it is the maker's mark that drip bundles,
-`mark:claude` or `mark:codex` (see [Icons](#icons)). Either way the ring at
-the notch shows the state, a breathing question while the agent waits on you and a check when it
-is done. `--icon` sets another, such as `drip hook claude --icon ~/.config/drip/claude.png`.
-drip reads Claude Code's `Notification` and `Stop` events and Codex's `agent-turn-complete`; any
-other payload prints an error. Card options such as `--position` or `--seconds` work as usual. On a
-mistake, such as a usage error or a payload it cannot read, `drip hook` exits 1, never 2, since exit
-2 tells Claude Code to block the agent; an invalid config still exits 4, and no GUI session 3. drip
-reads up to 4 MB of payload from stdin, and keeps the agent's Markdown out of the card: it shows the
-words, without code fences, heading or list markers, or emphasis marks.
-
-**Claude Code**, in `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "Notification": [
-      {
-        "matcher": "permission_prompt|idle_prompt|elicitation_dialog",
-        "hooks": [{ "type": "command", "command": "drip hook claude" }]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [{ "type": "command", "command": "drip hook claude" }]
-      }
-    ]
-  }
-}
-```
-
-**Codex**, in `~/.codex/config.toml`. Codex adds the event payload as the last argument:
-
-```toml
-notify = ["drip", "hook", "codex"]
-```
-
-Any other agent or tool: wrap what it runs in `drip run`, or call drip from its hooks.
+Coding agents have [a section of their own](#coding-agents).
 
 ### Styles
 
@@ -367,7 +437,7 @@ that returned at once stack; a card that waits (`--wait`, or a question) waits i
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown. |
-| 1 | `drip hook` could not make a card: a usage error, or a payload it cannot read or does not know. |
+| 1 | `drip hook` could not make a card, for any reason; or `drip setup` left the agent's settings alone, or could not write them. |
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh. |
 | 4 | The config file is invalid; the message names the key and line. |
