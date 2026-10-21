@@ -434,7 +434,7 @@ final class CardPresenter: CardPresenting {
         waiting = card.waits
         enter(frame: frame, motion: motion) { [self] in
             entered = true
-            if !hovering { schedule(after: card.duration) }
+            if !hovering { schedule(after: waiting ? card.duration : card.seconds) }
         }
     }
 
