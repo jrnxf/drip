@@ -20,15 +20,14 @@ struct StyleSettingsTests {
         #expect(file.config.allPresets.first { $0.name == "ok" }?.style == nil)
     }
 
-    /// droplet is the only notch motion now: an old `notch` key is a warning, whatever its value, and
-    /// DRIP_NOTCH is not read at all.
-    @Test func theRemovedNotchSettingIsIgnored() throws {
+    /// No released drip had a `notch` key: it is unknown, as any other, and DRIP_NOTCH is not read.
+    @Test func notchIsNoSetting() throws {
         let file = try ConfigLoader.parse("""
             position = "notch"
             notch    = "ears"
             motion   = "subtle"
             """, path: path)
-        #expect(file.warnings == ["\(path):2: 'notch' is no longer used; droplet is the only notch motion"])
+        #expect(file.warnings == ["\(path):2: unknown key 'notch'"])
         #expect(file.config == Config(position: .notch, motion: .subtle))
         #expect(try ConfigLoader.parse("notch = 3", path: path).config == Config())
         #expect(try EnvironmentSettings(environment: ["DRIP_NOTCH": "drip"]) == EnvironmentSettings())
@@ -89,12 +88,25 @@ struct StyleSettingsTests {
 struct StyleCommandTests {
     @Test func flagsParse() throws {
         guard case let .invocation(.show(command)) = CommandLineParser.parse(
-            ["ok", "t", "--style", "wash", "--motion", "none", "--position", "notch"])
+            ["ok", "t", "--style", "wash", "--position", "notch"])
         else { Issue.record("did not parse"); return }
         let flags = command.options.flags
         #expect(flags.style == .wash)
-        #expect(flags.motion == Motion.none)
         #expect(flags.position == .notch)
+    }
+
+    /// The motion is a viewing preference, set in the config or DRIP_MOTION; only the snapshot
+    /// tests' `__render` takes it per card.
+    @Test func motionIsASettingNotAFlag() throws {
+        guard case let .exit(status, message) = CommandLineParser.parse(["ok", "t", "--motion", "none"]) else {
+            Issue.record("--motion parsed"); return
+        }
+        #expect(status == ExitStatus.usage)
+        #expect(message.hasPrefix("drip: unknown option '--motion': set motion in the config file or DRIP_MOTION"))
+        guard case let .invocation(.render(command)) = CommandLineParser.parse(
+            ["__render", "--out", "x.png", "ok", "t", "--motion", "none"])
+        else { Issue.record("__render --motion did not parse"); return }
+        #expect(command.flags.motion == Motion.none)
     }
 
     @Test func theRemovedNotchFlagIsAUsageError() {

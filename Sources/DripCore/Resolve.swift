@@ -35,11 +35,12 @@ public struct CardResolver {
     ///
     /// The first positional is the kind when it names a preset; otherwise it is the title and the
     /// kind is `info`. When there is no title, `standardInput` is read for the title and, unless
-    /// --detail was given, the detail. It is not called at all when a title was given.
+    /// --detail was given, the detail. It is not called at all when a title was given. Words after
+    /// the title, `rest`, are an error that says how to quote them into the title.
     public func resolve(
-        kind: String?, title: String?, flags: CardFlags, standardInput: () -> String? = { nil }
+        kind: String?, title: String?, rest: [String] = [], flags: CardFlags, standardInput: () -> String? = { nil }
     ) throws -> Card {
-        let (preset, positionalTitle) = try presetAndTitle(kind: kind, title: title)
+        let (preset, positionalTitle) = try presetAndTitle(kind: kind, title: title, rest: rest)
         var title = positionalTitle
         var detail = flags.detail
         if title == nil, let input = standardInput() {
@@ -64,7 +65,12 @@ public struct CardResolver {
     }
 
     private func card(preset: Preset, title: String, detail: String?, flags: CardFlags) -> Card {
-        let presetSound = config.sound == false ? Sound.none : preset.sound
+        // The config's top-level sound mutes every preset, or replaces the sound of those that set
+        // none of their own.
+        var presetSound = preset.sound
+        if config.sound == Sound.none || config.presets[preset.name]?.sound == nil {
+            presetSound = config.sound ?? preset.sound
+        }
         var card = Card(
             kind: preset.name,
             title: title,
@@ -92,16 +98,28 @@ public struct CardResolver {
         return card
     }
 
-    private func presetAndTitle(kind: String?, title: String?) throws -> (Preset, String?) {
+    private func presetAndTitle(kind: String?, title: String?, rest: [String]) throws -> (Preset, String?) {
         guard let kind else {
             return (try preset(named: Preset.defaultName), title)
         }
-        if let preset = presets[kind] {
-            return (preset, title)
+        let known = presets[kind]
+        if let title, known == nil || !rest.isEmpty {
+            // Most likely a title of several words, unquoted: `drip build finished`.
+            let words = ([title] + rest).joined(separator: " ")
+            let problem: String, shown: String, command: String
+            if known == nil {
+                problem = "unknown preset '\(kind)' (known: \(presets.keys.sorted().joined(separator: ", ")))"
+                shown = kind + " " + words
+                command = "drip \(ShellWord.quoted(shown))"
+            } else {
+                problem = "unexpected argument '\(rest[0])'"
+                shown = words
+                command = "drip \(kind) \(ShellWord.quoted(shown))"
+            }
+            throw UsageError("\(problem)\nTo show \"\(shown)\" as the title, quote it: \(command)")
         }
-        if title != nil {
-            let names = presets.keys.sorted().joined(separator: ", ")
-            throw UsageError("unknown preset '\(kind)' (known: \(names))")
+        if let known {
+            return (known, title)
         }
         return (try preset(named: Preset.defaultName), kind)
     }
@@ -111,5 +129,15 @@ public struct CardResolver {
             throw UsageError("unknown preset '\(name)'")
         }
         return preset
+    }
+}
+
+/// One word for a shell to read back as it is.
+enum ShellWord {
+    /// `text` in double quotes, or in single quotes when it holds a character a shell expands
+    /// inside double quotes.
+    static func quoted(_ text: String) -> String {
+        guard text.contains(where: { "\"$`\\!".contains($0) }) else { return "\"\(text)\"" }
+        return "'" + text.map { $0 == "'" ? "'\\''" : String($0) }.joined() + "'"
     }
 }

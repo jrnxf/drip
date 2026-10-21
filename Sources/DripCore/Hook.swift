@@ -37,7 +37,7 @@ public enum AgentHook {
         public var mark: AgentMark? {
             switch self {
             case .claude: return .claude
-            case .codex: return .openai
+            case .codex: return .codex
             }
         }
 

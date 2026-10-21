@@ -44,9 +44,9 @@ struct Console {
         if !quiet { error("warning: \(message)") }
     }
 
-    /// Warns about card options that were given but say nothing.
+    /// Warns about card options that were given but say nothing, or are on their way out.
     func warnAbout(_ options: CardOptions) {
-        if options.opensNothing { warn("--open is empty, so the card has no button") }
+        options.warnings.forEach(warn)
     }
 
     func error(_ message: String) {
@@ -84,13 +84,14 @@ struct DripCLI {
         }
     }
 
-    private func show(_ command: DripCommand) -> Int32 {
+    private func show(_ command: ShowCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         do {
             let card = try makeResolver(console).resolve(
-                kind: command.kind, title: command.title, flags: flags, standardInput: StandardInput.read)
+                kind: command.kind, title: command.title, rest: command.rest, flags: flags,
+                standardInput: StandardInput.read)
             return deliver([card], wait: flags.wait, console: console)
         } catch {
             return report(error, console)
@@ -232,7 +233,7 @@ struct DripCLI {
     }
 
     private func render(_ command: RenderCommand) -> Int32 {
-        let flags = command.options.flags
+        let flags = command.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         do {

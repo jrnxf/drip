@@ -174,7 +174,7 @@ struct HookTests {
         #expect(AgentHook.Agent.codex.icon { $0 == "com.openai.chat" } == .app("com.openai.chat"))
         // With none installed, the maker's bundled mark, and the ring still carries the state.
         #expect(AgentHook.Agent.claude.icon { _ in false } == .mark("claude"))
-        #expect(AgentHook.Agent.codex.icon { _ in false } == .mark("openai"))
+        #expect(AgentHook.Agent.codex.icon { _ in false } == .mark("codex"))
         for agent in AgentHook.Agent.allCases {
             var card = Card(preset: .ok, title: "drip is done")
             card.icon = agent.icon { _ in false }

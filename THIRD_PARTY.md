@@ -7,8 +7,9 @@ trademark; drip is not affiliated with Anthropic, OpenAI or Google, and none of 
 
 - `mark:claude`: Claude's spark, Anthropic. From Anthropic's press kit,
   <https://www.anthropic.com/press-kit> (`Claude Spark - Clay.svg`).
-- `mark:openai`: the Blossom, OpenAI. From OpenAI's brand page, <https://openai.com/brand/>
-  (`OpenAI-Logos-2025.zip`, `OpenAI-white-monoblossom.svg`), used under its usage terms there.
+- `mark:codex`: the Blossom, OpenAI, for Codex. From OpenAI's brand page,
+  <https://openai.com/brand/> (`OpenAI-Logos-2025.zip`, `OpenAI-white-monoblossom.svg`), used under
+  its usage terms there.
 - `mark:gemini`: Gemini's spark, Google. From LobeHub's icons, <https://lobehub.com/icons/gemini>
   (`@lobehub/icons-static-svg` 1.96.0, `gemini-color.svg`). LobeHub's icons are under the MIT
   License:

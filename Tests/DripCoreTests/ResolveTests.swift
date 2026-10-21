@@ -27,6 +27,24 @@ struct ResolveTests {
         #expect(error?.message.hasPrefix("unknown preset 'okay'") == true)
     }
 
+    /// The likeliest first mistake, a title of several words unquoted: the error says how to quote it.
+    @Test func anUnquotedTitleSaysHowToQuoteIt() {
+        func message(_ kind: String, _ title: String, _ rest: [String] = []) -> String? {
+            #expect(throws: UsageError.self) { try resolver.resolve(kind: kind, title: title, rest: rest, flags: CardFlags()) }?.message
+        }
+        #expect(message("build", "finished") == """
+            unknown preset 'build' (known: ask, fail, info, ok, warn)
+            To show "build finished" as the title, quote it: drip "build finished"
+            """)
+        #expect(message("build", "is", ["done"])?.hasSuffix(#"quote it: drip "build is done""#) == true)
+        #expect(message("ok", "build", ["is", "done"]) == """
+            unexpected argument 'is'
+            To show "build is done" as the title, quote it: drip ok "build is done"
+            """)
+        // Quoted so that a shell reads it back as written.
+        #expect(message("deploy", "$HOME", ["isn't", "set"])?.hasSuffix(#"quote it: drip 'deploy $HOME isn'\''t set'"#) == true)
+    }
+
     @Test func missingTitleIsAUsageError() {
         #expect(throws: UsageError.self) { try resolver.resolve(kind: nil, title: nil, flags: CardFlags()) }
         #expect(throws: UsageError.self) { try resolver.resolve(kind: "ok", title: nil, flags: CardFlags()) }

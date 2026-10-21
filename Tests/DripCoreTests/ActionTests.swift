@@ -18,6 +18,13 @@ struct ActionTests {
         return command.options.flags
     }
 
+    private func options(_ arguments: [String]) -> CardOptions? {
+        guard case let .invocation(.show(command)) = CommandLineParser.parse(["ok", "t"] + arguments) else {
+            return nil
+        }
+        return command.options
+    }
+
     private func usageMessage(_ arguments: [String]) -> String? {
         guard case let .exit(status, message) = CommandLineParser.parse(["ok", "t"] + arguments),
               status == ExitStatus.usage
@@ -45,8 +52,40 @@ struct ActionTests {
         #expect(empty != nil)
         #expect(empty?.open == nil)
         #expect(empty?.button == nil)
+        #expect(options(["--open", " ", "--button", "View run"])?.warnings == ["--open is empty, so the card has no button"])
+        #expect(options(["--open", "https://example.com", "--button", "View run"])?.warnings == [])
         #expect(usageMessage(["--open", "://nope"])?.contains("is not a valid URL") == true)
         #expect(usageMessage(["--button", "  "])?.contains("--button needs a label") == true)
+    }
+
+    /// `--confirm` asks: drip waits for the card, and its exit status says whether the button was
+    /// clicked.
+    @Test func confirmAsks() throws {
+        let asked = try #require(flags(["--confirm", "Promote"]))
+        #expect(asked.button == "Promote")
+        #expect(asked.open == nil)
+        #expect(options(["--confirm", "Promote"])?.warnings == [])
+        let card = try CardResolver().resolve(kind: "warn", title: "staging is ready", flags: asked)
+        #expect(card.asksQuestion)
+        #expect(Delivery.choose(for: [card], wait: false) == .wait)
+        #expect(try #require(flags(["--confirm", "-> Ship"])).button == "-> Ship")
+        #expect(usageMessage(["--confirm", " "])?.contains("--confirm needs a label") == true)
+        #expect(usageMessage(["--confirm", "Promote", "--open", "https://example.com"])?.contains("--confirm asks a question") == true)
+        #expect(usageMessage(["--confirm", "Promote", "--open", ""]) != nil)
+        #expect(usageMessage(["--confirm", "Promote", "--button", "Ship"])?.contains("both name the button") == true)
+    }
+
+    /// `--button` without `--open` is the old spelling of `--confirm`, kept through 0.1 with a
+    /// warning, so a script that asks with it, as a deploy approval does, still reads exit 0 or 5.
+    @Test func buttonWithoutOpenStillAsks() throws {
+        let arguments = ["--button", "Approve", "--seconds", "30", "--id", "mac-deploy:1", "--activate", "none", "--quiet"]
+        let asked = try #require(flags(arguments))
+        #expect(asked == (try #require(flags(["--confirm", "Approve", "--seconds", "30", "--id", "mac-deploy:1",
+                                               "--activate", "none", "--quiet"]))))
+        let card = try CardResolver().resolve(kind: "warn", title: "deploy?", flags: asked)
+        #expect(card.asksQuestion)
+        #expect(Delivery.choose(for: [card], wait: false) == .wait)
+        #expect(options(arguments)?.warnings == ["--button without --open is deprecated; use --confirm"])
     }
 
     @Test func theResolverAddsTheButton() throws {

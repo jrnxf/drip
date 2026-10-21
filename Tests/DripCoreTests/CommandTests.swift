@@ -1,4 +1,9 @@
-import DripCore
+@testable import DripCore
+#if os(WASI)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 import Testing
 
 /// One test per row of the CLI table, plus help, version and the hidden render command.
@@ -32,8 +37,30 @@ struct CommandTests {
             #expect(status == 0)
             #expect(message == expected)
         }
-        // With anything after it, the word is read as usual: here, a card titled help.
-        #expect((try? show(["help", "-d", "x"]))?.kind == "help")
+        // With anything after it, version is read as usual: here, a card titled version. help is
+        // ArgumentParser's own subcommand.
+        #expect((try? show(["version", "-d", "x"]))?.kind == "version")
+    }
+
+    /// `drip help run` shows run's help, as `drip run --help` does.
+    @Test func helpForASubcommand() {
+        for name in ["run", "hook", "demo", "history", "show"] {
+            guard case let .exit(status, help) = CommandLineParser.parse(["help", name]),
+                  case let .exit(_, flag) = CommandLineParser.parse([name, "--help"]),
+                  case let .exit(_, short) = CommandLineParser.parse([name, "-h"])
+            else { Issue.record("drip help \(name) parsed"); continue }
+            #expect(status == 0)
+            #expect(help == flag, "\(name)")
+            #expect(help == short, "\(name)")
+            #expect(!help.contains("SUBCOMMANDS"), "\(name)")
+        }
+        guard case let .exit(_, run) = CommandLineParser.parse(["help", "run"]) else { Issue.record(); return }
+        #expect(run.hasPrefix("OVERVIEW: Run a command, then show ok or fail with how long it took.\n\nUSAGE: drip run"), "\(run)")
+        // The options after the command are the command's.
+        guard case let .invocation(.run(command)) = CommandLineParser.parse(["run", "make", "--help"]) else {
+            Issue.record(); return
+        }
+        #expect(command.command == ["make", "--help"])
     }
 
     @Test func aTitleThatStartsWithADashIsExplained() throws {
@@ -42,9 +69,8 @@ struct CommandTests {
             return
         }
         #expect(status == 2)
-        #expect(message.hasPrefix("Error: '--- FAIL: TestFoo' starts with a dash, so it reads as an option."))
-        #expect(message.contains("drip fail -- '--- FAIL: TestFoo'"))
-        #expect(message.contains("Usage: drip [KIND] [TITLE] [options]"))
+        #expect(message.hasPrefix("drip: '--- FAIL: TestFoo' starts with a dash, so it reads as an option."))
+        #expect(message.hasSuffix("drip fail -- '--- FAIL: TestFoo'\nSee 'drip --help'."))
         // After --, it is the title.
         #expect(try show(["fail", "--", "--- FAIL: TestFoo"]).title == "--- FAIL: TestFoo")
         // A real unknown option, or a detail that starts with dashes next to another mistake, keeps
@@ -55,8 +81,8 @@ struct CommandTests {
             Issue.record("a mistake parsed")
             return
         }
-        #expect(unknown.hasPrefix("Error: Unknown option '--bogus'"))
-        #expect(seconds.hasPrefix("Error: --seconds must be between"))
+        #expect(unknown == "drip: unknown option '--bogus'\nSee 'drip --help'.")
+        #expect(seconds.hasPrefix("drip: --seconds must be between"))
     }
 
     @Test func textOptionsTakeValuesThatStartWithADash() throws {
@@ -124,12 +150,20 @@ struct CommandTests {
         assertUsageError(["hi", "--position", "left"])
     }
 
-    @Test func size() throws {
-        for size in CardSize.allCases {
-            #expect(try flags(["hi", "--size", size.rawValue]).size == size)
+    /// The size is a viewing preference, set in the config or DRIP_SIZE; only the snapshot tests'
+    /// `__render` takes it per card.
+    @Test func sizeIsASettingNotAFlag() throws {
+        assertUsageError(["hi", "--size", "large"])
+        guard case let .exit(_, message) = CommandLineParser.parse(["run", "--size", "large", "make"]) else {
+            Issue.record(); return
         }
-        #expect(try flags(["hi"]).size == nil)
-        assertUsageError(["hi", "--size", "huge"])
+        #expect(message == "drip: unknown option '--size': set size in the config file or DRIP_SIZE instead\nSee 'drip run --help'.")
+        for size in CardSize.allCases {
+            guard case let .invocation(.render(command)) = CommandLineParser.parse(
+                ["__render", "--out", "x.png", "hi", "--size", size.rawValue])
+            else { Issue.record(); continue }
+            #expect(command.flags.size == size)
+        }
     }
 
     @Test func waitAndQuiet() throws {
@@ -146,9 +180,72 @@ struct CommandTests {
         #expect(command.options.flags == CardFlags(detail: "there", seconds: 2))
     }
 
-    @Test func unknownOptionAndExtraArgumentsAreUsageErrors() {
+    @Test func unknownOptionsAreUsageErrors() {
         assertUsageError(["ok", "hi", "--bogus"])
-        assertUsageError(["ok", "hi", "there"])
+    }
+
+    /// Words after the title parse, so that the resolver can say how to quote them into the title.
+    @Test func wordsAfterTheTitleAreKept() throws {
+        let command = try show(["ok", "build", "is", "done", "-d", "x"])
+        #expect(command.title == "build")
+        #expect(command.rest == ["is", "done"])
+    }
+
+    /// Every mistake prints one way: `drip: <message>`, then one line saying where the help is.
+    @Test func errorsAreOneLineAndWhereTheHelpIs() {
+        let mistakes: [([String], String)] = [
+            (["ok", "hi", "--bogus"], "drip --help"), (["ok", "hi", "--seconds", "abc"], "drip --help"),
+            (["ok", "hi", "-s", "0.2"], "drip --help"), (["ok", "hi", "--position"], "drip --help"),
+            (["run"], "drip run --help"), (["run", "--nope", "make"], "drip run --help"),
+            (["hook"], "drip hook --help"), (["hook", "cursor"], "drip hook --help"),
+            (["demo", "sideways"], "drip demo --help"), (["history", "--json", "--replay"], "drip history --help"),
+        ]
+        for (arguments, help) in mistakes {
+            guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
+                Issue.record("\(arguments) parsed"); continue
+            }
+            #expect(status != 0, "\(arguments)")
+            let lines = message.split(separator: "\n").map(String.init)
+            #expect(lines.count == 2, "\(arguments): \(message)")
+            #expect(lines.first?.hasPrefix("drip: ") == true, "\(arguments): \(message)")
+            #expect(lines.first?.hasSuffix(".") == false, "\(arguments): \(message)")
+            #expect(lines.last == "See '\(help)'.", "\(arguments): \(message)")
+        }
+    }
+
+    /// The command starts at the first argument that is not one of drip's options, as for `time`
+    /// or `nice`.
+    @Test func runTakesTheCommandWithoutTheTerminator() throws {
+        #expect(try run(["make", "test"]).command == ["make", "test"])
+        let withOptions = try run(["-s", "3", "--detail", "x", "--quiet", "--position", "top", "ls", "--color", "-la"])
+        #expect(withOptions.command == ["ls", "--color", "-la"])
+        #expect(withOptions.options.flags == CardFlags(detail: "x", seconds: 3, position: .top, quiet: true))
+        // An option's value is never the command, and the command's own options are never drip's,
+        // nor joined to a value.
+        let wrapped = try run(["-d", "--- x", "--id", "build", "grep", "-d", "skip", "--id", "y", "--", "z"])
+        #expect(wrapped.command == ["grep", "-d", "skip", "--id", "y", "--", "z"])
+        #expect(wrapped.options.flags.detail == "--- x")
+        #expect(wrapped.options.flags.id == "build")
+        #expect(try run(["--open", "https://example.com", "./deploy.sh"]).command == ["./deploy.sh"])
+        #expect(try run(["--wait", "true"]).options.flags.wait)
+    }
+
+    /// The option names `drip run` knows take a value are exactly those that do.
+    @Test func runKnowsWhichOptionsTakeAValue() throws {
+        struct Help: Decodable {
+            struct Command: Decodable { var arguments: [Argument]? }
+            struct Argument: Decodable {
+                struct Name: Decodable { var kind: String; var name: String }
+                var kind: String
+                var names: [Name]?
+            }
+            var command: Command
+        }
+        let help = try JSONDecoder().decode(Help.self, from: Data(RunCommand._dumpHelp().utf8))
+        let valued = (help.command.arguments ?? []).filter { $0.kind == "option" }.flatMap { argument in
+            (argument.names ?? []).map { ($0.kind == "short" ? "-" : "--") + $0.name }
+        }
+        #expect(Set(valued) == CommandLineParser.valueOptions)
     }
 
     @Test func runTakesTheCommandAfterTheTerminator() throws {
@@ -169,8 +266,10 @@ struct CommandTests {
     @Test func runWithoutACommandIsAUsageError() {
         assertUsageError(["run"])
         assertUsageError(["run", "--"])
-        assertUsageError(["run", "make", "test"])
+        assertUsageError(["run", "-s", "3"])
         assertUsageError(["run", "--seconds", "99", "--", "true"])
+        // An option drip does not know is not the command.
+        assertUsageError(["run", "--bogus", "make"])
     }
 
     @Test func id() throws {
@@ -204,13 +303,16 @@ struct CommandTests {
 
     @Test func hookMistakesExitOneNotTwo() {
         // Claude Code reads a hook's exit 2 as "block", so drip hook never uses it.
-        for arguments in [["hook"], ["hook", "cursor"], ["hook", "claude", "--seconds", "99"]] {
+        for arguments in [["hook"], ["hook", "cursor"], ["hook", "claude", "--seconds", "99"], ["hook", "--position", "top"]] {
             guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
                 Issue.record("\(arguments) parsed"); continue
             }
             #expect(status == ExitStatus.hookFailed, "\(arguments)")
             #expect(!message.isEmpty, "\(arguments)")
         }
+        // Without an agent, one line says what is missing, not the whole help.
+        guard case let .exit(_, missing) = CommandLineParser.parse(["hook"]) else { Issue.record(); return }
+        #expect(missing == "drip: missing the agent: drip hook claude or drip hook codex\nSee 'drip hook --help'.")
         guard case let .exit(status, _) = CommandLineParser.parse(["hook", "--help"]) else { Issue.record(); return }
         #expect(status == 0)
     }
@@ -227,7 +329,8 @@ struct CommandTests {
     }
 
     @Test func helpAndVersionExitZero() {
-        for arguments in [["--help"], ["-h"], ["--version"], ["run", "--help"], ["history", "--help"]] {
+        for arguments in [["--help"], ["-h"], ["help"], ["--version"], ["run", "--help"], ["run", "-s", "3", "--help"],
+                          ["run", "--version"], ["history", "--help"], ["help", "hook"], ["ok", "--help"]] {
             guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
                 Issue.record("\(arguments) did not exit"); return
             }
@@ -238,13 +341,53 @@ struct CommandTests {
         #expect(version == dripVersion)
     }
 
-    @Test func helpListsRunAndHidesRender() {
+    /// The usage first, then examples, the card options, the subcommands and the exit codes.
+    @Test func helpListsTheSubcommandsAndHidesRender() throws {
         guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
-        #expect(help.contains("drip run [options] -- <command> [args...]"), "\(help)")
+        #expect(help.hasPrefix("OVERVIEW: Show a brief card at the notch on macOS.\n\nUSAGE: drip [KIND] [TITLE] [options]"), "\(help)")
+        #expect(help.contains("drip run [options] [--] <command> [args...]"), "\(help)")
         #expect(help.contains("drip hook claude|codex [options]"), "\(help)")
         #expect(help.contains("drip history [--missed] [--json | --replay]"), "\(help)")
+        let order = ["USAGE:", "EXAMPLES:", "ARGUMENTS:", "OPTIONS:", "SUBCOMMANDS:", "EXIT CODES:"].map {
+            help.firstRange(of: "\n\($0)")?.lowerBound
+        }
+        #expect(order.allSatisfy { $0 != nil }, "\(help)")
+        #expect(order.compactMap { $0 } == order.compactMap { $0 }.sorted(), "\(help)")
+        for subcommand in ["run", "hook", "demo", "history"] {
+            #expect(help.contains("\n  \(subcommand) "), "\(subcommand)")
+        }
         #expect(help.contains("--seconds"), "\(help)")
+        #expect(help.contains("--confirm"), "\(help)")
         #expect(!help.contains("__render"), "\(help)")
+        #expect(!help.contains("__background"), "\(help)")
+        // Preferences are settings, not flags.
+        #expect(!help.contains("--size"), "\(help)")
+        #expect(!help.contains("--motion"), "\(help)")
+        // ArgumentParser lists the values; the help text does not list them again.
+        #expect(!help.contains("bottom, center, top or notch"), "\(help)")
+        #expect(!help.contains("hud, glass, wash or terminal"), "\(help)")
+        #expect(help.contains("(values: bottom, center, top, notch)") || help.contains("(values: bottom,"), "\(help)")
+    }
+
+    /// The completion scripts know the subcommands, and only those shown.
+    @Test func completionScripts() {
+        for shell in ["zsh", "bash", "fish"] {
+            guard case let .exit(status, script) = CommandLineParser.parse(["--generate-completion-script", shell]) else {
+                Issue.record("\(shell) did not exit"); continue
+            }
+            #expect(status == 0, "\(shell)")
+            for subcommand in ["run", "hook", "demo", "history"] {
+                #expect(script.contains(subcommand), "\(shell): \(subcommand)")
+            }
+            #expect(!script.contains("__render"), "\(shell)")
+            #expect(!script.contains("__background"), "\(shell)")
+            #expect(!script.contains("drip run_complete"), "\(shell)")
+        }
+        guard case let .exit(_, zsh) = CommandLineParser.parse(["--generate-completion-script", "zsh"]) else {
+            Issue.record(); return
+        }
+        #expect(zsh.hasPrefix("#compdef drip\n"))
+        #expect(zsh.contains("_drip_run()"))
     }
 
     @Test func renderCommand() throws {
@@ -255,14 +398,14 @@ struct CommandTests {
         #expect(command.appearance == .dark)
         #expect(command.kind == "fail")
         #expect(command.title == "nope")
-        #expect(command.options.flags == CardFlags(detail: "exit 1", size: .large))
+        #expect(command.flags == CardFlags(detail: "exit 1", size: .large))
     }
 
     @Test func renderRequiresOut() {
         assertUsageError(["__render", "ok", "hi"])
     }
 
-    private func show(_ arguments: [String]) throws -> DripCommand {
+    private func show(_ arguments: [String]) throws -> ShowCommand {
         guard case let .invocation(.show(command)) = CommandLineParser.parse(arguments) else {
             throw UsageError("\(arguments) did not parse as a card")
         }

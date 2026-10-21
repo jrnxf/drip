@@ -545,7 +545,7 @@
           <a class="btn" href="https://github.com/jrnxf/drip"><svg><use href="#i-gh"/></svg>GitHub</a>
         </div>
         <aside class="usage rise d3" aria-label="drip usage at a glance"><div class="h"><span>drip(1)</span><span>macOS 13+</span></div><pre><b>drip</b> [KIND] [TITLE] [options]
-<b>drip run</b> [options] -- &lt;command&gt;
+<b>drip run</b> [options] &lt;command&gt;
 <b>drip hook</b> claude|codex
 <b>drip demo</b>
 
@@ -674,7 +674,7 @@ seconds = 6</textarea>
         <div class="shell">
           <div class="row"><code><span class="c">$ </span>brew install jrnxf/tap/drip</code><button type="button" class="copy" data-copy="brew install jrnxf/tap/drip">Copy</button></div>
           <div class="row"><code><span class="c">$ </span>drip ok "drip works"</code><button type="button" class="copy" data-copy='drip ok "drip works"'>Copy</button></div>
-          <div class="row"><code><span class="c">$ </span>drip run -- make test   <span class="c"># then wrap anything</span></code><button type="button" class="copy" data-copy="drip run -- make test">Copy</button></div>
+          <div class="row"><code><span class="c">$ </span>drip run make test   <span class="c"># then wrap anything</span></code><button type="button" class="copy" data-copy="drip run make test">Copy</button></div>
         </div>
         <div class="meta"><span>macOS 13 or newer</span><span>Notch or no notch</span><span>MIT licensed</span></div>
         <div class="ctas"><a class="btn primary" href="https://github.com/jrnxf/drip"><svg><use href="#i-gh"/></svg>Star on GitHub</a><a class="btn" href="https://github.com/jrnxf/drip#usage">Read the docs</a></div>
@@ -1303,7 +1303,7 @@ async function execOne(stages, term, stage, config) {
   const [program, ...args] = words;
   if (program === "clear") { term.clear(); return 0; }
   if (program === "sleep") { await sleep(Math.min(Number(args[0]) || 0, 10) * 1000); return 0; }
-  if (program === "help") { term.print(`this terminal runs drip. try: drip ok "hello", drip run -- npm test, drip demo, drip --help`, "dim"); return 0; }
+  if (program === "help") { term.print(`this terminal runs drip. try: drip ok "hello", drip run npm test, drip demo, drip --help`, "dim"); return 0; }
   if (program === "./promote.sh") { term.print("promoting api 1.4.2 to production", "dim"); return 0; }
   if (program !== "drip") { term.print(`zsh: command not found: ${program}  (this terminal only runs drip)`, "err"); return 127; }
 
@@ -1346,7 +1346,7 @@ const CHIPS = [
   { label: "Success", icon: "i-check", color: "var(--ok)", line: `drip ok "Build finished" -d "make test: 246 passed in 3.2s"` },
   { label: "Failure", icon: "i-x", color: "var(--fail)", line: `drip fail "Deploy failed" -d "staging: health check timed out after 30s"` },
   { label: "Warning", icon: "i-bang", color: "var(--warn)", line: `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"` },
-  { label: "drip run -- npm test", icon: "i-run", color: "#636366", line: `drip run -- npm test`, mono: true },
+  { label: "drip run npm test", icon: "i-run", color: "#636366", line: `drip run npm test`, mono: true },
   { label: "Claude needs you", icon: "i-ask", color: "var(--purple)", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'` },
   { label: "Replace in place", icon: "i-swap", color: "var(--info)", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` },
   { label: "With a button", icon: "i-hand", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip` },
@@ -1359,18 +1359,19 @@ const CHIPS = [
 const FLAGS = {
   "-d": "the gray text under the title, up to 3 lines", "--detail": "the gray text under the title, up to 3 lines",
   "-s": "time fully visible: 0.5 to 60 seconds", "--seconds": "time fully visible: 0.5 to 60 seconds",
-  "--button": "the button's label, up to 24 characters", "--open": "adds a button that opens a URL",
-  "--id": "names what the card is about: a newer card with the same id replaces it", "--size": "compact, regular or large",
-  "--color": "#rrggbb, or green, orange, red, blue, purple, pink, yellow, gray", "--icon": "an SF Symbol name, an image path, app: and a bundle id, mark:claude, mark:openai or mark:gemini, or none (this page draws symbols and marks only)",
-  "DRIP_STACK=push": "drops each new card out of the notch and pushes the others down", "--motion": "full, subtle or none", "--sound": "a system sound (this page plays none)", "--help": "drip's own help text", "--version": "the engine's version",
+  "--button": "the --open button's label, up to 24 characters", "--open": "adds a button that opens a URL",
+  "--confirm": "asks a question with a button of this label: drip exits 0 on a click, 5 if not",
+  "--id": "names what the card is about: a newer card with the same id replaces it",
+  "--color": "#rrggbb, or green, orange, red, blue, purple, pink, yellow, gray", "--icon": "an SF Symbol name, an image path, app: and a bundle id, mark:claude, mark:codex or mark:gemini, or none (this page draws symbols and marks only)",
+  "DRIP_STACK=push": "drops each new card out of the notch and pushes the others down", "--sound": "a system sound (this page plays none)", "--help": "drip's own help text", "--version": "the engine's version",
 };
 const KINDS = {
   ok: "a green check: it worked", warn: "orange: worth a look", fail: "red: it broke", info: "blue: for your information",
   ask: "purple: something waits on you, and the card waits until you click it",
-  run: "runs a command and tells you how it went: drip run -- make test", hook: "reads a coding agent's hook payload: drip hook claude",
+  run: "runs a command and tells you how it went: drip run make test", hook: "reads a coding agent's hook payload: drip hook claude",
   demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml (see the engine readout)",
 };
-const COMPLETIONS = [...CHIPS.map((c) => c.line), `drip run -- make deploy-fail`, `drip --help`, `drip ok "drip works"`, `echo "Backup done" | drip ok`];
+const COMPLETIONS = [...CHIPS.map((c) => c.line), `drip run make deploy-fail`, `drip --help`, `drip ok "drip works"`, `echo "Backup done" | drip ok`];
 
 function suggestion(value) {
   if (!value || /\s$/.test(value) && value.trim() === "drip") return value ? "ok \"hello\"" : "";
@@ -1552,7 +1553,7 @@ const CLAUDE = (event, extra) => JSON.stringify({ hook_event_name: event, cwd: "
 const FEATURES = [
   {
     title: "Wrap any command", body: "<code>drip run</code> runs it, times it and tells you how it went: green on exit 0, red with the exit code otherwise. Your exit status passes through.",
-    steps: [{ line: `drip run -- make test` }],
+    steps: [{ line: `drip run make test` }],
   },
   {
     title: "Agents that tap you on the shoulder", body: "Point Claude Code's or Codex's hooks at <code>drip hook</code>. A card says which project needs you, and why, then that it is done.",
@@ -1567,8 +1568,8 @@ const FEATURES = [
     steps: [{ line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy` }, { sleep: 2 }, { line: `drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` }],
   },
   {
-    title: "Ask, then act", body: "<code>--button</code> without <code>--open</code> asks a question: drip exits 0 on a click, so your script decides what happens next. Click it.",
-    steps: [{ shown: `drip warn "staging is ready" --button "Promote" && ./promote.sh`, line: `drip warn "staging is ready" -d "api 1.4.2" --button "Promote" --seconds 8`, then: "./promote.sh" }],
+    title: "Ask, then act", body: "<code>--confirm</code> asks a question: drip exits 0 on a click, so your script decides what happens next. Click it.",
+    steps: [{ shown: `drip warn "staging is ready" --confirm "Promote" && ./promote.sh`, line: `drip warn "staging is ready" -d "api 1.4.2" --confirm "Promote" --seconds 8`, then: "./promote.sh" }],
   },
   {
     title: "Pipe anything in", body: "No title? drip reads stdin: the first line is the title and the rest is the detail. Perfect for git hooks and cron jobs.",
