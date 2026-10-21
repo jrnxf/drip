@@ -82,7 +82,7 @@
   a { color: inherit; text-underline-offset: 3px; }
   button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
   :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-  code, kbd, input, textarea { font-family: var(--mono); }
+  code, input { font-family: var(--mono); }
   code { font-size: .82em; }
   b { font-weight: 600; }
   .lbl { font: 500 10.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
@@ -97,12 +97,11 @@
   .top nav { display: flex; gap: 22px; }
   .top a.lbl { text-decoration: none; }
   .top a.lbl:hover { color: var(--ink); }
-  /* Two-position slide switches: the theme, the readout. */
+  /* The theme's two-position slide switch. */
   .slide { display: flex; align-items: center; gap: 9px; border: 0; background: none; padding: 0; cursor: pointer; }
   .slide .track { position: relative; flex: none; width: 44px; height: 20px; border-radius: 5px; background: var(--body-2); box-shadow: inset 0 1px 3px var(--shade); border: 1px solid var(--edge); }
   .slide .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 14px; border-radius: 3px; background: var(--key); box-shadow: 0 1px 0 var(--edge), 0 2px 4px var(--shade); transition: transform .25s var(--ease), background .2s; }
   .slide[aria-checked="true"] .track::after { transform: translateX(20px); }
-  .slide.lit[aria-checked="true"] .track::after { background: var(--orange); }
 
   /* ---------- hero ---------- */
   .hero {
@@ -167,12 +166,8 @@
   .lcdline { flex: none; display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 38px; border-radius: 7px; background: var(--lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); color: var(--lcd-ink); font: 500 11.5px/1 var(--mono); }
   .lcdline:focus-within { box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--focus); }
   .lcdline .p { opacity: .7; }
-  .field { position: relative; flex: 1; min-width: 0; }
-  .field input, .field .ghost { font: inherit; padding: 0; margin: 0; border: 0; }
-  .field input { position: relative; z-index: 1; width: 100%; background: transparent; outline: none; color: var(--lcd-ink); caret-color: var(--orange); }
-  .field input::placeholder { color: var(--lcd-ink); opacity: .55; }
-  .field .ghost { position: absolute; inset: 0; white-space: pre; overflow: hidden; color: transparent; pointer-events: none; }
-  .field .ghost span { color: var(--lcd-ink); opacity: .45; }
+  .lcdline input { flex: 1; min-width: 0; font: inherit; padding: 0; margin: 0; border: 0; background: transparent; outline: none; color: var(--lcd-ink); caret-color: var(--orange); }
+  .lcdline input::placeholder { color: var(--lcd-ink); opacity: .55; }
   .keys { margin-top: 18px; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 10px; }
   .key {
     position: relative; aspect-ratio: 1 / .9; border-radius: 10px; border: 1px solid var(--edge); cursor: pointer; padding: 9px 8px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start;
@@ -183,33 +178,14 @@
   .key .led { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--c) 30%, var(--key-2)); box-shadow: inset 0 1px 1px rgba(0,0,0,.3); transition: background .15s, box-shadow .15s; }
   .key.running .led { background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px var(--c); }
   .key b { font: 600 10.5px/1.1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  /* The silkscreen under the keys: what the line you type means, the keys it takes, the readout switch. */
-  .strip { display: flex; align-items: center; gap: 18px; margin-top: 16px; min-height: 20px; }
-  .strip .hint { flex: 1; min-width: 0; font: 400 10.5px/1.5 var(--mono); color: var(--ink-2); }
-  .strip .hint code { font-size: inherit; color: var(--ink); }
-  .strip kbd { font: 600 9.5px/1 var(--mono); padding: 2px 4px; border: 1px solid var(--edge); border-radius: 3px; background: var(--key); color: var(--key-ink); }
-  .strip .legend { display: flex; gap: 12px; white-space: nowrap; }
+  /* The silkscreen under the keys: what the line you type means. */
+  .hint { margin: 16px 0 0; min-height: 20px; font: 400 10.5px/1.5 var(--mono); color: var(--ink-2); }
+  .hint code { font-size: inherit; color: var(--ink); }
   /* Callouts, as on an exploded drawing. */
   .callout { position: absolute; display: flex; align-items: center; gap: 8px; font: 500 10px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
   .callout::before { content: attr(data-n); display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid currentColor; font-size: 9px; letter-spacing: 0; }
   .callout i { display: block; height: 1px; background: currentColor; width: var(--w, 40px); }
   .callout.tl { top: 0; left: 0; } .callout.tr { top: 0; right: 0; } .callout.bl { bottom: 0; left: 0; } .callout.br { bottom: 0; right: 0; }
-
-  /* ---------- the engine readout ---------- */
-  .readout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; padding: 0 0 56px; }
-  .readout[hidden] { display: none; }
-  .module h3 { margin: 0 0 6px; font: 600 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
-  .module > p { margin: 0 0 14px; font-size: 14px; color: var(--ink-2); }
-  .nums { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-  .nums div { border-radius: 7px; padding: 8px 10px; background: var(--lcd); color: var(--lcd-ink); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); min-width: 0; }
-  .nums dt { font: 500 9px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; opacity: .7; }
-  .nums dd { margin: 4px 0 0; font: 600 12.5px/1.3 var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  .plot { display: block; width: 100%; height: 120px; margin-top: 14px; border-radius: 7px; background: var(--lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); }
-  .toggles { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 14px; font: 400 11px/1.4 var(--mono); }
-  .toggles label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .toggles input { accent-color: var(--orange); margin: 0; }
-  .config { display: block; width: 100%; min-height: 150px; resize: vertical; border: 0; border-radius: 2px; padding: 14px; background: var(--paper); color: var(--paper-ink); font: 400 12px/1.6 var(--mono); box-shadow: 0 10px 20px -12px var(--shade); }
-  .config:focus-visible { outline-offset: 3px; }
 
   /* ---------- sections ---------- */
   .block { border-top: 1px solid var(--rule); padding: 48px 0 70px; }
@@ -282,7 +258,6 @@
     .callout { display: none; }
     .sheet, .install { grid-template-columns: minmax(0, 1fr); gap: 36px; }
     .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .readout { grid-template-columns: minmax(0, 1fr); }
   }
   @media (width <= 760px) {
     .wrap { padding: 0 16px; }
@@ -296,13 +271,11 @@
     .side .printer { flex: none; height: 104px; }
     .keys { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
     .keys .key { aspect-ratio: auto; height: 58px; }
-    .strip .legend { display: none; }
     .features, .parts { grid-template-columns: minmax(0, 1fr); }
     .stackmod .display { height: 200px; }
     .module { padding: 16px; border-radius: 20px; }
     .block { padding: 40px 0 56px; }
   }
-  @media (pointer: coarse) { .strip .legend { display: none; } }
   @media (prefers-reduced-motion: reduce) { *, *::after { transition-duration: .001ms !important; } }
 </style>
 </head>
@@ -343,41 +316,14 @@
             </div>
             <div class="side">
               <div class="printer"><div class="slot"></div><div class="tape"><div class="scroll" id="hero-tape" aria-live="polite"></div></div></div>
-              <div class="lcdline"><span class="p" aria-hidden="true">›</span><div class="field"><div class="ghost" aria-hidden="true"></div><input id="input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type a drip command" aria-describedby="hint" placeholder='drip ok "hello"' disabled enterkeyhint="go"></div></div>
+              <div class="lcdline"><span class="p" aria-hidden="true">›</span><input id="input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type a drip command" aria-describedby="hint" placeholder='drip ok "hello"' disabled enterkeyhint="go"></div>
             </div>
           </div>
           <div class="keys" id="keys" role="group" aria-label="Examples"></div>
-          <div class="strip">
-            <span class="hint" id="hint">Type a <code>drip</code> command, or press a key.</span>
-            <span class="legend lbl" aria-hidden="true"><span><kbd>tab</kbd> complete</span><span><kbd>↑</kbd> history</span><span><kbd>enter</kbd> run</span></span>
-            <button type="button" class="slide lit" id="readout-toggle" role="switch" aria-checked="false" aria-controls="readout"><span class="lbl">readout</span><span class="track"></span></button>
-          </div>
+          <p class="hint" id="hint">Type a <code>drip</code> command, or press a key.</p>
         </div>
         <span class="callout bl" data-n="3" aria-hidden="true">keys: one example each<i style="--w:50px"></i></span>
         <span class="callout br" data-n="4" aria-hidden="true"><i style="--w:30px"></i>input: any drip command</span>
-      </div>
-    </section>
-
-    <section class="readout" id="readout" aria-label="Engine readout" hidden>
-      <div class="module">
-        <h3>readout</h3>
-        <p>Every number comes from DripCore's <code>IslandAnimator</code>, computed by the engine for each frame of the newest card above.</p>
-        <dl class="nums" id="live"></dl>
-        <canvas class="plot" id="plot" aria-hidden="true"></canvas>
-        <div class="toggles">
-          <label><input type="checkbox" id="outline"> show the traced outline points</label>
-          <label><input type="checkbox" id="slow"> slow motion (¼ speed)</label>
-        </div>
-      </div>
-      <div class="module">
-        <h3>~/.config/drip/config.toml</h3>
-        <p>drip's TOML parser reads this on every command. Edit it, then try <code>drip deploy "shipped"</code>.</p>
-        <textarea class="config" id="config" spellcheck="false" aria-label="drip config file"># Read by drip's TOML parser on every command.
-[preset.deploy]
-icon  = "paperplane.fill"
-color = "#a78bfa"
-seconds = 6</textarea>
-        <dl class="nums" id="load" style="margin-top:18px"></dl>
       </div>
     </section>
 
@@ -419,7 +365,7 @@ seconds = 6</textarea>
     <section class="block" id="engine">
       <div class="lbl">03 / how this page works</div>
       <h2>how this <b>page works.</b></h2>
-      <p class="sub">DripCore, drip's engine, is compiled from the same Swift sources to WebAssembly and loaded by this page. It parses each command line, resolves the card, wraps the text and runs the springs that drop it out of the notch. The page paints what it computes. Turn on the <a href="#readout" id="readout-link">readout</a> to see the numbers.</p>
+      <p class="sub">DripCore, drip's engine, is compiled from the same Swift sources to WebAssembly and loaded by this page. It parses each command line, resolves the card, wraps the text and runs the springs that drop it out of the notch. The page paints what it computes.</p>
       <div class="parts">
         <div><h3><i style="--c:#30d158"></i>real drip</h3><ul>
           <li>The command line, parsed by swift-argument-parser, with drip's own errors and <code>--help</code></li>
@@ -590,7 +536,7 @@ class Stage {
     this.layer = document.createElement("canvas"); this.lctx = this.layer.getContext("2d");
     this.textLayer = document.createElement("canvas"); this.tctx = this.textLayer.getContext("2d");
     this.deliveries = []; this.queue = []; this.current = null; this.stack = null; this.lastCard = null;
-    this.clock = 0; this.fit = 1; this.speed = 1;
+    this.clock = 0; this.fit = 1;
     this.frozen = null; this.visible = true; this.dirty = true; this.pointer = null;
     this.listeners = [];
     new ResizeObserver(() => { this.resize(); this.setFit(this.fitFor(this.current)); this.dirty = true; }).observe(this.canvas);
@@ -864,20 +810,14 @@ class Stage {
   }
 
   // The black shape: the traced liquid while the drop touches what it grows out of, a capsule once it
-  // floats free. Returns how many outline points it traced.
+  // floats free.
   fillShape(f) {
     const { ctx } = this;
-    let points = 0;
     ctx.fillStyle = "#000"; ctx.beginPath();
     if (f.touchesNotch) {
-      for (const loop of f.loops) { ctx.moveTo(loop[0], loop[1]); for (let i = 2; i < loop.length; i += 2) ctx.lineTo(loop[i], loop[i + 1]); ctx.closePath(); points += loop.length / 2; }
+      for (const loop of f.loops) { ctx.moveTo(loop[0], loop[1]); for (let i = 2; i < loop.length; i += 2) ctx.lineTo(loop[i], loop[i + 1]); ctx.closePath(); }
       ctx.fill();
     } else { roundedRect(ctx, -f.pillWidth / 2, f.pillTop, f.pillWidth, f.pillHeight, f.pillRadius); ctx.fill(); }
-    if (this.showOutline && f.touchesNotch) {
-      ctx.fillStyle = "#30d158";
-      for (const loop of f.loops) for (let i = 0; i < loop.length; i += 2) ctx.fillRect(loop[i] - 0.4, loop[i + 1] - 0.4, 0.8, 0.8);
-    }
-    return points;
   }
 
   step(now, dt) {
@@ -887,7 +827,7 @@ class Stage {
     if (!this.current && !this.stack && !this.dirty && this.fit === this.restFit()) return;
     const started = this.stack?.start ?? this.current?.start;
     if (this.frozen !== null && started !== undefined && started !== Infinity) this.clock = started + this.frozen;
-    else this.clock += Math.min(dt, 0.1) * this.speed;
+    else this.clock += Math.min(dt, 0.1);
     if (!this.stack && !this.current) this.setFit(this.fit + (this.restFit() - this.fit) * (1 - Math.exp(-Math.min(dt, 0.1) * 9)));
     if (this.stack) {
       // The stack zooms out to hold its cards, and back in once it has gone.
@@ -909,7 +849,7 @@ class Stage {
     if (this.stack) { this.paintStack(W, H); return; }
 
     const s = this.current;
-    if (!s) { this.emit("frame", null); return; }
+    if (!s) return;
     const t = this.clock - s.start;
     // A card that waits for you gives way to the next card and counts down from now.
     if (s.waiting && !s.exitCues && (this.queue.length || this.deliveries.length)) {
@@ -917,20 +857,17 @@ class Stage {
     }
     if (!s.exitCues && t >= s.exitAt && !s.hover) this.leave(s, t);
     else if (!s.exitCues && t >= s.exitAt) s.exitAt = t; // hovering holds the card, as on a Mac
-    const started = performance.now();
     const f = drip.frame(s.handle, t);
-    const computeMs = performance.now() - started;
     let panel = 1;
     if (s.card.motion !== "full" && s.panelFade !== undefined) {
       panel = s.panelFade === 0 ? 1 : clamp01(t / s.panelFade);
       if (s.exitCues) panel = s.panelFade === 0 ? (t < s.exitAt ? 1 : 0) : 1 - clamp01((t - s.exitAt) / s.panelFade);
     }
     ctx.globalAlpha = panel;
-    const points = this.fillShape(f);
+    this.fillShape(f);
     this.paintCard(s, f, t, null, W, H);
     ctx.globalAlpha = 1;
     s.lastFrame = f; s.lastT = t;
-    this.emit("frame", { s, f, t, computeMs, points });
     if (s.exitCues && t >= s.done) { drip.release(s.handle); this.current = null; this.dirty = true; this.emit("end", s); }
   }
 
@@ -966,11 +903,9 @@ class Stage {
     }
     for (const handle of changes.gone ?? []) { drip.release(handle); st.cards.delete(handle); }
 
-    const started = performance.now();
     const frames = drip.stack.frame(st.id, t);
-    const computeMs = performance.now() - started;
-    let points = 0, bottom = 0;
-    for (const { frame } of frames) points += this.fillShape(frame);
+    let bottom = 0;
+    for (const { frame } of frames) this.fillShape(frame);
     for (const { handle, remaining, targetTop, frame } of frames) {
       const card = st.cards.get(handle), ct = t - card.start;
       card.ring = card.card.action ? null : card.waiting ? 1 : clamp01(remaining / card.card.seconds);
@@ -979,8 +914,6 @@ class Stage {
       bottom = Math.max(bottom, targetTop + card.metrics.pillHeight, frame.pillTop + frame.pillHeight);
     }
     st.bottom = bottom || st.bottom; st.frames = frames;
-    const newest = st.newest && st.cards.has(st.newest.handle) ? st.newest : null;
-    this.emit("frame", newest?.lastFrame ? { s: newest, f: newest.lastFrame, t: newest.lastT, computeMs, points, stack: { mode: st.settings.mode, shown: frames.length, max: st.settings.max } } : null);
     if (changes.done) { this.stack = null; this.dirty = true; this.screen.style.cursor = ""; this.emit("end", null); }
   }
 }
@@ -1051,10 +984,11 @@ function producer(words) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const configText = () => document.getElementById("config").value;
+// The config.toml drip reads here: a deploy preset, for the PRESET key and its feature module.
+const CONFIG = `[preset.deploy]\nicon  = "paperplane.fill"\ncolor = "#a78bfa"\nseconds = 6`;
 
 // Runs one typed line in a terminal against a stage. Resolves with the last command's status.
-async function exec(line, term, stage, { config = configText(), echo = true, shown = line } = {}) {
+async function exec(line, term, stage, { config = CONFIG, echo = true, shown = line } = {}) {
   if (echo) term.echo(shown);
   let commands;
   try { commands = parseLine(line); } catch (error) { term.print(`zsh: ${error.message}`, "err"); return 1; }
@@ -1107,7 +1041,7 @@ const narrow = matchMedia("(width <= 760px)");
 // The notch and the cards at their real size, smaller only when the display is too narrow for them.
 const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 600)) });
 const stages = [hero];
-const input = document.getElementById("input"), ghost = document.querySelector(".ghost"), hintWhat = document.getElementById("hint");
+const input = document.getElementById("input"), hint = document.getElementById("hint");
 
 // Four drips at once: three stack, and the fourth waits for room.
 const STACK_LINES = (mode) => [
@@ -1144,26 +1078,8 @@ const KINDS = {
   ask: "purple: something waits on you, and the card waits until you click it",
   run: "runs a command and tells you how it went: drip run make test", hook: "reads a coding agent's hook payload: drip hook claude",
   setup: "adds drip's hooks to a coding agent's settings: drip setup claude --print shows them",
-  demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml (see the readout)",
+  demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml",
 };
-const COMPLETIONS = [...CHIPS.map((c) => c.line), `drip run make deploy-fail`, `drip --help`, `drip ok "drip works"`, `echo "Backup done" | drip ok`, `drip demo`];
-
-function suggestion(value) {
-  if (!value || /\s$/.test(value) && value.trim() === "drip") return value ? "ok \"hello\"" : "";
-  const example = COMPLETIONS.find((c) => c.startsWith(value) && c.length > value.length);
-  if (example) return example.slice(value.length);
-  const words = value.split(/\s+/), last = words.at(-1);
-  if (last.startsWith("--") && !/\s$/.test(value)) {
-    const flag = Object.keys(FLAGS).find((f) => f.startsWith(last) && f !== last);
-    if (flag) return flag.slice(last.length) + " ";
-  }
-  if (words.length === 2 && words[0] === "drip" && last) {
-    const kind = Object.keys(KINDS).find((k) => k.startsWith(last) && k !== last);
-    if (kind) return kind.slice(last.length) + " ";
-  }
-  if ("drip".startsWith(value) && value !== "drip") return "drip".slice(value.length) + " ";
-  return "";
-}
 function explain(value) {
   const words = value.trim().split(/\s+/);
   for (let i = words.length - 1; i >= 0; i--) {
@@ -1171,14 +1087,9 @@ function explain(value) {
     if (FLAGS[w]) return `<code>${escapeHTML(w)}</code> ${escapeHTML(FLAGS[w])}`;
     if (i === 1 && words[0] === "drip" && KINDS[w]) return `<code>drip ${escapeHTML(w)}</code> ${escapeHTML(KINDS[w])}`;
   }
-  return value ? `Press <kbd>tab</kbd> to complete, <kbd>enter</kbd> to run.` : `Type a <code>drip</code> command, or press a key.`;
+  return value ? `Press enter to run.` : `Type a <code>drip</code> command, or press a key.`;
 }
-function renderGhost() {
-  const value = input.value, rest = input.selectionStart === value.length ? suggestion(value) : "";
-  ghost.textContent = value; ghost.dataset.rest = rest;
-  if (rest && input.scrollWidth <= input.clientWidth + 1) { const span = document.createElement("span"); span.textContent = rest; ghost.append(span); }
-  hintWhat.innerHTML = explain(value);
-}
+const renderHint = () => { hint.innerHTML = explain(input.value); };
 const escapeHTML = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 const lineHistory = []; let historyIndex = 0;
@@ -1187,7 +1098,8 @@ async function runHero(line, { fromUser = true } = {}) {
   if (fromUser) stopAttract();
   if (busy) return;
   const trimmed = line.trim();
-  if (trimmed) { lineHistory.push(line); historyIndex = lineHistory.length; }
+  // ↑ and ↓ recall what the visitor ran, not the page's own examples.
+  if (trimmed && fromUser) { lineHistory.push(line); historyIndex = lineHistory.length; }
   busy = true; input.disabled = true;
   // The key whose example this is lights until its cards have gone, whoever pressed it.
   const key = keyFor.get(line);
@@ -1197,20 +1109,14 @@ async function runHero(line, { fromUser = true } = {}) {
     busy = false; input.disabled = false;
     if (key) (async () => { while (hero.busy && !busy) await sleep(150); if (!busy) key.classList.remove("running"); })();
     if (fromUser && !matchMedia("(pointer: coarse)").matches) input.focus({ preventScroll: true });
-    renderGhost();
+    renderHint();
   }
 }
-input.addEventListener("input", () => { stopAttract(); renderGhost(); });
-input.addEventListener("keyup", renderGhost);
-input.addEventListener("click", renderGhost);
+input.addEventListener("input", () => { stopAttract(); renderHint(); });
 input.addEventListener("keydown", (event) => {
-  const rest = ghost.dataset.rest;
-  if ((event.key === "Tab" || (event.key === "ArrowRight" && input.selectionStart === input.value.length)) && rest) {
-    event.preventDefault(); input.value += rest; renderGhost(); return;
-  }
-  if (event.key === "Enter") { const line = input.value; input.value = ""; renderGhost(); if (line.trim()) runHero(line); }
-  else if (event.key === "ArrowUp" && historyIndex > 0) { input.value = lineHistory[--historyIndex]; event.preventDefault(); renderGhost(); }
-  else if (event.key === "ArrowDown") { historyIndex = Math.min(historyIndex + 1, lineHistory.length); input.value = lineHistory[historyIndex] ?? ""; renderGhost(); }
+  if (event.key === "Enter") { const line = input.value; input.value = ""; renderHint(); if (line.trim()) runHero(line); }
+  else if (event.key === "ArrowUp" && historyIndex > 0) { input.value = lineHistory[--historyIndex]; event.preventDefault(); renderHint(); }
+  else if (event.key === "ArrowDown" && historyIndex < lineHistory.length) { historyIndex++; input.value = lineHistory[historyIndex] ?? ""; renderHint(); }
   else if (event.key === "l" && event.ctrlKey) { heroTerm.clear(); event.preventDefault(); }
 });
 
@@ -1221,10 +1127,10 @@ async function typeAndRun(line, { fromUser = true } = {}) {
   if (!reduceMotion.matches) {
     const step = Math.max(6, Math.min(22, 520 / line.length));
     input.value = ""; input.readOnly = true;
-    try { for (let i = 0; i < line.length; i += 2) { input.value = line.slice(0, i + 2); ghost.textContent = ""; await sleep(step); } }
+    try { for (let i = 0; i < line.length; i += 2) { input.value = line.slice(0, i + 2); await sleep(step); } }
     finally { input.readOnly = false; }
   }
-  input.value = ""; renderGhost();
+  input.value = ""; renderHint();
   await runHero(line, { fromUser });
 }
 
@@ -1238,51 +1144,6 @@ for (const chip of CHIPS) {
   b.addEventListener("click", () => { if (drip && !busy) typeAndRun(chip.line); });
   keysBox.append(b); keyFor.set(chip.line, b);
 }
-
-// ===== The readout: the engine's numbers for the hero's newest card, and the config it reads =====
-const readout = document.getElementById("readout"), readoutToggle = document.getElementById("readout-toggle");
-function setReadout(on) {
-  readoutToggle.setAttribute("aria-checked", String(on)); readout.hidden = !on;
-  try { localStorage.setItem("drip-readout", on ? "1" : "0"); } catch {}
-}
-readoutToggle.addEventListener("click", () => setReadout(readout.hidden));
-document.getElementById("readout-link").addEventListener("click", () => setReadout(true));
-document.getElementById("outline").addEventListener("change", (e) => { hero.showOutline = e.target.checked; });
-document.getElementById("slow").addEventListener("change", (e) => { hero.speed = e.target.checked ? 0.25 : 1; });
-
-const live = document.getElementById("live");
-let liveTick = 0;
-function showLive(data) {
-  if (readout.hidden || ++liveTick % 4) return;
-  const rows = data ? [
-    ["t", data.t.toFixed(2) + " s"], ["capsule", `${data.f.pillWidth.toFixed(1)} × ${data.f.pillHeight.toFixed(1)} pt`],
-    ["top", data.f.pillTop.toFixed(1) + " pt"], ["open", data.f.progress.toFixed(3)], ["melt", data.f.blend.toFixed(2) + " pt"],
-    ["outline", data.f.touchesNotch ? `${data.points} points` : "free capsule"], ["engine frame", data.computeMs.toFixed(2) + " ms"],
-    ["card", data.s.card.kind + (data.s.card.id ? ` · id ${data.s.card.id}` : "")],
-    ...(data.stack ? [["stack", `${data.stack.mode}, ${data.stack.shown} of ${data.stack.max}`]] : []),
-  ] : [["island", "at rest"], ["waiting", hero.deliveries.reduce((n, d) => n + d.cards.length, hero.queue.length) + " cards"]];
-  live.innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${escapeHTML(String(v))}</dd></div>`).join("");
-}
-const plot = document.getElementById("plot"), pctx = plot.getContext("2d");
-let samples = [];
-function plotSample(data) {
-  if (readout.hidden || !data) return;
-  const { t, f, s } = data;
-  if (!samples.length || t < samples.at(-1).t) samples = [];
-  samples.push({ t, w: f.pillWidth / s.metrics.pillWidth, open: f.progress, y: (f.pillTop + f.pillHeight / 2) / (s.metrics.pillTop + s.metrics.pillHeight / 2) });
-  const dpr = devicePixelRatio || 1, w = plot.clientWidth, h = plot.clientHeight;
-  plot.width = w * dpr; plot.height = h * dpr; pctx.scale(dpr, dpr);
-  const style = getComputedStyle(document.documentElement);
-  const span = Math.max(1.6, samples.at(-1).t);
-  pctx.strokeStyle = style.getPropertyValue("--lcd-ink"); pctx.globalAlpha = 0.25; pctx.beginPath(); pctx.moveTo(0, h * 0.25); pctx.lineTo(w, h * 0.25); pctx.stroke(); pctx.globalAlpha = 1;
-  const series = [["w", "#0a84ff", "width"], ["open", "#30d158", "open"], ["y", "#ff4f00", "drop center"]];
-  series.forEach(([key, color, name], i) => {
-    pctx.strokeStyle = color; pctx.lineWidth = 1.5; pctx.beginPath();
-    samples.forEach((p, j) => { const x = p.t / span * w, y = h * 0.25 + (1 - p[key]) * h * 0.6; j ? pctx.lineTo(x, y) : pctx.moveTo(x, y); });
-    pctx.stroke(); pctx.fillStyle = color; pctx.font = `500 10px ${style.getPropertyValue("--mono")}`; pctx.fillText(name, 8 + i * 90, 16);
-  });
-}
-hero.on((kind, data) => { if (kind === "frame") { showLive(data); plotSample(data); } });
 
 // ===== What it does: six modules, each its own display on the same engine =====
 const CLAUDE = (event, extra) => JSON.stringify({ hook_event_name: event, cwd: "/work/my-app", session_id: "s1", ...extra });
@@ -1313,7 +1174,7 @@ const FEATURES = [
   },
   {
     label: "PRESET", title: "Your own presets", body: "Icons, colors, sounds and timing go in <code>~/.config/drip/config.toml</code>. This module defines a <code>deploy</code> preset.",
-    config: `[preset.deploy]\nicon  = "paperplane.fill"\ncolor = "#a78bfa"\nseconds = 6`,
+    config: CONFIG,
     steps: [{ line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` }],
   },
 ];
@@ -1424,10 +1285,6 @@ function setTheme(theme, remember = true) {
 }
 setTheme(root.dataset.theme, false);
 themeSwitch.addEventListener("click", () => setTheme(root.dataset.theme === "dark" ? "light" : "dark"));
-const params = new URLSearchParams(location.search);
-let storedReadout = null;
-try { storedReadout = localStorage.getItem("drip-readout"); } catch {}
-if ((params.get("readout") ?? storedReadout) === "1") setReadout(true);
 
 // Copy buttons, with a fallback for file:// pages where the clipboard API is off.
 for (const b of document.querySelectorAll("[data-copy]")) {
@@ -1447,7 +1304,7 @@ requestAnimationFrame((now) => { lastNow = now; requestAnimationFrame(loop); });
 // For screenshots and the curious: drive the hero from the console.
 window.__drip = {
   run: (line) => runHero(line, { fromUser: false }), freeze: (t) => { hero.frozen = t; }, thaw: () => { hero.frozen = null; },
-  reset: () => hero.reset(), stopAttract, stages, setTheme, setReadout, playStack,
+  reset: () => hero.reset(), stopAttract, stages, setTheme, playStack,
   // The cards a stage's stack shows, top to bottom: 0 the hero, 1-6 the features, 7 the stack module.
   stack: (i = 0) => {
     const st = stages[i].stack;
@@ -1472,8 +1329,6 @@ async function compileEngine() {
     return await WebAssembly.compile(await response.arrayBuffer());
   }
 }
-const loadRows = [];
-const showLoad = () => document.getElementById("load").innerHTML = loadRows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
 try {
   const t0 = performance.now();
   const module = await compileEngine();
@@ -1481,18 +1336,13 @@ try {
   drip = await loadDrip(module, measure);
   const t2 = performance.now();
   const timing = performance.getEntriesByName(new URL(WASM, location.href).href).at(-1);
-  const mb = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
-  loadRows.push(["engine", `DripCore ${drip.version}`]);
-  if (timing?.decodedBodySize) loadRows.push(["wasm", timing.transferSize ? `${mb(timing.decodedBodySize)}, ${mb(timing.transferSize)} sent` : mb(timing.decodedBodySize)]);
-  loadRows.push(["download and compile", `${Math.round(t1 - t0)} ms`], ["start", `${Math.round(t2 - t1)} ms`]);
-  showLoad();
   window.__dripLoad = { download: t1 - t0, start: t2 - t1, transferSize: timing?.transferSize, decodedBodySize: timing?.decodedBodySize };
   document.getElementById("loading").remove();
   input.disabled = false;
   heroTerm.print(`drip ${drip.version}, compiled to WebAssembly, started in ${Math.round(t2 - t0)} ms.`, "dim");
-  renderGhost();
+  renderHint();
   for (const s of stages) s.autoplay?.();
-  if (params.get("attract") === "0") stopAttract();
+  if (new URLSearchParams(location.search).get("attract") === "0") stopAttract();
   await typeAndRun(CHIPS[0].line, { fromUser: false });
 } catch (error) {
   document.getElementById("loading").textContent = "drip's engine did not load: " + error.message;
