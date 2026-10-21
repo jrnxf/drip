@@ -68,7 +68,7 @@ struct HUDDisplay: CardDisplay {
         app.run()
         CardActions.waitForActivations()
         if failed { return ExitStatus.noGUISession }
-        return CardActions.missed || unanswered ? ExitStatus.notClicked : ExitStatus.shown
+        return ExitStatus.answered(missed: CardActions.missed || unanswered, declined: CardActions.declined)
     }
 
     func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32 {
@@ -204,8 +204,8 @@ final class HoverView: NSView {
     var onEnter: (() -> Void)?
     var onExit: (() -> Void)?
     var onClick: (() -> Void)?
-    /// Gets its own clicks; everything else on the card is this view's.
-    weak var button: NSView?
+    /// Get their own clicks; everything else on the card is this view's.
+    var buttons: [NSView] = []
 
     /// `pointerInside` is for a pointer already on the card, so its leaving still sends `onExit`.
     init(frame: NSRect, pointerInside: Bool = false) {
@@ -221,7 +221,7 @@ final class HoverView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        if let button, let superview, button.convert(button.bounds, to: superview).contains(point) {
+        if let superview, let button = buttons.first(where: { $0.convert($0.bounds, to: superview).contains(point) }) {
             return button
         }
         return super.hitTest(point)
@@ -284,8 +284,11 @@ final class ReplacementWatch {
             source = found.ticket
             return
         }
-        // A card that waits for you gives way to a newer drip waiting for its turn.
-        if current.waits, !CardQueue.waiting(except: Set([current.id].compactMap { $0 })).isEmpty {
+        // A card that waits for you gives way to a newer drip waiting for its turn; a question never
+        // does, and the newer drip waits for its answer.
+        if current.waits, !current.waitsForAnswer,
+           !CardQueue.waiting(except: Set([current.id].compactMap { $0 })).isEmpty
+        {
             presenter.stopWaiting()
         }
     }
@@ -484,14 +487,17 @@ final class CardPresenter: CardPresenting {
         if entered, !hovering { schedule(after: card.seconds) }
     }
 
-    /// For a clickable card: hovering anywhere on it holds it, a click on the button runs the
-    /// action, and a click anywhere else brings the sending app forward and dismisses the card.
+    /// For a clickable card: hovering anywhere on it holds it, a click on a button answers with it,
+    /// and a click anywhere else brings the sending app forward and dismisses the card.
     private func handleClicks(on built: CardContent, pointerInside: Bool = false) {
         guard card.isClickable else { return }
         if let action = card.action {
-            built.button?.onClick = { [self] in
-                CardActions.perform(action, console: console)
-                leave(clicked: true)
+            for (button, answer) in [(built.button, CardAnswer.yes), (built.decline, .no)] {
+                button?.onClick = { [self] in
+                    guard !leaving else { return }
+                    CardActions.answer(answer, to: action, console: console)
+                    leave(clicked: true)
+                }
             }
         }
         let hover = HoverView(frame: NSRect(origin: .zero, size: frame.size), pointerInside: pointerInside)
@@ -508,7 +514,7 @@ final class CardPresenter: CardPresenting {
             if let target = card.activate { CardActions.activate(target, console: console) }
             leave(clicked: false)
         }
-        hover.button = built.button
+        hover.buttons = built.buttons
         built.root.addSubview(hover, positioned: .above, relativeTo: nil)
         self.hover = hover
     }

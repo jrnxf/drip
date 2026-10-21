@@ -64,7 +64,13 @@ struct CardContent {
     var backdrop: CardBackdrop
     var cornerRadius: CGFloat
     var size: CGSize
+    /// The button, or a question's yes button.
     var button: ActionButtonView?
+    /// A question's no button, left of its yes button.
+    var decline: ActionButtonView?
+
+    /// Every button on the card, left to right.
+    var buttons: [ActionButtonView] { [decline, button].compactMap { $0 } }
 }
 
 /// The card's background for `hud`: the HUD material with rounded corners and the accent border.
@@ -142,7 +148,12 @@ enum CardViewBuilder {
         let button = card.action.map {
             ActionButtonView(label: $0.label, look: ActionButtonView.look(for: style, accent: accent, scale: metrics.scale))
         }
-        let buttonRoom = button.map { buttonGap + $0.frame.width + buttonTrailing - trailing } ?? 0
+        let decline = card.action?.decline.map {
+            ActionButtonView(label: $0, look: ActionButtonView.declineLook(for: style, accent: accent, scale: metrics.scale))
+        }
+        let between = CGFloat(IslandMetrics.buttonGap) * metrics.scale
+        let buttonsWidth = button.map { $0.frame.width + (decline.map { $0.frame.width + between } ?? 0) }
+        let buttonRoom = buttonsWidth.map { buttonGap + $0 + buttonTrailing - trailing } ?? 0
         // Text wraps where a card at its widest, button included, would otherwise cut it.
         let width = CardLayout.maxTextWidth(metrics: metrics, hasIcon: icon != nil, leadingInset: stripeWidth)
             - buttonRoom
@@ -163,13 +174,18 @@ enum CardViewBuilder {
             eyebrowSize: eyebrow?.fittingSize, leadingInset: stripeWidth)
         var size = layout.size
         if let button {
-            let x = size.width - trailing + buttonGap
-            button.setFrameOrigin(NSPoint(x: x, y: ((size.height - button.frame.height) / 2).rounded()))
+            var x = size.width - trailing + buttonGap
+            let y = ((size.height - button.frame.height) / 2).rounded()
+            if let decline {
+                decline.setFrameOrigin(NSPoint(x: x, y: y))
+                x += decline.frame.width + between
+            }
+            button.setFrameOrigin(NSPoint(x: x, y: y))
             size.width = x + button.frame.width + buttonTrailing
         }
         let bounds = NSRect(origin: .zero, size: size)
 
-        // Added in reading order, which VoiceOver follows: the kind, the title, the detail, the button.
+        // Added in reading order, which VoiceOver follows: the kind, the title, the detail, the buttons.
         let content = NSView(frame: bounds)
         if let icon, let iconFrame = layout.iconFrame {
             let iconView = NSImageView(frame: iconFrame)
@@ -189,6 +205,7 @@ enum CardViewBuilder {
             detail.frame = detailFrame
             content.addSubview(detail)
         }
+        if let decline { content.addSubview(decline) }
         if let button { content.addSubview(button) }
 
         let backdrop: CardBackdrop
@@ -215,7 +232,8 @@ enum CardViewBuilder {
         case .hud, .glass: root.appearance = appearance
         }
         return CardContent(
-            root: root, content: content, backdrop: backdrop, cornerRadius: radius, size: size, button: button)
+            root: root, content: content, backdrop: backdrop, cornerRadius: radius, size: size, button: button,
+            decline: decline)
     }
 
     /// `glass` needs macOS 26 and a compiler that knows it; elsewhere it is `hud`.

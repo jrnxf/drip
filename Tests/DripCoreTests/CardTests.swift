@@ -72,10 +72,16 @@ struct CardTests {
         // A plain ask card's question is in its ring, so its own question icon is not shown too.
         var asking = Card(preset: .ask, title: "my-app needs you")
         #expect(!asking.showsIconAtNotch)
-        // Its button takes the ring's place, so its icon shows the question.
+        // Its buttons take the ring's place and say what it asks: no icon either.
         asking.action = CardAction(label: "Approve", open: nil)
         #expect(asking.ringGlyph == "questionmark")
-        #expect(asking.showsIconAtNotch)
+        #expect(!asking.showsIconAtNotch)
+        asking.action?.decline = "Deny"
+        #expect(!asking.showsIconAtNotch)
+        // A question that does not wait keeps its state's icon.
+        var promote = Card(preset: .warn, title: "staging is ready")
+        promote.action = CardAction(label: "Promote", open: nil)
+        #expect(promote.showsIconAtNotch)
         asking.action = nil
         asking.icon = .mark("claude")
         #expect(asking.showsIconAtNotch)
@@ -94,6 +100,21 @@ struct CardTests {
         var custom = Card(preset: Preset(name: "deploy", icon: .symbol("paperplane.fill"), color: .system(.purple), sound: .none), title: "t")
         custom.icon = .image("/home/user/logo.png")
         #expect(custom.ringGlyph == nil)
+    }
+
+    @Test func aCardThatWaitsShowsTheWaitingMark() {
+        var asking = Card(preset: .ask, title: "my-app needs you")
+        #expect(asking.showsWaitingMark)
+        asking.icon = .mark("claude")
+        #expect(asking.showsWaitingMark)
+        // Its buttons stand there instead.
+        asking.action = CardAction(label: "Approve", open: nil, decline: "Deny")
+        #expect(!asking.showsWaitingMark)
+        // Counting down, it shows its ring.
+        asking = Card(preset: .ask, title: "my-app needs you")
+        asking.waitLimit = nil
+        #expect(!asking.showsWaitingMark)
+        #expect(!Card(preset: .ok, title: "done").showsWaitingMark)
     }
 
     @Test func aFailureOrAnAskIsReadOutFirst() {

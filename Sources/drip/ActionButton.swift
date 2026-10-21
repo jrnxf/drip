@@ -31,6 +31,10 @@ final class ActionButtonView: NSView {
         super.init(frame: NSRect(origin: .zero, size: size))
         addTrackingArea(NSTrackingArea(
             rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        // Drawn by hand, so VoiceOver needs telling that it is a button, and what it says.
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(label)
     }
 
     @available(*, unavailable)
@@ -50,6 +54,11 @@ final class ActionButtonView: NSView {
         let inside = bounds.contains(convert(event.locationInWindow, from: nil))
         pressed = false
         if inside { onClick?() }
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick?()
+        return true
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -88,12 +97,35 @@ final class ActionButtonView: NSView {
                 font: .monospacedSystemFont(ofSize: 12 * scale, weight: .semibold), radius: 4)
         }
     }
+
+    /// A question's no button, beside its yes button: quieter, in the card's own text colour.
+    static func declineLook(for style: CardStyle, accent: NSColor, scale: CGFloat) -> Look {
+        var look = Self.look(for: style, accent: accent, scale: scale)
+        switch style {
+        case .hud, .glass:
+            look.fill = NSColor.labelColor.withAlphaComponent(0.1)
+            look.hoverFill = NSColor.labelColor.withAlphaComponent(0.18)
+            look.text = .labelColor
+        case .wash:
+            look.fill = NSColor(white: 1, alpha: 0.08)
+            look.hoverFill = NSColor(white: 1, alpha: 0.16)
+            look.border = NSColor(white: 1, alpha: 0.3)
+        case .terminal:
+            let gray = NSColor(white: 0.62, alpha: 1)
+            look.hoverFill = gray.withAlphaComponent(0.16)
+            look.border = gray
+            look.text = gray
+        }
+        return look
+    }
 }
 
 /// What a click on a card does.
 enum CardActions {
     /// Set when a card with a button went away without the button being clicked.
     static var missed = false
+    /// Set when a question was answered no.
+    static var declined = false
 
     /// Activation requests still on their way to Launch Services.
     private static let activations = DispatchGroup()
@@ -118,6 +150,14 @@ enum CardActions {
     /// Waits, briefly, for activations to be handed off, so exiting does not cut them short.
     static func waitForActivations() {
         _ = activations.wait(timeout: .now() + 2)
+    }
+
+    /// Answers a card's buttons: yes runs the action, no is reported through drip's exit status.
+    static func answer(_ answer: CardAnswer, to action: CardAction, console: Console) {
+        switch answer {
+        case .yes: perform(action, console: console)
+        case .no: declined = true
+        }
     }
 
     static func perform(_ action: CardAction, console: Console) {

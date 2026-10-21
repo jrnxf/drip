@@ -353,7 +353,7 @@
           <tr><th scope="row">kinds</th><td>ok, warn, fail, info, ask, and presets from your config</td></tr>
           <tr><th scope="row">text</th><td>a title of up to 2 lines and a detail of up to 3, wrapped by the engine; a card is at most 640 pt wide</td></tr>
           <tr><th scope="row">time</th><td>4.5 s by default; <code>--seconds</code> takes 0.5 to 60; an ask card waits for a click</td></tr>
-          <tr><th scope="row">buttons</th><td><code>--open</code> opens a URL or a file; <code>--confirm</code> asks, then exits 0 on a click and 5 without one</td></tr>
+          <tr><th scope="row">buttons</th><td><code>--open</code> opens a URL or a file; <code>--yes</code> and <code>--no</code> ask, then exit 0 on yes, 1 on no and 5 without an answer</td></tr>
           <tr><th scope="row">icons</th><td>SF Symbols, image files, app icons, and marks for Claude, Codex and Gemini</td></tr>
           <tr><th scope="row">agents</th><td><code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> adds drip to the agent's own hooks</td></tr>
           <tr><th scope="row">replace</th><td><code>--id</code>: a newer card with the same id takes the older one's place</td></tr>
@@ -512,8 +512,23 @@ function drawIcon(c, name, accent, cx, cy, size, mark) {
   drawGlyph(c, name, size);
   c.restore();
 }
-// A card that waits for you breathes its ring, as IslandUpdate.breath and breathOpacity say.
-const breath = (t) => lerp(1, 0.7, (1 - Math.cos((2 * Math.PI * Math.max(t, 0)) / 1.8)) / 2);
+// A card that waits for you shows a white dot where the ring would be, and every `ping` seconds a
+// soft halo grows out of it and fades, as IslandUpdate's dot and ping constants say.
+const PING = { dot: 8, period: 2.4, scale: 2.1, opacity: 0.4, spread: 0.75 };
+const pingEase = bezier(0, 0, 0.2, 1);
+function drawWaitingMark(c, scale, t, pinging) {
+  const r = (PING.dot * scale) / 2;
+  c.fillStyle = "#fff";
+  if (pinging && t >= 0) {
+    const phase = (t % PING.period) / (PING.period * PING.spread);
+    if (phase < 1) {
+      const p = pingEase(phase);
+      c.save(); c.globalAlpha *= lerp(PING.opacity, 0, p);
+      c.beginPath(); c.arc(0, 0, r * lerp(1, PING.scale, p), 0, Math.PI * 2); c.fill(); c.restore();
+    }
+  }
+  c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
+}
 
 // Opacity of a part cued at `cue`: entrance fades over `duration` with drip's ease-out, exit over 0.12 s.
 function partAlpha(state, t, cue, duration) {
@@ -572,28 +587,31 @@ class Stage {
     });
     screen.addEventListener("click", (event) => {
       const point = this.islandPoint(event);
-      let card;
+      let card, answer;
       if (this.stack) {
         const clicked = drip.stack.click(this.stack.id, point.x, point.y, this.clock - this.stack.start);
         if (!clicked.handle) return;
         event.stopPropagation();
         if (!clicked.button) return;
         card = this.stack.cards.get(clicked.handle);
+        answer = clicked.button;
       } else {
         const s = this.current, f = s?.lastFrame;
         // A click anywhere on a card that waits for you takes it away.
         if (s && f && s.waiting && !s.card.action && Math.abs(point.x) <= f.pillWidth / 2 && point.y >= f.pillTop && point.y <= f.pillTop + f.pillHeight) {
           event.stopPropagation(); this.leave(s, this.clock - s.start); return;
         }
-        if (!this.current || !this.hitButton(point)) return;
+        answer = this.current && !this.current.exitCues ? this.hitButton(point) : null;
+        if (!answer) return;
         event.stopPropagation();
         card = this.current;
         this.leave(card, this.clock - card.start);
       }
       const action = card.card.action;
-      this.term?.print(action.open ? `drip: opened ${action.open}` : `drip: "${action.label}" was clicked (exit 0)`, "dim");
-      if (action.open && /^https?:\/\//.test(action.open)) open(action.open, "_blank", "noopener");
-      card.onClick?.();
+      if (answer === "no") this.term?.print(`drip: "${action.decline}" was clicked (exit 1)`, "dim");
+      else this.term?.print(action.open ? `drip: opened ${action.open}` : `drip: "${action.label}" was clicked (exit 0)`, "dim");
+      if (answer === "yes" && action.open && /^https?:\/\//.test(action.open)) open(action.open, "_blank", "noopener");
+      card.onClick?.(answer);
     });
   }
   get busy() { return !!this.current || this.queue.length > 0 || !!this.stack || this.deliveries.length > 0; }
@@ -641,17 +659,25 @@ class Stage {
   deliver(delivery) {
     delivery = { ...delivery, cards: delivery.cards.map((card) => this.prepare(card)) };
     const stackable = !!delivery.stack && !reduceMotion.matches;
-    if (!this.deliveries.length && this.stack?.adopting && stackable && delivery.adopting) this.offer(delivery);
+    if (!this.deliveries.length && this.stack?.adopting && stackable && delivery.adoptable) {
+      const refused = this.offer(delivery);
+      if (refused.length) this.deliveries.push({ ...delivery, cards: refused });
+    }
     else if (!this.deliveries.length && !this.stack && !stackable) for (const card of delivery.cards) this.push(card);
     else this.deliveries.push(delivery);
     this.dirty = true;
   }
+  // Hands the delivery's cards to the stack. Returns those it did not take, which wait their turn:
+  // a stack showing a question takes only cards that count down, and only until it is answered.
   offer(delivery) {
+    const refused = [];
     for (const card of delivery.cards) {
       const offered = drip.stack.offer(this.stack.id, card.handle);
+      if (!offered.taken) { refused.push(card); continue; }
       if (offered.dropped) { drip.release(offered.dropped); this.stack.cards.delete(offered.dropped); }
       this.stack.cards.set(card.handle, card);
     }
+    return refused;
   }
   // Starts the next delivery once nothing shows.
   next() {
@@ -663,7 +689,11 @@ class Stage {
       start: this.clock, adopting: delivery.adopting,
       cards: new Map(cards.map((card) => [card.handle, card])),
     };
-    while (this.deliveries[0]?.stack && this.deliveries[0].adopting && this.stack.adopting) this.offer(this.deliveries.shift());
+    while (this.deliveries[0]?.stack && this.deliveries[0].adoptable && this.stack.adopting) {
+      const refused = this.offer(this.deliveries[0]);
+      if (refused.length) { this.deliveries[0] = { ...this.deliveries[0], cards: refused }; break; }
+      this.deliveries.shift();
+    }
   }
 
   // One card at a time: a newer card with the same --id replaces one still waiting its turn, or the
@@ -720,11 +750,15 @@ class Stage {
   on(fn) { this.listeners.push(fn); }
   emit(kind, data) { for (const fn of this.listeners) fn(kind, data); }
 
+  // The button under the point, "yes" or a question's "no", as CardStack.button(of:at:time:) finds it; null for none.
   hitButton(point) {
     const s = this.current, f = s?.lastFrame;
-    if (!f || !s.card.action || f.progress < 0.9) return false;
+    if (!f || !s.card.action || f.progress < 0.9) return null;
     const k = f.ring.size / s.ringSide, w = s.ringSide * k, h = 26 * s.metrics.scale * k;
-    return Math.abs(point.x - f.ring.x) <= w / 2 + 4 && Math.abs(point.y - f.ring.y) <= h / 2 + 4;
+    if (Math.abs(point.x - f.ring.x) > w / 2 + 4 || Math.abs(point.y - f.ring.y) > h / 2 + 4) return null;
+    const m = s.metrics;
+    if (!m.declineWidth) return "yes";
+    return point.x < f.ring.x - w / 2 + (m.declineWidth + m.buttonGap / 2) * k ? "no" : "yes";
   }
 
   // Draws a card's icon, ring or button and text onto the layers, shifted by dxL (things anchored
@@ -742,12 +776,20 @@ class Stage {
     const k = f.ring.size / s.ringSide * ringScale;
     lctx.translate(f.ring.x + dxR, f.ring.y + dy); lctx.scale(k, k);
     if (s.card.action) {
-      const w = s.ringSide, h = 26 * m.scale, c = s.buttonColor;
-      const hover = s.hover ? 0.12 : 0;
-      lctx.fillStyle = `rgb(${[0, 1, 2].map((i) => Math.round(255 * (c[i] + (1 - c[i]) * hover))).join(",")})`;
-      roundedRect(lctx, -w / 2, -h / 2, w, h, h / 2); lctx.fill();
-      lctx.fillStyle = "#fff"; lctx.font = fonts[2](m.scale); lctx.textAlign = "center"; lctx.textBaseline = "middle";
-      lctx.fillText(s.card.action.label, 0, 0.5);
+      // A question's no button, white at 15 %, left of the yes button in the darkened accent.
+      const action = s.card.action, h = 26 * m.scale, c = s.buttonColor, no = m.declineWidth;
+      let x = -s.ringSide / 2;
+      const pill = (label, width, fill) => {
+        lctx.fillStyle = fill; roundedRect(lctx, x, -h / 2, width, h, h / 2); lctx.fill();
+        lctx.fillStyle = "#fff"; lctx.font = fonts[2](m.scale); lctx.textAlign = "center"; lctx.textBaseline = "middle";
+        lctx.fillText(label, x + width / 2, 0.5);
+        x += width + m.buttonGap;
+      };
+      if (no) pill(action.decline, no, `rgba(255,255,255,${s.hover === "no" ? 0.25 : 0.15})`);
+      const hover = s.hover === "yes" ? 0.12 : 0;
+      pill(action.label, s.ringSide - (no ? no + m.buttonGap : 0), `rgb(${[0, 1, 2].map((i) => Math.round(255 * (c[i] + (1 - c[i]) * hover))).join(",")})`);
+    } else if (s.waitingMark) {
+      drawWaitingMark(lctx, m.scale, t - (s.countFrom ?? s.visible), s.waiting && s.card.motion === "full");
     } else {
       const side = s.ringSide, r = side / 2 - 1.4 * m.scale, lw = 2.4 * m.scale;
       // Full while the card waits for you; else draining from when its countdown began.
@@ -755,8 +797,7 @@ class Stage {
       lctx.lineWidth = lw; lctx.strokeStyle = s.accent;
       lctx.save(); lctx.globalAlpha *= 0.28; lctx.beginPath(); lctx.arc(0, 0, r, 0, Math.PI * 2); lctx.stroke(); lctx.restore();
       if (fraction > 0.001) {
-        lctx.save(); if (s.waiting && s.card.motion === "full") lctx.globalAlpha *= breath(t - s.visible);
-        lctx.lineCap = "round"; lctx.beginPath(); lctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2); lctx.stroke(); lctx.restore();
+        lctx.save(); lctx.lineCap = "round"; lctx.beginPath(); lctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2); lctx.stroke(); lctx.restore();
       }
       // The state's mark, when the icon is not the state's own.
       if (s.ringGlyph) drawGlyph(lctx, s.ringGlyph, side * 0.78);
@@ -863,8 +904,9 @@ class Stage {
     const s = this.current;
     if (!s) return;
     const t = this.clock - s.start;
-    // A card that waits for you gives way to the next card and counts down from now.
-    if (s.waiting && !s.exitCues && (this.queue.length || this.deliveries.length)) {
+    // A card that waits for you gives way to the next card and counts down from now; a question
+    // never does, and the next card waits for its answer.
+    if (s.waiting && !s.waitsForAnswer && !s.exitCues && (this.queue.length || this.deliveries.length)) {
       s.waiting = false; s.countFrom = t; s.exitAt = t + s.card.seconds;
     }
     if (!s.exitCues && t >= s.exitAt && !s.hover) this.leave(s, t);
@@ -1049,6 +1091,7 @@ async function execOne(stages, term, stage, config, alive) {
   if (program === "sleep") { await sleep(Math.min(Number(args[0]) || 0, 10) * 1000); return 0; }
   if (program === "help") { term.print(`this terminal runs drip. try: drip ok "hello", drip run npm test, drip demo, drip --help`, "dim"); return 0; }
   if (program === "./promote.sh") { term.print("promoting api 1.4.2 to production", "dim"); return 0; }
+  if (program === "gh" && args[0] === "pr" && args[1] === "merge") { term.print(`✓ Merged pull request #${args[2] ?? ""}`, "dim"); return 0; }
   if (program !== "drip") { term.print(`zsh: command not found: ${program}  (this terminal only runs drip)`, "err"); return 127; }
 
   let reply = drip.command({ args, env, config, notch, widest: stage.widest, stdin });
@@ -1105,13 +1148,15 @@ const FLAGS = {
   "-s": "time fully visible: 0.5 to 60 seconds", "--seconds": "time fully visible: 0.5 to 60 seconds",
   "--button": "the --open button's label, up to 24 characters", "--open": "adds a button that opens a URL",
   "--confirm": "asks a question with a button of this label: drip exits 0 on a click, 5 if not",
+  "--yes": "asks a question with a yes button of this label: drip exits 0 when it is clicked",
+  "--no": "with --yes, a no button of this label: drip exits 1 when it is clicked, 5 with no answer",
   "--id": "names what the card is about: a newer card with the same id replaces it",
   "--color": "#rrggbb, or green, orange, red, blue, purple, pink, yellow, gray", "--icon": "an SF Symbol name, an image path, app: and a bundle id, mark:claude, mark:codex or mark:gemini, or none (this page draws symbols and marks only)",
   "DRIP_STACK=push": "drops each new card out of the notch and pushes the others down", "--sound": "a system sound (this page plays none)", "--help": "drip's own help text", "--version": "the engine's version",
 };
 const KINDS = {
   ok: "a green check: it worked", warn: "orange: worth a look", fail: "red: it broke", info: "blue: for your information",
-  ask: "purple: something waits on you, and the card waits until you click it",
+  ask: "something waits on you: the card waits, with a white dot, until you click it or answer it",
   run: "runs a command and tells you how it went: drip run make test", hook: "reads a coding agent's hook payload: drip hook claude",
   setup: "adds drip's hooks to a coding agent's settings: drip setup claude --print shows them",
   demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml",
@@ -1201,8 +1246,8 @@ const FEATURES = [
     steps: [{ line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy` }, { sleep: 2 }, { line: `drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` }],
   },
   {
-    label: "ASK", title: "Ask, then act", body: "<code>--confirm</code> asks a question and waits. drip exits 0 when you click the button, so <code>&amp;&amp;</code> runs the next step. Click it here.",
-    steps: [{ shown: `drip warn "staging is ready" --confirm "Promote" && ./promote.sh`, line: `drip warn "staging is ready" -d "api 1.4.2" --confirm "Promote" --seconds 8`, then: "./promote.sh" }],
+    label: "ASK", title: "Ask, then act", body: "<code>--yes</code> and <code>--no</code> ask a question and wait for the answer. drip exits 0 on yes and 1 on no, so <code>&amp;&amp;</code> runs the next step only on yes. Answer it here.",
+    steps: [{ shown: `drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23`, line: `drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later`, then: "gh pr merge 23" }],
   },
   {
     label: "STDIN", title: "Pipe text in", body: "With no title, drip reads stdin: the first line is the title and the rest is the detail. That suits git hooks and cron jobs.",
@@ -1250,7 +1295,8 @@ FEATURES.forEach((feature, i) => {
       if (!alive()) return;
       if (step.then && status === 0) {
         const last = stage.lastCard;
-        if (last) last.onClick = () => { if (!alive()) return; term.echo(step.then); exec(step.then, term, stage, { echo: false, alive }); };
+        // Only a yes runs the next step, as `&&` would.
+        if (last) last.onClick = (answer) => { if (!alive() || answer !== "yes") return; term.echo(step.then); exec(step.then, term, stage, { echo: false, alive }); };
       }
     }
   };

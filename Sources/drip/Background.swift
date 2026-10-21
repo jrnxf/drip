@@ -108,8 +108,10 @@ enum CardQueue {
     }
 
     /// Waits until every drip queued earlier has shown its cards, or until a showing drip has
-    /// adopted all of this one's, queuing `cards`, or the cards it queued before when nil. The
-    /// ticket goes when this process exits.
+    /// adopted all of this one's, queuing `cards`, or the cards it queued before when nil. Past
+    /// `patience`, it waits on only while an earlier drip's question waits for its answer, which
+    /// never gives way, and never longer than a question waits. The ticket goes when this process
+    /// exits.
     static func waitForTurn(cards: [Card]? = nil) {
         let me = getpid()
         if let cards { self.cards = cards }
@@ -119,8 +121,16 @@ enum CardQueue {
             leavesAtExit = true
             atexit { CardQueue.leave() }
         }
-        let deadline = Date().addingTimeInterval(patience)
-        while Date() < deadline, !isFirst(me), !isFullyAdopted {
+        let start = Date()
+        var deadline = start.addingTimeInterval(patience)
+        let longest = deadline.addingTimeInterval(Defaults.waitLimit)
+        while !isFirst(me), !isFullyAdopted {
+            if Date() >= deadline {
+                guard Date() < longest, let mine,
+                      CardTurns.awaitsAnswer(before: mine.name, queue: load(), isAlive: isAlive)
+                else { break }
+                deadline = Date().addingTimeInterval(1)
+            }
             usleep(50_000)
         }
     }

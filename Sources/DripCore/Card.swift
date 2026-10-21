@@ -239,15 +239,27 @@ public enum Defaults {
 }
 
 /// A button on the card. A click opens `open` when it is set and dismisses the card; a drip that
-/// waits for the card exits 0 when the button was clicked and 5 when it was not.
+/// waits for the card exits 0 when the button was clicked and 5 when it was not. A question can
+/// also have a second button, `decline`, that answers no: a click on it exits 1.
 public struct CardAction: Equatable, Sendable, Codable {
     public var label: String
     public var open: String?
+    /// The label of the button that answers no, left of `label`'s; nil for none.
+    public var decline: String?
 
-    public init(label: String, open: String?) {
+    public init(label: String, open: String?, decline: String? = nil) {
         self.label = label
         self.open = open
+        self.decline = decline
     }
+}
+
+/// The button a click on a card's buttons landed on.
+public enum CardAnswer: Equatable, Sendable {
+    /// The card's button, or a question's yes.
+    case yes
+    /// A question's no.
+    case no
 }
 
 /// A fully resolved card, ready to render.
@@ -312,6 +324,19 @@ public struct Card: Equatable, Sendable, Codable {
         action != nil && action?.open == nil
     }
 
+    /// Whether the card waits for an answer to its question: it never gives way to another card,
+    /// and stays until it is answered, replaced or its wait limit runs out.
+    public var waitsForAnswer: Bool {
+        asksQuestion && waits
+    }
+
+    /// Whether the ring's place at the notch shows the waiting mark, a white dot that sends out a
+    /// soft ping, instead of a ring: a card that waits for you has no countdown to show. A card with
+    /// a button shows the button there instead.
+    public var showsWaitingMark: Bool {
+        waits && action == nil
+    }
+
     /// Whether the card takes clicks: on its button, anywhere to bring the sending app forward, or
     /// anywhere to take away a card that waits for you.
     public var isClickable: Bool {
@@ -329,20 +354,19 @@ public struct Card: Equatable, Sendable, Codable {
     }
 
     /// The state's mark the ring at the notch shows when the icon is not the state's own, such as an
-    /// agent's app icon: the icon then says who, and the ring what. A card that waits always shows
-    /// it, since its ring has no countdown to show: an empty ring would read as an unchecked radio
-    /// button. Nil otherwise when the icon is the preset's or there is no icon, and for a custom
-    /// preset.
+    /// agent's app icon: the icon then says who, and the ring what. A card that waits always has
+    /// one, since it has no countdown to show; the notch shows it as the waiting mark. Nil otherwise
+    /// when the icon is the preset's or there is no icon, and for a custom preset.
     public var ringGlyph: String? {
         guard waits || (icon != fallbackIcon && icon != .none) else { return nil }
         return Preset.builtIn.first { $0.name == kind }?.glyph
     }
 
-    /// Whether the notch shows the card's icon: not when it is the preset's own and the ring carries
-    /// the state's mark, as on a plain `ask` card, so the state shows once and the text starts where
-    /// the icon would be. A card with a button shows no ring, so it keeps its icon.
+    /// Whether the notch shows the card's icon: not when it is the preset's own and the card waits
+    /// for you, as an `ask` card does, so the text starts where the icon would be and the right end,
+    /// its waiting mark or its answer buttons, says what it waits for.
     public var showsIconAtNotch: Bool {
-        icon != .none && !(icon == fallbackIcon && ringGlyph != nil && action == nil)
+        icon != .none && !(icon == fallbackIcon && ringGlyph != nil)
     }
 
     /// Whether VoiceOver reads the card out before whatever it is reading: a failure, or something

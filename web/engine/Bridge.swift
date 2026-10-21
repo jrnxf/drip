@@ -136,7 +136,10 @@ struct Island {
 ///
 /// The cards come in `deliveries`, shown one after another as the app shows them: each with its
 /// `stack` settings, or none when the cards show one at a time. `adopting` says whether the stack
-/// takes in later commands' cards while it shows, as the background drip does; `drip demo` does not.
+/// takes in later commands' cards while it shows, as the background drip does, and as a drip that
+/// waits for its question's answer does while the question shows; `drip demo` does not.
+/// `adoptable` says whether a stack showing may take these cards in: not a question's, nor those of
+/// a drip that waits for them.
 @_expose(wasm, "drip_command")
 @_cdecl("drip_command")
 public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> UnsafePointer<UInt8> {
@@ -178,10 +181,11 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         }
     }
 
-    func delivery(_ cards: [Card], stack: StackSettings?, adopting: Bool) -> [String: Any] {
+    func delivery(_ cards: [Card], stack: StackSettings?, adopting: Bool, adoptable: Bool) -> [String: Any] {
         var delivery: [String: Any] = [
             "cards": prepared(cards).map { island(for: $0, notchWidth: notchWidth, notchHeight: notchHeight, widest: widest) },
             "adopting": adopting,
+            "adoptable": adoptable,
         ]
         // As the app: a stack only for notch cards with full motion.
         if let stack, let first = cards.first, first.position == .notch, first.motion == .full {
@@ -193,9 +197,11 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
     // take them in; a question or --wait shows from this drip, in its turn.
     func cards(_ cards: [Card], wait: Bool, extra: [String: Any] = [:]) -> UnsafePointer<UInt8> {
         var reply = extra
-        let adopting = Delivery.choose(for: cards, wait: wait) == .background
+        let background = Delivery.choose(for: cards, wait: wait) == .background
         reply["deliveries"] = [
-            delivery(cards, stack: StackSettings.current(environment: environment, config: resolver.config), adopting: adopting)
+            delivery(
+                cards, stack: StackSettings.current(environment: environment, config: resolver.config),
+                adopting: background || cards.contains(where: \.waitsForAnswer), adoptable: background)
         ]
         // After the deliveries, which can warn about an icon.
         reply["warnings"] = warnings
@@ -238,7 +244,9 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             let cards = try DemoCommand.cards(resolver, flags: flags)
             // Chained, then pushed, unless the command names one; each a stack of its own cards.
             let deliveries = command.stacks.map { mode in
-                delivery(cards, stack: DemoCommand.stack(mode, environment: environment, config: resolver.config), adopting: false)
+                delivery(
+                    cards, stack: DemoCommand.stack(mode, environment: environment, config: resolver.config),
+                    adopting: false, adoptable: false)
             }
             return send(["warnings": warnings, "deliveries": deliveries])
         } catch { return failure(error) }
@@ -279,12 +287,16 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
 func island(for card: Card, notchWidth: Double, notchHeight: Double, widest: Double) -> [String: Any] {
     let scale = card.size.scale
     let hasIcon = card.showsIconAtNotch
-    let buttonWidth = card.action.map { (measure(2, scale, $0.label)).rounded(.up) + 24 * scale } ?? 0
+    func buttonWidth(_ label: String) -> Double { measure(2, scale, label).rounded(.up) + 24 * scale }
+    let declineWidth = card.action?.decline.map(buttonWidth) ?? 0
+    let actionWidth = card.action.map {
+        IslandMetrics.buttonsWidth(yes: buttonWidth($0.label), no: $0.decline.map(buttonWidth), scale: scale)
+    } ?? 0
     func metrics(width: Double, height: Double, titleLines: Int, detailLines: Int) -> IslandMetrics {
         IslandMetrics(
             notchWidth: notchWidth, notchHeight: notchHeight, scale: scale, textWidth: width, textHeight: height,
-            titleLines: titleLines, detailLines: detailLines, hasIcon: hasIcon, actionWidth: buttonWidth,
-            widestPill: widest)
+            titleLines: titleLines, detailLines: detailLines, hasIcon: hasIcon, actionWidth: actionWidth,
+            declineWidth: declineWidth, widestPill: widest)
     }
     let column = metrics(width: 0, height: 0, titleLines: 0, detailLines: 0).textColumn
     let title = CardText.wrap(card.title, width: column, maxLines: Defaults.titleLines) { measure(0, scale, $0) }
@@ -322,13 +334,18 @@ func island(for card: Card, notchWidth: Double, notchHeight: Double, widest: Dou
             "pillHeight": islandMetrics.pillHeight, "pillTop": islandMetrics.pillTop,
             "pillCornerRadius": islandMetrics.pillCornerRadius.isFinite ? islandMetrics.pillCornerRadius : -1,
             "dropSize": islandMetrics.dropSize, "maxWidth": islandMetrics.maxWidth,
-            "maxHeight": islandMetrics.maxHeight, "actionWidth": buttonWidth, "hasIcon": hasIcon,
+            "maxHeight": islandMetrics.maxHeight, "actionWidth": actionWidth, "declineWidth": declineWidth,
+            "buttonGap": islandMetrics.buttonGap, "hasIcon": hasIcon,
         ] as [String: Any],
         "textEdge": IslandUpdate.textEdge * scale,
         // How long it stays when nothing holds, clicks or replaces it; `waits` when it has no
-        // countdown, and `ringGlyph` the state's mark the ring shows around it, or "" for none.
+        // countdown, `waitsForAnswer` when it never gives way, `waitingMark` when the waiting dot
+        // stands where the ring would, and `ringGlyph` the state's mark the ring shows around it, or
+        // "" for none.
         "seconds": card.duration,
         "waits": card.waits,
+        "waitsForAnswer": card.waitsForAnswer,
+        "waitingMark": card.showsWaitingMark,
         "ringGlyph": card.ringGlyph ?? "",
     ]
     if case let .mark(name) = card.icon, let mark = AgentMark.named(name) {
@@ -476,8 +493,12 @@ public func dripSpring(_ duration: Double, _ bounce: Double, _ time: Double) -> 
 /// with its own stack, at once.
 final class StackSession {
     let stack: CardStack
-    /// Whether the stack takes in later commands' cards, as the app's background drip does.
+    /// Whether the stack takes in later commands' cards, as the app's background drip does, or, for
+    /// one that waits for its question's answer, while the question shows.
     let adopts: Bool
+    /// Whether one of its own cards is a question that waits for its answer: the stack then takes in
+    /// only cards that count down, and only while its own cards show, as the app's does.
+    let asks: Bool
     /// The islands of the stack's own cards still waiting, in order.
     var own: [Int32]
     /// Later commands' islands, waiting for the stack to take them or to show them in place of a
@@ -489,8 +510,14 @@ final class StackSession {
 
     init(stack: CardStack, adopts: Bool, own: [Int32]) {
         self.stack = stack
-        self.adopts = adopts
         self.own = own
+        asks = stack.waiting.contains(where: \.waitsForAnswer)
+        self.adopts = adopts && !asks
+    }
+
+    /// Whether the stack takes `card` in now. A question never is.
+    func takes(_ card: Card) -> Bool {
+        !card.asksQuestion && (adopts || (asks && stack.holdsOwn && !card.waits))
     }
 }
 
@@ -519,11 +546,12 @@ public func dripStackStart(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> 
 /// Hands a later command's island to the stack, which shows it in place of a card with the same id,
 /// or takes it in when there is room. A newer island with the same id as one still waiting takes
 /// that one's place. Replies `{"taken": bool, "dropped": handle}`, `dropped` the waiting island it
-/// replaced (0 for none), which the page releases; nothing is taken when the stack does not adopt.
+/// replaced (0 for none), which the page releases; nothing is taken when the stack does not adopt
+/// it, and the page then shows it in its turn.
 @_expose(wasm, "drip_stack_offer")
 @_cdecl("drip_stack_offer")
 public func dripStackOffer(_ stackHandle: Int32, _ handle: Int32) -> UnsafePointer<UInt8> {
-    guard let session = stacks[stackHandle], session.adopts, let island = islands[handle] else {
+    guard let session = stacks[stackHandle], let island = islands[handle], session.takes(island.card) else {
         return send(["taken": false, "dropped": 0])
     }
     var dropped: Int32 = 0
@@ -623,18 +651,28 @@ public func dripStackEnd(_ stackHandle: Int32) -> UnsafePointer<UInt8> {
 
 /// The pointer at x, y (x from the notch's center, y down from the screen's top) at `time`, or off
 /// the stack when `inside` is 0. While it is on a card nothing moves and no countdown runs. Replies
-/// with the island under it, 0 for none, and whether it is on that card's button.
+/// with the island under it, 0 for none, and the button of that card it is on: "yes", a question's
+/// "no", or "" for none.
 @_expose(wasm, "drip_stack_pointer")
 @_cdecl("drip_stack_pointer")
 public func dripStackPointer(_ stackHandle: Int32, _ x: Double, _ y: Double, _ inside: Int32, _ time: Double) -> UnsafePointer<UInt8> {
-    guard let session = stacks[stackHandle] else { return send(["handle": 0, "button": false]) }
+    guard let session = stacks[stackHandle] else { return send(["handle": 0, "button": ""]) }
     let point = IslandPoint(x, y)
     let under = inside != 0 ? session.stack.entry(at: point, time: time) : nil
     session.stack.hover(under != nil)
     return send([
         "handle": under.flatMap { session.islandOf[$0.id] } ?? 0,
-        "button": under.map { session.stack.isOnButton(of: $0, at: point, time: time) } ?? false,
+        "button": named(under.flatMap { session.stack.button(of: $0, at: point, time: time) }),
     ])
+}
+
+/// A button as the page names it: "yes", "no", or "" for none.
+func named(_ answer: CardAnswer?) -> String {
+    switch answer {
+    case .yes: return "yes"
+    case .no: return "no"
+    case nil: return ""
+    }
 }
 
 /// A click at x, y at `time`: on a button it runs the button's action, anywhere else on a card it
@@ -644,11 +682,12 @@ public func dripStackPointer(_ stackHandle: Int32, _ x: Double, _ y: Double, _ i
 public func dripStackClick(_ stackHandle: Int32, _ x: Double, _ y: Double, _ time: Double) -> UnsafePointer<UInt8> {
     let point = IslandPoint(x, y)
     guard let session = stacks[stackHandle], let entry = session.stack.entry(at: point, time: time) else {
-        return send(["handle": 0, "button": false])
+        return send(["handle": 0, "button": ""])
     }
-    let button = session.stack.isOnButton(of: entry, at: point, time: time)
-    entry.dismissed = button || (entry.dismissed ?? false)
-    return send(["handle": session.islandOf[entry.id] ?? 0, "button": button])
+    let answer = session.stack.button(of: entry, at: point, time: time)
+    if answer != nil, entry.dismissed == nil { entry.answer = answer }
+    entry.dismissed = answer != nil || (entry.dismissed ?? false)
+    return send(["handle": session.islandOf[entry.id] ?? 0, "button": named(answer)])
 }
 
 /// Every card of the stack at `time`, top to bottom, leaving cards included, as doubles: the card

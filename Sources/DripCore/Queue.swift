@@ -129,6 +129,17 @@ public enum CardTurns {
         }
         return found
     }
+
+    /// Whether a live drip queued before `source` shows, or will show, a question that waits for its
+    /// answer: a drip waiting for its turn then waits on, past its usual patience, as the question
+    /// never gives way.
+    public static func awaitsAnswer(
+        before source: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool
+    ) -> Bool {
+        queue.contains { ticket in
+            ticket.name < source && ticket.cards.contains(where: \.waitsForAnswer) && isAlive(ticket)
+        }
+    }
 }
 
 /// Decides which cards a newer card with the same id replaces.

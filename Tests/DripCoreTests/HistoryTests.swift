@@ -91,6 +91,12 @@ final class HistoryTests {
         agent.icon = .image("/home/user/claude.png")
         #expect(try HistoryListing.publicJSON(HistoryEntry(time: entry.time, missed: false, card: agent))
             .contains(#""icon":"/home/user/claude.png""#))
+        // A question's no button the way --no takes it.
+        agent.action = CardAction(label: "Merge", open: nil, decline: "Later")
+        #expect(try HistoryListing.publicJSON(HistoryEntry(time: entry.time, missed: false, card: agent))
+            .contains(#""button":"Merge","#))
+        #expect(try HistoryListing.publicJSON(HistoryEntry(time: entry.time, missed: false, card: agent))
+            .contains(#""no":"Later""#))
     }
 
     @Test func keepsTheStartOfVeryLongText() throws {
@@ -166,7 +172,7 @@ final class HistoryTests {
 
     @Test func replayDropsOnlyAQuestionsButton() {
         var question = card("promote?")
-        question.action = CardAction(label: "Promote", open: nil)
+        question.action = CardAction(label: "Promote", open: nil, decline: "Wait")
         #expect(HistoryListing.replay(HistoryEntry(time: Date(), missed: true, card: question)).action == nil)
         var link = card("ci")
         link.action = CardAction(label: "View run", open: "https://example.com")

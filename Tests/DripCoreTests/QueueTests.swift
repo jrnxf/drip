@@ -183,6 +183,24 @@ struct QueueTests {
         #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }).count == 1)
     }
 
+    /// A drip queued behind a question waits for its answer, past its usual patience.
+    @Test func aDripQueuedBehindAQuestionWaitsForItsAnswer() {
+        var question = Card(preset: .ask, title: "merge?")
+        question.action = CardAction(label: "Merge", open: nil, decline: "Later")
+        let asking = ticket(1, pid: 10, question)
+        let mine = ticket(3, pid: 30, notch(nil))
+        #expect(CardTurns.awaitsAnswer(before: mine.name, queue: [asking, mine], isAlive: { _ in true }))
+        // Not once the question's drip is gone, nor for one queued after this drip.
+        #expect(!CardTurns.awaitsAnswer(before: mine.name, queue: [asking, mine], isAlive: { $0.pid != 10 }))
+        #expect(!CardTurns.awaitsAnswer(before: asking.name, queue: [asking, mine], isAlive: { _ in true }))
+        // A plain ask gives way, and a question given a time counts it down.
+        var timed = question
+        timed.waitLimit = nil
+        for card in [Card(preset: .ask, title: "needs you"), timed] {
+            #expect(!CardTurns.awaitsAnswer(before: mine.name, queue: [ticket(1, pid: 10, card), mine], isAlive: { _ in true }))
+        }
+    }
+
     @Test func aTicketIsFullyAdoptedOnceEveryCardIsClaimed() {
         var two = adoptable(1, pid: 10, notch(nil), notch(nil))
         #expect(!two.isFullyAdopted)

@@ -61,12 +61,14 @@ final class IslandLayers {
     /// Holds the icon, ring and text, clipped to the drop.
     let content = CALayer()
     let icon = CALayer()
-    /// The countdown ring, or a button in its place.
+    /// The countdown ring, or in its place the buttons, or the waiting mark of a card that waits.
     let ring = CALayer()
     let ringProgress = CAShapeLayer()
-    /// The button's capsule and its two fills, plain and under the pointer.
-    private var buttonFill: CAShapeLayer?
-    private var buttonColors: (plain: CGColor, hover: CGColor)?
+    /// Each button's place in `ring`, its capsule, and the capsule's two fills, plain and under the
+    /// pointer: a question's no button first, then its yes button.
+    private(set) var buttons: [(answer: CardAnswer, frame: CGRect, fill: CAShapeLayer, plain: CGColor, hover: CGColor)] = []
+    /// The waiting mark's halo, which sends out its ping.
+    private var halo: CAShapeLayer?
     let text = CALayer()
     /// Ends the text column short of the ring, with a soft edge: text the capsule is still growing to
     /// hold fades out there instead of running under the ring.
@@ -86,18 +88,25 @@ final class IslandLayers {
         let accent = card.color.nsColor
         let image = card.showsIconAtNotch
             ? CardViewBuilder.icon(for: card, pointSize: 28 * sizeScale, onBlack: true, console: console) : nil
-        let buttonLabel = card.action.map {
-            NSAttributedString(string: $0.label, attributes: [
+        func label(_ text: String) -> NSAttributedString {
+            NSAttributedString(string: text, attributes: [
                 .font: NSFont.systemFont(ofSize: 12.5 * sizeScale, weight: .semibold),
                 .foregroundColor: NSColor.white,
             ])
         }
-        let buttonSize = buttonLabel.map { CGSize(width: ceil($0.size().width) + 24 * sizeScale, height: 26 * sizeScale) }
+        func width(_ label: NSAttributedString) -> CGFloat { ceil(label.size().width) + 24 * sizeScale }
+        let yesLabel = card.action.map { label($0.label) }
+        let noLabel = card.action?.decline.map(label)
+        let buttonsWidth = yesLabel.map {
+            CGFloat(IslandMetrics.buttonsWidth(
+                yes: Double(width($0)), no: noLabel.map { Double(width($0)) }, scale: Double(sizeScale)))
+        }
         func islandMetrics(textSize: CGSize, titleLines: Int, detailLines: Int) -> IslandMetrics {
             IslandMetrics(
                 notchWidth: Double(notch.width), notchHeight: Double(notch.height), scale: Double(sizeScale),
                 textWidth: Double(textSize.width), textHeight: Double(textSize.height), titleLines: titleLines,
-                detailLines: detailLines, hasIcon: image != nil, actionWidth: Double(buttonSize?.width ?? 0))
+                detailLines: detailLines, hasIcon: image != nil, actionWidth: Double(buttonsWidth ?? 0),
+                declineWidth: Double(noLabel.map(width) ?? 0))
         }
         // The text column depends only on the size, the icon and the button.
         let column = CGFloat(islandMetrics(textSize: .zero, titleLines: 0, detailLines: 0).textColumn)
@@ -139,7 +148,7 @@ final class IslandLayers {
         metrics = islandMetrics(textSize: block, titleLines: titleText.count, detailLines: detailText.count)
         size = CGSize(width: ceil(metrics.maxWidth) + 40, height: ceil(metrics.maxHeight))
         iconSide = 28 * sizeScale
-        ringSide = buttonSize?.width ?? 20 * sizeScale
+        ringSide = buttonsWidth ?? 20 * sizeScale
         textEdge = CGFloat(IslandUpdate.textEdge) * sizeScale
 
         root.frame = CGRect(origin: .zero, size: size)
@@ -170,8 +179,23 @@ final class IslandLayers {
         icon.opacity = 0
         content.addSublayer(icon)
 
-        if let buttonLabel, let buttonSize {
-            makeButton(buttonLabel, size: buttonSize, accent: accent, scale: scale)
+        if let yesLabel, let buttonsWidth {
+            ring.bounds = CGRect(x: 0, y: 0, width: buttonsWidth, height: 26 * sizeScale)
+            let rgb = accent.rgb(in: NSAppearance(named: .aqua) ?? .currentDrawing())
+            let yes = NSColor(WashPalette(accent: rgb).top)
+            var x: CGFloat = 0
+            if let noLabel {
+                // White at 15 %: a quiet no beside the yes in the state's colour.
+                let no = NSColor(white: 1, alpha: 0.15)
+                makeButton(.no, noLabel, x: x, width: width(noLabel), fill: no, hover: NSColor(white: 1, alpha: 0.25), scale: scale)
+                x += width(noLabel) + CGFloat(IslandMetrics.buttonGap) * sizeScale
+            }
+            // Lightened on hover as much as the button on a card away from the notch.
+            makeButton(
+                .yes, yesLabel, x: x, width: width(yesLabel), fill: yes,
+                hover: yes.blended(withFraction: 0.12, of: .white) ?? yes, scale: scale)
+        } else if card.showsWaitingMark {
+            makeWaitingMark(side: 20 * sizeScale, dot: CGFloat(IslandUpdate.dot) * sizeScale, scale: scale)
         } else {
             makeRing(accent: accent, lineWidth: 2.4 * sizeScale, inset: 1.4 * sizeScale, glyph: card.ringGlyph, scale: scale)
         }
@@ -197,40 +221,90 @@ final class IslandLayers {
         text.mask = textMask
     }
 
-    /// The button that stands where the ring would: a capsule in the darkened accent.
-    private func makeButton(_ label: NSAttributedString, size: CGSize, accent: NSColor, scale: CGFloat) {
-        ring.bounds = CGRect(origin: .zero, size: size)
+    /// A button that stands where the ring would, `x` from the left of the ring's place: a capsule
+    /// filled `fill`, lighter under the pointer.
+    private func makeButton(
+        _ answer: CardAnswer, _ label: NSAttributedString, x: CGFloat, width: CGFloat, fill color: NSColor,
+        hover: NSColor, scale: CGFloat
+    ) {
+        let frame = CGRect(x: x, y: 0, width: width, height: ring.bounds.height)
         let fill = CAShapeLayer()
         fill.path = CGPath(
-            roundedRect: ring.bounds, cornerWidth: size.height / 2, cornerHeight: size.height / 2, transform: nil)
-        let rgb = accent.rgb(in: NSAppearance(named: .aqua) ?? .currentDrawing())
-        let plain = NSColor(WashPalette(accent: rgb).top)
-        // Lightened on hover as much as the button on a card away from the notch.
-        let hover = plain.blended(withFraction: 0.12, of: .white) ?? plain
-        fill.fillColor = plain.cgColor
+            roundedRect: frame, cornerWidth: frame.height / 2, cornerHeight: frame.height / 2, transform: nil)
+        fill.fillColor = color.cgColor
         fill.contentsScale = scale
         ring.addSublayer(fill)
-        buttonFill = fill
-        buttonColors = (plain.cgColor, hover.cgColor)
+        buttons.append((answer, frame, fill, color.cgColor, hover.cgColor))
         let text = CATextLayer()
         text.string = label
         let textSize = label.size()
         text.frame = CGRect(
-            x: (size.width - ceil(textSize.width)) / 2, y: (size.height - ceil(textSize.height)) / 2,
+            x: frame.midX - ceil(textSize.width) / 2, y: (frame.height - ceil(textSize.height)) / 2,
             width: ceil(textSize.width), height: ceil(textSize.height))
         text.contentsScale = scale
         ring.addSublayer(text)
     }
 
-    /// Shows the button lightened while the pointer is on it, at once, as the other cards' button.
-    func setButtonHovered(_ hovered: Bool) {
-        guard let buttonFill, let buttonColors else { return }
-        let color = hovered ? buttonColors.hover : buttonColors.plain
-        guard buttonFill.fillColor != color else { return }
+    /// Shows the button `hovered` lightened while the pointer is on it, at once, as the other cards'
+    /// button; nil for none.
+    func setButtonHovered(_ hovered: CardAnswer?) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        buttonFill.fillColor = color
+        for button in buttons {
+            let color = button.answer == hovered ? button.hover : button.plain
+            if button.fill.fillColor != color { button.fill.fillColor = color }
+        }
         CATransaction.commit()
+    }
+
+    /// The waiting mark of a card that waits for you, in a `side` square: a white `dot`, and over it
+    /// a halo of the same size that sends out the ping, hidden until it does.
+    private func makeWaitingMark(side: CGFloat, dot: CGFloat, scale: CGFloat) {
+        ring.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        let frame = CGRect(x: (side - dot) / 2, y: (side - dot) / 2, width: dot, height: dot)
+        let halo = CAShapeLayer(), core = CAShapeLayer()
+        for layer in [halo, core] {
+            layer.frame = frame
+            layer.path = CGPath(ellipseIn: CGRect(x: 0, y: 0, width: dot, height: dot), transform: nil)
+            layer.fillColor = NSColor.white.cgColor
+            layer.contentsScale = scale
+            ring.addSublayer(layer)
+        }
+        halo.opacity = 0
+        self.halo = halo
+    }
+
+    /// Starts the waiting mark's ping at `begin`: the halo grows from the dot's size and fades, and
+    /// rests until the next one.
+    private func ping(at begin: CFTimeInterval) {
+        guard let halo else { return }
+        let (x1, y1, x2, y2) = IslandUpdate.pingCurve
+        let curve = CAMediaTimingFunction(controlPoints: Float(x1), Float(y1), Float(x2), Float(y2))
+        let grow = CABasicAnimation(keyPath: "transform.scale")
+        grow.fromValue = 1
+        grow.toValue = IslandUpdate.pingScale
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = IslandUpdate.pingOpacity
+        fade.toValue = 0
+        for part in [grow, fade] {
+            part.duration = IslandUpdate.ping * IslandUpdate.pingSpread
+            part.timingFunction = curve
+        }
+        let group = CAAnimationGroup()
+        group.animations = [grow, fade]
+        group.duration = IslandUpdate.ping
+        group.repeatCount = .infinity
+        group.beginTime = begin
+        halo.add(group, forKey: "ping")
+    }
+
+    /// The button at `point`, in the root's coordinates as it is drawn now; nil off the buttons.
+    func button(at point: CGPoint) -> CardAnswer? {
+        let shown = ring.presentation() ?? ring
+        let drawn = root.presentation() ?? root
+        // Half the gap between two buttons, so a click there lands on the nearer one.
+        let reach: CGFloat = buttons.count > 1 ? 3 : 4
+        return buttons.first { drawn.convert($0.frame, from: shown).insetBy(dx: -reach, dy: -4).contains(point) }?.answer
     }
 
     /// The countdown ring: a faint track and the accent arc that drains, its centre line `inset`
@@ -466,34 +540,14 @@ extension IslandLayers {
         }
     }
 
-    /// Fills the ring from `fraction` full at `begin`, for a card that waits for you: with
-    /// `breathing`, its arc then breathes slowly instead of draining.
-    func hold(from fraction: Double = 1, breathing: Bool, at begin: CFTimeInterval = CACurrentMediaTime()) {
-        let fill = CABasicAnimation(keyPath: "strokeEnd")
-        fill.fromValue = fraction
-        fill.toValue = 1
-        fill.beginTime = begin
-        fill.duration = IslandUpdate.refill
-        fill.timingFunction = CardPresenters.easeOut
-        fill.fillMode = .backwards
+    /// Holds a card that waits for you, which has no countdown: its waiting mark sends out its ping
+    /// from `begin` on, unless `pinging` is false, as with motion reduced, and the dot shows alone.
+    func hold(pinging: Bool, at begin: CFTimeInterval = CACurrentMediaTime()) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        ringProgress.removeAnimation(forKey: "drain")
         ringProgress.strokeEnd = 1
-        ringProgress.speed = 1
-        ringProgress.timeOffset = 0
-        ringProgress.beginTime = 0
-        ringProgress.add(fill, forKey: "drain")
-        if breathing {
-            let breathe = CABasicAnimation(keyPath: "opacity")
-            breathe.fromValue = 1
-            breathe.toValue = IslandUpdate.breathOpacity
-            breathe.beginTime = begin + IslandUpdate.refill
-            breathe.duration = IslandUpdate.breath / 2
-            breathe.autoreverses = true
-            breathe.repeatCount = .infinity
-            breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            ringProgress.add(breathe, forKey: "breathe")
-        }
+        if pinging { ping(at: begin) }
         CATransaction.commit()
     }
 
@@ -508,7 +562,8 @@ extension IslandLayers {
         drain.timingFunction = CAMediaTimingFunction(name: .linear)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        ringProgress.removeAnimation(forKey: "breathe")
+        // A card that stopped waiting: its mark stops sending out its ping.
+        halo?.removeAnimation(forKey: "ping")
         ringProgress.strokeEnd = 0
         // A fresh clock: the new drain replaces whatever a pause left behind.
         ringProgress.speed = 1
@@ -540,7 +595,6 @@ extension IslandLayers {
         group.fillMode = .both
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        ringProgress.removeAnimation(forKey: "breathe")
         ringProgress.strokeEnd = 0
         ringProgress.speed = 1
         ringProgress.timeOffset = 0
@@ -578,7 +632,7 @@ extension IslandLayers {
             kept[index] = false
         }
         let newState = IslandUpdate.changesState(from: old.card, to: card)
-        let bothRings = old.card.action == nil && card.action == nil
+        let bothRings = old.card.action == nil && card.action == nil && old.card.showsWaitingMark == card.showsWaitingMark
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -779,6 +833,14 @@ final class IslandView: NSView {
     override func mouseUp(with event: NSEvent) { onClick?(convert(event.locationInWindow, from: nil)) }
 }
 
+/// What VoiceOver offers for a card's buttons, as the island draws them in its layers.
+enum CardAccessibility {
+    /// Each button's label and the answer it gives, in the order they are drawn: no, then yes.
+    static func answers(to action: CardAction) -> [(String, CardAnswer)] {
+        (action.decline.map { [($0, CardAnswer.no)] } ?? []) + [(action.label, .yes)]
+    }
+}
+
 /// A panel AppKit lets cover the menu bar: windows are normally pushed below it.
 final class IslandPanel: NSPanel {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
@@ -842,11 +904,13 @@ final class IslandPresenter: CardPresenting {
         view.onMove = { [weak self] point in self?.pointer(at: point) }
         view.onClick = { [weak self] point in self?.click(at: point) }
         view.layer?.addSublayer(layers.root)
-        // The text is drawn in layers, which VoiceOver cannot read: the view reads it out whole.
+        // The text is drawn in layers, which VoiceOver cannot read: the view reads it out whole, and
+        // offers the buttons as its actions.
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.staticText)
         view.setAccessibilityLabel(CardText.spoken(title: card.title, detail: card.detail))
         panel.contentView = view
+        updateAccessibilityActions()
         panel.setFrame(frame, display: false)
         self.panel = panel
 
@@ -864,7 +928,7 @@ final class IslandPresenter: CardPresenting {
             let open = animator.shape(at: 0)
             layers.apply(layers.frame(open, layout: animator.content(for: open)))
             layers.showContent()
-            if waiting { layers.hold(breathing: false) }
+            if waiting { layers.hold(pinging: false) }
             panel.alphaValue = motion == .none ? 1 : 0
             fadePanel(to: 1, duration: motion == .none ? 0 : 0.15)
             departure = fadingDeparture(motion)
@@ -886,7 +950,7 @@ final class IslandPresenter: CardPresenting {
         // The countdown starts once the title's first line has faded in, however many lines follow.
         let visible = (enterCues.title.first ?? enterCues.sides) + 0.25
         if waiting {
-            layers.hold(breathing: true, at: CACurrentMediaTime() + visible)
+            layers.hold(pinging: true, at: CACurrentMediaTime() + visible)
         } else {
             layers.drain(over: card.seconds, at: CACurrentMediaTime() + visible)
         }
@@ -961,6 +1025,7 @@ final class IslandPresenter: CardPresenting {
 
         panel.ignoresMouseEvents = !card.isClickable
         view.setAccessibilityLabel(CardText.spoken(title: card.title, detail: card.detail))
+        updateAccessibilityActions()
         hovering = false
         sound = CardSound(card.sound, console: console)
         sound?.play()
@@ -968,7 +1033,7 @@ final class IslandPresenter: CardPresenting {
 
         waiting = card.waits
         if waiting {
-            layers.hold(from: motion == .full ? ringFraction : 1, breathing: motion == .full)
+            layers.hold(pinging: motion == .full)
         } else if motion == .full {
             layers.refill(from: ringFraction, over: card.seconds)
         } else {
@@ -1067,17 +1132,15 @@ final class IslandPresenter: CardPresenting {
         return path.contains(islandPoint(point, in: layers))
     }
 
-    /// Whether a point in the view is on the button as it is drawn right now.
-    private func onButton(_ point: CGPoint) -> Bool {
-        guard let layers else { return false }
-        let shown = layers.ring.presentation() ?? layers.ring
-        let rect = (layers.root.presentation() ?? layers.root).convert(shown.bounds, from: shown)
-        return rect.insetBy(dx: -4, dy: -4).contains(islandPoint(point, in: layers))
+    /// The button at a point in the view, as it is drawn right now; nil off the buttons.
+    private func button(at point: CGPoint) -> CardAnswer? {
+        guard let layers, card.action != nil else { return nil }
+        return layers.button(at: islandPoint(point, in: layers))
     }
 
     private func pointer(at point: CGPoint) {
         guard departure != nil, card.isClickable else { return }
-        layers?.setButtonHovered(card.action != nil && onButton(point))
+        layers?.setButtonHovered(button(at: point))
         let inside = onIsland(point)
         guard inside != hovering else { return }
         hovering = inside
@@ -1092,17 +1155,39 @@ final class IslandPresenter: CardPresenting {
         }
     }
 
-    /// A click on the button runs its action; anywhere else on the island, it brings the sending
-    /// app forward. Either way the card goes.
+    /// A click on a button answers with it; anywhere else on the island, it brings the sending app
+    /// forward. Either way the card goes.
     private func click(at point: CGPoint) {
         guard departure != nil, card.isClickable, onIsland(point) else { return }
-        if let action = card.action, onButton(point) {
-            CardActions.perform(action, console: console)
-            leave(clicked: true)
+        if let answer = button(at: point) {
+            press(answer)
             return
         }
         if let target = card.activate { CardActions.activate(target, console: console) }
         leave(clicked: false)
+    }
+
+    /// Answers the card with one of its buttons, from a click or from VoiceOver.
+    private func press(_ answer: CardAnswer) {
+        guard departure != nil, let action = card.action else { return }
+        CardActions.answer(answer, to: action, console: console)
+        leave(clicked: true)
+    }
+
+    /// The card's buttons, offered to VoiceOver as the island's actions, since the island cannot
+    /// take focus.
+    private func updateAccessibilityActions() {
+        var actions: [NSAccessibilityCustomAction] = []
+        if let action = card.action {
+            for (label, answer) in CardAccessibility.answers(to: action) {
+                actions.append(NSAccessibilityCustomAction(name: label) { [weak self] () -> Bool in
+                    guard let self, self.departure != nil else { return false }
+                    self.press(answer)
+                    return true
+                })
+            }
+        }
+        panel?.contentView?.setAccessibilityCustomActions(actions)
     }
 
     private func finish() {

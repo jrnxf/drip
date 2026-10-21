@@ -161,6 +161,53 @@ struct CardStackTests {
         #expect(stack.entries.isEmpty)
     }
 
+    /// A question never gives way: other cards stack around it, and one with no room waits for it.
+    @Test func aQuestionNeverStopsWaiting() {
+        var question = asking("merge?")
+        question.action = CardAction(label: "Merge", open: nil, decline: "Later")
+        #expect(question.waitsForAnswer)
+
+        // Another drip waits for the stack to finish: the plain ask gives way, the question does not.
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [question, asking("b")])
+        var time = run(stack, until: 3)
+        let changes = stack.advance(to: time, elapsed: 0, lead: 0, othersWaiting: true)
+        #expect(titles(changes.stoppedWaiting) == ["b"])
+        time = run(stack, from: time, until: time + 30, othersWaiting: true)
+        #expect(titles(stack.live) == ["merge?"])
+        #expect(stack.live[0].isWaiting)
+
+        // A full stack of questions and a card that needs room: nothing gives way, so it waits.
+        let full = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [question])
+        var stopped: [String] = []
+        run(full, until: 30, needsRoom: true) { _, changes in stopped += titles(changes.stoppedWaiting) }
+        #expect(stopped.isEmpty)
+        #expect(full.live[0].isWaiting)
+
+        // Beside a plain ask, the plain ask gives way for room instead.
+        let mixed = CardStack(
+            settings: StackSettings(mode: .chain, max: 2), cards: [question, asking("b", seconds: 2), card("c", seconds: 10)])
+        stopped = []
+        run(mixed, until: 12) { _, changes in stopped += titles(changes.stoppedWaiting) }
+        #expect(stopped == ["b"])
+        #expect(titles(mixed.live) == ["merge?", "c"])
+
+        // A question that counts down a time it was given still goes when its time is up.
+        var timed = question
+        timed.waitLimit = nil
+        #expect(!timed.waitsForAnswer)
+    }
+
+    @Test func aStackHoldsItsOwnCardsUntilTheyHaveGone() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 1)])
+        #expect(stack.holdsOwn)
+        var time = run(stack, until: 1)
+        stack.enter(card("adopted", seconds: 10), metrics: metrics, own: false, decided: time, at: time)
+        #expect(stack.holdsOwn)
+        time = run(stack, from: time, until: time + 4)
+        #expect(titles(stack.live) == ["adopted"])
+        #expect(!stack.holdsOwn)
+    }
+
     @Test func aCardThatWaitsWaitsAgainWhenReplacedByOneThatWaits() {
         let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
         let time = run(stack, until: 3)
@@ -259,5 +306,27 @@ struct CardStackTests {
         #expect(stack.isOnButton(of: a, at: ring, time: time))
         #expect(!stack.isOnButton(of: a, at: middle(a), time: time))
         #expect(!stack.isOnButton(of: b, at: b.animator.content(for: b.animator.shape(at: time)).ringCenter, time: time))
+        #expect(stack.button(of: a, at: ring, time: time) == .yes)
+    }
+
+    @Test func aQuestionsNoButtonIsLeftOfItsYesButton() {
+        var question = asking("merge?")
+        question.action = CardAction(label: "Merge", open: nil, decline: "Later")
+        let (no, yes) = (50.0, 60.0)
+        var buttons = metrics
+        buttons.actionWidth = IslandMetrics.buttonsWidth(yes: yes, no: no, scale: 1)
+        buttons.declineWidth = no
+        #expect(buttons.actionWidth == 116)
+        #expect(IslandMetrics.buttonsWidth(yes: yes, no: nil, scale: 1.25) == yes)
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3))
+        let entry = stack.enter(question, metrics: buttons, own: true, decided: 0, at: 0)
+        run(stack, until: 3)
+        let layout = entry.animator.content(for: entry.animator.shape(at: 3))
+        let left = layout.ringCenter.x - layout.ringSize / 2, y = layout.ringCenter.y
+        #expect(stack.button(of: entry, at: IslandPoint(left + no / 2, y), time: 3) == .no)
+        #expect(stack.button(of: entry, at: IslandPoint(left + no + 2, y), time: 3) == .no)
+        #expect(stack.button(of: entry, at: IslandPoint(left + no + 4, y), time: 3) == .yes)
+        #expect(stack.button(of: entry, at: IslandPoint(left + no + 6 + yes / 2, y), time: 3) == .yes)
+        #expect(stack.button(of: entry, at: IslandPoint(left - 20, y), time: 3) == nil)
     }
 }
