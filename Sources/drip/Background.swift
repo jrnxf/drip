@@ -10,21 +10,24 @@ enum BackgroundDrip {
     /// The longest a drip handing its stack on waits for the background drip to show it.
     static let handOffWait: Int32 = 400
 
-    /// Starts `drip __background` in its own session, with the request on its standard input and
-    /// nothing else inherited, so it outlives this process and never holds a caller's pipe open
-    /// (`out=$(drip ...)` would otherwise wait for it). Returns false when it cannot be started.
-    ///
-    /// A request that hands a stack on takes this drip's place in the queue, and returns once the
-    /// background drip shows the cards, which it says on its standard output, or after
-    /// `handOffWait` milliseconds, so this drip's stack can go without the cards blinking out.
+    /// Starts `drip __background` with `request`, as `spawn` and `Spawned.send` do. Returns false
+    /// when it cannot be started.
     static func start(_ request: BackgroundRequest) -> Bool {
-        guard let data = try? request.encoded(), let executable = Bundle.main.executablePath else { return false }
+        spawn(handingOff: request.handOff != nil)?.send(request) ?? false
+    }
+
+    /// Starts `drip __background` in its own session, waiting for a request on its standard input,
+    /// with nothing else inherited, so it outlives this process and never holds a caller's pipe open
+    /// (`out=$(drip ...)` would otherwise wait for it). One `handingOff` a stack says on its
+    /// standard output when it shows the cards. A drip that asks starts one while its question
+    /// shows, so the answer hands its stack on at once. Nil when it cannot be started.
+    static func spawn(handingOff: Bool) -> Spawned? {
+        guard let executable = Bundle.main.executablePath else { return nil }
         var pipe: [Int32] = [0, 0]
-        guard Darwin.pipe(&pipe) == 0 else { return false }
+        guard Darwin.pipe(&pipe) == 0 else { return nil }
         let (reading, writing) = (pipe[0], pipe[1])
         var shown: [Int32] = [-1, -1]
-        if request.handOff != nil, Darwin.pipe(&shown) != 0 { shown = [-1, -1] }
-        defer { if shown[0] >= 0 { close(shown[0]) } }
+        if handingOff, Darwin.pipe(&shown) != 0 { shown = [-1, -1] }
 
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)
@@ -60,31 +63,62 @@ enum BackgroundDrip {
         if shown[1] >= 0 { close(shown[1]) }
         guard spawned == 0 else {
             close(writing)
-            return false
+            if shown[0] >= 0 { close(shown[0]) }
+            return nil
         }
-        CardQueue.enqueue(
-            pid: pid, cards: request.cards, adoptable: true,
-            after: request.handOff != nil ? CardQueue.mine?.name : nil)
-        // A closed pipe must fail the write, not kill drip.
-        signal(SIGPIPE, SIG_IGN)
-        let written = data.withUnsafeBytes { buffer -> Bool in
-            var offset = 0
-            while offset < buffer.count {
-                let count = write(writing, buffer.baseAddress! + offset, buffer.count - offset)
-                if count < 0, errno == EINTR { continue }
-                guard count > 0 else { return false }
-                offset += count
+        return Spawned(pid: pid, writing: writing, shown: shown[0] >= 0 ? shown[0] : nil)
+    }
+
+    /// A background drip waiting for its request. One never sent a request exits when this
+    /// process does.
+    final class Spawned {
+        private let pid: pid_t
+        private var writing: Int32?
+        private let shown: Int32?
+
+        fileprivate init(pid: pid_t, writing: Int32, shown: Int32?) {
+            self.pid = pid
+            self.writing = writing
+            self.shown = shown
+        }
+
+        deinit {
+            if let writing { close(writing) }
+            if let shown { close(shown) }
+        }
+
+        /// Queues the background drip's cards and hands it `request`. A request that hands a
+        /// stack on takes this drip's place in the queue, and returns once the background drip
+        /// shows the cards, or after `handOffWait` milliseconds, so this drip's stack can go
+        /// without the cards blinking out. Returns false when the request did not get through,
+        /// and only the first request gets through.
+        func send(_ request: BackgroundRequest) -> Bool {
+            guard let writing, let data = try? request.encoded() else { return false }
+            self.writing = nil
+            CardQueue.enqueue(
+                pid: pid, cards: request.cards, adoptable: true,
+                after: request.handOff != nil ? CardQueue.mine?.name : nil)
+            // A closed pipe must fail the write, not kill drip.
+            signal(SIGPIPE, SIG_IGN)
+            let written = data.withUnsafeBytes { buffer -> Bool in
+                var offset = 0
+                while offset < buffer.count {
+                    let count = write(writing, buffer.baseAddress! + offset, buffer.count - offset)
+                    if count < 0, errno == EINTR { continue }
+                    guard count > 0 else { return false }
+                    offset += count
+                }
+                return true
             }
-            return true
+            close(writing)
+            if written, request.handOff != nil, let shown {
+                // The background drip closing its end unsaid means it shows nothing.
+                var waiting = pollfd(fd: shown, events: Int16(POLLIN), revents: 0)
+                var byte: UInt8 = 0
+                if poll(&waiting, 1, handOffWait) > 0, read(shown, &byte, 1) == 0 { return false }
+            }
+            return written
         }
-        close(writing)
-        if written, shown[0] >= 0 {
-            // The background drip closing its end unsaid means it shows nothing.
-            var waiting = pollfd(fd: shown[0], events: Int16(POLLIN), revents: 0)
-            var byte: UInt8 = 0
-            if poll(&waiting, 1, handOffWait) > 0, read(shown[0], &byte, 1) == 0 { return false }
-        }
-        return written
     }
 
     /// Tells the drip that handed its stack on that the cards show here now.

@@ -898,6 +898,9 @@ final class IslandPresenter: CardPresenting {
     private var openAt = CFTimeInterval.infinity
     /// Whether the card still waits for you rather than counting down.
     private var waiting = false
+    /// A background drip waiting, while a question shows, to take its card's exit on once it is
+    /// answered.
+    private var standby: BackgroundDrip.Spawned?
 
     /// Keyframes per second when sampling the springs.
     private static let framesPerSecond = 240.0
@@ -953,6 +956,7 @@ final class IslandPresenter: CardPresenting {
 
         let motion = CardPresenters.motion(for: card)
         waiting = card.waits
+        if card.asksQuestion, motion == .full { standby = BackgroundDrip.spawn(handingOff: true) }
         guard motion == .full else {
             sound?.play()
             animator.open()
@@ -1203,6 +1207,17 @@ final class IslandPresenter: CardPresenting {
         guard departure != nil, let action = card.action else { return }
         CardActions.answer(answer, to: action, console: console)
         leave(clicked: true)
+        handOffExit()
+    }
+
+    /// Hands the exit of an answered question on to a background drip, which plays it on from where
+    /// it is, so drip exits with the answer at once; with motion reduced, or when no background drip
+    /// can take it, the exit plays here first.
+    private func handOffExit() {
+        guard card.asksQuestion, animator != nil, let layers else { return }
+        let request = BackgroundRequest(
+            handOff: .leaving(card, top: layers.metrics.pillTop, at: Date().timeIntervalSince1970))
+        if standby.map({ $0.send(request) }) ?? BackgroundDrip.start(request) { finish(waitingForSound: false) }
     }
 
     /// The card's buttons, offered to VoiceOver as the island's actions, since the island cannot
@@ -1221,9 +1236,17 @@ final class IslandPresenter: CardPresenting {
         panel?.contentView?.setAccessibilityCustomActions(actions)
     }
 
-    private func finish() {
+    /// Takes the card away and reports that it has gone, once, after its sound unless not
+    /// `waitingForSound`.
+    private func finish(waitingForSound: Bool = true) {
+        guard let onFinish else { return }
+        self.onFinish = nil
         panel?.orderOut(nil)
-        sound?.waitUntilDone { [self] in onFinish?(true) }
+        if waitingForSound, let sound {
+            sound.waitUntilDone { onFinish(true) }
+        } else {
+            onFinish(true)
+        }
     }
 
     /// Samples every spring from `start` until they settle into keyframe animations, for the card

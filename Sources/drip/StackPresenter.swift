@@ -41,6 +41,11 @@ final class StackPresenter: CardPresenting {
     private let adopting: Bool
     /// Whether one of this drip's own cards is a question that waits for its answer.
     private let asks: Bool
+    /// Whether one of this drip's own cards asks a question: the drip then exits as soon as its own
+    /// cards have been answered or have started to go, and hands the rest on.
+    private let questions: Bool
+    /// A background drip waiting, while a question shows, to take the stack on once it is answered.
+    private var standby: BackgroundDrip.Spawned?
     /// What another drip's stack handed on, to show as it is there when this one starts.
     private var handed: StackHandOff?
     /// Whether no background drip could take the cards this stack took in, so it shows them itself.
@@ -107,6 +112,7 @@ final class StackPresenter: CardPresenting {
         self.notch = notch
         self.adopting = adopting
         asks = cards.contains(where: \.waitsForAnswer)
+        questions = cards.contains(where: \.asksQuestion)
         self.console = console
     }
 
@@ -165,6 +171,7 @@ final class StackPresenter: CardPresenting {
 
         started = CACurrentMediaTime()
         if let handed { resumeHanded(handed) }
+        if questions, !adopting { standby = BackgroundDrip.spawn(handingOff: true) }
         // Countdowns, the pointer and the queue; the motion itself runs in Core Animation. The timer
         // keeps the stack alive until `finish` stops it.
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [self] _ in tick() }
@@ -475,12 +482,12 @@ final class StackPresenter: CardPresenting {
         // Done once nothing is on screen, nothing of its own is left, and the queue had nothing new.
         if adopting || handOffFailed {
             if stack.entries.isEmpty, stack.waiting.isEmpty, !foundAdoptable { finish() }
-        } else if let cards = stack.handOff(at: time) {
-            // A question's answer never waits for the cards it took in: a background drip shows the
-            // rest of them on, where they are, or this stack does when none can.
+        } else if questions || stack.ownCardsGone, let cards = stack.handOff(at: time) {
+            // A question's answer never waits for its card to go, nor for the cards it took in: a
+            // background drip shows them on, where they are, or this stack does when none can.
             let request = BackgroundRequest(
                 handOff: StackHandOff(settings: stack.settings, cards: cards, time: Date().timeIntervalSince1970))
-            if cards.isEmpty || BackgroundDrip.start(request) {
+            if cards.isEmpty || (standby.map { $0.send(request) } ?? BackgroundDrip.start(request)) {
                 finish()
             } else {
                 handOffFailed = true
@@ -551,6 +558,8 @@ final class StackPresenter: CardPresenting {
         CardActions.answer(answer, to: action, console: console)
         entry.answer = answer
         entry.dismissed = true
+        // The answer goes out now, not once the card has gone.
+        tick()
     }
 
     /// Reads the cards out whole, and offers each card's buttons as the stack's actions, named with

@@ -376,9 +376,12 @@ takes the card away. Clicking the button never takes focus from the app you are 
 
 `--yes` asks a question instead: the card has a button with that label and opens nothing, and drip
 waits, then exits 0 if the button was clicked. `--no` adds a quieter button to its left that
-answers no: drip exits 1 when it is clicked. With either, drip exits 5 when no button was clicked:
-the card timed out, a newer card with the same `--id` replaced it, or it was clicked away from its
-buttons. 0 and 1 read as yes and no, so the script decides what happens:
+answers no: drip exits 1 when it is clicked. At the notch, drip exits as soon as a button is
+clicked, while the card is still on its way out, so the command after it starts at once; a
+background drip plays the card's exit, and any cards stacked with it, on from where they are.
+Elsewhere, or with reduced motion, it exits once the card's short exit has played. With either, drip exits 5 when
+no button was clicked: the card timed out, a newer card with the same `--id` replaced it, or it was
+clicked away from its buttons. 0 and 1 read as yes and no, so the script decides what happens:
 
 ```sh
 drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23
@@ -448,15 +451,15 @@ moved down out of its way. `off` shows one card at a time. While the pointer is 
 stops, gaps stay open and new cards wait. A click on a card dismisses it. Only the cards of drips
 that returned at once stack; a card that waits (`--wait`, or a question) waits its turn. While a
 question shows, cards that count down stack around it; a card that waits, or another question,
-waits for its answer. drip exits as soon as the answered question has gone, so the command after it
+waits for its answer. drip exits as soon as the question is answered, so the command after it
 runs at once, and the cards still in the stack play out without it.
 
 ### Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| 0 | The card was shown; a question was answered yes. |
-| 1 | A question was answered no; `drip hook` could not make a card, for any reason; or `drip setup` left the agent's settings alone, or could not write them. |
+| 0 | The card was shown; a question was answered yes, the moment it was clicked. |
+| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason; or `drip setup` left the agent's settings alone, or could not write them. |
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh. |
 | 4 | The config file is invalid; the message names the key and line. |

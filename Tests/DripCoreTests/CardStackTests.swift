@@ -208,8 +208,8 @@ struct CardStackTests {
         #expect(!stack.holdsOwn)
     }
 
-    /// Answered while a card it took in has long left, a question's stack hands that card on with
-    /// the time it has left, within a second of the answer.
+    /// Answered while a card it took in has long left, a question's stack hands every card on, its
+    /// own on its way out, in the same step of the clock as the answer.
     @Test func anAnsweredQuestionHandsOnTheCardsItTookIn() throws {
         var question = asking("merge?")
         question.action = CardAction(label: "Merge", open: nil, decline: "Later")
@@ -220,6 +220,7 @@ struct CardStackTests {
         time = run(stack, from: time, until: time + 3)
         #expect(stack.handOff(at: time) == nil)
 
+        // Clicked: the next step of the clock sends the card off and the stack can go at once.
         let answered = time
         stack.live[0].answer = .yes
         stack.live[0].dismissed = true
@@ -231,14 +232,38 @@ struct CardStackTests {
                 [done, needsYou].map { $0.animator.shape(at: now).pillTop })
         }
         let handOff = try #require(handed)
-        #expect(handOff.time - answered < 1)
-        #expect(handOff.cards.map(\.card) == [card("done", seconds: 30), asking("needs you")])
-        #expect(handOff.cards.map(\.remaining) == handOff.left)
-        for (card, top) in zip(handOff.cards, handOff.tops) { #expect(abs(card.drawnTop - top) < 0.1) }
-        #expect(handOff.cards[0].remaining > 25)
-        #expect(handOff.cards.map(\.isWaiting) == [false, true])
-        #expect(handOff.cards.allSatisfy { $0.leaving == nil })
+        #expect(handOff.time - answered < 0.05)
+        #expect(handOff.cards.map(\.card) == [question, card("done", seconds: 30), asking("needs you")])
+        let leaving = try #require(handOff.cards[0].leaving)
+        #expect(leaving < 0.05)
+        let adopted = Array(handOff.cards.dropFirst())
+        #expect(adopted.map(\.remaining) == handOff.left)
+        for (card, top) in zip(adopted, handOff.tops) { #expect(abs(card.drawnTop - top) < 0.1) }
+        #expect(adopted[0].remaining > 25)
+        #expect(adopted.map(\.isWaiting) == [false, true])
+        #expect(adopted.allSatisfy { $0.leaving == nil })
         #expect(!stack.holdsOwn)
+    }
+
+    /// A single answered card at the notch, handed on, leaves the way it would have alone.
+    @Test func aLeavingIslandHandedOnLeavesAsItWould() throws {
+        let handOff = StackHandOff.leaving(asking("merge?"), top: metrics.pillTop, at: 1_000)
+        let aged = handOff.cards(at: 1_000.1)
+        #expect(abs((aged.first?.leaving ?? 0) - 0.1) < 0.001)
+        let stack = CardStack(settings: handOff.settings)
+        let (entry, cues) = stack.resume(try #require(aged.first), metrics: metrics, at: 50)
+        #expect(cues != nil)
+        #expect(entry.isLeaving)
+
+        var alone = IslandAnimator(metrics: metrics)
+        alone.open()
+        _ = alone.exit(at: 0)
+        let leaving = try #require(aged.first?.leaving)
+        for offset in [0.0, 0.1, 0.3] {
+            let was = alone.shape(at: leaving + offset), now = entry.animator.shape(at: 50 + offset)
+            #expect(abs(was.pillTop - now.pillTop) < 0.01)
+            #expect(abs(was.pillWidth - now.pillWidth) < 0.01)
+        }
     }
 
     @Test func aStackWithNoAdoptedCardsHandsOnNothing() {

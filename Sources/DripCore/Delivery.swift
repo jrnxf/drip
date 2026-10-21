@@ -89,6 +89,14 @@ public struct StackHandOff: Equatable, Sendable, Codable {
         self.time = time
     }
 
+    /// A single card at the notch that started to leave at `time`, in seconds since 1970, from an
+    /// open capsule whose top was at `top`: the background drip plays its exit on from there.
+    public static func leaving(_ card: Card, top: Double, at time: Double) -> StackHandOff {
+        StackHandOff(
+            settings: StackSettings(mode: .chain, max: 1),
+            cards: [HandedCard(card: card, top: top, remaining: 0, isWaiting: false, leaving: 0)], time: time)
+    }
+
     /// The cards as they are at `now`, in seconds since 1970: each `aged` by the time since `time`.
     public func cards(at now: Double) -> [HandedCard] {
         guard let time else { return cards }

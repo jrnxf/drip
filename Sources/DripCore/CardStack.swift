@@ -122,12 +122,13 @@ public final class CardStack {
     /// Whether every one of this drip's own cards has come and gone, leaving included.
     public var ownCardsGone: Bool { waiting.isEmpty && !entries.contains(where: \.own) }
 
-    /// Once this drip's own cards have gone, the other drips' cards it took in and still shows, top
-    /// to bottom, as they are at `time`: where each is, what it has left and how far into leaving it
-    /// is. Nil while an own card remains. A drip that waits for its question's answer hands these on
-    /// to a background drip, so it exits as soon as its own card has gone.
+    /// Once this drip's own cards have all been answered, or have otherwise started to go, every
+    /// card in the stack, top to bottom, as it is at `time`: where each is, what it has left and how
+    /// far into leaving it is. Nil while an own card still shows or is still to come. A drip that
+    /// asks a question hands these on to a background drip, so it exits with the answer in the
+    /// moment it is given, and its card leaves and the cards it took in play out without it.
     public func handOff(at time: Double) -> [HandedCard]? {
-        guard ownCardsGone else { return nil }
+        guard !holdsOwn else { return nil }
         return entries.map { entry in
             HandedCard(
                 card: entry.card, top: entry.exit?.top ?? entry.animator.targetTop,
