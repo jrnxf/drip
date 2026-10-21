@@ -23,10 +23,13 @@ public struct IslandMetrics: Equatable, Sendable {
     public var hasIcon: Bool
     /// A button's width, which takes the countdown ring's place; 0 without one.
     public var actionWidth: Double
+    /// The widest the capsule may get: `CardMetrics.maxWidth`, or less on a screen narrower than that.
+    public var widestPill: Double
 
     public init(
         notchWidth: Double, notchHeight: Double, scale: Double = 1, textWidth: Double, textHeight: Double,
-        titleLines: Int = 1, detailLines: Int = 1, hasIcon: Bool = true, actionWidth: Double = 0
+        titleLines: Int = 1, detailLines: Int = 1, hasIcon: Bool = true, actionWidth: Double = 0,
+        widestPill: Double = Double(CardMetrics.maxWidth)
     ) {
         self.notchWidth = notchWidth
         self.notchHeight = notchHeight
@@ -37,6 +40,7 @@ public struct IslandMetrics: Equatable, Sendable {
         self.detailLines = detailLines
         self.hasIcon = hasIcon
         self.actionWidth = actionWidth
+        self.widestPill = widestPill
     }
 
     /// The notch's own bottom corners.
@@ -50,7 +54,7 @@ public struct IslandMetrics: Equatable, Sendable {
     var pillTextX: Double { pillPadding + (hasIcon ? pillIcon + pillGap : 0) }
     public var pillWidth: Double {
         let width = pillTextX + textWidth + pillGap + pillRing + pillPadding
-        return min(max(width, 200 * scale), Double(CardMetrics.maxWidth))
+        return min(max(width, 200 * scale), widestPill)
     }
     public var pillHeight: Double { 2 * 12 * scale + max(textHeight, pillIcon) }
     public var pillTop: Double { notchHeight + 12 * scale }
@@ -58,11 +62,11 @@ public struct IslandMetrics: Equatable, Sendable {
     /// line is round at the ends however tall its fonts are; one with more lines keeps corners of 30
     /// points instead of swelling into a blob.
     public var pillCornerRadius: Double { titleLines > 1 || detailLines > 1 ? 30 * scale : .infinity }
-    /// The widest a line of text may be: 500 points at regular size, less when a button is too wide
-    /// for both to fit in the widest capsule. It does not depend on the text.
+    /// The widest a line of text may be: 500 points at regular size in the widest capsule, less when
+    /// a button is too wide for both to fit in it. It does not depend on the text.
     public var textColumn: Double {
-        let room = Double(CardMetrics.maxWidth) - pillTextX - pillGap - pillRing - pillPadding
-        return min(Double(CardMetrics.maxWidth) - 140 * scale, room)
+        let room = widestPill - pillTextX - pillGap - pillRing - pillPadding
+        return min(widestPill - 140 * scale, room)
     }
     /// The round drop the capsule starts and ends as.
     public var dropSize: Double { 26 * scale }

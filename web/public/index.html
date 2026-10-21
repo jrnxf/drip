@@ -82,7 +82,7 @@
   a { color: inherit; text-underline-offset: 3px; }
   button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
   :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-  code, kbd, input, textarea { font-family: var(--mono); }
+  code, input { font-family: var(--mono); }
   code { font-size: .82em; }
   b { font-weight: 600; }
   .lbl { font: 500 10.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
@@ -97,12 +97,11 @@
   .top nav { display: flex; gap: 22px; }
   .top a.lbl { text-decoration: none; }
   .top a.lbl:hover { color: var(--ink); }
-  /* Two-position slide switches: the theme, the readout. */
+  /* The theme's two-position slide switch. */
   .slide { display: flex; align-items: center; gap: 9px; border: 0; background: none; padding: 0; cursor: pointer; }
   .slide .track { position: relative; flex: none; width: 44px; height: 20px; border-radius: 5px; background: var(--body-2); box-shadow: inset 0 1px 3px var(--shade); border: 1px solid var(--edge); }
   .slide .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 14px; border-radius: 3px; background: var(--key); box-shadow: 0 1px 0 var(--edge), 0 2px 4px var(--shade); transition: transform .25s var(--ease), background .2s; }
   .slide[aria-checked="true"] .track::after { transform: translateX(20px); }
-  .slide.lit[aria-checked="true"] .track::after { background: var(--orange); }
 
   /* ---------- hero ---------- */
   .hero {
@@ -129,16 +128,17 @@
   .specs dd code { font-size: inherit; }
 
   /* ---------- the device ---------- */
-  .devwrap { position: relative; padding: 26px 0 30px; }
+  /* Room under the device for the paper hanging out of it. */
+  .devwrap { --paper-h: 220px; --pad: 22px; position: relative; padding: 26px 0 calc(var(--paper-h) - 5px - var(--pad) + 30px); }
   .device, .module {
-    position: relative; border-radius: 26px; padding: 22px; background: linear-gradient(180deg, var(--body), var(--body-2));
+    position: relative; border-radius: 26px; padding: var(--pad, 22px); background: linear-gradient(180deg, var(--body), var(--body-2));
     border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--lip), 0 1px 0 var(--edge), 0 30px 60px -30px var(--shade), 0 12px 24px -16px var(--shade);
   }
   :root[data-theme="dark"] .device, :root[data-theme="dark"] .module { box-shadow: inset 0 1px 0 var(--lip), 0 30px 60px -30px #000, 0 12px 24px -16px #000; }
   .screw { position: absolute; width: 11px; height: 11px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, var(--key), var(--key-2)); box-shadow: inset 0 0 0 1px var(--edge); }
   .screw::after { content: ""; position: absolute; left: 2px; right: 2px; top: 5px; height: 1px; background: var(--ink-3); transform: rotate(var(--r, 30deg)); }
   .screw.a { top: 9px; left: 9px; } .screw.b { top: 9px; right: 9px; --r: -20deg; } .screw.c { bottom: 9px; left: 9px; --r: 70deg; } .screw.d { bottom: 9px; right: 9px; --r: 10deg; }
-  .devgrid { --disp: 300px; display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 18px; }
+  .devgrid { --disp: 300px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
   .display {
     position: relative; height: 300px; border-radius: 10px; overflow: hidden;
     background: linear-gradient(var(--lcd-grid) 1px, transparent 1px) 0 0 / 3px 3px, linear-gradient(90deg, var(--lcd-grid) 1px, transparent 1px) 0 0 / 3px 3px, var(--lcd);
@@ -149,30 +149,38 @@
   /* The display's own print, scaled with the notch so it keeps clear of it. */
   .display .glyphs { position: absolute; inset: 0 0 auto 0; height: 32px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px; font: 500 10px/1 var(--mono); letter-spacing: .08em; color: var(--lcd-ink); opacity: .7; width: calc(100% / var(--fit, 1)); transform: scale(var(--fit, 1)); transform-origin: 0 0; }
   .loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 16px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--lcd-ink); }
-  .side { display: flex; flex-direction: column; gap: 12px; min-width: 0; height: var(--disp); }
-  /* The printer keeps to its height: older lines leave the top of the tape, as paper does. */
-  .printer { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-  .slot { flex: none; height: 10px; border-radius: 5px; background: #0d0d0d; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--lip); margin: 0 4px; }
-  .tape {
-    position: relative; flex: 1; min-height: 0; margin: -4px 12px 0; padding: 12px 10px 10px; background: var(--paper); color: var(--paper-ink);
-    font: 400 9.5px/1.55 var(--mono); overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end;
-    -webkit-mask: linear-gradient(180deg, transparent 0, #000 18px, #000 100%); mask: linear-gradient(180deg, transparent 0, #000 18px, #000 100%);
-    box-shadow: 0 6px 14px -8px var(--shade);
+  /* Paper: the install receipt, and what each printer prints. A head over a bold rule, entries
+     between dashed rules, and an end torn off along its perforation (tear() in the script draws it). */
+  .paper { position: relative; filter: drop-shadow(0 1px 1px rgba(0,0,0,.18)) drop-shadow(0 8px 12px var(--shade)); }
+  .slip { position: relative; background: var(--paper); color: var(--paper-ink); }
+  .slip .head { flex: none; display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--paper-ink); font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  /* A printer: a slot in the device, and the paper it feeds out over the device's edge. The newest
+     entry is printed at the slot; older ones move down toward the torn end, and off it. */
+  .printer { position: relative; z-index: 2; height: 10px; }
+  .device > .printer { max-width: 620px; margin: 20px auto 0; }
+  .slot { position: relative; z-index: 1; height: 10px; border-radius: 5px; background: #0d0d0d; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--lip); }
+  .printer .paper { position: absolute; top: 5px; left: 10px; right: 10px; height: var(--paper-h); }
+  .printer .slip { height: 100%; display: flex; flex-direction: column; padding: 16px 18px 10px; background: linear-gradient(rgba(0,0,0,.16), transparent 12px), var(--paper); }
+  /* Print that runs on toward the tear fades out rather than stopping at a straight line. */
+  .log {
+    flex: 1; min-height: 0; overflow: hidden auto; overscroll-behavior: contain; scrollbar-width: none;
+    -webkit-mask: linear-gradient(#000 calc(100% - 26px), transparent); mask: linear-gradient(#000 calc(100% - 26px), transparent);
   }
-  .tape .scroll { max-height: 100%; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .tape .line { min-height: 1.55em; }
-  .tape .prompt { font-weight: 700; }
-  .tape .err { text-decoration: underline wavy; text-underline-offset: 2px; }
-  .tape .dim { opacity: .62; }
+  .log::-webkit-scrollbar { display: none; }
+  .entry { padding: 10px 0; font: 400 11.5px/1.6 var(--mono); }
+  .entry + .entry { border-top: 1px dashed rgba(0,0,0,.22); }
+  .entry > div { white-space: pre-wrap; overflow-wrap: break-word; }
+  /* A command wraps under itself, clear of its prompt. */
+  .entry .cmd { padding-left: 2ch; text-indent: -2ch; }
+  .entry .c { opacity: .55; }
+  .entry .flag { white-space: nowrap; }
+  .entry .out { font-size: 10.5px; opacity: .62; }
+  .entry .out.err { opacity: 1; text-decoration: underline wavy; text-underline-offset: 2px; }
   .lcdline { flex: none; display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 38px; border-radius: 7px; background: var(--lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); color: var(--lcd-ink); font: 500 11.5px/1 var(--mono); }
   .lcdline:focus-within { box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--focus); }
   .lcdline .p { opacity: .7; }
-  .field { position: relative; flex: 1; min-width: 0; }
-  .field input, .field .ghost { font: inherit; padding: 0; margin: 0; border: 0; }
-  .field input { position: relative; z-index: 1; width: 100%; background: transparent; outline: none; color: var(--lcd-ink); caret-color: var(--orange); }
-  .field input::placeholder { color: var(--lcd-ink); opacity: .55; }
-  .field .ghost { position: absolute; inset: 0; white-space: pre; overflow: hidden; color: transparent; pointer-events: none; }
-  .field .ghost span { color: var(--lcd-ink); opacity: .45; }
+  .lcdline input { flex: 1; min-width: 0; font: inherit; padding: 0; margin: 0; border: 0; background: transparent; outline: none; color: var(--lcd-ink); caret-color: var(--orange); }
+  .lcdline input::placeholder { color: var(--lcd-ink); opacity: .55; }
   .keys { margin-top: 18px; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 10px; }
   .key {
     position: relative; aspect-ratio: 1 / .9; border-radius: 10px; border: 1px solid var(--edge); cursor: pointer; padding: 9px 8px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start;
@@ -183,33 +191,14 @@
   .key .led { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--c) 30%, var(--key-2)); box-shadow: inset 0 1px 1px rgba(0,0,0,.3); transition: background .15s, box-shadow .15s; }
   .key.running .led { background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px var(--c); }
   .key b { font: 600 10.5px/1.1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  /* The silkscreen under the keys: what the line you type means, the keys it takes, the readout switch. */
-  .strip { display: flex; align-items: center; gap: 18px; margin-top: 16px; min-height: 20px; }
-  .strip .hint { flex: 1; min-width: 0; font: 400 10.5px/1.5 var(--mono); color: var(--ink-2); }
-  .strip .hint code { font-size: inherit; color: var(--ink); }
-  .strip kbd { font: 600 9.5px/1 var(--mono); padding: 2px 4px; border: 1px solid var(--edge); border-radius: 3px; background: var(--key); color: var(--key-ink); }
-  .strip .legend { display: flex; gap: 12px; white-space: nowrap; }
+  /* The silkscreen under the keys: what the line you type means. */
+  .hint { margin: 16px 0 0; min-height: 20px; font: 400 10.5px/1.5 var(--mono); color: var(--ink-2); }
+  .hint code { font-size: inherit; color: var(--ink); }
   /* Callouts, as on an exploded drawing. */
   .callout { position: absolute; display: flex; align-items: center; gap: 8px; font: 500 10px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
   .callout::before { content: attr(data-n); display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid currentColor; font-size: 9px; letter-spacing: 0; }
   .callout i { display: block; height: 1px; background: currentColor; width: var(--w, 40px); }
   .callout.tl { top: 0; left: 0; } .callout.tr { top: 0; right: 0; } .callout.bl { bottom: 0; left: 0; } .callout.br { bottom: 0; right: 0; }
-
-  /* ---------- the engine readout ---------- */
-  .readout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; padding: 0 0 56px; }
-  .readout[hidden] { display: none; }
-  .module h3 { margin: 0 0 6px; font: 600 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
-  .module > p { margin: 0 0 14px; font-size: 14px; color: var(--ink-2); }
-  .nums { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-  .nums div { border-radius: 7px; padding: 8px 10px; background: var(--lcd); color: var(--lcd-ink); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); min-width: 0; }
-  .nums dt { font: 500 9px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; opacity: .7; }
-  .nums dd { margin: 4px 0 0; font: 600 12.5px/1.3 var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  .plot { display: block; width: 100%; height: 120px; margin-top: 14px; border-radius: 7px; background: var(--lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); }
-  .toggles { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 14px; font: 400 11px/1.4 var(--mono); }
-  .toggles label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .toggles input { accent-color: var(--orange); margin: 0; }
-  .config { display: block; width: 100%; min-height: 150px; resize: vertical; border: 0; border-radius: 2px; padding: 14px; background: var(--paper); color: var(--paper-ink); font: 400 12px/1.6 var(--mono); box-shadow: 0 10px 20px -12px var(--shade); }
-  .config:focus-visible { outline-offset: 3px; }
 
   /* ---------- sections ---------- */
   .block { border-top: 1px solid var(--rule); padding: 48px 0 70px; }
@@ -220,12 +209,15 @@
 
   /* What it does: six small modules, each on its own display. */
   .features { margin-top: 36px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 28px; }
-  .feature .module { border-radius: 20px; padding: 16px; }
+  /* The paper hangs from a slot level with the middle of PLAY, 25 px down a 50 px row over a 16 px
+     padding, and clears the title under it by 18 px. */
+  .feature { --paper-h: 184px; }
+  .feature .module { border-radius: 20px; padding: 16px; margin-bottom: calc(var(--paper-h) - 23px); }
   .feature .display { height: 190px; }
-  .feature .row { display: flex; align-items: flex-end; gap: 14px; margin-top: 14px; }
-  .feature .printer { height: 74px; flex: 1; }
-  .feature .tape { margin: -4px 8px 0; }
-  .feature h3 { margin: 18px 0 6px; font: 600 19px/1.25 var(--sans); font-stretch: 112%; letter-spacing: -.01em; display: flex; gap: 12px; align-items: baseline; }
+  .feature .row { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+  .feature .printer { flex: 1; min-width: 0; }
+  .feature .printer .slip { padding: 14px 16px 10px; }
+  .feature h3 { margin: 0 0 6px; font: 600 19px/1.25 var(--sans); font-stretch: 112%; letter-spacing: -.01em; display: flex; gap: 12px; align-items: baseline; }
   .feature h3 .n { font: 500 10.5px/1 var(--mono); letter-spacing: .1em; color: var(--ink-3); }
   .feature p { margin: 0; font-size: 15px; color: var(--ink-2); }
   .feature p code { color: var(--ink); }
@@ -241,10 +233,11 @@
   table.spec th { width: 30%; padding-right: 16px; font: 500 10.5px/1.6 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
   table.spec td { font: 400 12px/1.6 var(--mono); }
   table.spec td code { font-size: inherit; }
-  .stackmod .display { height: 250px; }
+  .module.stackmod { --paper-h: 224px; padding-bottom: 22px; margin-bottom: calc(var(--paper-h) - 27px); }
+  /* Tall enough for three cards at the notch's own size, so its fixed scale stays at 1. */
+  .stackmod .display { height: 272px; }
   .stackmod .row { display: flex; align-items: center; gap: 18px; margin-top: 18px; }
-  .stackmod .printer { flex: none; height: 82px; margin-top: 16px; }
-  .stackmod .tape { margin: -4px 10px 0; }
+  .stackmod .printer { margin-top: 20px; }
   .switch3 { display: flex; align-items: center; gap: 10px; }
   .switch3 .track { position: relative; display: flex; border-radius: 6px; background: var(--body-2); box-shadow: inset 0 1px 3px var(--shade); border: 1px solid var(--edge); padding: 2px; }
   .switch3 button { border: 0; background: none; padding: 7px 12px; border-radius: 4px; cursor: pointer; font: 600 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
@@ -260,11 +253,7 @@
 
   /* Install: a receipt from the printer. */
   .install { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 56px; align-items: start; }
-  .receipt {
-    margin: 0; padding: 22px 22px 30px; background: var(--paper); color: var(--paper-ink); box-shadow: 0 14px 30px -18px var(--shade);
-    clip-path: polygon(0 0, 100% 0, 100% 100%, 96% calc(100% - 6px), 92% 100%, 88% calc(100% - 6px), 84% 100%, 80% calc(100% - 6px), 76% 100%, 72% calc(100% - 6px), 68% 100%, 64% calc(100% - 6px), 60% 100%, 56% calc(100% - 6px), 52% 100%, 48% calc(100% - 6px), 44% 100%, 40% calc(100% - 6px), 36% 100%, 32% calc(100% - 6px), 28% 100%, 24% calc(100% - 6px), 20% 100%, 16% calc(100% - 6px), 12% 100%, 8% calc(100% - 6px), 4% 100%, 0 calc(100% - 6px));
-  }
-  .receipt .head { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--paper-ink); font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  .receipt .slip { padding: 22px 22px 34px; }
   .receipt .cmd { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px dashed rgba(0,0,0,.22); }
   .receipt .cmd code { flex: 1; min-width: 0; font-size: 12.5px; overflow-wrap: anywhere; }
   .receipt .cmd .c { opacity: .55; }
@@ -278,31 +267,27 @@
 
   @media (width <= 1100px) {
     .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "device" "specs"; grid-template-rows: auto; row-gap: 8px; min-height: 0; padding-top: 24px; }
-    .devwrap { padding: 12px 0 0; }
+    .devwrap { padding-top: 12px; padding-bottom: calc(var(--paper-h) - 5px - var(--pad) + 8px); }
     .callout { display: none; }
     .sheet, .install { grid-template-columns: minmax(0, 1fr); gap: 36px; }
     .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .readout { grid-template-columns: minmax(0, 1fr); }
   }
   @media (width <= 760px) {
     .wrap { padding: 0 16px; }
     .top { gap: 16px; }
     .top nav, .top .sub { display: none; }
     .lede { font-size: 17px; }
-    .device { padding: 14px; border-radius: 20px; }
+    .devwrap { --pad: 14px; --paper-h: 200px; }
+    .device { border-radius: 20px; }
     .device > .screw { display: none; }
-    .devgrid { --disp: 220px; grid-template-columns: minmax(0, 1fr); }
-    .side { height: auto; }
-    .side .printer { flex: none; height: 104px; }
+    .devgrid { --disp: 220px; gap: 14px; }
     .keys { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
     .keys .key { aspect-ratio: auto; height: 58px; }
-    .strip .legend { display: none; }
     .features, .parts { grid-template-columns: minmax(0, 1fr); }
-    .stackmod .display { height: 200px; }
+    .stackmod .display { height: 216px; }
     .module { padding: 16px; border-radius: 20px; }
     .block { padding: 40px 0 56px; }
   }
-  @media (pointer: coarse) { .strip .legend { display: none; } }
   @media (prefers-reduced-motion: reduce) { *, *::after { transition-duration: .001ms !important; } }
 </style>
 </head>
@@ -332,7 +317,7 @@
 
       <div class="devwrap">
         <span class="callout tl" data-n="1" aria-hidden="true">display: DripCore, as WebAssembly<i style="--w:60px"></i></span>
-        <span class="callout tr" data-n="2" aria-hidden="true"><i style="--w:40px"></i>printer: what ran</span>
+        <span class="callout tr" data-n="2" aria-hidden="true"><i style="--w:40px"></i>input: any drip command</span>
         <div class="device">
           <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
           <div class="devgrid">
@@ -341,43 +326,14 @@
               <canvas class="stage-canvas"></canvas>
               <div class="loading" id="loading">loading drip's engine</div>
             </div>
-            <div class="side">
-              <div class="printer"><div class="slot"></div><div class="tape"><div class="scroll" id="hero-tape" aria-live="polite"></div></div></div>
-              <div class="lcdline"><span class="p" aria-hidden="true">›</span><div class="field"><div class="ghost" aria-hidden="true"></div><input id="input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type a drip command" aria-describedby="hint" placeholder='drip ok "hello"' disabled enterkeyhint="go"></div></div>
-            </div>
+            <div class="lcdline"><span class="p" aria-hidden="true">›</span><input id="input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type a drip command" aria-describedby="hint" placeholder='drip ok "hello"' disabled enterkeyhint="go"></div>
           </div>
           <div class="keys" id="keys" role="group" aria-label="Examples"></div>
-          <div class="strip">
-            <span class="hint" id="hint">Type a <code>drip</code> command, or press a key.</span>
-            <span class="legend lbl" aria-hidden="true"><span><kbd>tab</kbd> complete</span><span><kbd>↑</kbd> history</span><span><kbd>enter</kbd> run</span></span>
-            <button type="button" class="slide lit" id="readout-toggle" role="switch" aria-checked="false" aria-controls="readout"><span class="lbl">readout</span><span class="track"></span></button>
-          </div>
+          <p class="hint" id="hint">Type a <code>drip</code> command, or press a key.</p>
+          <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>what ran</span></div><div class="log" id="hero-tape" aria-live="polite"></div></div></div></div>
         </div>
         <span class="callout bl" data-n="3" aria-hidden="true">keys: one example each<i style="--w:50px"></i></span>
-        <span class="callout br" data-n="4" aria-hidden="true"><i style="--w:30px"></i>input: any drip command</span>
-      </div>
-    </section>
-
-    <section class="readout" id="readout" aria-label="Engine readout" hidden>
-      <div class="module">
-        <h3>readout</h3>
-        <p>Every number comes from DripCore's <code>IslandAnimator</code>, computed by the engine for each frame of the newest card above.</p>
-        <dl class="nums" id="live"></dl>
-        <canvas class="plot" id="plot" aria-hidden="true"></canvas>
-        <div class="toggles">
-          <label><input type="checkbox" id="outline"> show the traced outline points</label>
-          <label><input type="checkbox" id="slow"> slow motion (¼ speed)</label>
-        </div>
-      </div>
-      <div class="module">
-        <h3>~/.config/drip/config.toml</h3>
-        <p>drip's TOML parser reads this on every command. Edit it, then try <code>drip deploy "shipped"</code>.</p>
-        <textarea class="config" id="config" spellcheck="false" aria-label="drip config file"># Read by drip's TOML parser on every command.
-[preset.deploy]
-icon  = "paperplane.fill"
-color = "#a78bfa"
-seconds = 6</textarea>
-        <dl class="nums" id="load" style="margin-top:18px"></dl>
+        <span class="callout br" data-n="4" aria-hidden="true"><i style="--w:30px"></i>printer: what ran</span>
       </div>
     </section>
 
@@ -412,14 +368,14 @@ seconds = 6</textarea>
           <span style="flex:1"></span>
           <button type="button" class="bigbtn" id="stack-play" aria-label="Play four cards">PLAY</button>
         </div>
-        <div class="printer"><div class="slot"></div><div class="tape"><div class="scroll" id="stack-tape"></div></div></div>
+        <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>stack</span></div><div class="log" id="stack-tape"></div></div></div></div>
       </div>
     </section>
 
     <section class="block" id="engine">
       <div class="lbl">03 / how this page works</div>
       <h2>how this <b>page works.</b></h2>
-      <p class="sub">DripCore, drip's engine, is compiled from the same Swift sources to WebAssembly and loaded by this page. It parses each command line, resolves the card, wraps the text and runs the springs that drop it out of the notch. The page paints what it computes. Turn on the <a href="#readout" id="readout-link">readout</a> to see the numbers.</p>
+      <p class="sub">DripCore, drip's engine, is compiled from the same Swift sources to WebAssembly and loaded by this page. It parses each command line, resolves the card, wraps the text and runs the springs that drop it out of the notch. The page paints what it computes.</p>
       <div class="parts">
         <div><h3><i style="--c:#30d158"></i>real drip</h3><ul>
           <li>The command line, parsed by swift-argument-parser, with drip's own errors and <code>--help</code></li>
@@ -451,13 +407,13 @@ seconds = 6</textarea>
         <p class="sub">Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs. Nothing compiles, and Xcode is not needed. The README covers building from source.</p>
         <div class="links"><a href="https://github.com/jrnxf/drip">source on GitHub</a><a href="https://github.com/jrnxf/drip#usage">usage</a></div>
       </div>
-      <div class="receipt">
+      <div class="paper receipt"><div class="slip">
         <div class="head"><span>drip</span><span>install</span></div>
         <div class="cmd"><code><span class="c">$ </span>brew install jrnxf/tap/drip</code><button type="button" class="copy-btn" data-copy="brew install jrnxf/tap/drip" aria-label="Copy: brew install jrnxf/tap/drip">copy</button></div>
         <div class="cmd"><code><span class="c">$ </span>drip ok "drip works"</code><button type="button" class="copy-btn" data-copy='drip ok "drip works"' aria-label='Copy: drip ok "drip works"'>copy</button></div>
         <div class="cmd"><code><span class="c">$ </span>drip run make test   <span class="c"># wrap any command</span></code><button type="button" class="copy-btn" data-copy="drip run make test" aria-label="Copy: drip run make test">copy</button></div>
         <div class="tot"><span>macOS 13 or newer</span><span>notch optional</span><span>MIT</span></div>
-      </div>
+      </div></div>
     </section>
   </main>
 
@@ -573,7 +529,11 @@ const UPDATE = { resize: [0.4, 0.1], fadeOut: 0.10, fadeIn: 0.18, settle: 0.24, 
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 let drip = null;
+// A two-line card each stage makes room for, measured once the engine loads.
+let reference = null;
 const notch = { width: 185, height: 32 };
+// The space between two cards of a stack (CardStack.gap).
+const STACK_GAP = 10;
 
 // A card replaced in place is in from the start; the crossfade decides what shows.
 const shownCues = (card) => ({ sides: -1, title: card.titleLines.map(() => -1), detail: card.detailLines.map(() => -1) });
@@ -584,16 +544,19 @@ const shownCues = (card) => ({ sides: -1, title: card.titleLines.map(() => -1), 
 // sends them off. While it shows, it takes in later commands' cards, as the app's background drip
 // does. Cards that do not stack (reduced motion, DRIP_STACK=off) show one at a time.
 class Stage {
-  constructor(screen, { zoom = () => 1, term = null, avail = null } = {}) {
-    this.screen = screen; this.term = term; this.zoom = zoom; this.avail = avail;
+  // `holds`: how many cards of a stack the screen is drawn to show at once.
+  constructor(screen, { zoom = () => 1, term = null, holds = 3 } = {}) {
+    this.screen = screen; this.term = term; this.zoom = zoom; this.holds = holds;
     this.canvas = screen.querySelector("canvas"); this.ctx = this.canvas.getContext("2d");
     this.layer = document.createElement("canvas"); this.lctx = this.layer.getContext("2d");
     this.textLayer = document.createElement("canvas"); this.tctx = this.textLayer.getContext("2d");
     this.deliveries = []; this.queue = []; this.current = null; this.stack = null; this.lastCard = null;
-    this.clock = 0; this.fit = 1; this.speed = 1;
+    this.clock = 0; this.fit = 1; this.widest = 640;
     this.frozen = null; this.visible = true; this.dirty = true; this.pointer = null;
     this.listeners = [];
-    new ResizeObserver(() => { this.resize(); this.setFit(this.fitFor(this.current)); this.dirty = true; }).observe(this.canvas);
+    new ResizeObserver(() => {
+      this.resize(); this.refit(); this.dirty = true;
+    }).observe(this.canvas);
     new IntersectionObserver(([entry]) => { this.visible = entry.isIntersecting; this.dirty = true; }, { rootMargin: "80px" }).observe(screen);
     screen.addEventListener("pointermove", (event) => {
       this.pointer = this.islandPoint(event);
@@ -643,14 +606,18 @@ class Stage {
     const rect = this.canvas.getBoundingClientRect();
     return { x: (event.clientX - rect.left - rect.width / 2) / this.fit, y: (event.clientY - rect.top) / this.fit };
   }
-  // How much the screen is scaled: up to the stage's zoom, and down when the card would not fit.
-  fitFor(card) {
-    const W = this.canvas.getBoundingClientRect().width;
-    return Math.min(this.zoom(W), (W - 16) / Math.max(card ? card.metrics.maxWidth + 16 : 0, 380));
+  // How much the screen is scaled, chosen once for its size: up to the stage's zoom, and down so that
+  // `holds` reference cards fit, laid out as CardStack lays them out. Cards coming and going never
+  // change it, so the notch keeps its size; a card is laid out no wider than the screen shows across,
+  // so long text wraps instead of running off it.
+  refit() {
+    const { width, height } = this.canvas.getBoundingClientRect(), m = reference?.metrics;
+    const across = (width - 16) / 380;
+    const down = m ? (height - 10) / (m.pillTop + this.holds * m.pillHeight + (this.holds - 1) * STACK_GAP + 10) : Infinity;
+    this.fit = Math.min(this.zoom(width), across, down);
+    this.widest = (width - 16) / this.fit - 16;
+    this.screen.style.setProperty("--fit", this.fit);
   }
-  setFit(value) { this.fit = Math.abs(value - this.restFit()) < 0.002 && !this.stack ? this.restFit() : value; this.screen.style.setProperty("--fit", this.fit); }
-  // The zoom with nothing on screen.
-  restFit() { return this.fitFor(null); }
   reset() {
     if (this.stack) {
       for (const handle of drip.stack.end(this.stack.id)) drip.release(handle);
@@ -660,6 +627,7 @@ class Stage {
     for (const card of this.queue) drip.release(card.handle);
     if (this.current) drip.release(this.current.handle);
     this.deliveries.length = 0; this.queue.length = 0; this.current = null; this.lastCard = null; this.dirty = true;
+    this.screen.style.cursor = "";
   }
   motionOf(card) { return reduceMotion.matches && card.card.motion === "full" ? "subtle" : card.card.motion; }
   // A card as this stage paints it; its times are its own, from when it starts to drop in.
@@ -684,7 +652,6 @@ class Stage {
       if (offered.dropped) { drip.release(offered.dropped); this.stack.cards.delete(offered.dropped); }
       this.stack.cards.set(card.handle, card);
     }
-    this.stack.fit = Math.min(this.stack.fit, ...delivery.cards.map((card) => this.fitFor(card)));
   }
   // Starts the next delivery once nothing shows.
   next() {
@@ -693,8 +660,8 @@ class Stage {
     const cards = delivery.cards;
     this.stack = {
       id: drip.stack.start({ ...delivery.stack, adopting: delivery.adopting }, cards.map((card) => card.handle)),
-      start: this.clock, adopting: delivery.adopting, settings: delivery.stack, bottom: 0,
-      cards: new Map(cards.map((card) => [card.handle, card])), fit: Math.min(...cards.map((card) => this.fitFor(card))),
+      start: this.clock, adopting: delivery.adopting,
+      cards: new Map(cards.map((card) => [card.handle, card])),
     };
     while (this.deliveries[0]?.stack && this.deliveries[0].adopting && this.stack.adopting) this.offer(this.deliveries.shift());
   }
@@ -713,7 +680,6 @@ class Stage {
     this.queue.push(card); this.dirty = true;
   }
   begin(state) {
-    this.setFit(this.fitFor(state));
     state.start = this.clock;
     if (state.card.motion === "full") {
       state.cues = drip.enter(state.handle, 0);
@@ -733,7 +699,6 @@ class Stage {
   // With reduced motion a card replaced in place changes size at once and crossfades, as the app
   // does; in a stack, the engine swaps it.
   replace(old, state) {
-    this.setFit(Math.min(this.fit, this.fitFor(state)));
     drip.open(state.handle);
     state.start = this.clock;
     state.cues = shownCues(state);
@@ -864,37 +829,24 @@ class Stage {
   }
 
   // The black shape: the traced liquid while the drop touches what it grows out of, a capsule once it
-  // floats free. Returns how many outline points it traced.
+  // floats free.
   fillShape(f) {
     const { ctx } = this;
-    let points = 0;
     ctx.fillStyle = "#000"; ctx.beginPath();
     if (f.touchesNotch) {
-      for (const loop of f.loops) { ctx.moveTo(loop[0], loop[1]); for (let i = 2; i < loop.length; i += 2) ctx.lineTo(loop[i], loop[i + 1]); ctx.closePath(); points += loop.length / 2; }
+      for (const loop of f.loops) { ctx.moveTo(loop[0], loop[1]); for (let i = 2; i < loop.length; i += 2) ctx.lineTo(loop[i], loop[i + 1]); ctx.closePath(); }
       ctx.fill();
     } else { roundedRect(ctx, -f.pillWidth / 2, f.pillTop, f.pillWidth, f.pillHeight, f.pillRadius); ctx.fill(); }
-    if (this.showOutline && f.touchesNotch) {
-      ctx.fillStyle = "#30d158";
-      for (const loop of f.loops) for (let i = 0; i < loop.length; i += 2) ctx.fillRect(loop[i] - 0.4, loop[i + 1] - 0.4, 0.8, 0.8);
-    }
-    return points;
   }
 
   step(now, dt) {
     if (!drip) return;
     if (!this.stack && !this.current && !this.queue.length && this.deliveries.length) this.next();
     if (!this.current && this.queue.length && !this.stack) this.current = this.begin(this.queue.shift());
-    if (!this.current && !this.stack && !this.dirty && this.fit === this.restFit()) return;
+    if (!this.current && !this.stack && !this.dirty) return;
     const started = this.stack?.start ?? this.current?.start;
     if (this.frozen !== null && started !== undefined && started !== Infinity) this.clock = started + this.frozen;
-    else this.clock += Math.min(dt, 0.1) * this.speed;
-    if (!this.stack && !this.current) this.setFit(this.fit + (this.restFit() - this.fit) * (1 - Math.exp(-Math.min(dt, 0.1) * 9)));
-    if (this.stack) {
-      // The stack zooms out to hold its cards, and back in once it has gone.
-      const height = this.avail?.() ?? this.canvas.getBoundingClientRect().height;
-      const target = this.stack.fit = Math.min(this.stack.fit, (height - 10) / Math.max(this.stack.bottom + 10, 1));
-      this.setFit(this.frozen !== null ? target : this.fit + (target - this.fit) * (1 - Math.exp(-Math.min(dt, 0.1) * 9)));
-    }
+    else this.clock += Math.min(dt, 0.1);
     this.paint();
   }
 
@@ -909,7 +861,7 @@ class Stage {
     if (this.stack) { this.paintStack(W, H); return; }
 
     const s = this.current;
-    if (!s) { this.emit("frame", null); return; }
+    if (!s) return;
     const t = this.clock - s.start;
     // A card that waits for you gives way to the next card and counts down from now.
     if (s.waiting && !s.exitCues && (this.queue.length || this.deliveries.length)) {
@@ -917,20 +869,17 @@ class Stage {
     }
     if (!s.exitCues && t >= s.exitAt && !s.hover) this.leave(s, t);
     else if (!s.exitCues && t >= s.exitAt) s.exitAt = t; // hovering holds the card, as on a Mac
-    const started = performance.now();
     const f = drip.frame(s.handle, t);
-    const computeMs = performance.now() - started;
     let panel = 1;
     if (s.card.motion !== "full" && s.panelFade !== undefined) {
       panel = s.panelFade === 0 ? 1 : clamp01(t / s.panelFade);
       if (s.exitCues) panel = s.panelFade === 0 ? (t < s.exitAt ? 1 : 0) : 1 - clamp01((t - s.exitAt) / s.panelFade);
     }
     ctx.globalAlpha = panel;
-    const points = this.fillShape(f);
+    this.fillShape(f);
     this.paintCard(s, f, t, null, W, H);
     ctx.globalAlpha = 1;
     s.lastFrame = f; s.lastT = t;
-    this.emit("frame", { s, f, t, computeMs, points });
     if (s.exitCues && t >= s.done) { drip.release(s.handle); this.current = null; this.dirty = true; this.emit("end", s); }
   }
 
@@ -966,21 +915,15 @@ class Stage {
     }
     for (const handle of changes.gone ?? []) { drip.release(handle); st.cards.delete(handle); }
 
-    const started = performance.now();
     const frames = drip.stack.frame(st.id, t);
-    const computeMs = performance.now() - started;
-    let points = 0, bottom = 0;
-    for (const { frame } of frames) points += this.fillShape(frame);
-    for (const { handle, remaining, targetTop, frame } of frames) {
+    for (const { frame } of frames) this.fillShape(frame);
+    for (const { handle, remaining, frame } of frames) {
       const card = st.cards.get(handle), ct = t - card.start;
       card.ring = card.card.action ? null : card.waiting ? 1 : clamp01(remaining / card.card.seconds);
       this.paintCard(card, frame, ct, card.ring, W, H);
       card.lastFrame = frame; card.lastT = ct;
-      bottom = Math.max(bottom, targetTop + card.metrics.pillHeight, frame.pillTop + frame.pillHeight);
     }
-    st.bottom = bottom || st.bottom; st.frames = frames;
-    const newest = st.newest && st.cards.has(st.newest.handle) ? st.newest : null;
-    this.emit("frame", newest?.lastFrame ? { s: newest, f: newest.lastFrame, t: newest.lastT, computeMs, points, stack: { mode: st.settings.mode, shown: frames.length, max: st.settings.max } } : null);
+    st.frames = frames;
     if (changes.done) { this.stack = null; this.dirty = true; this.screen.style.cursor = ""; this.emit("end", null); }
   }
 }
@@ -989,17 +932,37 @@ class Stage {
 const announcer = document.getElementById("announce");
 function announce(card) { announcer.textContent = `drip card: ${card.card.title}${card.card.detail ? ". " + card.card.detail : ""}`; }
 
-// ===== Terminals =====
+// ===== Printers =====
+// Each prints on its paper: an entry per command, with what it printed under it. A new entry
+// comes out of the slot and feeds the older ones down toward the torn end; past `max` they go.
 class Term {
-  constructor(scroll, { max = 400 } = {}) { this.scroll = scroll; this.max = max; }
-  add(div) { this.scroll.append(div); while (this.scroll.childElementCount > this.max) this.scroll.firstElementChild.remove(); this.scroll.scrollTop = this.scroll.scrollHeight; }
-  print(text, cls = "") { for (const part of String(text).split("\n")) { const div = document.createElement("div"); div.className = "line " + cls; div.textContent = part; this.add(div); } }
-  echo(command) {
-    const div = document.createElement("div"); div.className = "line";
-    const p = document.createElement("span"); p.className = "prompt"; p.textContent = "~ $ ";
-    div.append(p, command); this.add(div); return div;
+  constructor(log, { max = 40 } = {}) {
+    this.log = log; this.max = max; this.entry = null;
+    this.feed = document.createElement("div"); log.append(this.feed);
   }
-  clear() { this.scroll.textContent = ""; }
+  open() {
+    const entry = document.createElement("div"); entry.className = "entry";
+    this.feed.prepend(entry); this.entry = entry; this.log.scrollTop = 0;
+    while (this.feed.childElementCount > this.max) this.feed.lastElementChild.remove();
+    // Fed by the height of what this turn prints into it.
+    if (!reduceMotion.matches && this.feed.childElementCount > 1) queueMicrotask(() => {
+      if (entry.isConnected) this.feed.animate([{ transform: `translateY(${-entry.offsetHeight}px)` }, { transform: "none" }], { duration: 320, easing: "cubic-bezier(.23, 1, .32, 1)" });
+    });
+    return entry;
+  }
+  line(entry, cls, text) { const div = document.createElement("div"); div.className = cls; div.append(text); entry.append(div); return div; }
+  print(text, cls = "") { const entry = this.entry ?? this.open(); for (const part of String(text).split("\n")) this.line(entry, `out ${cls}`, part); }
+  // A flag such as --confirm stays whole, rather than breaking after its dashes.
+  echo(command) {
+    const p = document.createElement("span"); p.className = "c"; p.textContent = "$ ";
+    const div = this.line(this.open(), "cmd", p);
+    for (const part of command.split(/(\s+)/)) {
+      if (!/^--?\w/.test(part)) { div.append(part); continue; }
+      const flag = document.createElement("span"); flag.className = "flag"; flag.textContent = part; div.append(flag);
+    }
+    return div;
+  }
+  clear() { this.feed.textContent = ""; this.entry = null; }
 }
 
 // Splits a command line as a POSIX shell would, quotes and backslashes included: `;` and `&&`
@@ -1051,21 +1014,24 @@ function producer(words) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const configText = () => document.getElementById("config").value;
+// The config.toml drip reads here: a deploy preset, for the PRESET key and its feature module.
+const CONFIG = `[preset.deploy]\nicon  = "paperplane.fill"\ncolor = "#a78bfa"\nseconds = 6`;
 
-// Runs one typed line in a terminal against a stage. Resolves with the last command's status.
-async function exec(line, term, stage, { config = configText(), echo = true, shown = line } = {}) {
+// Runs one typed line in a terminal against a stage. Resolves with the last command's status. Once
+// `alive` says no, as when PLAY starts the scene over, it stops and prints and shows nothing more.
+async function exec(line, term, stage, { config = CONFIG, echo = true, shown = line, alive = () => true } = {}) {
   if (echo) term.echo(shown);
   let commands;
   try { commands = parseLine(line); } catch (error) { term.print(`zsh: ${error.message}`, "err"); return 1; }
   let status = 0;
   for (const { op, stages: allStages } of commands) {
+    if (!alive()) break;
     if (op === "&&" && status !== 0) continue;
-    status = await execOne(allStages, term, stage, config);
+    status = await execOne(allStages, term, stage, config, alive);
   }
   return status;
 }
-async function execOne(stages, term, stage, config) {
+async function execOne(stages, term, stage, config, alive) {
   let stdin;
   if (stages.length > 1) {
     stdin = producer(stages[0]);
@@ -1085,13 +1051,17 @@ async function execOne(stages, term, stage, config) {
   if (program === "./promote.sh") { term.print("promoting api 1.4.2 to production", "dim"); return 0; }
   if (program !== "drip") { term.print(`zsh: command not found: ${program}  (this terminal only runs drip)`, "err"); return 127; }
 
-  let reply = drip.command({ args, env, config, notch, stdin });
+  let reply = drip.command({ args, env, config, notch, widest: stage.widest, stdin });
   if (reply.run) {
     const outcome = fakeRun(reply.run);
     const started = performance.now();
-    for (const l of outcome.lines) { term.print(l, "dim"); await sleep(outcome.seconds * 1000 / (outcome.lines.length + 1)); }
+    for (const l of outcome.lines) {
+      term.print(l, "dim"); await sleep(outcome.seconds * 1000 / (outcome.lines.length + 1));
+      if (!alive()) return 0;
+    }
     await sleep(Math.max(0, outcome.seconds * 1000 - (performance.now() - started)));
-    reply = drip.command({ args, env, config, notch, run: { status: outcome.status, seconds: (performance.now() - started) / 1000 } });
+    if (!alive()) return 0;
+    reply = drip.command({ args, env, config, notch, widest: stage.widest, run: { status: outcome.status, seconds: (performance.now() - started) / 1000 } });
   }
   if (reply.message !== undefined) { term.print(reply.message, reply.exit === 0 ? "" : "err"); return reply.exit ?? 1; }
   for (const warning of reply.warnings ?? []) term.print(`drip: warning: ${warning}`, "dim");
@@ -1107,7 +1077,7 @@ const narrow = matchMedia("(width <= 760px)");
 // The notch and the cards at their real size, smaller only when the display is too narrow for them.
 const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 600)) });
 const stages = [hero];
-const input = document.getElementById("input"), ghost = document.querySelector(".ghost"), hintWhat = document.getElementById("hint");
+const input = document.getElementById("input"), hint = document.getElementById("hint");
 
 // Four drips at once: three stack, and the fourth waits for room.
 const STACK_LINES = (mode) => [
@@ -1144,26 +1114,8 @@ const KINDS = {
   ask: "purple: something waits on you, and the card waits until you click it",
   run: "runs a command and tells you how it went: drip run make test", hook: "reads a coding agent's hook payload: drip hook claude",
   setup: "adds drip's hooks to a coding agent's settings: drip setup claude --print shows them",
-  demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml (see the readout)",
+  demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml",
 };
-const COMPLETIONS = [...CHIPS.map((c) => c.line), `drip run make deploy-fail`, `drip --help`, `drip ok "drip works"`, `echo "Backup done" | drip ok`, `drip demo`];
-
-function suggestion(value) {
-  if (!value || /\s$/.test(value) && value.trim() === "drip") return value ? "ok \"hello\"" : "";
-  const example = COMPLETIONS.find((c) => c.startsWith(value) && c.length > value.length);
-  if (example) return example.slice(value.length);
-  const words = value.split(/\s+/), last = words.at(-1);
-  if (last.startsWith("--") && !/\s$/.test(value)) {
-    const flag = Object.keys(FLAGS).find((f) => f.startsWith(last) && f !== last);
-    if (flag) return flag.slice(last.length) + " ";
-  }
-  if (words.length === 2 && words[0] === "drip" && last) {
-    const kind = Object.keys(KINDS).find((k) => k.startsWith(last) && k !== last);
-    if (kind) return kind.slice(last.length) + " ";
-  }
-  if ("drip".startsWith(value) && value !== "drip") return "drip".slice(value.length) + " ";
-  return "";
-}
 function explain(value) {
   const words = value.trim().split(/\s+/);
   for (let i = words.length - 1; i >= 0; i--) {
@@ -1171,14 +1123,9 @@ function explain(value) {
     if (FLAGS[w]) return `<code>${escapeHTML(w)}</code> ${escapeHTML(FLAGS[w])}`;
     if (i === 1 && words[0] === "drip" && KINDS[w]) return `<code>drip ${escapeHTML(w)}</code> ${escapeHTML(KINDS[w])}`;
   }
-  return value ? `Press <kbd>tab</kbd> to complete, <kbd>enter</kbd> to run.` : `Type a <code>drip</code> command, or press a key.`;
+  return value ? `Press enter to run.` : `Type a <code>drip</code> command, or press a key.`;
 }
-function renderGhost() {
-  const value = input.value, rest = input.selectionStart === value.length ? suggestion(value) : "";
-  ghost.textContent = value; ghost.dataset.rest = rest;
-  if (rest && input.scrollWidth <= input.clientWidth + 1) { const span = document.createElement("span"); span.textContent = rest; ghost.append(span); }
-  hintWhat.innerHTML = explain(value);
-}
+const renderHint = () => { hint.innerHTML = explain(input.value); };
 const escapeHTML = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 const lineHistory = []; let historyIndex = 0;
@@ -1187,7 +1134,8 @@ async function runHero(line, { fromUser = true } = {}) {
   if (fromUser) stopAttract();
   if (busy) return;
   const trimmed = line.trim();
-  if (trimmed) { lineHistory.push(line); historyIndex = lineHistory.length; }
+  // ↑ and ↓ recall what the visitor ran, not the page's own examples.
+  if (trimmed && fromUser) { lineHistory.push(line); historyIndex = lineHistory.length; }
   busy = true; input.disabled = true;
   // The key whose example this is lights until its cards have gone, whoever pressed it.
   const key = keyFor.get(line);
@@ -1197,20 +1145,14 @@ async function runHero(line, { fromUser = true } = {}) {
     busy = false; input.disabled = false;
     if (key) (async () => { while (hero.busy && !busy) await sleep(150); if (!busy) key.classList.remove("running"); })();
     if (fromUser && !matchMedia("(pointer: coarse)").matches) input.focus({ preventScroll: true });
-    renderGhost();
+    renderHint();
   }
 }
-input.addEventListener("input", () => { stopAttract(); renderGhost(); });
-input.addEventListener("keyup", renderGhost);
-input.addEventListener("click", renderGhost);
+input.addEventListener("input", () => { stopAttract(); renderHint(); });
 input.addEventListener("keydown", (event) => {
-  const rest = ghost.dataset.rest;
-  if ((event.key === "Tab" || (event.key === "ArrowRight" && input.selectionStart === input.value.length)) && rest) {
-    event.preventDefault(); input.value += rest; renderGhost(); return;
-  }
-  if (event.key === "Enter") { const line = input.value; input.value = ""; renderGhost(); if (line.trim()) runHero(line); }
-  else if (event.key === "ArrowUp" && historyIndex > 0) { input.value = lineHistory[--historyIndex]; event.preventDefault(); renderGhost(); }
-  else if (event.key === "ArrowDown") { historyIndex = Math.min(historyIndex + 1, lineHistory.length); input.value = lineHistory[historyIndex] ?? ""; renderGhost(); }
+  if (event.key === "Enter") { const line = input.value; input.value = ""; renderHint(); if (line.trim()) runHero(line); }
+  else if (event.key === "ArrowUp" && historyIndex > 0) { input.value = lineHistory[--historyIndex]; event.preventDefault(); renderHint(); }
+  else if (event.key === "ArrowDown" && historyIndex < lineHistory.length) { historyIndex++; input.value = lineHistory[historyIndex] ?? ""; renderHint(); }
   else if (event.key === "l" && event.ctrlKey) { heroTerm.clear(); event.preventDefault(); }
 });
 
@@ -1221,10 +1163,10 @@ async function typeAndRun(line, { fromUser = true } = {}) {
   if (!reduceMotion.matches) {
     const step = Math.max(6, Math.min(22, 520 / line.length));
     input.value = ""; input.readOnly = true;
-    try { for (let i = 0; i < line.length; i += 2) { input.value = line.slice(0, i + 2); ghost.textContent = ""; await sleep(step); } }
+    try { for (let i = 0; i < line.length; i += 2) { input.value = line.slice(0, i + 2); await sleep(step); } }
     finally { input.readOnly = false; }
   }
-  input.value = ""; renderGhost();
+  input.value = ""; renderHint();
   await runHero(line, { fromUser });
 }
 
@@ -1239,51 +1181,6 @@ for (const chip of CHIPS) {
   keysBox.append(b); keyFor.set(chip.line, b);
 }
 
-// ===== The readout: the engine's numbers for the hero's newest card, and the config it reads =====
-const readout = document.getElementById("readout"), readoutToggle = document.getElementById("readout-toggle");
-function setReadout(on) {
-  readoutToggle.setAttribute("aria-checked", String(on)); readout.hidden = !on;
-  try { localStorage.setItem("drip-readout", on ? "1" : "0"); } catch {}
-}
-readoutToggle.addEventListener("click", () => setReadout(readout.hidden));
-document.getElementById("readout-link").addEventListener("click", () => setReadout(true));
-document.getElementById("outline").addEventListener("change", (e) => { hero.showOutline = e.target.checked; });
-document.getElementById("slow").addEventListener("change", (e) => { hero.speed = e.target.checked ? 0.25 : 1; });
-
-const live = document.getElementById("live");
-let liveTick = 0;
-function showLive(data) {
-  if (readout.hidden || ++liveTick % 4) return;
-  const rows = data ? [
-    ["t", data.t.toFixed(2) + " s"], ["capsule", `${data.f.pillWidth.toFixed(1)} × ${data.f.pillHeight.toFixed(1)} pt`],
-    ["top", data.f.pillTop.toFixed(1) + " pt"], ["open", data.f.progress.toFixed(3)], ["melt", data.f.blend.toFixed(2) + " pt"],
-    ["outline", data.f.touchesNotch ? `${data.points} points` : "free capsule"], ["engine frame", data.computeMs.toFixed(2) + " ms"],
-    ["card", data.s.card.kind + (data.s.card.id ? ` · id ${data.s.card.id}` : "")],
-    ...(data.stack ? [["stack", `${data.stack.mode}, ${data.stack.shown} of ${data.stack.max}`]] : []),
-  ] : [["island", "at rest"], ["waiting", hero.deliveries.reduce((n, d) => n + d.cards.length, hero.queue.length) + " cards"]];
-  live.innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${escapeHTML(String(v))}</dd></div>`).join("");
-}
-const plot = document.getElementById("plot"), pctx = plot.getContext("2d");
-let samples = [];
-function plotSample(data) {
-  if (readout.hidden || !data) return;
-  const { t, f, s } = data;
-  if (!samples.length || t < samples.at(-1).t) samples = [];
-  samples.push({ t, w: f.pillWidth / s.metrics.pillWidth, open: f.progress, y: (f.pillTop + f.pillHeight / 2) / (s.metrics.pillTop + s.metrics.pillHeight / 2) });
-  const dpr = devicePixelRatio || 1, w = plot.clientWidth, h = plot.clientHeight;
-  plot.width = w * dpr; plot.height = h * dpr; pctx.scale(dpr, dpr);
-  const style = getComputedStyle(document.documentElement);
-  const span = Math.max(1.6, samples.at(-1).t);
-  pctx.strokeStyle = style.getPropertyValue("--lcd-ink"); pctx.globalAlpha = 0.25; pctx.beginPath(); pctx.moveTo(0, h * 0.25); pctx.lineTo(w, h * 0.25); pctx.stroke(); pctx.globalAlpha = 1;
-  const series = [["w", "#0a84ff", "width"], ["open", "#30d158", "open"], ["y", "#ff4f00", "drop center"]];
-  series.forEach(([key, color, name], i) => {
-    pctx.strokeStyle = color; pctx.lineWidth = 1.5; pctx.beginPath();
-    samples.forEach((p, j) => { const x = p.t / span * w, y = h * 0.25 + (1 - p[key]) * h * 0.6; j ? pctx.lineTo(x, y) : pctx.moveTo(x, y); });
-    pctx.stroke(); pctx.fillStyle = color; pctx.font = `500 10px ${style.getPropertyValue("--mono")}`; pctx.fillText(name, 8 + i * 90, 16);
-  });
-}
-hero.on((kind, data) => { if (kind === "frame") { showLive(data); plotSample(data); } });
-
 // ===== What it does: six modules, each its own display on the same engine =====
 const CLAUDE = (event, extra) => JSON.stringify({ hook_event_name: event, cwd: "/work/my-app", session_id: "s1", ...extra });
 const FEATURES = [
@@ -1294,9 +1191,9 @@ const FEATURES = [
   {
     label: "HOOK", title: "Hear from coding agents", body: "<code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> points the agent's hooks at drip. A card names the project and what the agent needs, then says when it has finished.",
     steps: [
-      { shown: "drip hook claude   # Notification", line: `drip hook claude '${CLAUDE("Notification", { notification_type: "permission_prompt", message: "Claude needs your permission to use Bash" })}'` },
+      { shown: "drip hook claude   #\u00a0Notification", line: `drip hook claude '${CLAUDE("Notification", { notification_type: "permission_prompt", message: "Claude needs your permission to use Bash" })}'` },
       { sleep: 2.6 },
-      { shown: "drip hook claude   # Stop", line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'` },
+      { shown: "drip hook claude   #\u00a0Stop", line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'` },
     ],
   },
   {
@@ -1313,7 +1210,7 @@ const FEATURES = [
   },
   {
     label: "PRESET", title: "Your own presets", body: "Icons, colors, sounds and timing go in <code>~/.config/drip/config.toml</code>. This module defines a <code>deploy</code> preset.",
-    config: `[preset.deploy]\nicon  = "paperplane.fill"\ncolor = "#a78bfa"\nseconds = 6`,
+    config: CONFIG,
     steps: [{ line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` }],
   },
 ];
@@ -1324,7 +1221,7 @@ FEATURES.forEach((feature, i) => {
     <div class="module">
       <div class="display" role="img"><div class="glyphs" aria-hidden="true"><span></span><span class="clock"></span></div><canvas class="stage-canvas"></canvas></div>
       <div class="row">
-        <div class="printer"><div class="slot"></div><div class="tape"><div class="scroll"></div></div></div>
+        <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span class="what"></span></div><div class="log"></div></div></div></div>
         <button type="button" class="bigbtn">PLAY</button>
       </div>
     </div>
@@ -1337,23 +1234,25 @@ FEATURES.forEach((feature, i) => {
   card.querySelector(".bigbtn").setAttribute("aria-label", `Play: ${feature.title}`);
   grid.append(card);
   const screen = card.querySelector(".display");
-  const term = new Term(card.querySelector(".scroll"), { max: 6 });
-  const stage = new Stage(screen, { term, zoom: () => 1 });
+  card.querySelector(".head .what").textContent = feature.label;
+  const term = new Term(card.querySelector(".log"), { max: 6 });
+  const stage = new Stage(screen, { term, zoom: () => 1, holds: 1 });
   stages.push(stage);
-  let playing = false, played = false;
+  // Each press starts the scene over: the screen and the paper clear, and the play before it stops.
+  let run = 0, played = false;
   const play = async () => {
-    if (playing || !drip) return;
-    playing = true; played = true; stage.reset(); term.clear();
+    if (!drip) return;
+    const mine = ++run, alive = () => mine === run;
+    played = true; stage.reset(); term.clear();
     for (const step of feature.steps) {
-      if (step.sleep) { await sleep(step.sleep * 1000); continue; }
-      const status = await exec(step.line, term, stage, { config: feature.config ?? "", shown: step.shown ?? step.line });
+      if (step.sleep) { await sleep(step.sleep * 1000); if (!alive()) return; continue; }
+      const status = await exec(step.line, term, stage, { config: feature.config ?? "", shown: step.shown ?? step.line, alive });
+      if (!alive()) return;
       if (step.then && status === 0) {
         const last = stage.lastCard;
-        if (last) last.onClick = () => { term.echo(step.then); exec(step.then, term, stage, { echo: false }); };
+        if (last) last.onClick = () => { if (!alive()) return; term.echo(step.then); exec(step.then, term, stage, { echo: false, alive }); };
       }
     }
-    while (stage.busy) await sleep(200);
-    playing = false;
   };
   card.querySelector(".bigbtn").addEventListener("click", play);
   new IntersectionObserver(([entry]) => {
@@ -1372,11 +1271,11 @@ async function playStack(mode = stackMode) {
   if (!drip) return;
   stackMode = mode; stackPlayed = true;
   for (const b of document.querySelectorAll("[data-stack]")) b.setAttribute("aria-pressed", String(b.dataset.stack === mode));
-  const run = ++stackRun;
+  const run = ++stackRun, alive = () => run === stackRun;
   stackStage.reset(); stackTerm.clear();
   for (const line of STACK_LINES(mode)) {
-    if (run !== stackRun) return;
-    await exec(line, stackTerm, stackStage, { config: "", shown: line.replace(/ -d .*/, "") });
+    if (!alive()) return;
+    await exec(line, stackTerm, stackStage, { config: "", shown: line.replace(/ -d .*/, ""), alive });
     await sleep(120);
   }
 }
@@ -1424,10 +1323,41 @@ function setTheme(theme, remember = true) {
 }
 setTheme(root.dataset.theme, false);
 themeSwitch.addEventListener("click", () => setTheme(root.dataset.theme === "dark" ? "light" : "dark"));
-const params = new URLSearchParams(location.search);
-let storedReadout = null;
-try { storedReadout = localStorage.getItem("drip-readout"); } catch {}
-if ((params.get("readout") ?? storedReadout) === "1") setReadout(true);
+
+// Receipt paper torn off along its perforation: a row of punched holes just above the edge, and
+// under it a fine tear, slightly ragged, with loose fibres. The edge is an SVG mask for the slip's
+// own width, so it stays crisp at any zoom, and each slip has its own seed, so no two tear alike.
+const TEAR = 16; // the height of the torn band at the bottom of a slip, in CSS pixels
+function tear(slip, seed) {
+  const draw = () => {
+    const w = Math.round(slip.offsetWidth);
+    if (!w) return;
+    let state = Math.imul(seed, 2654435761) >>> 0;
+    const rand = () => (state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296;
+    const n = (v) => +v.toFixed(2);
+    // The tear wanders a little about its line, in two slow waves and a fine jitter.
+    const waves = [[18 + rand() * 30, rand() * 7, 0.55], [5 + rand() * 6, rand() * 7, 0.3]];
+    const line = TEAR - 5;
+    const at = (x) => line + waves.reduce((sum, [length, phase, size]) => sum + size * Math.sin(x / length + phase), 0) + (rand() - 0.5) * 0.8;
+    const edge = [];
+    for (let x = 0; x < w; x += 0.8 + rand() * 1.4) {
+      const y = at(x), fibre = rand();
+      if (fibre < 0.06) edge.push([x, y], [x + 0.3, y + 1.2 + rand() * 2.2], [x + 0.6, y]); // a loose fibre
+      else if (fibre < 0.1) edge.push([x, y - 0.6 - rand() * 0.9]); // a little bite
+      else edge.push([x, y]);
+    }
+    edge.push([w, at(w)]);
+    let d = `M0 0H${w}` + edge.reverse().map(([x, y]) => `L${n(Math.min(x, w))} ${n(y)}`).join("") + "Z";
+    // The perforation: holes on a steady pitch, as a machine punches them.
+    const pitch = 7.5, r = 1.4, cy = line - 5.5;
+    for (let x = pitch / 2 + rand() * pitch; x < w - r; x += pitch) d += `M${n(x - r)} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${TEAR}' viewBox='0 0 ${w} ${TEAR}'><path fill-rule='evenodd' d='${d}'/></svg>`;
+    const mask = { image: `linear-gradient(#000 0 0), url("data:image/svg+xml,${encodeURIComponent(svg)}")`, size: `100% calc(100% - ${TEAR - 1}px), 100% ${TEAR}px`, position: "top, bottom", repeat: "no-repeat" };
+    for (const [key, value] of Object.entries(mask)) { slip.style.setProperty(`mask-${key}`, value); slip.style.setProperty(`-webkit-mask-${key}`, value); }
+  };
+  new ResizeObserver(draw).observe(slip);
+}
+document.querySelectorAll(".slip").forEach((slip, i) => tear(slip, i + 7));
 
 // Copy buttons, with a fallback for file:// pages where the clipboard API is off.
 for (const b of document.querySelectorAll("[data-copy]")) {
@@ -1441,13 +1371,13 @@ for (const b of document.querySelectorAll("[data-copy]")) {
 
 function tick() { const text = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); for (const c of document.querySelectorAll(".clock")) c.textContent = text; }
 tick(); setInterval(tick, 10000);
-for (const s of stages) { s.resize(); s.setFit(s.fitFor(null)); }
+for (const s of stages) { s.resize(); s.refit(); }
 requestAnimationFrame((now) => { lastNow = now; requestAnimationFrame(loop); });
 
 // For screenshots and the curious: drive the hero from the console.
 window.__drip = {
   run: (line) => runHero(line, { fromUser: false }), freeze: (t) => { hero.frozen = t; }, thaw: () => { hero.frozen = null; },
-  reset: () => hero.reset(), stopAttract, stages, setTheme, setReadout, playStack,
+  reset: () => hero.reset(), stopAttract, stages, setTheme, playStack,
   // The cards a stage's stack shows, top to bottom: 0 the hero, 1-6 the features, 7 the stack module.
   stack: (i = 0) => {
     const st = stages[i].stack;
@@ -1472,27 +1402,23 @@ async function compileEngine() {
     return await WebAssembly.compile(await response.arrayBuffer());
   }
 }
-const loadRows = [];
-const showLoad = () => document.getElementById("load").innerHTML = loadRows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
 try {
   const t0 = performance.now();
   const module = await compileEngine();
   const t1 = performance.now();
   drip = await loadDrip(module, measure);
+  reference = drip.command({ args: ["ok", "Build finished", "-d", "make test: 246 passed in 3.2s"], env: {}, config: "", notch }).deliveries[0].cards[0];
+  drip.release(reference.handle);
+  for (const s of stages) s.refit();
   const t2 = performance.now();
   const timing = performance.getEntriesByName(new URL(WASM, location.href).href).at(-1);
-  const mb = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
-  loadRows.push(["engine", `DripCore ${drip.version}`]);
-  if (timing?.decodedBodySize) loadRows.push(["wasm", timing.transferSize ? `${mb(timing.decodedBodySize)}, ${mb(timing.transferSize)} sent` : mb(timing.decodedBodySize)]);
-  loadRows.push(["download and compile", `${Math.round(t1 - t0)} ms`], ["start", `${Math.round(t2 - t1)} ms`]);
-  showLoad();
   window.__dripLoad = { download: t1 - t0, start: t2 - t1, transferSize: timing?.transferSize, decodedBodySize: timing?.decodedBodySize };
   document.getElementById("loading").remove();
   input.disabled = false;
   heroTerm.print(`drip ${drip.version}, compiled to WebAssembly, started in ${Math.round(t2 - t0)} ms.`, "dim");
-  renderGhost();
+  renderHint();
   for (const s of stages) s.autoplay?.();
-  if (params.get("attract") === "0") stopAttract();
+  if (new URLSearchParams(location.search).get("attract") === "0") stopAttract();
   await typeAndRun(CHIPS[0].line, { fromUser: false });
 } catch (error) {
   document.getElementById("loading").textContent = "drip's engine did not load: " + error.message;
