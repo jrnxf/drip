@@ -293,6 +293,46 @@ struct CardStackTests {
         #expect(after.live.allSatisfy { $0.remaining < 30 && $0.remaining > 20 })
     }
 
+    /// Shown a moment after they were handed on, the cards are as they are by then: a leaving card
+    /// further into its exit, every countdown further on, a gliding card further on its way.
+    @Test func handedOnCardsAgeUntilTheyShow() throws {
+        let settings = StackSettings(mode: .chain, max: 3)
+        let before = CardStack(settings: settings)
+        var time = 0.0
+        for title in ["a", "b", "c"] {
+            before.enter(card(title, seconds: 30), metrics: metrics, own: false, decided: time, at: time)
+            time = run(before, from: time, until: time + 1)
+        }
+        time = run(before, from: time, until: time + 2)
+        before.live[0].dismissed = true
+        before.live[2].dismissed = true
+        time = run(before, from: time, until: time + 0.1)
+        let handOff = StackHandOff(settings: settings, cards: try #require(before.handOff(at: time)), time: 1_000)
+        #expect(handOff.cards(at: 1_000) == handOff.cards)
+        #expect(handOff.cards(at: 999) == handOff.cards)
+
+        // b, alone, glides up into a's place once a has risen.
+        time = run(before, from: time, until: time + 0.35)
+        let b = before.live[0]
+        #expect(b.card.title == "b")
+        let moving = try #require(before.handOff(at: time))
+        let gliding = try #require(moving.first { $0.card.title == "b" })
+        let target = try #require(gliding.target)
+        #expect(target < gliding.top)
+
+        let age = 0.25
+        let aged = StackHandOff(settings: settings, cards: moving, time: 1_000).cards(at: 1_000 + age)
+        for (was, now) in zip(moving, aged) {
+            #expect(now.remaining == max(was.remaining - age, 0))
+            #expect(now.leaving == was.leaving.map { $0 + age })
+        }
+        let glided = try #require(aged.first { $0.card.title == "b" })
+        #expect(glided.top < gliding.top && glided.top >= target - 1)
+        let late = gliding.aged(by: 5)
+        #expect(abs(late.top - target) < 0.01)
+        #expect(late.remaining == max(gliding.remaining - 5, 0))
+    }
+
     @Test func aCardThatWaitsWaitsAgainWhenReplacedByOneThatWaits() {
         let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
         let time = run(stack, until: 3)

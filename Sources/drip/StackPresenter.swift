@@ -41,8 +41,8 @@ final class StackPresenter: CardPresenting {
     private let adopting: Bool
     /// Whether one of this drip's own cards is a question that waits for its answer.
     private let asks: Bool
-    /// Cards another drip's stack handed on, to show as they were there when this one starts.
-    private var handed: [HandedCard] = []
+    /// What another drip's stack handed on, to show as it is there when this one starts.
+    private var handed: StackHandOff?
     /// Whether no background drip could take the cards this stack took in, so it shows them itself.
     private var handOffFailed = false
     private var panel: IslandPanel?
@@ -116,7 +116,7 @@ final class StackPresenter: CardPresenting {
         let presenter = StackPresenter(
             cards: [], settings: handOff.settings, notch: NotchGeometry.island(on: screen), adopting: true,
             console: console)
-        presenter.handed = handOff.cards
+        presenter.handed = handOff
         return presenter
     }
 
@@ -164,7 +164,7 @@ final class StackPresenter: CardPresenting {
         panel.orderFrontRegardless()
 
         started = CACurrentMediaTime()
-        if !handed.isEmpty { resumeHanded() }
+        if let handed { resumeHanded(handed) }
         // Countdowns, the pointer and the queue; the motion itself runs in Core Animation. The timer
         // keeps the stack alive until `finish` stops it.
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [self] _ in tick() }
@@ -316,13 +316,13 @@ final class StackPresenter: CardPresenting {
 
     /// Shows the cards another drip's stack handed on where they were, as they were: no drop, no
     /// sound and no announcement, each counting down what it had left, and one that was leaving as
-    /// far into it. Then tells that drip, so its stack can go.
-    private func resumeHanded() {
+    /// far into it, all as they are by now. Then tells that drip, so its stack can go.
+    private func resumeHanded(_ handOff: StackHandOff) {
         let decided = now
         var resumed: [(entry: CardStack.Entry, exit: IslandCues?, layers: IslandLayers)] = []
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for card in handed {
+        for card in handOff.cards(at: Date().timeIntervalSince1970) {
             let layers = makeLayers(for: card.card)
             let (entry, exit) = stack.resume(card, metrics: layers.metrics, at: decided)
             drawings[entry.id] = Drawing(layers: layers)
@@ -330,7 +330,7 @@ final class StackPresenter: CardPresenting {
             resumed.append((entry, exit, layers))
         }
         CATransaction.commit()
-        handed = []
+        handed = nil
         replan(from: decided)
         for (entry, exit, layers) in resumed {
             layers.showContent()
@@ -478,7 +478,8 @@ final class StackPresenter: CardPresenting {
         } else if let cards = stack.handOff(at: time) {
             // A question's answer never waits for the cards it took in: a background drip shows the
             // rest of them on, where they are, or this stack does when none can.
-            let request = BackgroundRequest(handOff: StackHandOff(settings: stack.settings, cards: cards))
+            let request = BackgroundRequest(
+                handOff: StackHandOff(settings: stack.settings, cards: cards, time: Date().timeIntervalSince1970))
             if cards.isEmpty || BackgroundDrip.start(request) {
                 finish()
             } else {

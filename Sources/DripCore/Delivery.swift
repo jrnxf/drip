@@ -79,10 +79,21 @@ public struct StackHandOff: Equatable, Sendable, Codable {
     public var settings: StackSettings
     /// Top to bottom.
     public var cards: [HandedCard]
+    /// When the cards were as they are, in seconds since 1970, so the drip they are handed on to
+    /// shows them as they are by the time it does; nil to show them as they are.
+    public var time: Double?
 
-    public init(settings: StackSettings, cards: [HandedCard]) {
+    public init(settings: StackSettings, cards: [HandedCard], time: Double? = nil) {
         self.settings = settings
         self.cards = cards
+        self.time = time
+    }
+
+    /// The cards as they are at `now`, in seconds since 1970: each `aged` by the time since `time`.
+    public func cards(at now: Double) -> [HandedCard] {
+        guard let time else { return cards }
+        let age = max(now - time, 0)
+        return cards.map { $0.aged(by: age) }
     }
 }
 
@@ -97,13 +108,31 @@ public struct HandedCard: Equatable, Sendable, Codable {
     public var isWaiting: Bool
     /// How long ago it started to leave; nil while it shows.
     public var leaving: Double?
+    /// Where its capsule's top glides to, as it closes a gap; nil at rest.
+    public var target: Double?
 
-    public init(card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil) {
+    public init(
+        card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil, target: Double? = nil
+    ) {
         self.card = card
         self.top = top
         self.remaining = remaining
         self.isWaiting = isWaiting
         self.leaving = leaving
+        self.target = target
+    }
+
+    /// The card `age` seconds on: that much less time left, that much further into leaving, and
+    /// that much further on its way to `target`, as a card in a stack glides into a gap.
+    public func aged(by age: Double) -> HandedCard {
+        var card = self
+        card.remaining = max(remaining - age, 0)
+        card.leaving = leaving.map { $0 + age }
+        if let target {
+            let progress = IslandAnimator.settle.progress(at: age)
+            card.top = top + (target - top) * progress
+        }
+        return card
     }
 }
 

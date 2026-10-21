@@ -129,11 +129,12 @@ public final class CardStack {
     public func handOff(at time: Double) -> [HandedCard]? {
         guard ownCardsGone else { return nil }
         return entries.map { entry in
-            let top = entry.exit?.top
-                ?? (entry.isShown ? entry.animator.shape(at: time).pillTop : entry.animator.targetTop)
+            let target = entry.animator.targetTop
+            let top = entry.exit?.top ?? (entry.isShown ? entry.animator.shape(at: time).pillTop : target)
             return HandedCard(
                 card: entry.card, top: top, remaining: max(entry.remaining, 0), isWaiting: entry.isWaiting,
-                leaving: entry.exit.map { max(time - $0.time, 0) })
+                leaving: entry.exit.map { max(time - $0.time, 0) },
+                target: entry.exit == nil && abs(target - top) > 0.25 ? target : nil)
         }
     }
 
