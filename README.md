@@ -63,6 +63,13 @@ sudo cp .build/release/drip /usr/local/bin/
 drip ok "drip works"
 ```
 
+**No permissions.** drip asks macOS for none. It needs no Accessibility, Screen Recording,
+Notifications or Automation permission and adds no login item. Nothing runs in the background but the
+drip that is showing queued cards.
+
+**Which screen.** A card shows on the screen the pointer is on, with or without a notch, and falls
+back to the main screen. It also shows over full-screen apps and on every Space.
+
 **No card?** A card that comes up while the screen is locked waits for the unlock (see
 [Missed cards](#missed-cards-and-history)), and `drip history --missed` lists them. Over ssh there is
 no GUI session, so drip exits 3. drip does not follow Focus: cards show during Do Not Disturb, and in
@@ -185,6 +192,29 @@ export const Drip = async ({ $, directory }) => {
 ```
 
 Any other agent or tool: wrap what it runs in `drip run`, or call drip from its hooks.
+
+## Uninstall
+
+```sh
+brew uninstall drip                       # or: sudo rm /usr/local/bin/drip, for a build from source
+rm -rf ~/.config/drip ~/.local/state/drip # the config and the history
+```
+
+Then take drip's hooks out of the agents' settings, if you ran `drip setup`: the entries whose
+command is `drip hook claude`, `drip hook codex` or `drip hook gemini` in `~/.claude/settings.json`,
+`~/.codex/hooks.json` (or `config.toml`) and `~/.gemini/settings.json`. Delete the backups
+`drip setup` left next to those files, named `<file>.drip-backup-<date>-<time>`, if you do not need
+them. If you set `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, the files
+are there instead. drip installs nothing else: no daemon, no login item, no preferences.
+
+## Privacy
+
+drip makes no network connections, sends nothing anywhere and collects no analytics. It only
+reads and writes your config, the agents' settings that `drip setup` edits, and its history.
+The history, `~/.local/state/drip/history.jsonl`, is readable only by you and keeps the last 1000
+cards. It holds each card's title and detail, up to 16,384 characters of each, so a card from a
+coding agent keeps the agent's last message. `drip demo` cards are not kept. Delete the file to
+clear it.
 
 ## Usage
 
