@@ -102,7 +102,7 @@ struct StyleCommandTests {
             Issue.record("--motion parsed"); return
         }
         #expect(status == ExitStatus.usage)
-        #expect(message == "drip: unknown option '--motion'\nSee 'drip --help'.")
+        #expect(message == "drip: unknown option '--motion'. Did you mean '--position'?\nSee 'drip --help'.")
         guard case let .invocation(.render(command)) = CommandLineParser.parse(
             ["__render", "--out", "x.png", "ok", "t", "--motion", "none"])
         else { Issue.record("__render --motion did not parse"); return }
