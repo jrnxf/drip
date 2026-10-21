@@ -73,7 +73,7 @@ final class StackPresenter: CardPresenting {
 
     /// A stack for `card` and the notch cards that follow it in `rest`, which it takes; nil when
     /// stacking is off, the card is not for the notch, or motion is reduced. `settings` given
-    /// replace `DRIP_STACK`'s.
+    /// replace those of `stack` and `DRIP_STACK`.
     static func make(
         for card: Card, rest: inout ArraySlice<Card>, adopting: Bool, settings: StackSettings?,
         console: Console

@@ -166,7 +166,7 @@ for a line. When text is still left over, the last line ends in an ellipsis. The
 **drip demo** drops four cards from the notch one after another, stacking the way queued cards do
 (see [Styles](#styles)): ok, ask, fail, then an info card with an Open
 button that opens drip's GitHub page. It plays them twice, chained and then pushed; `drip demo
-chain` or `drip demo push` plays only that one, whatever `DRIP_STACK` says. Each stays two
+chain` or `drip demo push` plays only that one, whatever `stack` or `DRIP_STACK` says. Each stays two
 seconds unless `--seconds`, `DRIP_SECONDS` or the config's `seconds` say otherwise, and each plays
 its preset's sound, as a real card would; `--sound none` mutes them. Every card is a notch card, so `--position` and
 `--style` do not apply. `--id` is ignored, so no card replaces another. Other options apply to

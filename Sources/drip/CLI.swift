@@ -8,7 +8,7 @@ protocol CardDisplay {
 
     /// Shows the cards one after another, after any other drip's, and returns once the last has
     /// gone, with the exit status to report. `locked` says what happens while the screen is locked;
-    /// a `stack` given stacks notch cards that way instead of as `DRIP_STACK` says.
+    /// a `stack` given stacks notch cards that way instead of as `stack` or `DRIP_STACK` says.
     func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32
 
     /// Hands the cards to a background drip and returns at once, or shows them here when it cannot.
@@ -29,7 +29,7 @@ protocol CardDisplay {
 }
 
 extension CardDisplay {
-    /// Shows the cards, stacking notch cards as `DRIP_STACK` says.
+    /// Shows the cards, stacking notch cards as `stack` or `DRIP_STACK` says.
     func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
         show(cards, locked: locked, stack: nil, console: console)
     }

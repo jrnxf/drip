@@ -411,7 +411,8 @@ public struct DemoCommand: ParsableCommand {
         ("info", "Report uploaded", "q3-review.pdf is on the file server", "https://github.com/jrnxf/drip", 3),
     ]
 
-    /// How the demo stacks its cards `mode`'s way, whatever `DRIP_STACK` says, the report held back.
+    /// How the demo stacks its cards `mode`'s way, whatever `stack` or `DRIP_STACK` says, the report
+    /// held back.
     public static func stack(_ mode: StackSettings.Mode, environment: [String: String], config: Config) -> StackSettings {
         var settings = StackSettings.current(environment: environment, config: config, mode: mode)
             ?? StackSettings(mode: mode, max: Defaults.stackMax)
