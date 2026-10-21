@@ -231,15 +231,20 @@ public struct CodexConfig: Equatable {
                 continue
             }
             let path = table + Self.keys(line[..<equals])
-            // The value runs on to the line that closes its brackets.
-            let end = valueEnd(from: index)
-            let value = ([line[line.index(after: equals)...]] + lines[(index + 1)..<(end + 1)]).joined(separator: "\n")
-            let words = Self.strings(in: value)
+            // The value runs on to the line that closes its brackets and its strings.
+            var value = Value()
+            value.read(line[line.index(after: equals)...])
+            var end = index
+            while !value.isComplete, end < lines.count - 1 {
+                end += 1
+                value.read(lines[end])
+            }
+            let words = value.strings
             if path == ["notify"] {
                 if words.count == 3, words[0].split(separator: "/").last == "drip", words[1] == "hook",
                    words[2] == "codex" {
                     dripNotify = index..<(end + 1)
-                } else if value.contains("drip") {
+                } else if words.contains(where: { $0.contains("drip") }) {
                     otherDripNotify = true
                 }
             } else if path.count >= 2, path[0] == "hooks",
@@ -255,36 +260,6 @@ public struct CodexConfig: Equatable {
         name.split(separator: ".").map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \t\"'")) }
     }
 
-    /// The line on which the value that starts on line `start` ends: where its brackets and braces close.
-    func valueEnd(from start: Int) -> Int {
-        var depth = 0
-        for index in start..<lines.count {
-            var quote: Character?
-            var escaped = false
-            for character in lines[index] {
-                if let open = quote {
-                    if escaped {
-                        escaped = false
-                    } else if character == "\\", open == "\"" {
-                        escaped = true
-                    } else if character == open {
-                        quote = nil
-                    }
-                } else if character == "\"" || character == "'" {
-                    quote = character
-                } else if character == "#" {
-                    break
-                } else if character == "[" || character == "{" {
-                    depth += 1
-                } else if character == "]" || character == "}" {
-                    depth -= 1
-                }
-            }
-            if depth <= 0 { return index }
-        }
-        return lines.count - 1
-    }
-
     /// The text without drip's `notify`.
     public var withoutDripNotify: String {
         guard let dripNotify else { return lines.joined(separator: "\n") }
@@ -293,36 +268,76 @@ public struct CodexConfig: Equatable {
         return lines.joined(separator: "\n")
     }
 
-    /// The quoted strings in a TOML value, in order, leaving out comments.
-    static func strings(in value: String) -> [String] {
-        var strings: [String] = []
-        var quote: Character?
-        var current = ""
-        var comment = false
-        var escaped = false
-        for character in value {
-            if comment {
-                comment = character != "\n"
-            } else if let open = quote {
-                if escaped {
-                    current.append(character)
-                    escaped = false
-                } else if character == "\\", open == "\"" {
-                    escaped = true
-                } else if character == open {
-                    strings.append(current)
-                    current = ""
-                    quote = nil
+    /// A TOML value read line by line: its quoted strings, in order, and whether its brackets, braces
+    /// and strings are all closed. Strings may be `"…"`, `'…'`, or `"""…"""` and `'''…'''` over several lines.
+    struct Value {
+        private(set) var strings: [String] = []
+        private var depth = 0
+        /// The delimiter of the string being read.
+        private var quote: String?
+        private var current = ""
+
+        var isComplete: Bool { quote == nil && depth <= 0 }
+
+        mutating func read(_ line: Substring) {
+            let characters = Array(line)
+            var index = 0
+            var escaped = false
+            func run(of character: Character) -> Int {
+                characters[index...].prefix(while: { $0 == character }).count
+            }
+            while index < characters.count {
+                let character = characters[index]
+                if let open = quote {
+                    let basic = open.first == "\""
+                    if escaped {
+                        current.append(character)
+                        escaped = false
+                        index += 1
+                    } else if basic, character == "\\" {
+                        escaped = true
+                        index += 1
+                    } else if open.count == 3, character == open.first, run(of: character) >= 3 {
+                        // Up to two quotes before the closing three belong to the string.
+                        let quotes = min(run(of: character), 5)
+                        current += String(repeating: character, count: quotes - 3)
+                        close()
+                        index += quotes
+                    } else if open.count == 1, character == open.first {
+                        close()
+                        index += 1
+                    } else {
+                        current.append(character)
+                        index += 1
+                    }
+                } else if character == "\"" || character == "'" {
+                    let length = run(of: character) >= 3 ? 3 : 1
+                    quote = String(repeating: character, count: length)
+                    index += length
+                    // A multi-line string leaves out a newline right after its opening delimiter.
+                    if length == 3, index == characters.count { return }
+                } else if character == "#" {
+                    return
                 } else {
-                    current.append(character)
+                    if character == "[" || character == "{" { depth += 1 }
+                    if character == "]" || character == "}" { depth -= 1 }
+                    index += 1
                 }
-            } else if character == "\"" || character == "'" {
-                quote = character
-            } else if character == "#" {
-                comment = true
+            }
+            if let open = quote {
+                if open.count == 1 {
+                    close()
+                } else if !escaped {
+                    current.append("\n")
+                }
             }
         }
-        return strings
+
+        private mutating func close() {
+            strings.append(current)
+            current = ""
+            quote = nil
+        }
     }
 }
 

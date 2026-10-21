@@ -182,6 +182,30 @@ struct SetupTests {
         #expect(CodexConfig("[profiles.x]\ncommand = \"drip hook codex\"\n").dripHookEvents.isEmpty)
     }
 
+    @Test func codexConfigSkipsWhatIsInsideMultiLineStrings() {
+        let basic = CodexConfig(#"""
+            developer_instructions = """
+            [important] always run tests
+            hooks.Stop = "drip hook codex" and a \""" that is not the end
+            """
+            notify = ["drip", "hook", "codex"]
+            """#)
+        #expect(basic.dripNotify == 4..<5)
+        #expect(basic.dripHookEvents.isEmpty)
+
+        let literal = CodexConfig("""
+            model_instructions = '''one line with [brackets] = and '''
+            developer_instructions = '''
+            [hooks]
+            Stop = [{ hooks = [{ command = "drip hook codex" }] }]
+            notify = ["drip", "hook", "codex"]
+            '''
+            notify = ["drip", "hook", "codex"]
+            """)
+        #expect(literal.dripNotify == 6..<7)
+        #expect(literal.dripHookEvents.isEmpty)
+    }
+
     @Test func codexInlineHooksInConfigTomlCountByEvent() {
         // A [hooks] table names the event by its key, with a value that may run over several lines.
         #expect(CodexConfig("""
