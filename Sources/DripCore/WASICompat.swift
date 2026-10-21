@@ -43,6 +43,12 @@ struct CharacterSet: Sendable {
     static let whitespacesAndNewlines = CharacterSet { $0.isWhitespace }
 }
 
+extension CharacterSet {
+    init(charactersIn characters: String) {
+        self.init { characters.contains($0) }
+    }
+}
+
 extension StringProtocol {
     func trimmingCharacters(in set: CharacterSet) -> String {
         guard let first = firstIndex(where: { !set.contains($0) }) else { return "" }
