@@ -575,7 +575,7 @@ class Stage {
     this.canvas = screen.querySelector("canvas"); this.ctx = this.canvas.getContext("2d");
     this.layer = document.createElement("canvas"); this.lctx = this.layer.getContext("2d");
     this.textLayer = document.createElement("canvas"); this.tctx = this.textLayer.getContext("2d");
-    this.deliveries = []; this.queue = []; this.current = null; this.stack = null; this.lastCard = null;
+    this.deliveries = []; this.queue = []; this.current = null; this.stack = null;
     this.clock = 0; this.fit = 1; this.widest = 640;
     this.frozen = null; this.visible = true; this.dirty = true; this.pointer = null;
     this.listeners = [];
@@ -654,18 +654,17 @@ class Stage {
     for (const delivery of this.deliveries) for (const card of delivery.cards) drip.release(card.handle);
     for (const card of this.queue) drip.release(card.handle);
     if (this.current) drip.release(this.current.handle);
-    this.deliveries.length = 0; this.queue.length = 0; this.current = null; this.lastCard = null; this.dirty = true;
+    this.deliveries.length = 0; this.queue.length = 0; this.current = null; this.dirty = true;
     this.screen.style.cursor = "";
   }
   motionOf(card) { return reduceMotion.matches && card.card.motion === "full" ? "subtle" : card.card.motion; }
   // A card as this stage paints it; its times are its own, from when it starts to drop in.
   prepare(card) {
-    const state = { ...card, card: { ...card.card, motion: this.motionOf(card) }, accent: accentOf(card.card.color), ringSide: card.metrics.actionWidth || 20 * card.metrics.scale, start: Infinity };
-    this.lastCard = state;
-    return state;
+    return { ...card, card: { ...card.card, motion: this.motionOf(card) }, accent: accentOf(card.card.color), ringSide: card.metrics.actionWidth || 20 * card.metrics.scale, start: Infinity };
   }
 
-  // A command's cards: into the stack that shows when it takes them, else in turn.
+  // A command's cards: into the stack that shows when it takes them, else in turn. Returns the cards
+  // as this stage shows them.
   deliver(delivery) {
     delivery = { ...delivery, cards: delivery.cards.map((card) => this.prepare(card)) };
     const stackable = !!delivery.stack && !reduceMotion.matches;
@@ -676,6 +675,12 @@ class Stage {
     else if (!this.deliveries.length && !this.stack && !stackable) for (const card of delivery.cards) this.push(card);
     else this.deliveries.push(delivery);
     this.dirty = true;
+    return delivery.cards;
+  }
+  // Whether the card still shows or waits its turn here.
+  holds(card) {
+    return this.current === card || this.queue.includes(card) || !!this.stack?.cards.has(card.handle)
+      || this.deliveries.some((delivery) => delivery.cards.includes(card));
   }
   // Hands the delivery's cards to the stack. Returns those it did not take, which wait their turn:
   // a stack showing a question takes only cards that count down, and only until it is answered.
@@ -1122,7 +1127,17 @@ async function execOne(stages, term, stage, config, alive) {
   if (reply.message !== undefined) { term.print(reply.message, reply.exit === 0 ? "" : "err"); return reply.exit ?? 1; }
   for (const warning of reply.warnings ?? []) term.print(`drip: warning: ${warning}`, "dim");
   if (reply.status) term.print(`zsh: exit ${reply.status}`, "dim");
-  for (const delivery of reply.deliveries) stage.deliver(delivery);
+  const cards = reply.deliveries.flatMap((delivery) => stage.deliver(delivery));
+  // A question holds drip until it is answered: 0 on yes, 1 on no, 5 once it goes without an answer.
+  const question = cards.find((card) => card.card.action && !card.card.action.open);
+  if (question) {
+    let answer = null;
+    question.onClick = (clicked) => { answer = clicked; };
+    while (!answer && stage.holds(question)) await sleep(100);
+    if (!alive()) return 5;
+    if (!answer) { term.print("zsh: exit 5", "dim"); return 5; }
+    return answer === "yes" ? 0 : 1;
+  }
   return reply.status ?? 0;
 }
 
@@ -1260,7 +1275,7 @@ const FEATURES = [
   },
   {
     label: "ASK", title: "Ask, then act", body: "<code>--yes</code> and <code>--no</code> ask a question and wait for the answer. drip exits 0 on yes and 1 on no, so <code>&amp;&amp;</code> runs the next step only on yes. Answer it here.",
-    steps: [{ shown: `drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23`, line: `drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later`, then: "gh pr merge 23" }],
+    steps: [{ shown: `drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23`, line: `drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23` }],
   },
   {
     label: "STDIN", title: "Pipe text in", body: "With no title, drip reads stdin: the first line is the title and the rest is the detail. That suits git hooks and cron jobs.",
@@ -1304,13 +1319,8 @@ FEATURES.forEach((feature, i) => {
     played = true; stage.reset(); term.clear();
     for (const step of feature.steps) {
       if (step.sleep) { await sleep(step.sleep * 1000); if (!alive()) return; continue; }
-      const status = await exec(step.line, term, stage, { config: feature.config ?? "", shown: step.shown ?? step.line, alive });
+      await exec(step.line, term, stage, { config: feature.config ?? "", shown: step.shown ?? step.line, alive });
       if (!alive()) return;
-      if (step.then && status === 0) {
-        const last = stage.lastCard;
-        // Only a yes runs the next step, as `&&` would.
-        if (last) last.onClick = (answer) => { if (!alive() || answer !== "yes") return; term.echo(step.then); exec(step.then, term, stage, { echo: false, alive }); };
-      }
     }
   };
   card.querySelector(".bigbtn").addEventListener("click", play);
