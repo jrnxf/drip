@@ -157,7 +157,7 @@ struct CommandTests {
         guard case let .exit(_, message) = CommandLineParser.parse(["run", "--size", "large", "make"]) else {
             Issue.record(); return
         }
-        #expect(message == "drip: unknown option '--size': set size in the config file or DRIP_SIZE instead\nSee 'drip run --help'.")
+        #expect(message == "drip: unknown option '--size'\nSee 'drip run --help'.")
         for size in CardSize.allCases {
             guard case let .invocation(.render(command)) = CommandLineParser.parse(
                 ["__render", "--out", "x.png", "hi", "--size", size.rawValue])
@@ -197,6 +197,7 @@ struct CommandTests {
             (["ok", "hi", "--bogus"], "drip --help"), (["ok", "hi", "--seconds", "abc"], "drip --help"),
             (["ok", "hi", "-s", "0.2"], "drip --help"), (["ok", "hi", "--position"], "drip --help"),
             (["run"], "drip run --help"), (["run", "--nope", "make"], "drip run --help"),
+            (["run", "--version"], "drip run --help"),
             (["hook"], "drip hook --help"), (["hook", "cursor"], "drip hook --help"),
             (["demo", "sideways"], "drip demo --help"), (["history", "--json", "--replay"], "drip history --help"),
         ]
@@ -211,6 +212,14 @@ struct CommandTests {
             #expect(lines.first?.hasSuffix(".") == false, "\(arguments): \(message)")
             #expect(lines.last == "See '\(help)'.", "\(arguments): \(message)")
         }
+    }
+
+    /// drip's own usage mistakes print as the parser's do, keeping the message as written.
+    @Test func usageMessagesSayWhereTheHelpIs() {
+        #expect(CommandLineParser.usageMessage("DRIP_STACK must be chain, push or off, not 'x'")
+            == "drip: DRIP_STACK must be chain, push or off, not 'x'\nSee 'drip --help'.")
+        #expect(CommandLineParser.usageMessage("no hook payload: pass it as an argument or on stdin", subcommand: "hook")
+            == "drip: no hook payload: pass it as an argument or on stdin\nSee 'drip hook --help'.")
     }
 
     /// The command starts at the first argument that is not one of drip's options, as for `time`
@@ -330,7 +339,7 @@ struct CommandTests {
 
     @Test func helpAndVersionExitZero() {
         for arguments in [["--help"], ["-h"], ["help"], ["--version"], ["run", "--help"], ["run", "-s", "3", "--help"],
-                          ["run", "--version"], ["history", "--help"], ["help", "hook"], ["ok", "--help"]] {
+                          ["history", "--help"], ["help", "hook"], ["ok", "--help"]] {
             guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
                 Issue.record("\(arguments) did not exit"); return
             }

@@ -120,7 +120,7 @@ struct DripCLI {
             let card = try makeResolver(console).resolve(kind: event.kind, title: event.title, flags: flags)
             status = deliver([card], wait: flags.wait, console: console)
         } catch {
-            status = report(error, console)
+            status = report(error, console, subcommand: HookCommand.configuration.commandName)
         }
         return status == ExitStatus.usage ? ExitStatus.hookFailed : status
     }
@@ -256,11 +256,16 @@ struct DripCLI {
             automaticStyle: automaticStyle ?? display.automaticStyle)
     }
 
-    /// Prints an error and returns its exit status.
-    private func report(_ error: Error, _ console: Console) -> Int32 {
+    /// Prints an error and returns its exit status. A usage mistake also says where the help is.
+    private func report(_ error: Error, _ console: Console, subcommand: String? = nil) -> Int32 {
         if let error = error as? ConfigError {
             console.error("invalid config: \(error)")
             return ExitStatus.invalidConfig
+        }
+        if let error = error as? UsageError {
+            FileHandle.standardError.write(Data((CardText.printable(
+                CommandLineParser.usageMessage(error.message, subcommand: subcommand)) + "\n").utf8))
+            return ExitStatus.usage
         }
         console.error("\(error)")
         return ExitStatus.usage

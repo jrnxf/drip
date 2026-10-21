@@ -196,8 +196,9 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         reply["warnings"] = warnings
         return send(reply)
     }
-    func failure(_ error: Error, status: Int32 = ExitStatus.usage) -> UnsafePointer<UInt8> {
-        send(["exit": status, "message": "drip: \(error)"])
+    func failure(_ error: Error, status: Int32 = ExitStatus.usage, subcommand: String? = nil) -> UnsafePointer<UInt8> {
+        let message = (error as? UsageError).map { CommandLineParser.usageMessage($0.message, subcommand: subcommand) }
+        return send(["exit": status, "message": message ?? "drip: \(error)"])
     }
 
     switch CommandLineParser.parse(args) {
@@ -249,7 +250,9 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             // No app is installed in a web page.
             flags.icon = flags.icon ?? command.agent.icon { _ in false }
             return cards([try resolver.resolve(kind: event.kind, title: event.title, flags: flags)])
-        } catch { return failure(error, status: ExitStatus.hookFailed) }
+        } catch {
+            return failure(error, status: ExitStatus.hookFailed, subcommand: HookCommand.configuration.commandName)
+        }
     case .invocation(.history):
         return send(["exit": 1, "message": "drip: the history lives on your Mac, not in this page"])
     case .invocation(.render), .invocation(.background):

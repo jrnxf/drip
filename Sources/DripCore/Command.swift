@@ -342,7 +342,6 @@ public struct RunCommand: ParsableCommand {
         // drip's options end where the command starts, so these are the only ones it can see.
         switch words.first {
         case "-h", "--help": throw CleanExit.helpRequest(Self.self)
-        case "--version": throw CleanExit.message(dripVersion)
         case let first? where first != "--" && first.hasPrefix("-"):
             throw ValidationError("unknown option '\(first)'")
         default: break
@@ -613,13 +612,17 @@ public enum CommandLineParser {
             // Text such as "--- FAIL: TestFoo" read as an option: say where it goes instead.
             problem = "'\(text)' starts with a dash, so it reads as an option. Put text that starts with a "
                 + "dash after --, as in: drip fail -- '\(text)'"
-        } else if let setting = ["size", "motion"].first(where: { problem.lowercased().hasPrefix("unknown option '--\($0)'") }) {
-            // A setting now, no longer a flag.
-            problem = "unknown option '--\(setting)': set \(setting) in the config file or DRIP_\(setting.uppercased()) instead"
         }
         if problem.hasSuffix(".") { problem.removeLast() }
+        problem = problem.prefix(1).lowercased() + problem.dropFirst()
+        return .exit(status: status, message: usageMessage(problem, subcommand: subcommand))
+    }
+
+    /// A usage mistake as drip prints it: `drip: <message>`, then where the help is, for the
+    /// subcommand if one is named.
+    public static func usageMessage(_ problem: String, subcommand: String? = nil) -> String {
         let help = subcommand.map { "drip \($0) --help" } ?? "drip --help"
-        return .exit(status: status, message: "drip: \(problem.prefix(1).lowercased())\(problem.dropFirst())\nSee '\(help)'.")
+        return "drip: \(problem)\nSee '\(help)'."
     }
 
     /// `drip --help`: the usage, examples, the card options and the subcommands, then the exit
