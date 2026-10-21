@@ -678,7 +678,7 @@ class Stage {
     return delivery.cards;
   }
   // Whether the card still shows or waits its turn here.
-  holds(card) {
+  keeps(card) {
     return this.current === card || this.queue.includes(card) || !!this.stack?.cards.has(card.handle)
       || this.deliveries.some((delivery) => delivery.cards.includes(card));
   }
@@ -1133,7 +1133,7 @@ async function execOne(stages, term, stage, config, alive) {
   if (question) {
     let answer = null;
     question.onClick = (clicked) => { answer = clicked; };
-    while (!answer && stage.holds(question)) await sleep(100);
+    while (!answer && stage.keeps(question)) await sleep(100);
     if (!alive()) return 5;
     if (!answer) { term.print("zsh: exit 5", "dim"); return 5; }
     return answer === "yes" ? 0 : 1;
