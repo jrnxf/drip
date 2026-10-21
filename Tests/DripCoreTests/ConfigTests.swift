@@ -29,7 +29,7 @@ struct ConfigTests {
             """, path: path)
         #expect(file.warnings == [])
         #expect(file.config == Config(
-            seconds: 4.5, position: .bottom, size: .regular, sound: true,
+            seconds: 4.5, position: .bottom, size: .regular,
             presets: [
                 "ok": PresetOverride(sound: .named("Hero")),
                 "deploy": PresetOverride(
@@ -115,8 +115,7 @@ struct ConfigTests {
         assertError("seconds = \"4\"", line: 1, key: "seconds", message: "expected a number, got a string")
         assertError("\nposition = 1", line: 2, key: "position", message: "expected a string, got an integer")
         assertError("size = true", line: 1, key: "size", message: "expected a string, got a boolean")
-        assertError("sound = \"none\"", line: 1, key: "sound", message: "expected true or false (false mutes every "
-            + "preset; a preset takes a name, as in [preset.ok] sound = \"Hero\"), got a string")
+        assertError("sound = 1", line: 1, key: "sound", message: "expected a sound name, a path, \"none\" or false, got an integer")
         assertError("preset = 1", line: 1, key: "preset", message: "expected a table, got an integer")
         assertError("[preset]\nok = \"x\"", line: 2, key: "preset.ok", message: "expected a table, got a string")
         assertError("[preset.ok]\nicon = 1", line: 2, key: "preset.ok.icon", message: "expected a string, got an integer")
@@ -137,7 +136,8 @@ struct ConfigTests {
         assertError("[preset.fail]\nstyle = \"neon\"", line: 2, key: "preset.fail.style",
                     message: "expected hud, glass, wash or terminal, got 'neon'")
         assertError("[preset.demo]\nicon = \"x\"", line: 1, key: "preset.demo",
-                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run, hook, demo or history")
+                    message: "'demo' is kept for drip's own commands; give the preset another name")
+        assertError("stack = \"stacked\"", line: 1, key: "stack", message: "expected chain, push or off, got 'stacked'")
         assertError("[preset.ok]\nicon = \"app:\"", line: 2, key: "preset.ok.icon",
                     message: "'app:' does not name an app by its bundle identifier, such as app:com.apple.Terminal")
         assertError("[preset.ok]\ncolor = \"teal\"", line: 2, key: "preset.ok.color",
@@ -148,9 +148,27 @@ struct ConfigTests {
         for name in ["deploy", "a", "ci-2", "x9"] {
             #expect(try ConfigLoader.parse("[preset.\(name)]\nicon = \"star\"", path: path).config.presets[name] != nil)
         }
-        for name in ["run", "hook", "history", "Deploy", "2fa", "-x", "a_b"] {
+        for name in ["Deploy", "2fa", "-x", "a_b"] {
             assertError("\n[preset.\(name)]", line: 2, key: "preset.\(name)", message: "a custom preset name must match")
         }
+    }
+
+    /// `drip <name>` runs a subcommand by that name instead, so a preset cannot take the names of
+    /// drip's subcommands, or of those it may have later.
+    @Test func subcommandNamesAreReserved() {
+        for name in ["run", "hook", "demo", "history", "show", "help", "version", "setup", "config", "init", "install",
+                     "uninstall", "completion", "completions", "doctor", "mute", "pause", "listen", "test"] {
+            assertError("\n[preset.\(name)]", line: 2, key: "preset.\(name)", message: "'\(name)' is kept for drip's own commands")
+        }
+    }
+
+    /// The top-level sound takes a name, a path or none, as DRIP_SOUND does, or false, which mutes.
+    @Test func topLevelSound() throws {
+        #expect(try ConfigLoader.parse("sound = \"Hero\"", path: path).config.sound == .named("Hero"))
+        #expect(try ConfigLoader.parse("sound = \"~/ding.aiff\"", path: path).config.sound == .file("~/ding.aiff"))
+        #expect(try ConfigLoader.parse("sound = \"none\"", path: path).config.sound == Sound.none)
+        #expect(try ConfigLoader.parse("sound = false", path: path).config.sound == Sound.none)
+        #expect(try ConfigLoader.parse("sound = true", path: path).config == Config())
     }
 
     @Test func syntaxErrorsNameTheLine() {
@@ -217,8 +235,12 @@ struct PrecedenceTests {
                 "DRIP_SECONDS": "2", "DRIP_POSITION": "top", "DRIP_SIZE": "compact", "DRIP_SOUND": "none",
             ]) == EnvironmentSettings(seconds: 2, position: .top, size: .compact, sound: Sound.none))
         #expect(try EnvironmentSettings(environment: ["DRIP_SECONDS": ""]) == EnvironmentSettings())
+        #expect(try EnvironmentSettings(environment: ["DRIP_STACK": "off", "DRIP_STACK_MAX": "6"])
+            == EnvironmentSettings(stack: .off, stackMax: 6))
         for (name, value) in [("DRIP_SECONDS", "abc"), ("DRIP_SECONDS", "99"), ("DRIP_POSITION", "left"),
-                              ("DRIP_SIZE", "huge")] {
+                              ("DRIP_SIZE", "huge"), ("DRIP_STACK", "psuh"), ("DRIP_STACK", "Push"),
+                              ("DRIP_STACK_MAX", "0"), ("DRIP_STACK_MAX", "7"), ("DRIP_STACK_MAX", "2.5"),
+                              ("DRIP_STACK_MAX", "many")] {
             let error = #expect(throws: UsageError.self) { try EnvironmentSettings(environment: [name: value]) }
             #expect(error?.message.hasPrefix(name) == true)
         }
@@ -270,7 +292,7 @@ struct PrecedenceTests {
     }
 
     @Test func configSoundFalseMutesEveryPreset() throws {
-        let config = Config(sound: false, presets: ["ok": PresetOverride(sound: .named("Hero"))])
+        let config = Config(sound: Sound.none, presets: ["ok": PresetOverride(sound: .named("Hero"))])
         let resolver = CardResolver(config: config)
         for kind in ["ok", "warn", "fail", "info"] {
             #expect(try resolver.resolve(kind: kind, title: "t", flags: CardFlags()).sound == Sound.none)
@@ -278,6 +300,17 @@ struct PrecedenceTests {
         #expect(try resolver.resolve(kind: "ok", title: "t", flags: CardFlags(sound: .named("Pop"))).sound == .named("Pop"))
         let unmuted = CardResolver(config: config, environment: EnvironmentSettings(sound: .named("Ping")))
         #expect(try unmuted.resolve(kind: "ok", title: "t", flags: CardFlags()).sound == .named("Ping"))
+    }
+
+    /// A sound named at the top level is every preset's, unless the preset sets its own.
+    @Test func configSoundNameReplacesThePresetsSounds() throws {
+        let config = Config(sound: .named("Pop"), presets: ["ok": PresetOverride(sound: .named("Hero"))])
+        let resolver = CardResolver(config: config)
+        #expect(try resolver.resolve(kind: "ok", title: "t", flags: CardFlags()).sound == .named("Hero"))
+        for kind in ["warn", "fail", "info", "ask"] {
+            #expect(try resolver.resolve(kind: kind, title: "t", flags: CardFlags()).sound == .named("Pop"))
+        }
+        #expect(try resolver.resolve(kind: "fail", title: "t", flags: CardFlags(sound: .named("Ping"))).sound == .named("Ping"))
     }
 
     @Test func dripSoundNoneMutes() throws {
@@ -342,17 +375,31 @@ struct StackSettingsTests {
         #expect(text?.description == "\(path):1: stack_max: expected a whole number, got a string")
     }
 
+    @Test func configReadsTheStack() throws {
+        #expect(try ConfigLoader.parse("stack = \"push\"", path: path) == ConfigFile(config: Config(stack: .push), warnings: []))
+        #expect(try ConfigLoader.parse("stack = \"off\"", path: path).config.stack == .off)
+    }
+
     @Test func stackMaxComesFromTheEnvironmentThenTheConfigThenThree() {
         let config = Config(stackMax: 5)
         #expect(StackSettings.current(environment: [:], config: Config()) == StackSettings(mode: .chain, max: 3))
         #expect(StackSettings.current(environment: [:], config: config)?.max == 5)
         #expect(StackSettings.current(environment: ["DRIP_STACK_MAX": "2"], config: config)?.max == 2)
-        #expect(StackSettings.current(environment: ["DRIP_STACK_MAX": "40"], config: config)?.max == 6)
     }
 
-    @Test func stackModeComesFromTheEnvironment() {
+    @Test func stackModeComesFromTheEnvironmentThenTheConfig() {
         #expect(StackSettings.current(environment: ["DRIP_STACK": "push"], config: Config())?.mode == .push)
         #expect(StackSettings.current(environment: ["DRIP_STACK": "off"], config: Config()) == nil)
+        #expect(StackSettings.current(environment: [:], config: Config(stack: .push))?.mode == .push)
+        #expect(StackSettings.current(environment: [:], config: Config(stack: .off)) == nil)
+        #expect(StackSettings.current(environment: ["DRIP_STACK": "chain"], config: Config(stack: .off))?.mode == .chain)
+    }
+
+    /// A drip with a bad DRIP_STACK or DRIP_STACK_MAX exits 2 before it hands off a card, so the
+    /// drip that shows the cards falls back to the defaults.
+    @Test func invalidStackSettingsAreLeftOut() {
+        #expect(StackSettings.current(environment: ["DRIP_STACK": "psuh"], config: Config()) == StackSettings(mode: .chain, max: 3))
+        #expect(StackSettings.current(environment: ["DRIP_STACK_MAX": "40"], config: Config(stackMax: 5))?.max == 5)
     }
 
     @Test func aModeGivenOverridesTheEnvironment() {

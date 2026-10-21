@@ -8,7 +8,7 @@ protocol CardDisplay {
 
     /// Shows the cards one after another, after any other drip's, and returns once the last has
     /// gone, with the exit status to report. `locked` says what happens while the screen is locked;
-    /// a `stack` given stacks notch cards that way instead of as `DRIP_STACK` says.
+    /// a `stack` given stacks notch cards that way instead of as `stack` or `DRIP_STACK` says.
     func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32
 
     /// Hands the cards to a background drip and returns at once, or shows them here when it cannot.
@@ -29,7 +29,7 @@ protocol CardDisplay {
 }
 
 extension CardDisplay {
-    /// Shows the cards, stacking notch cards as `DRIP_STACK` says.
+    /// Shows the cards, stacking notch cards as `stack` or `DRIP_STACK` says.
     func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
         show(cards, locked: locked, stack: nil, console: console)
     }
@@ -44,9 +44,9 @@ struct Console {
         if !quiet { error("warning: \(message)") }
     }
 
-    /// Warns about card options that were given but say nothing.
+    /// Warns about card options that were given but say nothing, or are on their way out.
     func warnAbout(_ options: CardOptions) {
-        if options.opensNothing { warn("--open is empty, so the card has no button") }
+        options.warnings.forEach(warn)
     }
 
     func error(_ message: String) {
@@ -84,13 +84,14 @@ struct DripCLI {
         }
     }
 
-    private func show(_ command: DripCommand) -> Int32 {
+    private func show(_ command: ShowCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         do {
             let card = try makeResolver(console).resolve(
-                kind: command.kind, title: command.title, flags: flags, standardInput: StandardInput.read)
+                kind: command.kind, title: command.title, rest: command.rest, flags: flags,
+                standardInput: StandardInput.read)
             return deliver([card], wait: flags.wait, console: console)
         } catch {
             return report(error, console)
@@ -119,7 +120,7 @@ struct DripCLI {
             let card = try makeResolver(console).resolve(kind: event.kind, title: event.title, flags: flags)
             status = deliver([card], wait: flags.wait, console: console)
         } catch {
-            status = report(error, console)
+            status = report(error, console, subcommand: HookCommand.configuration.commandName)
         }
         return status == ExitStatus.usage ? ExitStatus.hookFailed : status
     }
@@ -232,7 +233,7 @@ struct DripCLI {
     }
 
     private func render(_ command: RenderCommand) -> Int32 {
-        let flags = command.options.flags
+        let flags = command.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         do {
@@ -255,11 +256,16 @@ struct DripCLI {
             automaticStyle: automaticStyle ?? display.automaticStyle)
     }
 
-    /// Prints an error and returns its exit status.
-    private func report(_ error: Error, _ console: Console) -> Int32 {
+    /// Prints an error and returns its exit status. A usage mistake also says where the help is.
+    private func report(_ error: Error, _ console: Console, subcommand: String? = nil) -> Int32 {
         if let error = error as? ConfigError {
             console.error("invalid config: \(error)")
             return ExitStatus.invalidConfig
+        }
+        if let error = error as? UsageError {
+            FileHandle.standardError.write(Data((CardText.printable(
+                CommandLineParser.usageMessage(error.message, subcommand: subcommand)) + "\n").utf8))
+            return ExitStatus.usage
         }
         console.error("\(error)")
         return ExitStatus.usage

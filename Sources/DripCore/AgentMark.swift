@@ -88,9 +88,9 @@ public struct AgentMark: Equatable, Sendable {
             L18.7657 62.4437Z
             """, fill: .solid(SRGBColor(hex: 0xD97757)))])
 
-    /// OpenAI's Blossom, in white, from OpenAI's brand page; Codex's mark.
-    public static let openai = AgentMark(
-        name: "openai", owner: "OpenAI",
+    /// OpenAI's Blossom, in white, from OpenAI's brand page: Codex's mark, named for the agent.
+    public static let codex = AgentMark(
+        name: "codex", owner: "OpenAI",
         source: "https://cdn.openai.com/brand/OpenAI-Logos-2025.zip (OpenAI-white-monoblossom.svg)",
         width: 721, height: 721,
         layers: [Layer(path: """
@@ -149,7 +149,7 @@ public struct AgentMark: Equatable, Sendable {
         """
 
     /// Every bundled mark, in the order help text lists them.
-    public static let all: [AgentMark] = [.claude, .openai, .gemini]
+    public static let all: [AgentMark] = [.claude, .codex, .gemini]
 
     public static func named(_ name: String) -> AgentMark? {
         all.first { $0.name == name }

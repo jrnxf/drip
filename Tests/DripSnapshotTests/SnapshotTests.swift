@@ -129,14 +129,14 @@ struct SnapshotTests {
             Snapshot(name: "notch-ok-app", arguments: done + app + notch),
             Snapshot(name: "notch-ask-no-app", arguments: asking + ["--icon", "terminal.fill"] + notch),
             Snapshot(name: "notch-ask-mark-claude", arguments: asking + ["--icon", "mark:claude"] + notch),
-            Snapshot(name: "notch-ask-mark-openai", arguments: asking + ["--icon", "mark:openai"] + notch),
+            Snapshot(name: "notch-ask-mark-codex", arguments: asking + ["--icon", "mark:codex"] + notch),
             Snapshot(name: "notch-ask-mark-gemini", arguments: asking + ["--icon", "mark:gemini"] + notch),
             Snapshot(name: "notch-ok-mark-claude", arguments: done + ["--icon", "mark:claude"] + notch),
             Snapshot(name: "notch-ask-image", arguments: asking + notch + [
                 "--icon", "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns",
             ]),
         ] + appearances("ask-app-hud", asking + app + ["--style", "hud"])
-            + appearances("ask-mark-hud", asking + ["--icon", "mark:openai", "--style", "hud"]))
+            + appearances("ask-mark-hud", asking + ["--icon", "mark:codex", "--style", "hud"]))
     }
 
     @Test func buttons() throws {

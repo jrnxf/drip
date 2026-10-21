@@ -30,18 +30,20 @@ public struct Config: Equatable {
     public var seconds: Double?
     public var position: Position?
     public var size: CardSize?
-    /// False mutes every preset.
-    public var sound: Bool?
+    /// The sound of every preset that sets none of its own; `none` mutes every preset.
+    public var sound: Sound?
     public var style: CardStyle?
     public var motion: Motion?
+    /// How notch cards stack, or off.
+    public var stack: StackSettings.Choice?
     /// The most notch cards on screen at once.
     public var stackMax: Int?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
 
     public init(
-        seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Bool? = nil,
-        style: CardStyle? = nil, motion: Motion? = nil, stackMax: Int? = nil,
+        seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Sound? = nil,
+        style: CardStyle? = nil, motion: Motion? = nil, stack: StackSettings.Choice? = nil, stackMax: Int? = nil,
         presets: [String: PresetOverride] = [:]
     ) {
         self.seconds = seconds
@@ -50,6 +52,7 @@ public struct Config: Equatable {
         self.sound = sound
         self.style = style
         self.motion = motion
+        self.stack = stack
         self.stackMax = stackMax
         self.presets = presets
     }
@@ -173,20 +176,10 @@ private struct ConfigReader {
             case "seconds": config.seconds = try seconds(item, key: key)
             case "position": config.position = try choice(item, key: key, Position.self)
             case "size": config.size = try choice(item, key: key, CardSize.self)
-            case "sound":
-                guard case let .boolean(value) = item.value else {
-                    // The top-level sound only mutes; a sound name belongs to a preset.
-                    throw wrongType(
-                        item, key: key,
-                        expected: "true or false (false mutes every preset; a preset takes a name, as in "
-                            + "[preset.ok] sound = \"Hero\")")
-                }
-                config.sound = value
+            case "sound": config.sound = try sound(item, key: key)
             case "style": config.style = try choice(item, key: key, CardStyle.self)
-            // droplet is the only notch motion now, so an old `notch` setting is ignored, not an error.
-            case "notch":
-                warnings.append("\(path):\(item.line): 'notch' is no longer used; droplet is the only notch motion")
             case "motion": config.motion = try choice(item, key: key, Motion.self)
+            case "stack": config.stack = try choice(item, key: key, StackSettings.Choice.self)
             case "stack_max":
                 guard case let .integer(value) = item.value else { throw wrongType(item, key: key, expected: "a whole number") }
                 guard Defaults.stackMaxRange.contains(Int(clamping: value)) else {
@@ -212,10 +205,17 @@ private struct ConfigReader {
             guard case let .table(fields) = presetItem.value else {
                 throw wrongType(presetItem, key: key, expected: "a table")
             }
-            if !builtInNames.contains(name), !Self.isValidPresetName(name) {
-                throw ConfigError(
-                    path: path, line: presetItem.line, key: key,
-                    message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run, hook, demo or history")
+            if !builtInNames.contains(name) {
+                if Self.reservedNames.contains(name) {
+                    throw ConfigError(
+                        path: path, line: presetItem.line, key: key,
+                        message: "'\(name)' is kept for drip's own commands; give the preset another name")
+                }
+                if !Self.isValidPresetName(name) {
+                    throw ConfigError(
+                        path: path, line: presetItem.line, key: key,
+                        message: "a custom preset name must match [a-z][a-z0-9-]*")
+                }
             }
             presets[name] = try preset(fields, key: key)
         }
@@ -244,12 +244,7 @@ private struct ConfigReader {
                 }
                 preset.color = color
             case "sound":
-                switch item.value {
-                case let .string(text): preset.sound = Sound(parsing: text)
-                case .boolean(false): preset.sound = Sound.none
-                case .boolean(true): break
-                default: throw wrongType(item, key: key, expected: "a sound name, a path, \"none\" or false")
-                }
+                preset.sound = try sound(item, key: key)
             case "seconds":
                 preset.seconds = try seconds(item, key: key)
             case "style":
@@ -261,11 +256,26 @@ private struct ConfigReader {
         return preset
     }
 
+    /// The names a custom preset cannot take: drip's subcommands, and those it may have one day,
+    /// since `drip <name>` would run the subcommand instead.
+    static let reservedNames: Set<String> = [
+        "run", "hook", "demo", "history", "show", "help", "version", "setup", "config", "init", "install",
+        "uninstall", "completion", "completions", "doctor", "mute", "pause", "listen", "test",
+    ]
+
     static func isValidPresetName(_ name: String) -> Bool {
-        // run, hook, demo and history are subcommands.
-        guard !["run", "hook", "demo", "history"].contains(name), let first = name.unicodeScalars.first, ("a"..."z").contains(first)
-        else { return false }
+        guard let first = name.unicodeScalars.first, ("a"..."z").contains(first) else { return false }
         return name.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "-" }
+    }
+
+    /// A sound name or path, `"none"`, or false, which is none; true keeps the preset's sound.
+    private func sound(_ item: TOMLItem, key: String) throws -> Sound? {
+        switch item.value {
+        case let .string(text): return Sound(parsing: text)
+        case .boolean(false): return Sound.none
+        case .boolean(true): return nil
+        default: throw wrongType(item, key: key, expected: "a sound name, a path, \"none\" or false")
+        }
     }
 
     private func seconds(_ item: TOMLItem, key: String) throws -> Double {
@@ -333,14 +343,21 @@ public struct EnvironmentSettings: Equatable {
     public var sound: Sound?
     public var style: CardStyle?
     public var motion: Motion?
+    /// How notch cards stack, or off.
+    public var stack: StackSettings.Choice?
+    /// The most notch cards on screen at once.
+    public var stackMax: Int?
     /// The bundle identifier of the app drip was run from, from `__CFBundleIdentifier`.
     public var sender: String?
 
     public init(
         seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Sound? = nil,
-        style: CardStyle? = nil, motion: Motion? = nil, sender: String? = nil
+        style: CardStyle? = nil, motion: Motion? = nil, stack: StackSettings.Choice? = nil, stackMax: Int? = nil,
+        sender: String? = nil
     ) {
         self.sender = sender
+        self.stack = stack
+        self.stackMax = stackMax
         self.seconds = seconds
         self.position = position
         self.size = size
@@ -349,9 +366,10 @@ public struct EnvironmentSettings: Equatable {
         self.motion = motion
     }
 
-    /// Reads DRIP_SECONDS, DRIP_POSITION, DRIP_SIZE, DRIP_SOUND, DRIP_STYLE and DRIP_MOTION. Empty
-    /// values are ignored; invalid ones are usage errors. Also notes the app drip was run from, from
-    /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
+    /// Reads DRIP_SECONDS, DRIP_POSITION, DRIP_SIZE, DRIP_SOUND, DRIP_STYLE, DRIP_MOTION, DRIP_STACK
+    /// and DRIP_STACK_MAX. Empty values are ignored; invalid ones are usage errors. Also notes the
+    /// app drip was run from, from `__CFBundleIdentifier`, ignoring a value that is not a bundle
+    /// identifier.
     public init(environment: [String: String]) throws {
         func value(_ name: String) -> String? {
             environment[name].flatMap { $0.isEmpty ? nil : $0 }
@@ -374,6 +392,13 @@ public struct EnvironmentSettings: Equatable {
         size = try choice("DRIP_SIZE", CardSize.self)
         style = try choice("DRIP_STYLE", CardStyle.self)
         motion = try choice("DRIP_MOTION", Motion.self)
+        stack = try choice("DRIP_STACK", StackSettings.Choice.self)
+        if let text = value("DRIP_STACK_MAX") {
+            guard let max = Int(text), Defaults.stackMaxRange.contains(max) else {
+                throw UsageError("DRIP_STACK_MAX must be a whole number from 1 to 6, not '\(text)'")
+            }
+            stackMax = max
+        }
         sound = value("DRIP_SOUND").map(Sound.init(parsing:))
         sender = CardActivation.sender(in: environment)
     }

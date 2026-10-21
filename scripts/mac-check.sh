@@ -62,7 +62,7 @@ XDG_CONFIG_HOME="$config" .build/release/drip ask "drip ask" --detail "mac-check
     --icon app:com.apple.Terminal
 
 # The agent marks drip bundles, for an agent with no app installed, each with its state in the ring.
-for mark in claude openai gemini; do
+for mark in claude codex gemini; do
     echo "Showing the $mark mark"
     XDG_CONFIG_HOME="$config" .build/release/drip ask "drip ask" --detail "mac-check: mark:$mark" \
         --icon "mark:$mark" --seconds 3

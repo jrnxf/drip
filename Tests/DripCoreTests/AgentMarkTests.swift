@@ -22,17 +22,19 @@ struct AgentMarkTests {
         ]))
 
         // The Blossom's file keeps room around it; the mark is fitted by its drawn shape.
-        let blossom = AgentMark.openai.bounds
+        let blossom = AgentMark.codex.bounds
         #expect(abs(blossom.minX - 118.557) < 0.001 && abs(blossom.maxY - 600.576) < 0.001)
     }
 
     @Test func marksAreNamedByTheirIconValue() {
         #expect(Icon(parsing: "mark:claude") == .mark("claude"))
-        #expect(Icon(parsing: "mark:openai") == .mark("openai"))
+        #expect(Icon(parsing: "mark:codex") == .mark("codex"))
         #expect(Icon(parsing: "mark:gemini") == .mark("gemini"))
         #expect(Icon.mark("claude").problem == nil)
         #expect(Icon.mark("copilot").problem
-            == "'mark:copilot' is not a mark drip bundles: mark:claude, mark:openai, mark:gemini")
+            == "'mark:copilot' is not a mark drip bundles: mark:claude, mark:codex, mark:gemini")
+        // Each mark is named for its agent, not its maker.
+        #expect(Icon.mark("openai").problem != nil)
         #expect(AgentMark.named("gemini") == .gemini)
         #expect(AgentMark.named("Gemini") == nil)
     }

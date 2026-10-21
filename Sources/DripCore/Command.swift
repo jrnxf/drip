@@ -12,7 +12,7 @@ public enum ExitStatus {
     public static let usage: Int32 = 2
     public static let noGUISession: Int32 = 3
     public static let invalidConfig: Int32 = 4
-    /// The card had a button and it was not clicked.
+    /// drip asked with `--confirm` and the button was not clicked.
     public static let notClicked: Int32 = 5
     /// `drip hook` could not make a card. Never 2: Claude Code reads exit 2 from a hook as "block",
     /// which would stop Claude from finishing its turn.
@@ -43,14 +43,16 @@ extension Sound: ExpressibleByArgument {
     }
 }
 
-/// Options shared by every command that shows a card.
+/// Options shared by every command that shows a card. ArgumentParser lists the values of an option
+/// that has a fixed set, so its help does not.
 public struct CardOptions: ParsableArguments {
     @Option(name: .shortAndLong, help: ArgumentHelp(
         "The gray text under the title, up to 3 lines.", valueName: "text"))
     var detail: String?
 
     @Option(name: .shortAndLong, help: ArgumentHelp(
-        "Seconds fully visible, excluding fades: 0.5 to 60. (default: 4.5)", valueName: "n"))
+        "Seconds fully visible, excluding fades: 0.5 to 60. An ask card given a time counts it down instead of waiting. (default: 4.5)",
+        valueName: "n"))
     var seconds: Double?
 
     @Option(help: ArgumentHelp(
@@ -59,7 +61,7 @@ public struct CardOptions: ParsableArguments {
     var sound: Sound?
 
     @Option(help: ArgumentHelp(
-        "An SF Symbol name, a path to an image, app: and an app's bundle identifier for its icon, mark: and claude, openai or gemini for an agent's mark drip bundles, or none. Icons that cannot load fall back to the preset's. (default: the preset's)",
+        "An SF Symbol name, a path to an image, app: and an app's bundle identifier for its icon, mark:claude, mark:codex or mark:gemini for an agent's mark drip bundles, or none. Icons that cannot load fall back to the preset's. (default: the preset's)",
         valueName: "symbol|path|app:id|mark:name|none"))
     var icon: Icon?
 
@@ -69,31 +71,26 @@ public struct CardOptions: ParsableArguments {
     var color: CardColor?
 
     @Option(help: ArgumentHelp(
-        "bottom, center, top or notch. Without a notch, notch grows from the top edge. (default: notch)",
+        "Where the card shows. Without a notch, notch grows from the top edge. (default: notch)",
         valueName: "position"))
     var position: Position?
 
-    @Option(help: ArgumentHelp("compact, regular or large. (default: regular)", valueName: "size"))
-    var size: CardSize?
-
     @Option(help: ArgumentHelp(
-        "hud, glass, wash or terminal. A notch card is always black. (default: glass on macOS 26, hud before)",
+        "How the card is drawn; a notch card is always black. (default: glass on macOS 26, hud before)",
         valueName: "style"))
     var style: CardStyle?
-
-    @Option(help: ArgumentHelp(
-        "full, subtle (fades only) or none. Reduce Motion caps it at subtle. (default: full)",
-        valueName: "amount"))
-    var motion: Motion?
 
     @Option(help: ArgumentHelp(
         "Add a button that opens this URL or path. Hovering holds the card.", valueName: "url|path"))
     var open: String?
 
-    @Option(help: ArgumentHelp(
-        "The button's label. Without --open, drip waits and exits 0 if it was clicked, 5 if not. (default: Open)",
-        valueName: "label"))
+    @Option(help: ArgumentHelp("The --open button's label. (default: Open)", valueName: "label"))
     var button: String?
+
+    @Option(help: ArgumentHelp(
+        "Ask with a button of this label: drip waits, then exits 0 if it was clicked and 5 if not.",
+        valueName: "label"))
+    var confirm: String?
 
     @Option(help: ArgumentHelp(
         "Names what the card is about: a newer card with the same id replaces it while it waits, or takes its place on screen.",
@@ -115,7 +112,7 @@ public struct CardOptions: ParsableArguments {
 
     public func validate() throws {
         if let seconds, !Defaults.secondsRange.contains(seconds) {
-            throw ValidationError("--seconds must be between 0.5 and 60.")
+            throw ValidationError("--seconds must be between 0.5 and 60")
         }
         if let open, let separator = open.range(of: "://") {
             // A URL needs a scheme such as https before its "://"; a path never contains one.
@@ -123,37 +120,62 @@ public struct CardOptions: ParsableArguments {
             let valid = scheme.first?.isLetter == true
                 && scheme.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "+-.".contains($0)) }
                 && URL(string: open) != nil
-            if !valid { throw ValidationError("--open: '\(open)' is not a valid URL.") }
+            if !valid { throw ValidationError("--open: '\(open)' is not a valid URL") }
         }
         if let button, CardText.line(button, limit: Defaults.buttonLimit) == nil {
-            throw ValidationError("--button needs a label.")
+            throw ValidationError("--button needs a label")
+        }
+        if let confirm {
+            if open != nil {
+                throw ValidationError("--confirm asks a question, so it opens nothing: name an --open button with --button")
+            }
+            if button != nil { throw ValidationError("--confirm and --button both name the button: give one") }
+            if CardText.line(confirm, limit: Defaults.buttonLimit) == nil {
+                throw ValidationError("--confirm needs a label")
+            }
         }
         if let id, id.trimmingCharacters(in: .whitespaces).isEmpty || id.count > Defaults.idLimit {
-            throw ValidationError("--id needs 1 to \(Defaults.idLimit) characters.")
+            throw ValidationError("--id needs 1 to \(Defaults.idLimit) characters")
         }
         if let problem = icon?.problem {
-            throw ValidationError("--icon: \(problem).")
+            throw ValidationError("--icon: \(problem)")
         }
         if let activate, activate != CardActivation.none, !CardActivation.isBundleIdentifier(activate) {
-            throw ValidationError("--activate: '\(activate)' is not a bundle identifier such as com.apple.Terminal.")
+            throw ValidationError("--activate: '\(activate)' is not a bundle identifier such as com.apple.Terminal")
         }
     }
 
-    /// The parsed values, as a plain value.
+    /// The parsed values, as a plain value. A `--confirm` question is a button with nothing to open.
     public var flags: CardFlags {
-        CardFlags(
+        let directory = FileManager.default.currentDirectoryPath
+        // `--open "$CI_URL"` with the variable empty opens nothing, so the card has no button, and
+        // `drip run` still runs its command.
+        let target = open.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : Self.target($0, from: directory) }
+        let label: String?
+        if open == nil {
+            // Without --open, --button is the old spelling of --confirm.
+            label = confirm ?? button
+        } else {
+            // --button names the --open button, and an empty --open has none.
+            label = target == nil ? nil : button
+        }
+        return CardFlags(
             detail: detail, seconds: seconds, sound: sound,
-            icon: icon.map { $0.resolved(from: FileManager.default.currentDirectoryPath) }, color: color, position: position,
-            size: size, style: style, motion: motion, wait: wait, quiet: quiet,
-            open: opensNothing ? nil : open.map { Self.target($0, from: FileManager.default.currentDirectoryPath) },
-            button: opensNothing ? nil : button, id: id, activate: activate)
+            icon: icon.map { $0.resolved(from: directory) }, color: color, position: position,
+            style: style, wait: wait, quiet: quiet, open: target, button: label, id: id, activate: activate)
     }
 
-    /// `--open` was given with nothing to open, as `--open "$CI_URL"` when the variable is empty.
-    /// The card then has no button at all, rather than a --button question nobody meant to ask, and
-    /// `drip run` still runs its command.
-    public var opensNothing: Bool {
-        open?.trimmingCharacters(in: .whitespaces).isEmpty == true
+    /// What drip warns about before it shows the card: options that do nothing, and the old
+    /// spelling of --confirm.
+    public var warnings: [String] {
+        var warnings: [String] = []
+        if open?.trimmingCharacters(in: .whitespaces).isEmpty == true {
+            warnings.append("--open is empty, so the card has no button")
+        }
+        if button != nil, open == nil {
+            warnings.append("--button without --open is deprecated; use --confirm")
+        }
+        return warnings
     }
 
     /// What `--open` names, as the button opens it: a URL as given, and a path with `~` expanded
@@ -175,12 +197,15 @@ public struct CardFlags: Equatable {
     public var icon: Icon?
     public var color: CardColor?
     public var position: Position?
+    /// Set only by `drip __render`: everywhere else the size comes from the config or `DRIP_SIZE`.
     public var size: CardSize?
     public var style: CardStyle?
+    /// Set only by `drip __render`: everywhere else the motion comes from the config or `DRIP_MOTION`.
     public var motion: Motion?
     public var wait: Bool
     public var quiet: Bool
     public var open: String?
+    /// The button's label: it opens `open`, or, without it, asks a question.
     public var button: String?
     public var id: String?
     /// A bundle identifier, or `none`.
@@ -210,82 +235,119 @@ public struct CardFlags: Equatable {
     }
 }
 
-/// `drip [KIND] [TITLE] [options]`
+/// `drip`: shows a card, or runs the subcommand named first.
 public struct DripCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "drip",
-        abstract: "Show a brief HUD card on macOS.",
+        abstract: "Show a brief card at the notch on macOS.",
         usage: """
             drip [KIND] [TITLE] [options]
-            drip run [options] -- <command> [args...]
+            drip run [options] [--] <command> [args...]
             drip hook claude|codex [options] [payload]
             drip demo [chain|push] [options]
             drip history [--missed] [--json | --replay]
-            drip --version | --help
             """,
-        discussion: """
-            Presets: ok, warn, fail, info and ask, plus any defined in $XDG_CONFIG_HOME/drip/config.toml \
-            or ~/.config/drip/config.toml. An ask card waits for you: it stays until it is clicked or \
-            replaced, unless --seconds is given.
+        version: dripVersion,
+        subcommands: [
+            ShowCommand.self, RunCommand.self, HookCommand.self, DemoCommand.self, HistoryCommand.self,
+            RenderCommand.self, BackgroundCommand.self,
+        ],
+        defaultSubcommand: ShowCommand.self
+    )
 
-            When no TITLE is given and stdin is not a terminal, drip reads stdin: the first \
-            non-empty line is the title and the remaining lines are the detail, unless --detail \
-            is given.
+    /// What `drip --help` shows after the usage.
+    static let examples = """
+        EXAMPLES:
+          drip "build finished"
+          drip ok "dotfiles up to date" -d "pulled 1 commit"
+          drip fail "deploy failed" -d "$err" --seconds 8
+          git log -1 --format='%s%n%an' | drip ok
+          drip run make test
+          drip run --open "$CI_URL" --button "View run" ./deploy.sh
+          drip warn "staging is ready" --confirm Promote && ./promote.sh
+          drip ask "my-app needs you" --icon app:com.openai.chat
+        """
 
-            drip run runs the command, then shows ok when it exits 0 and fail otherwise, with how \
-            long it took. It exits with the command's exit code.
+    /// What `drip --help` ends with.
+    static let exitCodes = """
+        EXIT CODES:
+          0  The card was shown, or handed off to be shown.
+          1  drip hook could not make a card.
+          2  Usage error.
+          3  No GUI session, such as over ssh.
+          4  The config file is invalid.
+          5  drip asked with --confirm and the button was not clicked.
+          drip run exits with its command's exit code instead.
+        """
 
-            drip hook shows a card from a Claude Code or Codex hook: which project needs you or is \
-            done, and what the agent said.
+    public init() {}
+}
 
-            A click on the card brings forward the app drip was run from, such as the terminal, \
-            unless --activate says otherwise.
-
-            drip demo drops a few cards from the notch, stacking as queued cards do: chained, \
-            then pushed, unless one of chain or push is given.
-
-            Cards that come up while the screen is locked wait for the unlock; three or more \
-            become one card. drip history lists every card, the missed ones marked.
-
-            Exit codes: 0 shown, 1 drip hook could not make a card, 2 usage error, 3 no GUI \
-            session, 4 invalid config file, 5 drip waited for a card with a button and it was not \
-            clicked.
-            """,
-        version: dripVersion
+/// `drip [KIND] [TITLE] [options]`, which `drip show` names: what drip does when the first word
+/// names no subcommand.
+public struct ShowCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "show",
+        abstract: "Show a card.",
+        usage: "drip [KIND] [TITLE] [options]"
     )
 
     @Argument(help: ArgumentHelp(
-        "ok, warn, fail, info, ask or a custom preset. Taken as the title when it is not a preset. (default: info)",
+        "ok, warn, fail, info, ask or a preset from ~/.config/drip/config.toml. An ask card waits until it is clicked. Taken as the title when no title follows it. (default: info)",
         valueName: "kind"))
     public var kind: String?
 
-    @Argument(help: ArgumentHelp("The bold text, up to 2 lines. Required unless stdin provides it.", valueName: "title"))
+    @Argument(help: ArgumentHelp(
+        "The bold text, up to 2 lines. Without it, drip reads stdin: the first line is the title and the rest the detail.",
+        valueName: "title"))
     public var title: String?
+
+    /// Words after the title, as from `drip build finished` with the title left unquoted: the
+    /// error says how to quote it.
+    @Argument(help: .hidden)
+    public var rest: [String] = []
 
     @OptionGroup public var options: CardOptions
 
     public init() {}
 }
 
-/// `drip run [options] -- <command> [args...]`
+/// `drip run [options] [--] <command> [args...]`
 public struct RunCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
-        commandName: "drip run",
+        commandName: "run",
         abstract: "Run a command, then show ok or fail with how long it took.",
-        usage: "drip run [options] -- <command> [args...]",
-        discussion: "Exits with the command's exit code."
+        usage: "drip run [options] [--] <command> [args...]",
+        discussion: """
+            drip's options come first; the command starts at the first argument that is not one, or \
+            after --. Exits with the command's exit code.
+            """
     )
 
     @OptionGroup public var options: CardOptions
 
-    @Argument(parsing: .postTerminator, help: ArgumentHelp("The command to run, after --.", valueName: "command"))
-    public var command: [String] = []
+    /// Everything from the first argument that is not one of drip's options, `--` included.
+    @Argument(parsing: .captureForPassthrough, help: ArgumentHelp(
+        "The command to run, and its arguments.", valueName: "command"))
+    var words: [String] = []
+
+    /// The command to run and its arguments.
+    public var command: [String] {
+        words.first == "--" ? Array(words.dropFirst()) : words
+    }
 
     public init() {}
 
     public func validate() throws {
+        // drip's options end where the command starts, so these are the only ones it can see.
+        switch words.first {
+        case "-h", "--help": throw CleanExit.helpRequest(Self.self)
+        case let first? where first != "--" && first.hasPrefix("-"):
+            throw ValidationError("unknown option '\(first)'")
+        default: break
+        }
         if command.isEmpty {
-            throw ValidationError("Missing the command to run: put it after --, as in drip run -- make test.")
+            throw ValidationError("missing the command to run, as in: drip run make test")
         }
     }
 }
@@ -293,22 +355,25 @@ public struct RunCommand: ParsableCommand {
 /// `drip hook claude|codex [options] [payload]`: shows a card from a coding agent's hook.
 public struct HookCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
-        commandName: "drip hook",
+        commandName: "hook",
         abstract: "Show a card from a Claude Code or Codex hook.",
         usage: "drip hook claude|codex [options] [payload]",
         discussion: """
-            Reads the hook's JSON from the payload argument, which Codex's notify appends, or from \
-            stdin, which Claude Code hooks use. Claude's Notification and Stop events and Codex's \
-            agent-turn-complete make a card; any other payload is an error. The title is the \
-            project (the payload's working directory) and whether the agent needs you or is done; \
-            the detail is the agent's message. Each session's card replaces its previous one, \
-            unless --id says otherwise. Exits 1 instead of 2 on an error, because a hook exiting 2 \
-            blocks the agent.
+            The payload is the hook's JSON: an argument, as Codex's notify passes it, or stdin, as \
+            Claude Code's hooks do. The card names the project and whether the agent needs you or is \
+            done, and each session's card replaces its last. Exits 1 instead of 2 on a mistake, since \
+            a hook that exits 2 blocks the agent.
             """
     )
 
-    @Argument(help: ArgumentHelp("The agent whose hook runs drip: claude or codex.", valueName: "agent"))
-    public var agent: AgentHook.Agent
+    /// Optional here so that `drip hook` alone is a one-line error, not the whole help.
+    @Argument(help: ArgumentHelp("The agent whose hook runs drip.", valueName: "agent"))
+    var agentName: AgentHook.Agent?
+
+    /// The agent whose hook runs drip; `validate()` makes sure there is one.
+    public var agent: AgentHook.Agent {
+        agentName ?? .claude
+    }
 
     @Argument(help: ArgumentHelp("The hook's JSON. Read from stdin when absent.", valueName: "payload"))
     public var payload: String?
@@ -316,20 +381,24 @@ public struct HookCommand: ParsableCommand {
     @OptionGroup public var options: CardOptions
 
     public init() {}
+
+    public func validate() throws {
+        if agentName == nil {
+            throw ValidationError("missing the agent: drip hook claude or drip hook codex")
+        }
+    }
 }
 
 /// `drip demo [chain|push] [options]`: drops a few cards from the notch, stacking them each way.
 public struct DemoCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
-        commandName: "drip demo",
+        commandName: "demo",
         abstract: "Drop a few cards from the notch, stacking as queued cards do.",
         usage: "drip demo [chain|push] [options]",
         discussion: """
-            Plays the cards twice: chained, each new card dropping out of the one above, then pushed, \
-            each new card dropping out of the notch as the others move down. chain or push plays only \
-            that one, whatever DRIP_STACK says. Every card is a notch card, so --position and --style do not apply; on a screen without a \
-            notch the cards grow out of the middle of its top edge. Each card plays its preset's sound; --sound none mutes them. --id is ignored, so no card replaces \
-            another. Other options apply to every card.
+            Plays the cards chained, each new card dropping out of the one above, then pushed, each \
+            new card dropping out of the notch as the others move down; chain or push plays only that \
+            one. Every card is a notch card and plays its preset's sound; --id is ignored.
             """
     )
 
@@ -342,7 +411,8 @@ public struct DemoCommand: ParsableCommand {
         ("info", "Report uploaded", "q3-review.pdf is on the file server", "https://github.com/jrnxf/drip", 3),
     ]
 
-    /// How the demo stacks its cards `mode`'s way, whatever `DRIP_STACK` says, the report held back.
+    /// How the demo stacks its cards `mode`'s way, whatever `stack` or `DRIP_STACK` says, the report
+    /// held back.
     public static func stack(_ mode: StackSettings.Mode, environment: [String: String], config: Config) -> StackSettings {
         var settings = StackSettings.current(environment: environment, config: config, mode: mode)
             ?? StackSettings(mode: mode, max: Defaults.stackMax)
@@ -375,7 +445,7 @@ public struct DemoCommand: ParsableCommand {
         }
     }
 
-    @Argument(help: ArgumentHelp("How the cards stack: chain or push. (default: both, in turn)", valueName: "stack"))
+    @Argument(help: ArgumentHelp("How the cards stack. (default: both, in turn)", valueName: "stack"))
     public var stack: StackSettings.Mode?
 
     /// The ways the demo stacks its cards, in turn.
@@ -391,7 +461,7 @@ public struct DemoCommand: ParsableCommand {
 /// `drip history [--missed] [--json | --replay]`: lists or shows again the cards in the history.
 public struct HistoryCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
-        commandName: "drip history",
+        commandName: "history",
         abstract: "List the cards in the history, or show them again.",
         usage: "drip history [--missed] [--json | --replay]",
         discussion: """
@@ -413,31 +483,39 @@ public struct HistoryCommand: ParsableCommand {
     public init() {}
 
     public func validate() throws {
-        if json, replay { throw ValidationError("--json and --replay cannot be used together.") }
+        if json, replay { throw ValidationError("--json and --replay cannot be used together") }
     }
 }
 
 /// `drip __render --out card.png [KIND] [TITLE] [options]`: draws a card offscreen into a PNG.
-/// Hidden from help; used by the snapshot tests.
+/// Hidden from help; used by the snapshot tests, which also set the size and motion, settings the
+/// other commands take only from the config and the environment.
 public struct RenderCommand: ParsableCommand {
     public enum Appearance: String, ExpressibleByArgument, CaseIterable {
         case light, dark
     }
 
     public static let configuration = CommandConfiguration(
-        commandName: "drip __render",
+        commandName: "__render",
         abstract: "Draw a card offscreen into a PNG at 2x.",
-        usage: "drip __render --out <file.png> [KIND] [TITLE] [options]"
+        usage: "drip __render --out <file.png> [KIND] [TITLE] [options]",
+        shouldDisplay: false
     )
 
     @Argument public var kind: String?
     @Argument public var title: String?
     @OptionGroup public var options: CardOptions
 
+    @Option(help: "How large the card is drawn. (default: regular)")
+    public var size: CardSize?
+
+    @Option(help: "How much the card moves. (default: full)")
+    public var motion: Motion?
+
     @Option(help: "Where to write the PNG.")
     public var out: String
 
-    @Option(help: "light or dark.")
+    @Option(help: "How the card's surroundings look.")
     public var appearance: Appearance = .light
 
     @Option(help: "For a notch card: draw its entrance this many seconds in, instead of fully open.")
@@ -446,12 +524,31 @@ public struct RenderCommand: ParsableCommand {
     @Flag(help: "With --at, draw the notch card's exit instead of its entrance.")
     public var leaving = false
 
+    /// The card options, with the size and motion.
+    public var flags: CardFlags {
+        var flags = options.flags
+        flags.size = size
+        flags.motion = motion
+        return flags
+    }
+
+    public init() {}
+}
+
+/// `drip __background`: the drip a foreground one starts, which shows the cards it reads from stdin.
+public struct BackgroundCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "__background",
+        abstract: "Show the cards a foreground drip hands over on stdin.",
+        shouldDisplay: false
+    )
+
     public init() {}
 }
 
 /// What the command line asks drip to do.
 public enum Invocation {
-    case show(DripCommand)
+    case show(ShowCommand)
     case run(RunCommand)
     case demo(DemoCommand)
     case hook(HookCommand)
@@ -470,58 +567,133 @@ public enum ParseResult {
 
 public enum CommandLineParser {
     /// Parses arguments, not including the program name.
-    ///
-    /// The subcommands are dispatched here rather than by ArgumentParser, which would read a
-    /// subcommand name as the root command's KIND positional.
     public static func parse(_ arguments: [String]) -> ParseResult {
-        switch arguments.first {
-        case "run":
-            return parse(RunCommand.self, Array(arguments.dropFirst())).map(Invocation.run)
-        case "demo":
-            return parse(DemoCommand.self, Array(arguments.dropFirst())).map(Invocation.demo)
-        case "hook":
-            return parse(HookCommand.self, Array(arguments.dropFirst()), failure: ExitStatus.hookFailed)
-                .map(Invocation.hook)
-        case "history":
-            return parse(HistoryCommand.self, Array(arguments.dropFirst())).map(Invocation.history)
-        case "__render":
-            return parse(RenderCommand.self, Array(arguments.dropFirst())).map(Invocation.render)
-        case "__background":
-            return .invocation(.background)
-        // What people type for help and the version; a card titled "help" is never what they meant.
-        case "help" where arguments.count == 1:
-            return parse(["--help"])
-        case "version" where arguments.count == 1:
+        // What people type for the version; a card titled "version" is never what they meant.
+        if arguments == ["version"] {
             return parse(["--version"])
-        default:
-            return parse(DripCommand.self, arguments).map(Invocation.show)
+        }
+        let attached = arguments.first == RunCommand.configuration.commandName
+            ? Array(arguments.prefix(1)) + attachingTextValues(Array(arguments.dropFirst()), untilCommand: true)
+            : attachingTextValues(arguments)
+        do {
+            var command = try DripCommand.parseAsRoot(attached)
+            switch command {
+            case let command as ShowCommand: return .invocation(.show(command))
+            case let command as RunCommand: return .invocation(.run(command))
+            case let command as HookCommand: return .invocation(.hook(command))
+            case let command as DemoCommand: return .invocation(.demo(command))
+            case let command as HistoryCommand: return .invocation(.history(command))
+            case let command as RenderCommand: return .invocation(.render(command))
+            case is BackgroundCommand: return .invocation(.background)
+            default:
+                // `drip help [subcommand]`, whose run() asks for that help.
+                try command.run()
+                return .exit(status: ExitStatus.shown, message: "")
+            }
+        } catch {
+            return failure(error, arguments: attached)
         }
     }
 
-    private static func parse<Command: ParsableCommand>(
-        _ type: Command.Type, _ arguments: [String], failure: Int32 = ExitStatus.usage
-    ) -> Result<Command, ParseFailure> {
-        let attached = attachingTextValues(arguments)
-        do {
-            return .success(try type.parse(attached))
-        } catch {
-            let status = type.exitCode(for: error) == .success ? 0 : failure
-            var message = type.fullMessage(for: error)
-            if status != 0, message.hasPrefix("Error: Invalid option") || message.hasPrefix("Error: Unknown option"),
-               let text = dashLeadingText(in: attached) {
-                // Text such as "--- FAIL: TestFoo" read as an option: say where it goes instead.
-                let usage = message.split(separator: "\n", maxSplits: 1).dropFirst().first.map { "\n" + $0 } ?? ""
-                message = "Error: '\(text)' starts with a dash, so it reads as an option. Put text that starts "
-                    + "with a dash after --, as in: drip fail -- '\(text)'" + usage
+    /// Help, the version or a completion script, printed as they are, or a usage error, printed as
+    /// drip's own errors are: `drip: <message>`, then where the help is.
+    private static func failure(_ error: Error, arguments: [String]) -> ParseResult {
+        let message = DripCommand.message(for: error)
+        if DripCommand.exitCode(for: error) == .success {
+            var text = message == DripCommand.helpMessage() ? rootHelp : message
+            if message == DripCommand.helpMessage(for: RunCommand.self) {
+                // drip run takes --version as the start of its command and rejects it, so its help
+                // does not offer the flag ArgumentParser lists for every subcommand.
+                text = text.split(separator: "\n", omittingEmptySubsequences: false)
+                    .filter { !$0.hasPrefix("  --version ") }.joined(separator: "\n")
             }
-            return .failure(ParseFailure(status: status, message: message))
+            return .exit(status: ExitStatus.shown, message: HelpSections(text).usageFirst ?? text)
+        }
+        let subcommand = DripCommand.configuration.subcommands
+            .first { $0.configuration.shouldDisplay && $0.configuration.commandName == arguments.first }
+            .flatMap { $0.configuration.commandName }
+        let status = subcommand == HookCommand.configuration.commandName ? ExitStatus.hookFailed : ExitStatus.usage
+        var problem = message
+        if problem.hasPrefix("Invalid option") || problem.hasPrefix("Unknown option"),
+           let text = dashLeadingText(in: arguments) {
+            // Text such as "--- FAIL: TestFoo" read as an option: say where it goes instead.
+            problem = "'\(text)' starts with a dash, so it reads as an option. Put text that starts with a "
+                + "dash after --, as in: drip fail -- '\(text)'"
+        }
+        if problem.hasSuffix(".") { problem.removeLast() }
+        problem = problem.prefix(1).lowercased() + problem.dropFirst()
+        return .exit(status: status, message: usageMessage(problem, subcommand: subcommand))
+    }
+
+    /// A usage mistake as drip prints it: `drip: <message>`, then where the help is, for the
+    /// subcommand if one is named.
+    public static func usageMessage(_ problem: String, subcommand: String? = nil) -> String {
+        let help = subcommand.map { "drip \($0) --help" } ?? "drip --help"
+        return "drip: \(problem)\nSee '\(help)'."
+    }
+
+    /// `drip --help`: the usage, examples, the card options and the subcommands, then the exit
+    /// codes. ArgumentParser's own help for drip would list only the subcommands.
+    static var rootHelp: String {
+        let root = HelpSections(DripCommand.helpMessage())
+        let show = HelpSections(DripCommand.helpMessage(for: ShowCommand.self))
+        return [
+            root["OVERVIEW"], root["USAGE"], DripCommand.examples, show["ARGUMENTS"], show["OPTIONS"],
+            root["SUBCOMMANDS"], DripCommand.exitCodes,
+        ].compactMap { $0 }.joined(separator: "\n\n") + "\n"
+    }
+}
+
+/// ArgumentParser's help, by section: each starts with a line such as `OPTIONS:`.
+struct HelpSections {
+    private var sections: [(title: String, text: String)] = []
+
+    /// The help with the usage right after the one-line overview, and the rest of the overview, the
+    /// command's discussion, after it. Nil for text that is not help, such as the version.
+    var usageFirst: String? {
+        guard let overview = self["OVERVIEW"], let usage = self["USAGE"] else { return nil }
+        let paragraphs = overview.components(separatedBy: "\n\n")
+        var parts = [paragraphs[0], usage]
+        parts += paragraphs.dropFirst()
+        for section in sections where section.title != "OVERVIEW" && section.title != "USAGE" {
+            parts += [self[section.title]].compactMap { $0 }
+        }
+        return parts.joined(separator: "\n\n") + "\n"
+    }
+
+    init(_ help: String) {
+        for line in help.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
+            let title = line.prefix { $0 != ":" }
+            if !title.isEmpty, title.count < line.count, title.allSatisfy({ $0.isUppercase || $0 == " " }) {
+                sections.append((String(title), line))
+            } else if !sections.isEmpty {
+                sections[sections.count - 1].text += "\n" + line
+            }
+        }
+    }
+
+    /// The section's text, its title line included, without the blank lines after it.
+    subscript(title: String) -> String? {
+        sections.first { $0.title == title }.map { section in
+            var text = section.text
+            while text.hasSuffix("\n") { text.removeLast() }
+            return text
         }
     }
 }
 
 extension CommandLineParser {
     /// The options whose values are free text, often a script's own output.
-    private static let textOptions = ["-d": "--detail", "--detail": "--detail", "--button": "--button", "--id": "--id"]
+    private static let textOptions = [
+        "-d": "--detail", "--detail": "--detail", "--button": "--button", "--confirm": "--confirm", "--id": "--id",
+    ]
+
+    /// Every card option that takes a value, so that `drip run` can tell an option's value from the
+    /// command: in `drip run -s 3 make`, 3 is the value and make the command.
+    static let valueOptions: Set<String> = [
+        "-d", "--detail", "-s", "--seconds", "--sound", "--icon", "--color", "--position", "--style", "--open",
+        "--button", "--confirm", "--id", "--activate",
+    ]
 
     /// The first argument before `--` that starts with a dash but is text, not an option: it holds
     /// a space, or starts with three dashes. Options never do.
@@ -534,13 +706,14 @@ extension CommandLineParser {
 
     /// Joins each text option to the argument after it, as `--detail=<text>`, so text that starts
     /// with a dash, such as `-d "$err"` when the error reads "--- FAIL: TestFoo", is the option's
-    /// value instead of an unknown option. Arguments after `--` are left alone.
-    static func attachingTextValues(_ arguments: [String]) -> [String] {
+    /// value instead of an unknown option. Arguments after `--` are left alone, and so, when
+    /// `untilCommand`, are `drip run`'s command and its arguments.
+    static func attachingTextValues(_ arguments: [String], untilCommand: Bool = false) -> [String] {
         var result: [String] = []
         var index = arguments.startIndex
         while index < arguments.endIndex {
             let argument = arguments[index]
-            if argument == "--" {
+            if argument == "--" || (untilCommand && !argument.hasPrefix("-")) {
                 result += arguments[index...]
                 break
             }
@@ -548,27 +721,15 @@ extension CommandLineParser {
             if let name = textOptions[argument], index + 1 < arguments.endIndex, !arguments[index + 1].isEmpty {
                 result.append("\(name)=\(arguments[index + 1])")
                 index += 2
+            } else if untilCommand, valueOptions.contains(argument), index + 1 < arguments.endIndex {
+                // The option's value, which never starts the command.
+                result += arguments[index...(index + 1)]
+                index += 2
             } else {
                 result.append(argument)
                 index += 1
             }
         }
         return result
-    }
-}
-
-private struct ParseFailure: Error {
-    var status: Int32
-    var message: String
-}
-
-private extension Result where Failure == ParseFailure {
-    func map(_ invocation: (Success) -> Invocation) -> ParseResult {
-        switch self {
-        case let .success(command):
-            return .invocation(invocation(command))
-        case let .failure(failure):
-            return .exit(status: failure.status, message: failure.message)
-        }
     }
 }

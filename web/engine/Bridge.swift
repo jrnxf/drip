@@ -196,21 +196,24 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         reply["warnings"] = warnings
         return send(reply)
     }
-    func failure(_ error: Error, status: Int32 = ExitStatus.usage) -> UnsafePointer<UInt8> {
-        send(["exit": status, "message": "drip: \(error)"])
+    func failure(_ error: Error, status: Int32 = ExitStatus.usage, subcommand: String? = nil) -> UnsafePointer<UInt8> {
+        let message = (error as? UsageError).map { CommandLineParser.usageMessage($0.message, subcommand: subcommand) }
+        return send(["exit": status, "message": message ?? "drip: \(error)"])
     }
 
     switch CommandLineParser.parse(args) {
     case let .exit(status, message):
         return send(["exit": status, "message": message])
     case let .invocation(.show(command)):
+        warnings += command.options.warnings
         do {
             let card = try resolver.resolve(
-                kind: command.kind, title: command.title, flags: command.options.flags,
+                kind: command.kind, title: command.title, rest: command.rest, flags: command.options.flags,
                 standardInput: { input["stdin"] as? String })
             return cards([card])
         } catch { return failure(error) }
     case let .invocation(.run(command)):
+        warnings += command.options.warnings
         guard let run = input["run"] as? [String: Double] else {
             return send(["run": command.command])
         }
@@ -221,6 +224,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             return cards([card], extra: ["status": Int32(run["status"] ?? 0)])
         } catch { return failure(error) }
     case let .invocation(.demo(command)):
+        warnings += command.options.warnings
         var flags = command.options.flags
         // Short, unless a flag or the config says otherwise.
         if flags.seconds == nil, resolver.config.seconds == nil { flags.seconds = 2 }
@@ -234,6 +238,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             return send(["warnings": warnings, "deliveries": deliveries])
         } catch { return failure(error) }
     case let .invocation(.hook(command)):
+        warnings += command.options.warnings
         var flags = command.options.flags
         do {
             guard let payload = command.payload ?? input["stdin"] as? String else {
@@ -245,7 +250,9 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             // No app is installed in a web page.
             flags.icon = flags.icon ?? command.agent.icon { _ in false }
             return cards([try resolver.resolve(kind: event.kind, title: event.title, flags: flags)])
-        } catch { return failure(error, status: ExitStatus.hookFailed) }
+        } catch {
+            return failure(error, status: ExitStatus.hookFailed, subcommand: HookCommand.configuration.commandName)
+        }
     case .invocation(.history):
         return send(["exit": 1, "message": "drip: the history lives on your Mac, not in this page"])
     case .invocation(.render), .invocation(.background):
