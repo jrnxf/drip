@@ -785,7 +785,7 @@ class Stage {
     for (const delivery of this.deliveries) for (const card of delivery.cards) drip.release(card.handle);
     for (const card of this.queue) drip.release(card.handle);
     if (this.current) drip.release(this.current.handle);
-    this.deliveries.length = 0; this.queue.length = 0; this.current = null; this.dirty = true;
+    this.deliveries.length = 0; this.queue.length = 0; this.current = null; this.lastCard = null; this.dirty = true;
   }
   motionOf(card) { return reduceMotion.matches && card.card.motion === "full" ? "subtle" : card.card.motion; }
   // A card as this stage paints it; its times are its own, from when it starts to drop in.
@@ -797,9 +797,10 @@ class Stage {
 
   // A command's cards: into the stack that shows when it takes them, else in turn.
   deliver(delivery) {
+    delivery = { ...delivery, cards: delivery.cards.map((card) => this.prepare(card)) };
     const stackable = !!delivery.stack && !reduceMotion.matches;
     if (!this.deliveries.length && this.stack?.adopting && stackable && delivery.adopting) this.offer(delivery);
-    else if (!this.deliveries.length && !this.stack && !stackable) for (const card of delivery.cards) this.push(this.prepare(card));
+    else if (!this.deliveries.length && !this.stack && !stackable) for (const card of delivery.cards) this.push(card);
     else this.deliveries.push(delivery);
     this.dirty = true;
   }
@@ -807,15 +808,15 @@ class Stage {
     for (const card of delivery.cards) {
       const offered = drip.stack.offer(this.stack.id, card.handle);
       if (offered.dropped) { drip.release(offered.dropped); this.stack.cards.delete(offered.dropped); }
-      this.stack.cards.set(card.handle, this.prepare(card));
+      this.stack.cards.set(card.handle, card);
     }
     this.stack.fit = Math.min(this.stack.fit, ...delivery.cards.map((card) => this.fitFor(card)));
   }
   // Starts the next delivery once nothing shows.
   next() {
     const delivery = this.deliveries.shift();
-    if (!delivery.stack || reduceMotion.matches) { for (const card of delivery.cards) this.push(this.prepare(card)); return; }
-    const cards = delivery.cards.map((card) => this.prepare(card));
+    if (!delivery.stack || reduceMotion.matches) { for (const card of delivery.cards) this.push(card); return; }
+    const cards = delivery.cards;
     this.stack = {
       id: drip.stack.start({ ...delivery.stack, adopting: delivery.adopting }, cards.map((card) => card.handle)),
       start: this.clock, adopting: delivery.adopting, settings: delivery.stack, bottom: 0,
