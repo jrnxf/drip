@@ -72,6 +72,11 @@ struct CardTests {
         // A plain ask card's question is in its ring, so its own question icon is not shown too.
         var asking = Card(preset: .ask, title: "my-app needs you")
         #expect(!asking.showsIconAtNotch)
+        // Its button takes the ring's place, so its icon shows the question.
+        asking.action = CardAction(label: "Approve", open: nil)
+        #expect(asking.ringGlyph == "questionmark")
+        #expect(asking.showsIconAtNotch)
+        asking.action = nil
         asking.icon = .mark("claude")
         #expect(asking.showsIconAtNotch)
         asking.icon = .symbol("bell.fill")

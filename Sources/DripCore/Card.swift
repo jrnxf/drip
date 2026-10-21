@@ -340,9 +340,9 @@ public struct Card: Equatable, Sendable, Codable {
 
     /// Whether the notch shows the card's icon: not when it is the preset's own and the ring carries
     /// the state's mark, as on a plain `ask` card, so the state shows once and the text starts where
-    /// the icon would be.
+    /// the icon would be. A card with a button shows no ring, so it keeps its icon.
     public var showsIconAtNotch: Bool {
-        icon != .none && !(icon == fallbackIcon && ringGlyph != nil)
+        icon != .none && !(icon == fallbackIcon && ringGlyph != nil && action == nil)
     }
 
     /// A card that uses every value of `preset`.
