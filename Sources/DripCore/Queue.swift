@@ -1,4 +1,9 @@
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 
 /// One drip's place in the queue that shows cards one after another across every drip of a user.
 ///

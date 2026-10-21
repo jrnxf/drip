@@ -157,7 +157,11 @@ struct DripCLI {
 
         let clock = ContinuousClock()
         let start = clock.now
+        #if os(WASI)
+        let outcome = CommandRunner.Outcome(status: 126, error: "\(command.command[0]): cannot run commands in WebAssembly")
+        #else
         let outcome = CommandRunner.run(command.command)
+        #endif
         let elapsed = (clock.now - start).components
         if let error = outcome.error {
             console.error(error)
@@ -171,7 +175,9 @@ struct DripCLI {
             _ = report(error, console)
         }
         // The card is on its way; Ctrl-C now stops the script that ran drip, as it would the command.
+        #if !os(WASI)
         CommandRunner.endLikeTheCommand(outcome)
+        #endif
         return outcome.status
     }
 

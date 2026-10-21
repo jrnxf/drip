@@ -2,6 +2,8 @@
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif canImport(WASILibc)
+import WASILibc
 #endif
 
 public enum StandardInput {
@@ -48,8 +50,10 @@ public enum StandardInput {
     private static func readSome(_ descriptor: Int32, _ buffer: UnsafeMutableRawPointer, _ size: Int) -> Int {
         #if canImport(Darwin)
         Darwin.read(descriptor, buffer, size)
-        #else
+        #elseif canImport(Glibc)
         Glibc.read(descriptor, buffer, size)
+        #else
+        WASILibc.read(descriptor, buffer, size)
         #endif
     }
 }

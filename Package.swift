@@ -1,4 +1,5 @@
 // swift-tools-version: 5.9
+import Foundation
 import PackageDescription
 
 let package = Package(
@@ -30,3 +31,16 @@ let package = Package(
         .testTarget(name: "DripSnapshotTests"),
     ]
 )
+
+// The web page's WebAssembly module: DripCore behind plain wasm exports. Only for a Wasm build,
+// which web/build.sh runs; it does not link natively.
+if ProcessInfo.processInfo.environment["DRIP_WEB"] == "1" {
+    package.targets.append(
+        .executableTarget(
+            name: "DripWeb",
+            dependencies: ["DripCore"],
+            path: "web/engine",
+            swiftSettings: [.enableExperimentalFeature("Extern")],
+            linkerSettings: [.unsafeFlags(["-Xclang-linker", "-mexec-model=reactor"])]
+        ))
+}

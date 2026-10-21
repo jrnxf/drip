@@ -1,5 +1,10 @@
 import DripCore
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 import Testing
 
 struct QueueTests {

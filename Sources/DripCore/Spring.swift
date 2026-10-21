@@ -1,4 +1,9 @@
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 
 /// A damped spring described the way Apple's APIs describe one: how long it takes to look settled and
 /// how much it bounces. The same parameters as `CASpringAnimation(perceptualDuration:bounce:)`.

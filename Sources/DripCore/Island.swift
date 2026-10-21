@@ -1,4 +1,9 @@
+#if os(WASI)
+import FoundationEssentials
+import WASILibc
+#else
 import Foundation
+#endif
 
 // A card at `position = notch` is drawn as one black shape that grows out of the camera notch.
 // Coordinates here are in points with x = 0 at the notch's center and y growing down from the
