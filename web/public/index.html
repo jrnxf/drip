@@ -456,7 +456,7 @@
   .deck .row { display: flex; gap: .8%; }
   .deck .row i { flex: 1; border-radius: 3px; background: var(--key); }
   .deck .row i.w { flex: 1.7; } .deck .row i.space { flex: 6.5; }
-  @media (min-width: 860px) {
+  @media (min-width: 861px) {
     /* A 14-inch MacBook Pro's screen, 1512 by 982 points; the stage draws at its width / 1512. */
     .hero .screen { height: auto; aspect-ratio: 1512 / 982; }
     .deck { display: block; }
@@ -469,15 +469,15 @@
     .hero { padding-top: 20px; }
     .nav .wrap { max-width: 1320px; }
     .hero > .wrap {
-      max-width: 1320px; display: grid; grid-template-columns: minmax(0, 1fr) auto;
+      max-width: 1320px; display: grid; grid-template-columns: minmax(380px, 1fr) minmax(0, min(900px, calc((100svh - 250px) * 1.36)));
       grid-template-areas: "intro mac" "chips chips" "readout readout"; column-gap: 48px; align-items: center;
     }
-    .hero .intro, html[data-dir="b"] .hero .intro { grid-area: intro; display: block; text-align: left; margin: 0; max-width: 600px; min-width: 380px; }
+    .hero .intro, html[data-dir="b"] .hero .intro { grid-area: intro; display: block; text-align: left; margin: 0; max-width: 600px; }
     html[data-dir="b"] .usage { display: none; }
     .hero h1, html[data-dir="b"] h1 { font-size: clamp(38px, 3.5vw, 60px); margin: 14px 0 12px; }
     .hero .lede { margin: 0; font-size: 18px; }
     .hero .ctas { justify-content: flex-start; margin-top: 20px; }
-    .hero .mac { grid-area: mac; margin: 0; width: min(900px, calc((100svh - 250px) * 1.36)); }
+    .hero .mac { grid-area: mac; margin: 0; }
     .tryit { grid-area: chips; margin-top: 26px; max-width: none; }
     .readout { grid-area: readout; width: 100%; }
   }
@@ -1264,7 +1264,7 @@ const heroRoom = () => getComputedStyle(heroTermBox).position === "absolute"
   ? heroTermBox.getBoundingClientRect().top - heroScreen.getBoundingClientRect().top - 8 : null;
 // On a laptop-sized page the screen is a 14-inch MacBook Pro's, 1512 points wide, so the notch and
 // the cards keep their real size against it; a phone shows a close-up of the notch instead.
-const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (innerWidth >= 860 ? W / 1512 : 1), avail: heroRoom });
+const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (innerWidth > 860 ? W / 1512 : 1), avail: heroRoom });
 for (const keys of ["111111111111111", "w1111111111111", "w111111111111w", "w11111111111w", "ww11s11ww"]) {
   const row = document.createElement("div"); row.className = "row";
   for (const key of keys) { const i = document.createElement("i"); if (key !== "1") i.className = key === "s" ? "space" : "w"; row.append(i); }
