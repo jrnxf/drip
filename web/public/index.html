@@ -551,7 +551,7 @@ class Stage {
     this.layer = document.createElement("canvas"); this.lctx = this.layer.getContext("2d");
     this.textLayer = document.createElement("canvas"); this.tctx = this.textLayer.getContext("2d");
     this.deliveries = []; this.queue = []; this.current = null; this.stack = null; this.lastCard = null;
-    this.clock = 0; this.fit = 1;
+    this.clock = 0; this.fit = 1; this.widest = 640;
     this.frozen = null; this.visible = true; this.dirty = true; this.pointer = null;
     this.listeners = [];
     new ResizeObserver(() => {
@@ -608,12 +608,14 @@ class Stage {
   }
   // How much the screen is scaled, chosen once for its size: up to the stage's zoom, and down so that
   // `holds` reference cards fit, laid out as CardStack lays them out. Cards coming and going never
-  // change it, so the notch keeps its size.
+  // change it, so the notch keeps its size; a card is laid out no wider than the screen shows across,
+  // so long text wraps instead of running off it.
   refit() {
     const { width, height } = this.canvas.getBoundingClientRect(), m = reference?.metrics;
-    const across = (width - 16) / Math.max(m ? m.maxWidth + 16 : 0, 380);
+    const across = (width - 16) / 380;
     const down = m ? (height - 10) / (m.pillTop + this.holds * m.pillHeight + (this.holds - 1) * STACK_GAP + 10) : Infinity;
     this.fit = Math.min(this.zoom(width), across, down);
+    this.widest = (width - 16) / this.fit - 16;
     this.screen.style.setProperty("--fit", this.fit);
   }
   reset() {
@@ -1049,7 +1051,7 @@ async function execOne(stages, term, stage, config, alive) {
   if (program === "./promote.sh") { term.print("promoting api 1.4.2 to production", "dim"); return 0; }
   if (program !== "drip") { term.print(`zsh: command not found: ${program}  (this terminal only runs drip)`, "err"); return 127; }
 
-  let reply = drip.command({ args, env, config, notch, stdin });
+  let reply = drip.command({ args, env, config, notch, widest: stage.widest, stdin });
   if (reply.run) {
     const outcome = fakeRun(reply.run);
     const started = performance.now();
@@ -1059,7 +1061,7 @@ async function execOne(stages, term, stage, config, alive) {
     }
     await sleep(Math.max(0, outcome.seconds * 1000 - (performance.now() - started)));
     if (!alive()) return 0;
-    reply = drip.command({ args, env, config, notch, run: { status: outcome.status, seconds: (performance.now() - started) / 1000 } });
+    reply = drip.command({ args, env, config, notch, widest: stage.widest, run: { status: outcome.status, seconds: (performance.now() - started) / 1000 } });
   }
   if (reply.message !== undefined) { term.print(reply.message, reply.exit === 0 ? "" : "err"); return reply.exit ?? 1; }
   for (const warning of reply.warnings ?? []) term.print(`drip: warning: ${warning}`, "dim");

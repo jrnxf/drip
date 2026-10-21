@@ -130,8 +130,9 @@ struct Island {
 /// Runs a drip command line as the CLI would, up to the point where it hands cards to the screen.
 ///
 /// Request: `{"args": [...], "env": {"DRIP_STACK": "push"}, "config": "<toml>", "notch": {"width": w, "height": h},
-/// "run": {"status": n, "seconds": s}, "stdin": "<text piped in>"}`. `run` is the outcome of the command `drip run` wraps,
-/// which the page fakes; without it a `drip run` reply asks for it.
+/// "widest": w, "run": {"status": n, "seconds": s}, "stdin": "<text piped in>"}`. `widest` caps how wide a card
+/// gets, for a screen narrower than the app's widest card, so its text wraps sooner. `run` is the outcome
+/// of the command `drip run` wraps, which the page fakes; without it a `drip run` reply asks for it.
 ///
 /// The cards come in `deliveries`, shown one after another as the app shows them: each with its
 /// `stack` settings, or none when the cards show one at a time. `adopting` says whether the stack
@@ -143,6 +144,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
     let args = input["args"] as? [String] ?? []
     let notch = input["notch"] as? [String: Double] ?? [:]
     let notchWidth = notch["width"] ?? 185, notchHeight = notch["height"] ?? 32
+    let widest = min(input["widest"] as? Double ?? .infinity, Double(CardMetrics.maxWidth))
     let environment = input["env"] as? [String: String] ?? [:]
 
     var warnings: [String] = []
@@ -178,7 +180,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
 
     func delivery(_ cards: [Card], stack: StackSettings?, adopting: Bool) -> [String: Any] {
         var delivery: [String: Any] = [
-            "cards": prepared(cards).map { island(for: $0, notchWidth: notchWidth, notchHeight: notchHeight) },
+            "cards": prepared(cards).map { island(for: $0, notchWidth: notchWidth, notchHeight: notchHeight, widest: widest) },
             "adopting": adopting,
         ]
         // As the app: a stack only for notch cards with full motion.
@@ -274,14 +276,15 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
 
 /// Lays a card out as the island draws it: the text wrapped to the island's column with the page's
 /// fonts, and an animator for its entrance and exit. Mirrors `IslandLayers.init` in the app.
-func island(for card: Card, notchWidth: Double, notchHeight: Double) -> [String: Any] {
+func island(for card: Card, notchWidth: Double, notchHeight: Double, widest: Double) -> [String: Any] {
     let scale = card.size.scale
     let hasIcon = card.showsIconAtNotch
     let buttonWidth = card.action.map { (measure(2, scale, $0.label)).rounded(.up) + 24 * scale } ?? 0
     func metrics(width: Double, height: Double, titleLines: Int, detailLines: Int) -> IslandMetrics {
         IslandMetrics(
             notchWidth: notchWidth, notchHeight: notchHeight, scale: scale, textWidth: width, textHeight: height,
-            titleLines: titleLines, detailLines: detailLines, hasIcon: hasIcon, actionWidth: buttonWidth)
+            titleLines: titleLines, detailLines: detailLines, hasIcon: hasIcon, actionWidth: buttonWidth,
+            widestPill: widest)
     }
     let column = metrics(width: 0, height: 0, titleLines: 0, detailLines: 0).textColumn
     let title = CardText.wrap(card.title, width: column, maxLines: Defaults.titleLines) { measure(0, scale, $0) }
