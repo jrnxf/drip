@@ -164,14 +164,29 @@ struct SetupTests {
         #expect(CodexConfig("notify = [\"terminal-notifier\"]\n").dripNotify == nil)
     }
 
-    @Test func codexHooksInConfigTomlCount() {
+    @Test func codexHooksInConfigTomlCountByEvent() {
         #expect(CodexConfig("""
             [[hooks.Stop]]
             [[hooks.Stop.hooks]]
             type = "command"
             command = "drip hook codex"
-            """).hasDripHooks)
-        #expect(!CodexConfig("[profiles.x]\ncommand = \"drip hook codex\"\n").hasDripHooks)
+
+            [[hooks.PermissionRequest]]  # approvals
+            [[hooks.PermissionRequest.hooks]]
+            command = "/opt/homebrew/bin/drip hook codex"
+
+            [[hooks.SessionStart]]
+            [[hooks.SessionStart.hooks]]
+            command = "say hi"
+            """).dripHookEvents == ["Stop", "PermissionRequest"])
+        #expect(CodexConfig("[profiles.x]\ncommand = \"drip hook codex\"\n").dripHookEvents.isEmpty)
+    }
+
+    @Test func mergeSkipsEventsThatRunDripElsewhere() throws {
+        let merge = try #require(try AgentSetup.merge(nil, agent: .codex, skipping: ["Stop"]))
+        #expect(merge.added == ["PermissionRequest"])
+        #expect(try JSONValue(parsing: merge.text)["hooks"]?.members?.map(\.key) == ["PermissionRequest"])
+        #expect(try AgentSetup.merge(nil, agent: .codex, skipping: ["PermissionRequest", "Stop"]) == nil)
     }
 }
 
@@ -307,9 +322,43 @@ struct SetupInstallerTests {
     }
 
     @Test func codexHooksInConfigTomlAreEnough() throws {
-        try write("[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = \"command\"\ncommand = \"drip hook codex\"\n", to: ".codex/config.toml")
+        let config = ["PermissionRequest", "Stop"].map {
+            "[[hooks.\($0)]]\n[[hooks.\($0).hooks]]\ntype = \"command\"\ncommand = \"drip hook codex\"\n"
+        }.joined()
+        try write(config, to: ".codex/config.toml")
         #expect(installer.install(.codex) == .done(lines: ["drip's hooks are already in ~/.codex/config.toml."], warnings: []))
         #expect(file(".codex/hooks.json") == nil)
+    }
+
+    @Test func codexAddsOnlyTheHooksConfigTomlLacks() throws {
+        let config = "notify = [\"drip\", \"hook\", \"codex\"]\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ncommand = \"drip hook codex\"\n"
+        try write(config, to: ".codex/config.toml")
+        #expect(installer.install(.codex) == .done(lines: [
+            "Added drip's PermissionRequest hook to ~/.codex/hooks.json.",
+            "Removed notify from ~/.codex/config.toml: the Stop hook shows the done card instead.",
+            "Backed up the old config.toml to ~/.codex/config.toml.drip-backup-20261021-171500.",
+            "Codex runs a new hook only once you trust it: run /hooks in Codex.",
+        ], warnings: []))
+        let hooks = try JSONValue(parsing: file(".codex/hooks.json") ?? "")
+        #expect(hooks["hooks"]?.members?.map(\.key) == ["PermissionRequest"])
+
+        // Again: each event runs drip once, from one of the two files.
+        #expect(installer.install(.codex) == .done(lines: [
+            "drip's hooks are already in ~/.codex/config.toml and ~/.codex/hooks.json.",
+        ], warnings: []))
+    }
+
+    @Test func codexNamesWhatChangedWhenALaterWriteFails() throws {
+        try write("notify = [\"drip\", \"hook\", \"codex\"]\n", to: ".codex/config.toml")
+        // A directory in the way of hooks.json's temporary file fails its write after config.toml's.
+        let temporary = "\(home)/.codex/.hooks.json.drip-\(ProcessInfo.processInfo.processIdentifier)"
+        try FileManager.default.createDirectory(atPath: temporary, withIntermediateDirectories: true)
+        guard case let .failed(message) = installer.install(.codex) else { Issue.record(); return }
+        #expect(message.hasPrefix("could not write ~/.codex/hooks.json: "))
+        #expect(message.hasSuffix("; drip already changed ~/.codex/config.toml, backed up to "
+            + "~/.codex/config.toml.drip-backup-20261021-171500"))
+        // The notify is gone, so no done card shows twice.
+        #expect(file(".codex/config.toml") == "")
     }
 
     @Test func notJSONIsLeftAlone() throws {

@@ -98,8 +98,9 @@ public enum AgentSetup {
     }
 
     /// Adds drip's hooks to a settings file's text, or to an empty file when `text` is nil, keeping
-    /// everything else in its order and its indent. Nil when drip's hooks are all there already.
-    public static func merge(_ text: String?, agent: AgentHook.Agent) throws -> Merge? {
+    /// everything else in its order and its indent, except those for `skipping`, events that run drip
+    /// from somewhere else. Nil when drip's hooks are all there already.
+    public static func merge(_ text: String?, agent: AgentHook.Agent, skipping: Set<String> = []) throws -> Merge? {
         let empty = text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
         var root: [JSONMember]
         if empty {
@@ -123,7 +124,7 @@ public enum AgentSetup {
 
         var added: [String] = []
         var updated: [String] = []
-        for hook in hooks(for: agent) {
+        for hook in hooks(for: agent) where !skipping.contains(hook.event) {
             let index = events.lastIndex { $0.key == hook.event }
             var groups: [JSONValue]
             switch index.map({ events[$0].value }) {
@@ -194,14 +195,14 @@ public enum AgentSetup {
 }
 
 /// What drip reads in Codex's config.toml: whether its `notify` runs drip, which would show a second
-/// done card next to the Stop hook's, and whether its `[hooks]` tables already run drip.
+/// done card next to the Stop hook's, and which events its `[hooks]` tables already run drip on.
 public struct CodexConfig: Equatable {
     /// The lines of a top-level `notify` that runs only `drip hook codex`, which setup removes.
     public var dripNotify: Range<Int>?
     /// A top-level `notify` that runs drip some other way, which setup cannot remove for you.
     public var otherDripNotify = false
-    /// drip already runs from a `[hooks]` table here.
-    public var hasDripHooks = false
+    /// The events whose `[[hooks.<Event>]]` tables here run drip.
+    public var dripHookEvents: Set<String> = []
 
     let lines: [Substring]
 
@@ -227,9 +228,8 @@ public struct CodexConfig: Equatable {
                     otherDripNotify = true
                 }
                 index = end
-            } else if let table, table.hasPrefix("[[hooks.") || table.hasPrefix("[hooks"),
-                      AgentSetup.runsDrip(command: line, agent: .codex) {
-                hasDripHooks = true
+            } else if let table, let event = Self.hookEvent(table), AgentSetup.runsDrip(command: line, agent: .codex) {
+                dripHookEvents.insert(event)
             }
             index += 1
         }
@@ -241,6 +241,14 @@ public struct CodexConfig: Equatable {
         var lines = lines
         lines.removeSubrange(dripNotify)
         return lines.joined(separator: "\n")
+    }
+
+    /// The event a `[[hooks.<Event>]]` or `[[hooks.<Event>.hooks]]` table header is for.
+    static func hookEvent(_ header: Substring) -> String? {
+        let name = header.drop(while: { $0 == "[" }).prefix(while: { $0 != "]" })
+        let parts = name.split(separator: ".").map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \t\"'")) }
+        guard parts.count >= 2, parts[0] == "hooks", !parts[1].isEmpty else { return nil }
+        return parts[1]
     }
 
     /// The quoted strings in a TOML value, in order.
@@ -310,7 +318,8 @@ public struct SetupInstaller {
                 config = (configPath, CodexConfig(text))
             }
         }
-        if config?.value.hasDripHooks == true, let config {
+        let inConfig = config?.value.dripHookEvents ?? []
+        if let config, AgentSetup.hooks(for: agent).allSatisfy({ inConfig.contains($0.event) }) {
             lines.append("drip's hooks are already in \(display(config.path)).")
         } else {
             let existing: String?
@@ -323,7 +332,7 @@ public struct SetupInstaller {
                 existing = nil
             }
             do {
-                if let merge = try AgentSetup.merge(existing, agent: agent) {
+                if let merge = try AgentSetup.merge(existing, agent: agent, skipping: inConfig) {
                     if let problem = problem(writing: path) {
                         return refused(path, problem, problem.hasPrefix("is a symlink")
                             ? "add these hooks where it comes from" : "add these hooks to it yourself")
@@ -339,6 +348,8 @@ public struct SetupInstaller {
                     if agent == .codex {
                         hints.append("Codex runs a new hook only once you trust it: run /hooks in Codex.")
                     }
+                } else if let config, !inConfig.isEmpty {
+                    lines.append("drip's hooks are already in \(display(config.path)) and \(display(path)).")
                 } else {
                     lines.append("drip's hooks are already in \(display(path)).")
                 }
@@ -355,20 +366,26 @@ public struct SetupInstaller {
                     config.path, problem,
                     "take out its notify, which also runs drip and would show every done card twice, then add these hooks")
             }
-            writes.append((config.path, config.value.withoutDripNotify))
+            writes.insert((config.path, config.value.withoutDripNotify), at: 0)
             lines.append("Removed notify from \(display(config.path)): the Stop hook shows the done card instead.")
         } else if let config, config.value.otherDripNotify {
             warnings.append(
                 "the notify in \(display(config.path)) runs drip too: take drip out of it, or every done card shows twice")
         }
 
+        /// The files written so far, with their backups.
+        var written: [String] = []
         for write in writes {
             do {
                 if let backup = try self.write(write.text, to: write.path) {
                     lines.append("Backed up the old \((write.path as NSString).lastPathComponent) to \(display(backup)).")
+                    written.append("\(display(write.path)), backed up to \(display(backup))")
+                } else {
+                    written.append(display(write.path))
                 }
             } catch {
-                return .failed("could not write \(display(write.path)): \(error.localizedDescription)")
+                let changed = written.isEmpty ? "" : "; drip already changed \(written.joined(separator: " and "))"
+                return .failed("could not write \(display(write.path)): \(error.localizedDescription)\(changed)")
             }
         }
         return .done(lines: lines + hints, warnings: warnings)
