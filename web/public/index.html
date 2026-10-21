@@ -438,6 +438,50 @@
   }
   @media (max-width: 380px) { .nav .gh { display: none; } }
 
+  /* ---------- a MacBook in proportion ---------- */
+  /* The menu bar is the notch's height and scales with it, as the stage draws the notch. */
+  .menubar { width: calc(100% / var(--fit, 1)); height: 32px; transform: scale(var(--fit, 1)); transform-origin: 0 0; }
+  :root { --deck: linear-gradient(180deg, #232328, #141418); --key: rgba(255,255,255,.06); }
+  html[data-theme="light"][data-dir="a"] { --deck: linear-gradient(180deg, #d9d9df, #c4c4cc); --key: rgba(0,0,0,.08); }
+  html[data-dir="b"] { --deck: linear-gradient(180deg, #161616, #0b0b0b); --key: rgba(255,255,255,.07); }
+  /* A hint of the keyboard: the open lower half, in perspective, fading out. */
+  .deck {
+    display: none; position: relative; margin: 14px -3.5% 0; aspect-ratio: 1512 / 118; perspective: 900px; overflow: hidden;
+    -webkit-mask-image: linear-gradient(#000 25%, transparent); mask-image: linear-gradient(#000 25%, transparent);
+  }
+  .deck .board {
+    position: absolute; left: 4%; right: 4%; top: 0; height: 290%; transform-origin: 50% 0; transform: rotateX(62deg);
+    display: grid; grid-template-rows: repeat(5, 1fr); gap: 2.2%; padding: 2% 9% 0; background: var(--deck); border-radius: 0 0 26px 26px;
+  }
+  .deck .row { display: flex; gap: .8%; }
+  .deck .row i { flex: 1; border-radius: 3px; background: var(--key); }
+  .deck .row i.w { flex: 1.7; } .deck .row i.space { flex: 6.5; }
+  @media (width > 860px) {
+    /* A 14-inch MacBook Pro's screen, 1512 by 982 points; the stage draws at its width / 1512. */
+    .hero .screen { height: auto; aspect-ratio: 1512 / 982; }
+    .deck { display: block; }
+    .hero .term { width: min(560px, 70%); bottom: 5%; font-size: 12.5px; }
+    .hero .scroll { height: 112px; }
+  }
+  /* Wide screens: the words beside the Mac, so the Mac, its keys and the chips fit one screen. */
+  .hero { overflow-x: clip; }
+  @media (min-width: 1100px) {
+    .hero { padding-top: 20px; }
+    .nav .wrap { max-width: 1320px; }
+    .hero > .wrap {
+      max-width: 1320px; display: grid; grid-template-columns: minmax(380px, 1fr) minmax(0, min(900px, calc((100svh - 250px) * 1.36)));
+      grid-template-areas: "intro mac" "chips chips" "readout readout"; column-gap: 48px; align-items: center;
+    }
+    .hero .intro, html[data-dir="b"] .hero .intro { grid-area: intro; display: block; text-align: left; margin: 0; max-width: 600px; }
+    html[data-dir="b"] .usage { display: none; }
+    .hero h1, html[data-dir="b"] h1 { font-size: clamp(38px, 3.5vw, 60px); margin: 14px 0 12px; }
+    .hero .lede { margin: 0; font-size: 18px; }
+    .hero .ctas { justify-content: flex-start; margin-top: 20px; }
+    .hero .mac { grid-area: mac; margin: 0; }
+    .tryit { grid-area: chips; margin-top: 26px; max-width: none; }
+    .readout { grid-area: readout; width: 100%; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
     .aurora i { animation: none; }
@@ -530,6 +574,7 @@
             <div class="hint"><span class="what" id="hint-what">Type a <code>drip</code> command, or pick one below.</span><span class="keys"><span><kbd>Tab</kbd> complete</span><span><kbd>↑</kbd> history</span><span><kbd>⏎</kbd> run</span></span></div>
           </div>
         </div>
+        <div class="deck" aria-hidden="true"><div class="board"></div></div>
       </div>
 
       <div class="tryit" id="chips"><div class="label">Try one</div></div>
@@ -1217,7 +1262,14 @@ const heroTermBox = document.getElementById("hero-term");
 // On wide screens the terminal sits on the desktop, and a stack zooms out to stay above it.
 const heroRoom = () => getComputedStyle(heroTermBox).position === "absolute"
   ? heroTermBox.getBoundingClientRect().top - heroScreen.getBoundingClientRect().top - 8 : null;
-const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (W >= 1000 ? 1.5 : W >= 760 ? 1.3 : 1), avail: heroRoom });
+// On a laptop-sized page the screen is a 14-inch MacBook Pro's, 1512 points wide, so the notch and
+// the cards keep their real size against it; a phone shows a close-up of the notch instead.
+const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (matchMedia("(width > 860px)").matches ? W / 1512 : 1), avail: heroRoom });
+for (const keys of ["111111111111111", "w1111111111111", "w111111111111w", "w11111111111w", "ww11s11ww"]) {
+  const row = document.createElement("div"); row.className = "row";
+  for (const key of keys) { const i = document.createElement("i"); if (key !== "1") i.className = key === "s" ? "space" : "w"; row.append(i); }
+  document.querySelector(".deck .board").append(row);
+}
 const stages = [hero];
 const input = document.getElementById("input"), ghost = document.querySelector(".ghost"), hintWhat = document.getElementById("hint-what");
 
