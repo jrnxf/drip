@@ -3,7 +3,7 @@ name: Release
 # Publishing a GitHub release attaches drip as one universal binary (Apple silicon and Intel),
 # packed in drip-<version>-universal-apple-darwin.tar.gz with its .sha256, then points the Homebrew
 # formula at it, so brew installs drip without compiling. The archive holds one directory of the
-# same name, with the executable drip, README.md and LICENSE.
+# same name, with the executable drip, README.md, LICENSE and THIRD_PARTY.md.
 # Pull requests and a manual run build and check the same archive, kept as a workflow artifact
 # only: they never make a release or a tag.
 #
@@ -78,7 +78,7 @@ jobs:
           dir="drip-$(./drip --version)-$TARGET"
           mkdir "$dir"
           install -m 0755 drip "$dir/drip"
-          install -m 0644 README.md LICENSE "$dir/"
+          install -m 0644 README.md LICENSE THIRD_PARTY.md "$dir/"
           # No AppleDouble files for extended attributes, and no runner account in the headers.
           COPYFILE_DISABLE=1 tar -czf "$dir.tar.gz" --uid 0 --gid 0 --uname root --gname wheel "$dir"
           echo "archive=$dir.tar.gz" >> "$GITHUB_OUTPUT"
@@ -86,7 +86,7 @@ jobs:
       - name: Check the archive
         run: |
           tar -tvzf "$ARCHIVE"
-          printf '%s\n' "$DIR/" "$DIR/LICENSE" "$DIR/README.md" "$DIR/drip" > expected.txt
+          printf '%s\n' "$DIR/" "$DIR/LICENSE" "$DIR/README.md" "$DIR/THIRD_PARTY.md" "$DIR/drip" > expected.txt
           tar -tzf "$ARCHIVE" | LC_ALL=C sort | diff expected.txt -
           mkdir unpacked
           tar -xzf "$ARCHIVE" -C unpacked
