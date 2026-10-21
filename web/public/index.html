@@ -576,7 +576,7 @@
                 <input id="input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type a drip command" placeholder='try  drip ok "hello"' disabled enterkeyhint="go">
               </div>
             </div>
-            <div class="hint"><span class="what" id="hint-what">Type a <code>drip</code> command, or pick one below.</span><span class="keys"><span><kbd>Tab</kbd> complete</span><span><kbd>↑</kbd> history</span><span><kbd>⏎</kbd> run</span></span></div>
+            <div class="hint"><span class="what" id="hint-what">Type a <code>drip</code> command, or pick one.</span><span class="keys"><span><kbd>Tab</kbd> complete</span><span><kbd>↑</kbd> history</span><span><kbd>⏎</kbd> run</span></span></div>
           </div>
         </div>
         <div class="base" aria-hidden="true"></div>
@@ -1333,7 +1333,7 @@ function explain(value) {
     if (FLAGS[w]) return `<code>${w}</code> ${FLAGS[w]}`;
     if (i === 1 && words[0] === "drip" && KINDS[w]) return `<code>drip ${w}</code> ${KINDS[w]}`;
   }
-  return value ? `Press <kbd>Tab</kbd> to complete, <kbd>⏎</kbd> to run.` : `Type a <code>drip</code> command, or pick one below.`;
+  return value ? `Press <kbd>Tab</kbd> to complete, <kbd>⏎</kbd> to run.` : `Type a <code>drip</code> command, or pick one.`;
 }
 function renderGhost() {
   const value = input.value, rest = input.selectionStart === value.length ? suggestion(value) : "";
