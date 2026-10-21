@@ -182,6 +182,27 @@ struct SetupTests {
         #expect(CodexConfig("[profiles.x]\ncommand = \"drip hook codex\"\n").dripHookEvents.isEmpty)
     }
 
+    @Test func codexInlineHooksInConfigTomlCountByEvent() {
+        // A [hooks] table names the event by its key, with a value that may run over several lines.
+        #expect(CodexConfig("""
+            [hooks]
+            Stop = [{ hooks = [{ type = "command", command = "drip hook codex" }] }]
+            PermissionRequest = [
+              # approvals
+              { hooks = [{ type = "command", command = "drip hook codex" }] },
+            ]
+            SessionStart = [{ hooks = [{ type = "command", command = "say hi" }] }]
+            """).dripHookEvents == ["Stop", "PermissionRequest"])
+        // So does a dotted key outside any table.
+        #expect(CodexConfig("""
+            model = "gpt-5.5"
+            hooks.Stop = [{ hooks = [{ type = "command", command = "/usr/local/bin/drip hook codex" }] }]
+
+            [tui]
+            notifications = true
+            """).dripHookEvents == ["Stop"])
+    }
+
     @Test func mergeSkipsEventsThatRunDripElsewhere() throws {
         let merge = try #require(try AgentSetup.merge(nil, agent: .codex, skipping: ["Stop"]))
         #expect(merge.added == ["PermissionRequest"])
@@ -346,6 +367,19 @@ struct SetupInstallerTests {
         #expect(installer.install(.codex) == .done(lines: [
             "drip's hooks are already in ~/.codex/config.toml and ~/.codex/hooks.json.",
         ], warnings: []))
+    }
+
+    @Test func codexWarnsAboutAnEventThatRunsDripInBothFiles() throws {
+        try write("[hooks]\nStop = [{ hooks = [{ command = \"drip hook codex\" }] }]\n", to: ".codex/config.toml")
+        try write(AgentSetup.snippet(for: .codex), to: ".codex/hooks.json")
+        #expect(installer.install(.codex) == .done(lines: [
+            "drip's hooks are already in ~/.codex/config.toml and ~/.codex/hooks.json.",
+        ], warnings: [
+            "~/.codex/config.toml and ~/.codex/hooks.json both run drip on Stop: take it out of one, "
+                + "or every Stop card shows twice",
+        ]))
+        #expect(file(".codex/hooks.json") == AgentSetup.snippet(for: .codex))
+        #expect(try backups(in: ".codex").isEmpty)
     }
 
     @Test func codexNamesWhatChangedWhenALaterWriteFails() throws {

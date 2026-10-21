@@ -171,6 +171,14 @@ public enum AgentSetup {
         return .object(members)
     }
 
+    /// The events, in order, whose hooks in a settings file's text run drip. None when it is not JSON.
+    static func dripEvents(in text: String, agent: AgentHook.Agent) -> [String] {
+        let events = (try? JSONValue(parsing: text))?["hooks"]?.members ?? []
+        return events.filter { event in
+            event.value.elements?.contains { group in runsDrip(group, agent: agent) } ?? false
+        }.map(\.key)
+    }
+
     /// Whether a hook group runs `drip hook <agent>`, as drip's own command or by a path to drip.
     static func runsDrip(_ group: JSONValue, agent: AgentHook.Agent) -> Bool {
         group["hooks"]?.elements?.contains { handler in
@@ -195,44 +203,86 @@ public enum AgentSetup {
 }
 
 /// What drip reads in Codex's config.toml: whether its `notify` runs drip, which would show a second
-/// done card next to the Stop hook's, and which events its `[hooks]` tables already run drip on.
+/// done card next to the Stop hook's, and which events its hooks already run drip on.
 public struct CodexConfig: Equatable {
     /// The lines of a top-level `notify` that runs only `drip hook codex`, which setup removes.
     public var dripNotify: Range<Int>?
     /// A top-level `notify` that runs drip some other way, which setup cannot remove for you.
     public var otherDripNotify = false
-    /// The events whose `[[hooks.<Event>]]` tables here run drip.
+    /// The events whose hooks here run drip: `[[hooks.<Event>]]` tables, `<Event> = [...]` in a
+    /// `[hooks]` table, or `hooks.<Event> = [...]`.
     public var dripHookEvents: Set<String> = []
 
     let lines: [Substring]
 
     public init(_ text: String) {
         lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        var table: Substring?
+        var table: [String] = []
         var index = 0
         while index < lines.count {
             let line = lines[index].trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("[") {
-                table = Substring(line)
-            } else if table == nil, line.hasPrefix("notify"),
-                      line.dropFirst("notify".count).trimmingCharacters(in: .whitespaces).hasPrefix("=") {
-                // The value runs on to the line that closes its array.
-                var end = index
-                while end < lines.count - 1, !lines[end].contains("]") { end += 1 }
-                let value = lines[index...end].joined(separator: " ")
-                let words = Self.strings(in: value)
+                table = Self.keys(line.drop(while: { $0 == "[" }).prefix(while: { $0 != "]" }))
+                index += 1
+                continue
+            }
+            guard !line.hasPrefix("#"), let equals = line.firstIndex(of: "=") else {
+                index += 1
+                continue
+            }
+            let path = table + Self.keys(line[..<equals])
+            // The value runs on to the line that closes its brackets.
+            let end = valueEnd(from: index)
+            let value = ([line[line.index(after: equals)...]] + lines[(index + 1)..<(end + 1)]).joined(separator: "\n")
+            let words = Self.strings(in: value)
+            if path == ["notify"] {
                 if words.count == 3, words[0].split(separator: "/").last == "drip", words[1] == "hook",
                    words[2] == "codex" {
                     dripNotify = index..<(end + 1)
                 } else if value.contains("drip") {
                     otherDripNotify = true
                 }
-                index = end
-            } else if let table, let event = Self.hookEvent(table), AgentSetup.runsDrip(command: line, agent: .codex) {
-                dripHookEvents.insert(event)
+            } else if path.count >= 2, path[0] == "hooks",
+                      words.contains(where: { AgentSetup.runsDrip(command: $0, agent: .codex) }) {
+                dripHookEvents.insert(path[1])
             }
-            index += 1
+            index = end + 1
         }
+    }
+
+    /// The parts of a dotted TOML key or table name, without their quotes.
+    static func keys(_ name: Substring) -> [String] {
+        name.split(separator: ".").map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \t\"'")) }
+    }
+
+    /// The line on which the value that starts on line `start` ends: where its brackets and braces close.
+    func valueEnd(from start: Int) -> Int {
+        var depth = 0
+        for index in start..<lines.count {
+            var quote: Character?
+            var escaped = false
+            for character in lines[index] {
+                if let open = quote {
+                    if escaped {
+                        escaped = false
+                    } else if character == "\\", open == "\"" {
+                        escaped = true
+                    } else if character == open {
+                        quote = nil
+                    }
+                } else if character == "\"" || character == "'" {
+                    quote = character
+                } else if character == "#" {
+                    break
+                } else if character == "[" || character == "{" {
+                    depth += 1
+                } else if character == "]" || character == "}" {
+                    depth -= 1
+                }
+            }
+            if depth <= 0 { return index }
+        }
+        return lines.count - 1
     }
 
     /// The text without drip's `notify`.
@@ -243,22 +293,23 @@ public struct CodexConfig: Equatable {
         return lines.joined(separator: "\n")
     }
 
-    /// The event a `[[hooks.<Event>]]` or `[[hooks.<Event>.hooks]]` table header is for.
-    static func hookEvent(_ header: Substring) -> String? {
-        let name = header.drop(while: { $0 == "[" }).prefix(while: { $0 != "]" })
-        let parts = name.split(separator: ".").map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \t\"'")) }
-        guard parts.count >= 2, parts[0] == "hooks", !parts[1].isEmpty else { return nil }
-        return parts[1]
-    }
-
-    /// The quoted strings in a TOML value, in order.
+    /// The quoted strings in a TOML value, in order, leaving out comments.
     static func strings(in value: String) -> [String] {
         var strings: [String] = []
         var quote: Character?
         var current = ""
+        var comment = false
+        var escaped = false
         for character in value {
-            if let open = quote {
-                if character == open {
+            if comment {
+                comment = character != "\n"
+            } else if let open = quote {
+                if escaped {
+                    current.append(character)
+                    escaped = false
+                } else if character == "\\", open == "\"" {
+                    escaped = true
+                } else if character == open {
                     strings.append(current)
                     current = ""
                     quote = nil
@@ -268,7 +319,7 @@ public struct CodexConfig: Equatable {
             } else if character == "\"" || character == "'" {
                 quote = character
             } else if character == "#" {
-                break
+                comment = true
             }
         }
         return strings
@@ -357,6 +408,14 @@ public struct SetupInstaller {
                 return refused(path, refusal.description)
             } catch {
                 return .failed("\(display(path)): \(error)")
+            }
+        }
+
+        if let config, !inConfig.isEmpty, let text = try? String(contentsOfFile: path, encoding: .utf8) {
+            for event in AgentSetup.dripEvents(in: text, agent: agent) where inConfig.contains(event) {
+                warnings.append(
+                    "\(display(config.path)) and \(display(path)) both run drip on \(event): take it out of one, "
+                        + "or every \(event) card shows twice")
             }
         }
 
