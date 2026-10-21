@@ -38,6 +38,23 @@ final class HistoryTests {
         #expect(entries[1].card == card("two", kind: "fail"))
     }
 
+    @Test func anAgentsCardIsKeptWholeAndAnOlderLineStillReads() throws {
+        let history = CardHistory(path: try scratch().appending("/history.jsonl"))
+        var agent = card("my-app needs you", kind: "ask")
+        agent.icon = .app("com.anthropic.claudefordesktop")
+        try history.record([agent], missed: false)
+        #expect(history.entries().map(\.card) == [agent])
+        #expect(HistoryListing.replay(history.entries()[0]).waits)
+
+        // A line from before cards could wait or show pictures.
+        let older = #"{"kind":"warn","title":"t","icon":{"symbol":{"_0":"exclamationmark.circle.fill"}},"#
+            + #""fallbackIcon":{"symbol":{"_0":"exclamationmark.circle.fill"}},"color":{"system":{"_0":"orange"}},"#
+            + #""sound":{"named":{"_0":"Purr"}},"seconds":4.5,"position":"notch","size":"regular","style":"hud","#
+            + #""motion":"full"}"#
+        let decoded = try JSONDecoder().decode(Card.self, from: Data(older.utf8))
+        #expect(decoded.waitLimit == nil && decoded.icon == .symbol("exclamationmark.circle.fill"))
+    }
+
     @Test func keepsOnlyTheNewestEntries() throws {
         let history = CardHistory(path: try scratch().appending("/history.jsonl"), limit: 3)
         for index in 1...5 {
@@ -66,6 +83,14 @@ final class HistoryTests {
         let quiet = HistoryEntry(time: entry.time, missed: false, card: card("ok", kind: "ok"))
         #expect(try HistoryListing.publicJSON(quiet).contains(#""color":"green""#))
         #expect(try HistoryListing.publicJSON(quiet).contains(#""sound":"Glass""#))
+        // Icons the way --icon takes them.
+        var agent = card("my-app needs you", kind: "ask")
+        agent.icon = .app("com.anthropic.claudefordesktop")
+        #expect(try HistoryListing.publicJSON(HistoryEntry(time: entry.time, missed: false, card: agent))
+            .contains(#""icon":"app:com.anthropic.claudefordesktop""#))
+        agent.icon = .image("/home/user/claude.png")
+        #expect(try HistoryListing.publicJSON(HistoryEntry(time: entry.time, missed: false, card: agent))
+            .contains(#""icon":"/home/user/claude.png""#))
     }
 
     @Test func keepsTheStartOfVeryLongText() throws {
@@ -275,6 +300,11 @@ final class HistoryTests {
         #expect(failed.sound == Preset.fail.sound)
         let warned = try #require(MissedSummary.cards(for: [card("a", kind: "warn"), card("b"), card("c", kind: "ok")]).first)
         #expect(warned.kind == "warn")
+        // Something waiting on you comes before a warning, and the summary of it counts down.
+        let asked = try #require(MissedSummary.cards(for: [card("a", kind: "ask"), card("b", kind: "warn"), card("c")]).first)
+        #expect(asked.kind == "ask")
+        #expect(asked.color == Preset.ask.color)
+        #expect(!asked.waits)
         let custom = try #require(MissedSummary.cards(for: [card("a", kind: "ok"), card("b"), card("c", kind: "deploy")]).first)
         #expect(custom.kind == "deploy")
     }

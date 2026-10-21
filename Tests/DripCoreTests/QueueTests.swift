@@ -158,6 +158,31 @@ struct QueueTests {
         #expect(found.map(\.card.title) == ["new"])
     }
 
+    // MARK: Turns, for a card that waits for you
+
+    @Test func newerDripsWaitingTheirTurnAreFoundAndMarkedAdoptable() {
+        let mine = ticket(2, pid: 10, notch(nil))
+        var elsewhere = card(nil, title: "elsewhere")
+        elsewhere.position = .bottom
+        var claimed = adoptable(4, pid: 40, notch(nil, title: "claimed"))
+        claimed.claimed = [CardAdoption.claimKey(index: 0)]
+        let queue = [
+            ticket(1, pid: 5, notch(nil, title: "older")), mine,
+            adoptable(3, pid: 30, notch(nil, title: "notch"), elsewhere), claimed,
+            ticket(5, pid: 50, notch(nil, title: "foreground")), adoptable(6, pid: 60, notch(nil, title: "dead")),
+        ]
+        let waiting = CardTurns.waiting(after: mine.name, queue: queue, isAlive: { $0.pid != 60 })
+        #expect(waiting.map(\.card.title) == ["notch", "elsewhere", "foreground"])
+        #expect(waiting.map(\.adoptable) == [true, false, false])
+    }
+
+    @Test func aCardForTheOneOnScreenIsNotWaitingItsTurn() {
+        let mine = ticket(1, pid: 10, notch("claude:s1"))
+        let queue = [mine, adoptable(2, pid: 20, notch("claude:s1", title: "done"))]
+        #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }, except: ["claude:s1"]).isEmpty)
+        #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }).count == 1)
+    }
+
     @Test func aTicketIsFullyAdoptedOnceEveryCardIsClaimed() {
         var two = adoptable(1, pid: 10, notch(nil), notch(nil))
         #expect(!two.isFullyAdopted)

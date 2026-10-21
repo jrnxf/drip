@@ -93,7 +93,19 @@ struct CommandTests {
     @Test func icon() throws {
         #expect(try flags(["hi", "--icon", "paperplane.fill"]).icon == .symbol("paperplane.fill"))
         #expect(try flags(["hi", "--icon", "none"]).icon == Icon.none)
+        #expect(try flags(["hi", "--icon", "app:com.openai.chat"]).icon == .app("com.openai.chat"))
+        #expect(try flags(["hi", "--icon", "/home/user/claude.png"]).icon == .image("/home/user/claude.png"))
+        // A relative path is made absolute, since another drip may draw the card.
+        let relative = try flags(["hi", "--icon", "claude.png"]).icon
+        guard case let .image(path) = relative else {
+            Issue.record("expected an image, got \(String(describing: relative))")
+            return
+        }
+        #expect(path.hasPrefix("/") && path.hasSuffix("/claude.png"))
         #expect(try flags(["hi"]).icon == nil)
+        for bad in ["app:", "app:com apple", "app:com..apple"] {
+            assertUsageError(["hi", "--icon", bad])
+        }
     }
 
     @Test func color() throws {

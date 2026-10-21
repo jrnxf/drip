@@ -46,10 +46,11 @@ struct ConfigTests {
         let config = Config(presets: ["ok": PresetOverride(sound: .named("Hero")), "fail": PresetOverride(seconds: 9)])
         let presets = Dictionary(uniqueKeysWithValues: config.allPresets.map { ($0.name, $0) })
         #expect(presets["ok"] == Preset(
-            name: "ok", icon: .symbol("checkmark.circle.fill"), color: .system(.green), sound: .named("Hero")))
+            name: "ok", icon: .symbol("checkmark.circle.fill"), color: .system(.green), sound: .named("Hero"),
+            glyph: "checkmark"))
         #expect(presets["fail"]?.seconds == 9)
         #expect(presets["warn"] == .warn)
-        #expect(presets.count == 4)
+        #expect(presets.count == 5)
     }
 
     @Test func customPresetsStartFromInfo() {
@@ -80,6 +81,20 @@ struct ConfigTests {
         let file = try ConfigLoader.parse("seconds = 3\n[preset.ok]\nicon = \"none\"", path: path)
         #expect(file.config.seconds == 3)
         #expect(file.config.presets["ok"]?.icon == Icon.none)
+    }
+
+    @Test func anImageIconIsTakenFromTheConfigFilesDirectory() throws {
+        let file = try ConfigLoader.parse("""
+            [preset.ask]
+            icon = "icons/agent.png"
+            [preset.ok]
+            icon = "app:com.openai.chat"
+            [preset.fail]
+            icon = "/opt/marks/fail.png"
+            """, path: path)
+        #expect(file.config.presets["ask"]?.icon == .image("/home/me/.config/drip/icons/agent.png"))
+        #expect(file.config.presets["ok"]?.icon == .app("com.openai.chat"))
+        #expect(file.config.presets["fail"]?.icon == .image("/opt/marks/fail.png"))
     }
 
     @Test func unknownKeysAreWarnings() throws {
@@ -123,6 +138,8 @@ struct ConfigTests {
                     message: "expected hud, glass, wash or terminal, got 'neon'")
         assertError("[preset.demo]\nicon = \"x\"", line: 1, key: "preset.demo",
                     message: "a custom preset name must match [a-z][a-z0-9-]* and must not be run, hook, demo or history")
+        assertError("[preset.ok]\nicon = \"app:\"", line: 2, key: "preset.ok.icon",
+                    message: "'app:' does not name an app by its bundle identifier, such as app:com.apple.Terminal")
         assertError("[preset.ok]\ncolor = \"teal\"", line: 2, key: "preset.ok.color",
                     message: "expected #rrggbb or one of green, orange, red, blue, purple, pink, yellow or gray, got 'teal'")
     }
@@ -283,6 +300,27 @@ struct PrecedenceTests {
             color: .rgb(red: 0xA7, green: 0x8B, blue: 0xFA), sound: .named("Submarine"), seconds: 6))
         // Without the config, deploy is just a title.
         #expect(try CardResolver().resolve(kind: "deploy", title: nil, flags: CardFlags()).title == "deploy")
+    }
+
+    @Test func anAskCardWaitsUnlessATimeIsSet() throws {
+        let waiting = try CardResolver().resolve(kind: "ask", title: "t", flags: CardFlags())
+        #expect(waiting.waitLimit == Defaults.waitLimit)
+        // A time from the command line, the environment or the preset makes it count down.
+        let flagged = try CardResolver().resolve(kind: "ask", title: "t", flags: CardFlags(seconds: 8))
+        #expect(flagged.waitLimit == nil && flagged.seconds == 8)
+        let environment = try CardResolver(environment: EnvironmentSettings(seconds: 5))
+            .resolve(kind: "ask", title: "t", flags: CardFlags())
+        #expect(environment.waitLimit == nil && environment.seconds == 5)
+        let preset = try CardResolver(config: Config(presets: ["ask": PresetOverride(seconds: 9)]))
+            .resolve(kind: "ask", title: "t", flags: CardFlags())
+        #expect(preset.waitLimit == nil && preset.seconds == 9)
+        // The top-level seconds is every card's time, and an ask card still waits.
+        let global = try CardResolver(config: Config(seconds: 3)).resolve(kind: "ask", title: "t", flags: CardFlags())
+        #expect(global.waitLimit == Defaults.waitLimit)
+        // Other presets never wait.
+        for kind in ["ok", "warn", "fail", "info"] {
+            #expect(try CardResolver().resolve(kind: kind, title: "t", flags: CardFlags()).waitLimit == nil)
+        }
     }
 
     @Test func overriddenBuiltInPresetDrivesDripRun() throws {

@@ -503,6 +503,7 @@
   <symbol id="i-x" viewBox="0 0 12 12"><path d="M3.3 3.3l5.4 5.4M8.7 3.3L3.3 8.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="i-bang" viewBox="0 0 12 12"><path d="M6 2.4v4.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="6" cy="9.2" r="1" fill="currentColor"/></symbol>
   <symbol id="i-run" viewBox="0 0 12 12"><path d="M2.5 3.5L5 6 2.5 8.5M6.5 9h3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-ask" viewBox="0 0 12 12"><path d="M4.4 4.5a1.7 1.7 0 1 1 2.5 1.5c-.5.3-.9.7-.9 1.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="6" cy="9.4" r=".95" fill="currentColor"/></symbol>
   <symbol id="i-spark" viewBox="0 0 12 12"><path d="M6 1.5l1.2 3.3 3.3 1.2-3.3 1.2L6 10.5 4.8 7.2 1.5 6l3.3-1.2z" fill="currentColor"/></symbol>
   <symbol id="i-swap" viewBox="0 0 12 12"><path d="M2.5 4.5h6.5L7.2 2.7M9.5 7.5H3l1.8 1.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-hand" viewBox="0 0 12 12"><rect x="2" y="4" width="8" height="4" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
@@ -725,21 +726,37 @@ function notchPath(c, m) {
   const r = Math.min(m.notchRadius, h / 2, m.notchWidth / 2);
   c.moveTo(left, -1); c.arcTo(left, h, right, h, r); c.arcTo(right, h, right, 0, r); c.lineTo(right, -1); c.closePath();
 }
-function drawIcon(c, name, accent, cx, cy, size) {
-  if (size <= 0) return;
+// A state's mark in white, centred on 0, 0, for an icon of `size`: on its disc, or alone in the ring.
+function drawGlyph(c, name, size) {
   const r = size / 2;
-  c.save(); c.translate(cx, cy);
-  c.fillStyle = accent; c.beginPath(); c.arc(0, 0, r * 0.96, 0, Math.PI * 2); c.fill();
   c.strokeStyle = "#fff"; c.fillStyle = "#fff"; c.lineCap = "round"; c.lineJoin = "round"; c.lineWidth = size * 0.11;
   c.beginPath();
   if (name.startsWith("checkmark")) { c.moveTo(-r * 0.42, r * 0.02); c.lineTo(-r * 0.12, r * 0.32); c.lineTo(r * 0.44, -r * 0.3); c.stroke(); }
   else if (name.startsWith("xmark")) { const a = r * 0.34; c.moveTo(-a, -a); c.lineTo(a, a); c.moveTo(a, -a); c.lineTo(-a, a); c.stroke(); }
   else if (name.startsWith("exclamationmark")) { c.moveTo(0, -r * 0.46); c.lineTo(0, r * 0.1); c.stroke(); c.beginPath(); c.arc(0, r * 0.42, size * 0.065, 0, Math.PI * 2); c.fill(); }
+  else if (name.startsWith("questionmark")) { c.arc(0, -r * 0.18, r * 0.27, Math.PI * 1.05, Math.PI * 2.35); c.lineTo(0, r * 0.14); c.stroke(); c.beginPath(); c.arc(0, r * 0.44, size * 0.065, 0, Math.PI * 2); c.fill(); }
   else if (name.startsWith("info")) { c.arc(0, -r * 0.42, size * 0.065, 0, Math.PI * 2); c.fill(); c.beginPath(); c.moveTo(0, -r * 0.1); c.lineTo(0, r * 0.46); c.stroke(); }
   else if (name.startsWith("paperplane")) { c.moveTo(-r * 0.5, -r * 0.05); c.lineTo(r * 0.5, -r * 0.45); c.lineTo(r * 0.1, r * 0.5); c.lineTo(-r * 0.05, r * 0.08); c.closePath(); c.fill(); }
   else { c.arc(0, 0, r * 0.28, 0, Math.PI * 2); c.fill(); }
+}
+function drawIcon(c, name, accent, cx, cy, size) {
+  if (size <= 0) return;
+  const r = size / 2;
+  c.save(); c.translate(cx, cy);
+  if (name.startsWith("terminal")) {
+    // drip's own icon for an agent with no app: a plain white terminal, its prompt cut out.
+    roundedRect(c, -r * 0.92, -r * 0.74, r * 1.84, r * 1.48, r * 0.34); c.fillStyle = "#fff"; c.fill();
+    c.strokeStyle = "#000"; c.lineCap = "round"; c.lineJoin = "round"; c.lineWidth = size * 0.1; c.beginPath();
+    c.moveTo(-r * 0.5, -r * 0.3); c.lineTo(-r * 0.18, 0); c.lineTo(-r * 0.5, r * 0.3); c.moveTo(r * 0.02, r * 0.32); c.lineTo(r * 0.46, r * 0.32); c.stroke();
+    c.restore();
+    return;
+  }
+  c.fillStyle = accent; c.beginPath(); c.arc(0, 0, r * 0.96, 0, Math.PI * 2); c.fill();
+  drawGlyph(c, name, size);
   c.restore();
 }
+// A card that waits for you breathes its ring, as IslandUpdate.breath and breathOpacity say.
+const breath = (t) => lerp(1, 0.42, (1 - Math.cos((2 * Math.PI * Math.max(t, 0)) / 1.8)) / 2);
 
 // Opacity of a part cued at `cue`: entrance fades over `duration` with drip's ease-out, exit over 0.12 s.
 function partAlpha(state, t, cue, duration) {
@@ -799,6 +816,11 @@ class Stage {
         if (!clicked.button) return;
         card = this.stack.cards.get(clicked.handle);
       } else {
+        const s = this.current, f = s?.lastFrame;
+        // A click anywhere on a card that waits for you takes it away.
+        if (s && f && s.waiting && !s.card.action && Math.abs(point.x) <= f.pillWidth / 2 && point.y >= f.pillTop && point.y <= f.pillTop + f.pillHeight) {
+          event.stopPropagation(); this.leave(s, this.clock - s.start); return;
+        }
         if (!this.current || !this.hitButton(point)) return;
         event.stopPropagation();
         card = this.current;
@@ -901,6 +923,7 @@ class Stage {
       state.visible = 0.15;
       state.panelFade = state.card.motion === "none" ? 0 : 0.15;
     }
+    state.waiting = state.waits;
     state.exitAt = state.visible + state.seconds;
     announce(state);
     this.emit("begin", state);
@@ -914,6 +937,7 @@ class Stage {
     state.start = this.clock;
     state.cues = shownCues(state);
     state.visible = 0;
+    state.waiting = state.waits;
     state.exitAt = state.seconds;
     state.swap = { old, frame: old.lastFrame, t: old.lastT, kept: [], iconChanged: true, ring: 1 };
     drip.release(old.handle);
@@ -940,7 +964,7 @@ class Stage {
   // Draws a card's icon, ring or button and text onto the layers, shifted by dxL (things anchored
   // to the left edge), dxR (the right edge) and dy, as a replaced card fades off the capsule
   // springing to the new card's size. `lineAlpha(i)` scales line i, title lines first.
-  paintContent(s, f, t, { alpha = 1, dxL = 0, dxR = 0, dy = 0, iconScale = 1, iconAlpha = null, lineAlpha = () => 1, ring = null } = {}) {
+  paintContent(s, f, t, { alpha = 1, dxL = 0, dxR = 0, dy = 0, iconScale = 1, ringScale = 1, iconAlpha = null, lineAlpha = () => 1, ring = null } = {}) {
     const { lctx, tctx } = this, m = s.metrics, cues = s.cues, exitSides = s.exitCues?.sides ?? 0;
     lctx.save();
     lctx.globalAlpha = alpha * (iconAlpha ?? (m.hasIcon ? partAlpha(s, t, { enter: cues.sides, exit: exitSides }, 0.18) : 0));
@@ -949,7 +973,7 @@ class Stage {
       drawIcon(lctx, s.card.icon.symbol?._0 ?? "", s.accent, 0, 0, f.icon.size); lctx.restore();
     }
     lctx.globalAlpha = alpha * partAlpha(s, t, { enter: cues.sides, exit: exitSides }, 0.18);
-    const k = f.ring.size / s.ringSide;
+    const k = f.ring.size / s.ringSide * ringScale;
     lctx.translate(f.ring.x + dxR, f.ring.y + dy); lctx.scale(k, k);
     if (s.card.action) {
       const w = s.ringSide, h = 26 * m.scale, c = s.buttonColor;
@@ -960,10 +984,16 @@ class Stage {
       lctx.fillText(s.card.action.label, 0, 0.5);
     } else {
       const side = s.ringSide, r = side / 2 - 1.6, lw = 2.4 * m.scale;
-      const fraction = ring ?? 1 - clamp01((t - s.visible) / s.card.seconds);
+      // Full while the card waits for you; else draining from when its countdown began.
+      const fraction = ring ?? (s.waiting ? 1 : 1 - clamp01((t - (s.countFrom ?? s.visible)) / s.card.seconds));
       lctx.lineWidth = lw; lctx.strokeStyle = s.accent;
       lctx.save(); lctx.globalAlpha *= 0.28; lctx.beginPath(); lctx.arc(0, 0, r, 0, Math.PI * 2); lctx.stroke(); lctx.restore();
-      if (fraction > 0.001) { lctx.lineCap = "round"; lctx.beginPath(); lctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2); lctx.stroke(); }
+      if (fraction > 0.001) {
+        lctx.save(); if (s.waiting && s.card.motion === "full") lctx.globalAlpha *= breath(t - s.visible);
+        lctx.lineCap = "round"; lctx.beginPath(); lctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2); lctx.stroke(); lctx.restore();
+      }
+      // The state's mark, when the icon is not the state's own.
+      if (s.ringGlyph) drawGlyph(lctx, s.ringGlyph, side * 0.78);
     }
     lctx.restore();
 
@@ -998,7 +1028,8 @@ class Stage {
       const fadeIn = none ? 0 : reduced ? UPDATE.reducedFade : UPDATE.fadeIn;
       const outA = fadeOut ? 1 - easeOut(clamp01(t / fadeOut)) : 0;
       const inA = fadeIn ? easeOut(clamp01((t - (reduced ? 0 : fadeOut)) / fadeIn)) : 1;
-      const pop = reduced || !swap.iconChanged ? 1 : lerp(UPDATE.popScale, 1, drip.spring(UPDATE.pop[0], UPDATE.pop[1], t));
+      const landing = reduced ? 1 : lerp(UPDATE.popScale, 1, drip.spring(UPDATE.pop[0], UPDATE.pop[1], t));
+      const pop = swap.iconChanged ? landing : 1, ringPop = swap.ringPop ? landing : 1;
       const o = swap.frame;
       if (outA > 0.001 && o) {
         const shift = (f.contentWidth - o.contentWidth) / 2;
@@ -1009,7 +1040,7 @@ class Stage {
       }
       const refill = reduced ? 1 : easeOut(clamp01(t / UPDATE.refill));
       this.paintContent(s, f, t, {
-        iconScale: pop, iconAlpha: swap.iconChanged ? inA : 1, lineAlpha: (i) => (swap.kept[i] ? 1 : inA),
+        iconScale: pop, ringScale: ringPop, iconAlpha: swap.iconChanged ? inA : 1, lineAlpha: (i) => (swap.kept[i] ? 1 : inA),
         ring: ring === null ? null : lerp(swap.ring, ring, refill),
       });
     } else {
@@ -1079,6 +1110,10 @@ class Stage {
     const s = this.current;
     if (!s) { this.emit("frame", null); return; }
     const t = this.clock - s.start;
+    // A card that waits for you gives way to the next card and counts down from now.
+    if (s.waiting && !s.exitCues && (this.queue.length || this.deliveries.length)) {
+      s.waiting = false; s.countFrom = t; s.exitAt = t + s.card.seconds;
+    }
     if (!s.exitCues && t >= s.exitAt && !s.hover) this.leave(s, t);
     else if (!s.exitCues && t >= s.exitAt) s.exitAt = t; // hovering holds the card, as on a Mac
     const started = performance.now();
@@ -1108,19 +1143,22 @@ class Stage {
     const changes = drip.stack.step(st.id, t);
     for (const entered of changes.entered ?? []) {
       const card = st.cards.get(entered.handle);
-      Object.assign(card, { start: entered.start, cues: entered.cues, visible: entered.countdownFrom - entered.start });
+      Object.assign(card, { start: entered.start, cues: entered.cues, visible: entered.countdownFrom - entered.start, waiting: entered.waits });
       st.newest = card; announce(card); this.emit("begin", card);
     }
     for (const swapped of changes.swapped ?? []) {
       const card = st.cards.get(swapped.handle), old = st.cards.get(swapped.old);
       const newIcon = (old.card.icon.symbol?._0 ?? "") !== (card.card.icon.symbol?._0 ?? "") || old.accent !== card.accent;
+      // When the ring carries the state and the icon stays, the state lands in the ring.
+      const inRing = swapped.inRing && swapped.newState;
       Object.assign(card, {
-        start: swapped.time, cues: shownCues(card), visible: 0,
-        swap: { old, frame: old.lastFrame, t: old.lastT, kept: swapped.kept, iconChanged: swapped.newState || newIcon, ring: old.ring ?? 1 },
+        start: swapped.time, cues: shownCues(card), visible: 0, waiting: swapped.waits,
+        swap: { old, frame: old.lastFrame, t: old.lastT, kept: swapped.kept, iconChanged: !inRing && (swapped.newState || newIcon), ringPop: inRing, ring: old.ring ?? 1 },
       });
       drip.release(swapped.old); st.cards.delete(swapped.old);
       st.newest = card; announce(card); this.emit("begin", card);
     }
+    for (const handle of changes.stoppedWaiting ?? []) { const card = st.cards.get(handle); if (card) card.waiting = false; }
     for (const left of changes.left ?? []) {
       const card = st.cards.get(left.handle);
       card.exitCues = left.cues; card.exitAt = left.time - card.start;
@@ -1134,7 +1172,7 @@ class Stage {
     for (const { frame } of frames) points += this.fillShape(frame);
     for (const { handle, remaining, targetTop, frame } of frames) {
       const card = st.cards.get(handle), ct = t - card.start;
-      card.ring = card.card.action ? null : clamp01(remaining / card.seconds);
+      card.ring = card.card.action ? null : card.waiting ? 1 : clamp01(remaining / card.card.seconds);
       this.paintCard(card, frame, ct, card.ring, W, H);
       card.lastFrame = frame; card.lastT = ct;
       bottom = Math.max(bottom, targetTop + card.metrics.pillHeight, frame.pillTop + frame.pillHeight);
@@ -1277,7 +1315,7 @@ const input = document.getElementById("input"), ghost = document.querySelector("
 // Four drips at once: three stack, and the fourth waits for room.
 const STACK_LINES = (mode) => [
   `drip ok "Build finished" -d "make test: 246 passed in 3.2s"`,
-  `drip warn "my-app needs you" -d "Claude needs your permission to use Bash"`,
+  `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"`,
   `drip fail "Deploy failed" -d "staging: health check timed out"`,
   `drip info "Backup done" -d "412 files, 3.1 GB to the NAS"`,
 ].map((line) => (mode === "push" ? `DRIP_STACK=push ${line}` : line));
@@ -1286,7 +1324,7 @@ const CHIPS = [
   { label: "Failure", icon: "i-x", color: "var(--fail)", line: `drip fail "Deploy failed" -d "staging: health check timed out after 30s"` },
   { label: "Warning", icon: "i-bang", color: "var(--warn)", line: `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"` },
   { label: "drip run -- npm test", icon: "i-run", color: "#636366", line: `drip run -- npm test`, mono: true },
-  { label: "Claude needs you", icon: "i-spark", color: "#d97757", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'` },
+  { label: "Claude needs you", icon: "i-ask", color: "var(--purple)", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'` },
   { label: "Replace in place", icon: "i-swap", color: "var(--info)", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` },
   { label: "With a button", icon: "i-hand", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip` },
   { label: "Your own preset", icon: "i-plane", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` },
@@ -1300,11 +1338,12 @@ const FLAGS = {
   "-s": "time fully visible: 0.5 to 60 seconds", "--seconds": "time fully visible: 0.5 to 60 seconds",
   "--button": "the button's label, up to 24 characters", "--open": "adds a button that opens a URL",
   "--id": "names what the card is about: a newer card with the same id replaces it", "--size": "compact, regular or large",
-  "--color": "#rrggbb, or green, orange, red, blue, purple, pink, yellow, gray", "--icon": "an SF Symbol name, or none",
+  "--color": "#rrggbb, or green, orange, red, blue, purple, pink, yellow, gray", "--icon": "an SF Symbol name, an image path, app: and a bundle id, or none (this page draws symbols only)",
   "DRIP_STACK=push": "drops each new card out of the notch and pushes the others down", "--motion": "full, subtle or none", "--sound": "a system sound (this page plays none)", "--help": "drip's own help text", "--version": "the engine's version",
 };
 const KINDS = {
   ok: "a green check: it worked", warn: "orange: worth a look", fail: "red: it broke", info: "blue: for your information",
+  ask: "purple: something waits on you, and the card waits until you click it",
   run: "runs a command and tells you how it went: drip run -- make test", hook: "reads a coding agent's hook payload: drip hook claude",
   demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml (see the engine readout)",
 };

@@ -55,6 +55,10 @@ final class StackPresenter: CardPresenting {
     private var lastAdoptionCheck = -Double.infinity
     /// Whether the last look at the queue found cards to adopt.
     private var foundAdoptable = false
+    /// Whether the last look at the queue found a card to adopt with no room for it.
+    private var needsRoom = false
+    /// Whether the last look at the queue found a newer drip waiting that the stack cannot adopt.
+    private var othersWaiting = false
     private var onFinish: ((Bool) -> Void)?
 
     /// Keyframes per second when sampling the springs, as for a single card.
@@ -98,6 +102,8 @@ final class StackPresenter: CardPresenting {
 
     var canReplace: Bool { false }
     func replace(with card: Card) {}
+    /// The stack's cards give way on their own, as `CardStack` decides.
+    func stopWaiting() {}
 
     func start(onFinish: @escaping (Bool) -> Void) {
         self.onFinish = onFinish
@@ -273,7 +279,11 @@ final class StackPresenter: CardPresenting {
         // First, since the first plan may move the clock.
         replan(from: decided)
         layers.fade(cues, into: true, at: started + start)
-        layers.drain(over: card.seconds, at: started + entry.countdownFrom)
+        if entry.isWaiting {
+            layers.hold(breathing: true, at: started + entry.countdownFrom)
+        } else {
+            layers.drain(over: card.seconds, at: started + entry.countdownFrom)
+        }
         // The sound lands as the drop first shows.
         drawing.sound = CardSound(card.sound, console: console)
         DispatchQueue.main.asyncAfter(deadline: .now() + max(start - now, 0) + 0.05) { drawing.sound?.play() }
@@ -305,8 +315,12 @@ final class StackPresenter: CardPresenting {
         replan(from: decided)
         let lingers = layers.takeOver(from: old, motion: motion, at: started + time)
         drawing.retiringUntil = time + lingers
-        layers.refill(from: ringFraction, over: card.seconds, at: started + time)
-        if hovering { IslandLayers.pause(layers.ringProgress, paused: true) }
+        if entry.isWaiting {
+            layers.hold(from: ringFraction, breathing: true, at: started + time)
+        } else {
+            layers.refill(from: ringFraction, over: card.seconds, at: started + time)
+            if hovering { IslandLayers.pause(layers.ringProgress, paused: true) }
+        }
         drawing.sound = CardSound(card.sound, console: console)
         drawing.sound?.play()
         updateAccessibility()
@@ -320,6 +334,17 @@ final class StackPresenter: CardPresenting {
             lastAdoptionCheck = time
             let candidates = CardQueue.adoptable()
             foundAdoptable = !candidates.isEmpty
+            // Cards that wait for you give way to newer drips' cards.
+            if stack.live.contains(where: \.isWaiting) {
+                let shown = Set(stack.live.compactMap(\.card.id))
+                othersWaiting = CardQueue.waiting(except: shown).contains { !$0.adoptable }
+                needsRoom = !stack.hasRoom && candidates.contains { found in
+                    !(found.card.id.map(shown.contains) ?? false)
+                }
+            } else {
+                othersWaiting = false
+                needsRoom = false
+            }
             for found in candidates {
                 // A newer card with the same id as one on screen takes its place there.
                 if let id = found.card.id,
@@ -332,7 +357,7 @@ final class StackPresenter: CardPresenting {
                 }
                 guard stack.waiting.isEmpty, stack.hasRoom else { break }
                 CardQueue.adopt(index: found.index, in: found.ticket)
-                BackgroundWatchdog.extend(by: found.card.seconds + 60)
+                BackgroundWatchdog.extend(by: found.card.duration + 60)
                 enter(found.card, own: false)
                 return
             }
@@ -351,7 +376,13 @@ final class StackPresenter: CardPresenting {
         updateHover()
         admit()
 
-        let changes = stack.advance(to: time, elapsed: elapsed, lead: lead)
+        let changes = stack.advance(
+            to: time, elapsed: elapsed, lead: lead, needsRoom: needsRoom, othersWaiting: othersWaiting)
+        for entry in changes.stoppedWaiting {
+            guard let layers = drawings[entry.id]?.layers else { continue }
+            layers.drain(over: entry.card.seconds, at: started + entry.countdownFrom)
+            if hovering { IslandLayers.pause(layers.ringProgress, paused: true) }
+        }
         for left in changes.left {
             if left.entry.own, left.entry.card.action != nil, !left.clicked { CardActions.missed = true }
             drawings[left.entry.id]?.layers.fade(left.cues, into: false, at: started + left.time)
@@ -404,14 +435,15 @@ final class StackPresenter: CardPresenting {
         let inside = under != nil
         guard stack.hover(inside) else { return }
         if inside {
-            for entry in stack.live {
+            for entry in stack.live where !entry.isWaiting {
                 if let drawing = drawings[entry.id] { IslandLayers.pause(drawing.layers.ringProgress, paused: true) }
             }
             return
         }
-        // The stack gave each card a moment to read what was under the pointer before it goes.
+        // The stack gave each card a moment to read what was under the pointer before it goes; a
+        // card that waits for you goes on breathing.
         let time = now
-        for entry in stack.live {
+        for entry in stack.live where !entry.isWaiting {
             let seconds = max(entry.card.seconds, 0.01)
             drawings[entry.id]?.layers.drain(
                 from: min(entry.remaining / seconds, 1), over: entry.remaining,

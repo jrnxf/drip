@@ -11,18 +11,27 @@ struct CardStackTests {
         return card
     }
 
+    /// A card that waits for you, as `ask` does.
+    private func asking(_ title: String, seconds: Double = 3) -> Card {
+        var card = Card(preset: .ask, title: title)
+        card.seconds = seconds
+        return card
+    }
+
     /// Runs the stack's clock as a drawing would, 60 steps a second from `from` until `until`, letting
     /// this drip's own cards in whenever the stack is ready for one. `step` sees the stack after each.
     @discardableResult
     private func run(
-        _ stack: CardStack, from: Double = 0, until: Double, step: (Double, CardStack.Changes) -> Void = { _, _ in }
+        _ stack: CardStack, from: Double = 0, until: Double, needsRoom: Bool = false, othersWaiting: Bool = false,
+        step: (Double, CardStack.Changes) -> Void = { _, _ in }
     ) -> Double {
         var time = from
         while time < until {
             if stack.isReady(at: time), let next = stack.nextOwn(at: time) {
                 stack.enter(next, metrics: metrics, own: true, decided: time, at: time)
             }
-            let changes = stack.advance(to: time, elapsed: 1.0 / 60, lead: 0)
+            let changes = stack.advance(
+                to: time, elapsed: 1.0 / 60, lead: 0, needsRoom: needsRoom, othersWaiting: othersWaiting)
             step(time, changes)
             time += 1.0 / 60
         }
@@ -79,6 +88,89 @@ struct CardStackTests {
         #expect(dEntered)
         #expect(leftBeforeD == ["a"])
         #expect(stack.waiting.isEmpty)
+    }
+
+    @Test func aCardThatWaitsStaysUntilItIsClicked() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
+        let time = run(stack, until: 30)
+        #expect(titles(stack.live) == ["a"])
+        #expect(stack.live[0].isWaiting)
+        stack.live[0].dismissed = false
+        var left: [String] = []
+        run(stack, from: time, until: time + 2) { _, changes in left += titles(changes.left.map(\.entry)) }
+        #expect(left == ["a"])
+    }
+
+    @Test func aCardThatWaitsStaysNoLongerThanItsLimit() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
+        var leftAt: Double?
+        run(stack, until: Defaults.waitLimit + 5) { time, changes in
+            if leftAt == nil, !changes.left.isEmpty { leftAt = time }
+        }
+        #expect(leftAt.map { $0 > Defaults.waitLimit && $0 < Defaults.waitLimit + 2 } == true)
+    }
+
+    @Test func theOldestCardThatWaitsGivesWayWhenACardNeedsRoom() {
+        let stack = CardStack(
+            settings: StackSettings(mode: .chain, max: 2),
+            cards: [asking("a", seconds: 2), asking("b", seconds: 2), card("c", seconds: 10)])
+        var stopped: [String] = []
+        var left: [String] = []
+        run(stack, until: 12) { _, changes in
+            stopped += titles(changes.stoppedWaiting)
+            left += titles(changes.left.map(\.entry))
+        }
+        // a counted down its own time and went; b goes on waiting below c.
+        #expect(stopped == ["a"])
+        #expect(left == ["a"])
+        #expect(titles(stack.live) == ["b", "c"])
+        #expect(stack.live[0].isWaiting && !stack.live[1].isWaiting)
+    }
+
+    @Test func noCardGivesWayWhileAnotherWillLeaveOnItsOwn() {
+        let stack = CardStack(
+            settings: StackSettings(mode: .chain, max: 2),
+            cards: [asking("a"), card("b", seconds: 4), card("c", seconds: 10)])
+        var stopped: [String] = []
+        run(stack, until: 10) { _, changes in stopped += titles(changes.stoppedWaiting) }
+        #expect(stopped.isEmpty)
+        #expect(titles(stack.live) == ["a", "c"])
+        #expect(stack.live[0].isWaiting)
+    }
+
+    @Test func cardsThatWaitGiveWayToOtherDrips() {
+        // Another drip's card waits for room in a full stack: the oldest gives way.
+        let full = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [asking("a")])
+        var stopped: [String] = []
+        run(full, until: 3, needsRoom: true) { _, changes in stopped += titles(changes.stoppedWaiting) }
+        #expect(stopped == ["a"])
+
+        // With room for it, nothing gives way.
+        let roomy = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
+        run(roomy, until: 3, needsRoom: true)
+        #expect(roomy.live[0].isWaiting)
+
+        // A drip that waits for the stack to finish: every card that waits gives way.
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a"), asking("b")])
+        var time = run(stack, until: 3)
+        #expect(stack.live.allSatisfy { $0.isWaiting })
+        let changes = stack.advance(to: time, elapsed: 0, lead: 0.06, othersWaiting: true)
+        #expect(titles(changes.stoppedWaiting) == ["a", "b"])
+        #expect(stack.live.allSatisfy { !$0.isWaiting && $0.remaining == 3 && $0.countdownFrom >= time + 0.06 })
+        time = run(stack, from: time, until: time + 6)
+        #expect(stack.entries.isEmpty)
+    }
+
+    @Test func aCardThatWaitsWaitsAgainWhenReplacedByOneThatWaits() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
+        let time = run(stack, until: 3)
+        let entry = stack.live[0]
+        _ = stack.advance(to: time, elapsed: 0, lead: 0, othersWaiting: true)
+        #expect(!entry.isWaiting)
+        stack.swap(entry, for: asking("a again"), metrics: metrics, at: time, reduced: false)
+        #expect(entry.isWaiting && entry.remaining == Defaults.waitLimit)
+        stack.swap(entry, for: card("done", seconds: 4), metrics: metrics, at: time, reduced: false)
+        #expect(!entry.isWaiting && entry.remaining == 4)
     }
 
     @Test func theCardsBelowCloseTheGapAndHangFromTheCardAbove() {

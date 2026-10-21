@@ -157,9 +157,28 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         }
     }
 
+    // The page draws symbols only: as the app does with an icon that cannot load, a picture falls
+    // back to the preset's icon, with a warning.
+    func prepared(_ cards: [Card]) -> [Card] {
+        cards.map { card in
+            var card = card
+            switch card.icon {
+            case let .image(path):
+                warnings.append("the page cannot show the image '\(path)'; using the preset's icon")
+                card.icon = card.fallbackIcon
+            case let .app(identifier):
+                warnings.append("no app with the bundle identifier '\(identifier)' is installed in this page; using the preset's icon")
+                card.icon = card.fallbackIcon
+            case .none, .symbol:
+                break
+            }
+            return card
+        }
+    }
+
     func delivery(_ cards: [Card], stack: StackSettings?, adopting: Bool) -> [String: Any] {
         var delivery: [String: Any] = [
-            "cards": cards.map { island(for: $0, notchWidth: notchWidth, notchHeight: notchHeight) },
+            "cards": prepared(cards).map { island(for: $0, notchWidth: notchWidth, notchHeight: notchHeight) },
             "adopting": adopting,
         ]
         // As the app: a stack only for notch cards with full motion.
@@ -170,10 +189,11 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
     }
     func cards(_ cards: [Card], extra: [String: Any] = [:]) -> UnsafePointer<UInt8> {
         var reply = extra
-        reply["warnings"] = warnings
         reply["deliveries"] = [
             delivery(cards, stack: StackSettings.current(environment: environment, config: resolver.config), adopting: true)
         ]
+        // After the deliveries, which can warn about an icon.
+        reply["warnings"] = warnings
         return send(reply)
     }
     func failure(_ error: Error, status: Int32 = ExitStatus.usage) -> UnsafePointer<UInt8> {
@@ -222,6 +242,8 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             let event = try AgentHook.event(agent: command.agent, payload: payload)
             flags.id = flags.id ?? event.id
             flags.detail = flags.detail ?? event.detail
+            // No app is installed in a web page.
+            flags.icon = flags.icon ?? command.agent.icon { _ in false }
             return cards([try resolver.resolve(kind: event.kind, title: event.title, flags: flags)])
         } catch { return failure(error, status: ExitStatus.hookFailed) }
     case .invocation(.history):
@@ -281,7 +303,11 @@ func island(for card: Card, notchWidth: Double, notchHeight: Double) -> [String:
             "maxHeight": islandMetrics.maxHeight, "actionWidth": buttonWidth, "hasIcon": hasIcon,
         ] as [String: Any],
         "textEdge": IslandUpdate.textEdge * scale,
-        "seconds": card.seconds,
+        // How long it stays when nothing holds, clicks or replaces it; `waits` when it has no
+        // countdown, and `ringGlyph` the state's mark the ring shows around it, or "" for none.
+        "seconds": card.duration,
+        "waits": card.waits,
+        "ringGlyph": card.ringGlyph ?? "",
     ]
     if card.action != nil {
         let (red, green, blue) = lightRGB(card.color)
@@ -456,10 +482,12 @@ public func dripStackOffer(_ stackHandle: Int32, _ handle: Int32) -> UnsafePoint
 /// Moves the stack's clock to `time`, as the app's stack does every tick. When the stack is at rest
 /// it takes in a later command's card, first one that shows in place of a card with the same id,
 /// then its own next card. Then it counts down, sends cards off and closes the gaps. Replies
-/// `{"entered": [{handle, start, cues, countdownFrom}], "swapped": [{handle, old, time, kept,
-/// newState}], "left": [{handle, cues, time, clicked}], "gone": [handle], "done": bool}`. `kept`
-/// says which of the new card's lines, title then detail, stay as they were, and `newState` whether
-/// its state changed, as the app's crossfade reads them. `done` once nothing is left to show.
+/// `{"entered": [{handle, start, cues, countdownFrom, waits}], "swapped": [{handle, old, time, kept,
+/// newState, inRing, waits}], "stoppedWaiting": [handle], "left": [{handle, cues, time, clicked}],
+/// "gone": [handle], "done": bool}`. `kept` says which of the new card's lines, title then detail,
+/// stay as they were, `newState` whether its state changed and `inRing` whether that lands in the
+/// ring, as the app's crossfade reads them. `waits` says the card waits for you, with no countdown,
+/// until it is in `stoppedWaiting`. `done` once nothing is left to show.
 @_expose(wasm, "drip_stack_step")
 @_cdecl("drip_stack_step")
 public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer<UInt8> {
@@ -474,7 +502,10 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer
         let entry = stack.enter(island.card, metrics: island.animator.metrics, own: own, decided: time, at: time)
         session.islandOf[entry.id] = handle
         guard case let .entering(start, entryCues) = entry.phase else { return }
-        entered.append(["handle": handle, "start": start, "cues": cues(entryCues), "countdownFrom": entry.countdownFrom])
+        entered.append([
+            "handle": handle, "start": start, "cues": cues(entryCues), "countdownFrom": entry.countdownFrom,
+            "waits": entry.isWaiting,
+        ])
     }
     // As StackPresenter.admit: one change at a time, into a stack at rest.
     admit: if stack.isReady(at: time) {
@@ -495,6 +526,8 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer
                         newTitle: island.titleLines, newDetail: island.detailLines,
                         from: before.animator.metrics, to: island.animator.metrics),
                     "newState": IslandUpdate.changesState(from: before.card, to: island.card),
+                    "inRing": IslandUpdate.landsInRing(from: before.card, to: island.card),
+                    "waits": shown.isWaiting,
                 ])
                 continue
             }
@@ -505,7 +538,9 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer
         }
         if stack.nextOwn(at: time) != nil { enter(session.own.removeFirst(), own: true) }
     }
-    let changes = stack.advance(to: time, elapsed: elapsed, lead: 0)
+    // Later commands' cards still offered want room; cards that wait for you give way to them.
+    let changes = stack.advance(to: time, elapsed: elapsed, lead: 0, needsRoom: !session.adoptable.isEmpty)
+    let stoppedWaiting = changes.stoppedWaiting.compactMap { session.islandOf[$0.id] }
     let left: [[String: Any]] = changes.left.compactMap { left in
         session.islandOf[left.entry.id].map {
             ["handle": $0, "cues": cues(left.cues), "time": left.time, "clicked": left.clicked]
@@ -514,7 +549,10 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer
     let gone = changes.gone.compactMap { session.islandOf.removeValue(forKey: $0.id) }
     let done = stack.entries.isEmpty && stack.waiting.isEmpty && session.adoptable.isEmpty
     if done { stacks[stackHandle] = nil }
-    return send(["entered": entered, "swapped": swapped, "left": left, "gone": gone, "done": done])
+    return send([
+        "entered": entered, "swapped": swapped, "stoppedWaiting": stoppedWaiting, "left": left, "gone": gone,
+        "done": done,
+    ])
 }
 
 /// Ends the stack at once, as when the page is reset. Replies with every island it still holds,

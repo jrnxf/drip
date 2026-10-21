@@ -163,6 +163,13 @@ enum CardQueue {
         return CardReplacement.replacement(for: showing, after: source, queue: load(), isAlive: isAlive)
     }
 
+    /// The cards of newer drips still waiting for their turn, leaving out those with an id in
+    /// `except`, which take the place of a card on screen instead; and whether a stack could adopt each.
+    static func waiting(except ids: Set<String>) -> [(card: Card, adoptable: Bool)] {
+        guard let mine else { return [] }
+        return CardTurns.waiting(after: mine.name, queue: load(), isAlive: isAlive, except: ids)
+    }
+
     /// Marks the card with `id` in `ticket` as taken over, so its own drip skips it.
     static func claim(_ id: String, in ticket: String) {
         var claimed = claims(of: ticket)

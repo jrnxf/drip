@@ -14,7 +14,7 @@ struct HookTests {
              "message":"Claude needs your permission to use Bash","notification_type":"permission_prompt"}
             """)
         #expect(event == AgentHook.Event(
-            kind: "warn", title: "drip needs you", detail: "Claude needs your permission to use Bash",
+            kind: "ask", title: "drip needs you", detail: "Claude needs your permission to use Bash",
             id: "claude:abc123"))
     }
 
@@ -24,8 +24,8 @@ struct HookTests {
                 {"hook_event_name":"Notification","message":"m","notification_type":"\(type)"}
                 """).kind
         }
-        #expect(try kind("permission_prompt") == "warn")
-        #expect(try kind("elicitation_dialog") == "warn")
+        #expect(try kind("permission_prompt") == "ask")
+        #expect(try kind("elicitation_dialog") == "ask")
         #expect(try kind("idle_prompt") == "info")
         #expect(try kind("auth_success") == "info")
     }
@@ -161,10 +161,48 @@ struct HookTests {
             """)
         let card = try CardResolver().resolve(
             kind: event.kind, title: event.title, flags: CardFlags(detail: event.detail, id: event.id))
-        #expect(card.kind == "warn")
+        #expect(card.kind == "ask")
+        #expect(card.waits)
         #expect(card.title == "drip needs you")
         #expect(card.detail == "hi")
         #expect(card.id == "claude:abc")
+    }
+
+    @Test func anAgentShowsItsInstalledAppsIcon() {
+        #expect(AgentHook.Agent.claude.icon { _ in true } == .app("com.anthropic.claudefordesktop"))
+        #expect(AgentHook.Agent.codex.icon { _ in true } == .app("com.openai.codex"))
+        #expect(AgentHook.Agent.codex.icon { $0 == "com.openai.chat" } == .app("com.openai.chat"))
+        // With none installed, a plain terminal, and the ring still carries the state.
+        for agent in AgentHook.Agent.allCases {
+            #expect(agent.icon { _ in false } == AgentHook.fallbackIcon)
+        }
+        var card = Card(preset: .ask, title: "drip needs you")
+        card.icon = AgentHook.fallbackIcon
+        #expect(card.ringGlyph == "questionmark")
+    }
+
+    @Test func needsYouTurnsIntoDoneInTheRing() throws {
+        func card(_ payload: String) throws -> Card {
+            let event = try AgentHook.event(agent: .claude, payload: payload)
+            return try CardResolver().resolve(
+                kind: event.kind, title: event.title,
+                flags: CardFlags(detail: event.detail, icon: .app("com.anthropic.claudefordesktop"), id: event.id))
+        }
+        let asking = try card("""
+            {"session_id":"s1","cwd":"/work/api","hook_event_name":"Notification","message":"m",
+             "notification_type":"permission_prompt"}
+            """)
+        let done = try card("""
+            {"session_id":"s1","cwd":"/work/api","hook_event_name":"Stop","last_assistant_message":"Done."}
+            """)
+        #expect(asking.id == done.id)
+        #expect(CardReplacement.canSwap(asking, for: done))
+        #expect(IslandUpdate.changesState(from: asking, to: done))
+        // The agent's icon stays; the state lands in the ring.
+        #expect(IslandUpdate.landsInRing(from: asking, to: done))
+        #expect(asking.ringGlyph == "questionmark")
+        #expect(done.ringGlyph == "checkmark")
+        #expect(!done.waits)
     }
 }
 

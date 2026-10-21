@@ -23,9 +23,13 @@ public final class CardStack {
         public internal(set) var phase: Phase
         /// The card it grew out of and goes back into; nil for the notch.
         public internal(set) weak var anchor: Entry?
-        /// Seconds left on its countdown, which starts once its title has faded in.
+        /// Seconds left on its countdown, which starts once its title has faded in. A card that
+        /// waits for you counts down its wait limit.
         public internal(set) var remaining: Double
         public internal(set) var countdownFrom: Double = 0
+        /// Whether it still waits for you, until it is clicked or replaced, or gives way to a card
+        /// that needs its place and counts down its own time.
+        public internal(set) var isWaiting: Bool
         /// A leaving card keeps its place until its drop starts to rise, so the cards below never
         /// run into it while it gathers.
         var holdsPlaceUntil = Double.infinity
@@ -40,7 +44,8 @@ public final class CardStack {
             self.metrics = metrics
             self.animator = animator
             phase = .shown
-            remaining = card.seconds
+            remaining = card.duration
+            isWaiting = card.waits
         }
 
         public var isLeaving: Bool {
@@ -63,8 +68,10 @@ public final class CardStack {
         public var gone: [Entry] = []
         /// Whether cards started moving to close a gap or to catch up after the pointer left.
         public var moved = false
+        /// Cards that stopped waiting for you to give way, and now count down from `countdownFrom`.
+        public var stoppedWaiting: [Entry] = []
 
-        public var isEmpty: Bool { left.isEmpty && gone.isEmpty && !moved }
+        public var isEmpty: Bool { left.isEmpty && gone.isEmpty && !moved && stoppedWaiting.isEmpty }
     }
 
     public let settings: StackSettings
@@ -225,7 +232,8 @@ public final class CardStack {
         if reduced { entry.animator.open(top: entry.animator.targetTop) }
         entry.card = card
         entry.metrics = metrics
-        entry.remaining = card.seconds
+        entry.remaining = card.duration
+        entry.isWaiting = card.waits
         entry.countdownFrom = time
         place(at: time)
     }
@@ -245,9 +253,28 @@ public final class CardStack {
     /// Moves the stack's clock to `time`, `elapsed` after the last step: cards finish entering, count
     /// down, leave when their time is up or they were dismissed, and are gone once their drop has
     /// merged; the cards below close the gaps. Changes it starts begin at `time + lead`.
-    public func advance(to time: Double, elapsed: Double, lead: Double) -> Changes {
+    ///
+    /// Cards that wait for you give way to other cards: the oldest when a card needs room, its own
+    /// or `needsRoom` another drip's, and every card in the stack is waiting; all of them when
+    /// `othersWaiting`, another drip waiting for the stack to finish.
+    public func advance(
+        to time: Double, elapsed: Double, lead: Double, needsRoom: Bool = false, othersWaiting: Bool = false
+    ) -> Changes {
         var changes = Changes()
         var released = false
+        let waitingCards = live.filter(\.isWaiting)
+        if othersWaiting {
+            changes.stoppedWaiting = waitingCards
+        } else if needsRoom || !waiting.isEmpty, !hasRoom, waitingCards.count == live.count,
+                  let oldest = waitingCards.min(by: { $0.id < $1.id })
+        {
+            changes.stoppedWaiting = [oldest]
+        }
+        for entry in changes.stoppedWaiting {
+            entry.isWaiting = false
+            entry.remaining = min(entry.remaining, entry.card.seconds)
+            entry.countdownFrom = max(entry.countdownFrom, time + lead)
+        }
         for entry in entries {
             switch entry.phase {
             case let .entering(start, cues):
