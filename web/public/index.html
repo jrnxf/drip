@@ -529,6 +529,8 @@ const UPDATE = { resize: [0.4, 0.1], fadeOut: 0.10, fadeIn: 0.18, settle: 0.24, 
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 let drip = null;
+// A two-line card each stage makes room for, measured once the engine loads.
+let reference = null;
 const notch = { width: 185, height: 32 };
 // The space between two cards of a stack (CardStack.gap).
 const STACK_GAP = 10;
@@ -553,9 +555,7 @@ class Stage {
     this.frozen = null; this.visible = true; this.dirty = true; this.pointer = null;
     this.listeners = [];
     new ResizeObserver(() => {
-      this.resize();
-      if (this.stack) this.stack.fit = this.stackFit([...this.stack.cards.values()], this.stack.settings);
-      this.setFit(this.stack?.fit ?? this.fitFor(this.current)); this.dirty = true;
+      this.resize(); this.refit(); this.dirty = true;
     }).observe(this.canvas);
     new IntersectionObserver(([entry]) => { this.visible = entry.isIntersecting; this.dirty = true; }, { rootMargin: "80px" }).observe(screen);
     screen.addEventListener("pointermove", (event) => {
@@ -606,22 +606,15 @@ class Stage {
     const rect = this.canvas.getBoundingClientRect();
     return { x: (event.clientX - rect.left - rect.width / 2) / this.fit, y: (event.clientY - rect.top) / this.fit };
   }
-  // How much the screen is scaled: up to the stage's zoom, and down when the card would not fit.
-  fitFor(card) {
-    const W = this.canvas.getBoundingClientRect().width;
-    return Math.min(this.zoom(W), (W - 16) / Math.max(card ? card.metrics.maxWidth + 16 : 0, 380));
-  }
-  setFit(value) { this.fit = Math.abs(value - this.restFit()) < 0.002 && !this.stack ? this.restFit() : value; this.screen.style.setProperty("--fit", this.fit); }
-  // The zoom with nothing on screen.
-  restFit() { return this.fitFor(null); }
-  // The zoom a stack keeps while it shows: room for as many of its tallest card as the stack and the
-  // screen hold, laid out as CardStack lays them out, so the notch keeps its size as cards arrive.
-  stackFit(cards, settings) {
-    if (!cards.length) return this.restFit();
-    const height = this.canvas.getBoundingClientRect().height, tallest = Math.max(...cards.map((card) => card.metrics.pillHeight));
-    const count = Math.min(settings.max, Math.max(this.holds, cards.length));
-    const bottom = Math.max(...cards.map((card) => card.metrics.pillTop)) + count * tallest + (count - 1) * STACK_GAP;
-    return Math.min(...cards.map((card) => this.fitFor(card)), (height - 10) / (bottom + 10));
+  // How much the screen is scaled, chosen once for its size: up to the stage's zoom, and down so that
+  // `holds` reference cards fit, laid out as CardStack lays them out. Cards coming and going never
+  // change it, so the notch keeps its size.
+  refit() {
+    const { width, height } = this.canvas.getBoundingClientRect(), m = reference?.metrics;
+    const across = (width - 16) / Math.max(m ? m.maxWidth + 16 : 0, 380);
+    const down = m ? (height - 10) / (m.pillTop + this.holds * m.pillHeight + (this.holds - 1) * STACK_GAP + 10) : Infinity;
+    this.fit = Math.min(this.zoom(width), across, down);
+    this.screen.style.setProperty("--fit", this.fit);
   }
   reset() {
     if (this.stack) {
@@ -632,7 +625,7 @@ class Stage {
     for (const card of this.queue) drip.release(card.handle);
     if (this.current) drip.release(this.current.handle);
     this.deliveries.length = 0; this.queue.length = 0; this.current = null; this.lastCard = null; this.dirty = true;
-    this.screen.style.cursor = ""; this.setFit(this.restFit());
+    this.screen.style.cursor = "";
   }
   motionOf(card) { return reduceMotion.matches && card.card.motion === "full" ? "subtle" : card.card.motion; }
   // A card as this stage paints it; its times are its own, from when it starts to drop in.
@@ -657,7 +650,6 @@ class Stage {
       if (offered.dropped) { drip.release(offered.dropped); this.stack.cards.delete(offered.dropped); }
       this.stack.cards.set(card.handle, card);
     }
-    this.stack.fit = Math.min(this.stack.fit, this.stackFit(delivery.cards, this.stack.settings));
   }
   // Starts the next delivery once nothing shows.
   next() {
@@ -666,8 +658,8 @@ class Stage {
     const cards = delivery.cards;
     this.stack = {
       id: drip.stack.start({ ...delivery.stack, adopting: delivery.adopting }, cards.map((card) => card.handle)),
-      start: this.clock, adopting: delivery.adopting, settings: delivery.stack,
-      cards: new Map(cards.map((card) => [card.handle, card])), fit: this.stackFit(cards, delivery.stack),
+      start: this.clock, adopting: delivery.adopting,
+      cards: new Map(cards.map((card) => [card.handle, card])),
     };
     while (this.deliveries[0]?.stack && this.deliveries[0].adopting && this.stack.adopting) this.offer(this.deliveries.shift());
   }
@@ -686,7 +678,6 @@ class Stage {
     this.queue.push(card); this.dirty = true;
   }
   begin(state) {
-    this.setFit(this.fitFor(state));
     state.start = this.clock;
     if (state.card.motion === "full") {
       state.cues = drip.enter(state.handle, 0);
@@ -706,7 +697,6 @@ class Stage {
   // With reduced motion a card replaced in place changes size at once and crossfades, as the app
   // does; in a stack, the engine swaps it.
   replace(old, state) {
-    this.setFit(Math.min(this.fit, this.fitFor(state)));
     drip.open(state.handle);
     state.start = this.clock;
     state.cues = shownCues(state);
@@ -851,14 +841,10 @@ class Stage {
     if (!drip) return;
     if (!this.stack && !this.current && !this.queue.length && this.deliveries.length) this.next();
     if (!this.current && this.queue.length && !this.stack) this.current = this.begin(this.queue.shift());
-    if (!this.current && !this.stack && !this.dirty && this.fit === this.restFit()) return;
+    if (!this.current && !this.stack && !this.dirty) return;
     const started = this.stack?.start ?? this.current?.start;
     if (this.frozen !== null && started !== undefined && started !== Infinity) this.clock = started + this.frozen;
     else this.clock += Math.min(dt, 0.1);
-    if (!this.current) {
-      const target = this.stack?.fit ?? this.restFit(), eased = this.fit + (target - this.fit) * (1 - Math.exp(-Math.min(dt, 0.1) * 9));
-      this.setFit(this.frozen !== null || Math.abs(eased - target) < 0.002 ? target : eased);
-    }
     this.paint();
   }
 
@@ -1374,7 +1360,7 @@ for (const b of document.querySelectorAll("[data-copy]")) {
 
 function tick() { const text = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); for (const c of document.querySelectorAll(".clock")) c.textContent = text; }
 tick(); setInterval(tick, 10000);
-for (const s of stages) { s.resize(); s.setFit(s.fitFor(null)); }
+for (const s of stages) { s.resize(); s.refit(); }
 requestAnimationFrame((now) => { lastNow = now; requestAnimationFrame(loop); });
 
 // For screenshots and the curious: drive the hero from the console.
@@ -1410,6 +1396,9 @@ try {
   const module = await compileEngine();
   const t1 = performance.now();
   drip = await loadDrip(module, measure);
+  reference = drip.command({ args: ["ok", "Build finished", "-d", "make test: 246 passed in 3.2s"], env: {}, config: "", notch }).deliveries[0].cards[0];
+  drip.release(reference.handle);
+  for (const s of stages) s.refit();
   const t2 = performance.now();
   const timing = performance.getEntriesByName(new URL(WASM, location.href).href).at(-1);
   window.__dripLoad = { download: t1 - t0, start: t2 - t1, transferSize: timing?.transferSize, decodedBodySize: timing?.decodedBodySize };
