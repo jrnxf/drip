@@ -129,22 +129,23 @@ public final class CardStack {
     public func handOff(at time: Double) -> [HandedCard]? {
         guard ownCardsGone else { return nil }
         return entries.map { entry in
-            let target = entry.animator.targetTop
-            let top = entry.exit?.top ?? (entry.isShown ? entry.animator.shape(at: time).pillTop : target)
-            return HandedCard(
-                card: entry.card, top: top, remaining: max(entry.remaining, 0), isWaiting: entry.isWaiting,
+            HandedCard(
+                card: entry.card, top: entry.exit?.top ?? entry.animator.targetTop,
+                remaining: max(entry.remaining, 0), isWaiting: entry.isWaiting,
                 leaving: entry.exit.map { max(time - $0.time, 0) },
-                target: entry.exit == nil && abs(target - top) > 0.25 ? target : nil)
+                glide: entry.exit == nil && entry.isShown ? entry.animator.glide(at: time) : [])
         }
     }
 
     /// Shows `handed`, laid out as `metrics`, at the bottom of the stack at `time`, as it was on
-    /// screen when it was handed on: open where it was, with the time it had left, and as far into
-    /// leaving as it was, with its fade cues when it is leaving. Then moves every card to its place.
+    /// screen when it was handed on: open where it was, gliding on as it was, with the time it had
+    /// left, and as far into leaving as it was, with its fade cues when it is leaving. Then moves
+    /// every card to its place.
     @discardableResult
     public func resume(_ handed: HandedCard, metrics: IslandMetrics, at time: Double) -> (entry: Entry, exit: IslandCues?) {
         var animator = IslandAnimator(metrics: metrics)
         animator.open(top: handed.top)
+        animator.resume(handed.glide, to: handed.top, at: time)
         let entry = Entry(id: nextID, card: handed.card, own: false, metrics: metrics, animator: animator)
         nextID += 1
         entry.anchor = settings.mode == .chain ? live.last : nil

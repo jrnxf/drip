@@ -234,7 +234,7 @@ struct CardStackTests {
         #expect(handOff.time - answered < 1)
         #expect(handOff.cards.map(\.card) == [card("done", seconds: 30), asking("needs you")])
         #expect(handOff.cards.map(\.remaining) == handOff.left)
-        #expect(handOff.cards.map(\.top) == handOff.tops)
+        for (card, top) in zip(handOff.cards, handOff.tops) { #expect(abs(card.drawnTop - top) < 0.1) }
         #expect(handOff.cards[0].remaining > 25)
         #expect(handOff.cards.map(\.isWaiting) == [false, true])
         #expect(handOff.cards.allSatisfy { $0.leaving == nil })
@@ -317,8 +317,9 @@ struct CardStackTests {
         #expect(b.card.title == "b")
         let moving = try #require(before.handOff(at: time))
         let gliding = try #require(moving.first { $0.card.title == "b" })
-        let target = try #require(gliding.target)
-        #expect(target < gliding.top)
+        #expect(!gliding.glide.isEmpty)
+        #expect(gliding.top == b.animator.targetTop)
+        #expect(abs(gliding.drawnTop - b.animator.shape(at: time).pillTop) < 0.1)
 
         let age = 0.25
         let aged = StackHandOff(settings: settings, cards: moving, time: 1_000).cards(at: 1_000 + age)
@@ -326,11 +327,20 @@ struct CardStackTests {
             #expect(now.remaining == max(was.remaining - age, 0))
             #expect(now.leaving == was.leaving.map { $0 + age })
         }
+
+        // Shown on in another stack, it goes on gliding from where it is drawn by then, as fast.
         let glided = try #require(aged.first { $0.card.title == "b" })
-        #expect(glided.top < gliding.top && glided.top >= target - 1)
-        let late = gliding.aged(by: 5)
-        #expect(abs(late.top - target) < 0.01)
-        #expect(late.remaining == max(gliding.remaining - 5, 0))
+        let after = CardStack(settings: settings)
+        let resumed = after.resume(glided, metrics: metrics, at: 50).entry
+        func top(_ entry: CardStack.Entry, _ time: Double) -> Double { entry.animator.shape(at: time).pillTop }
+        let step = 1.0 / 240
+        for offset in [0, 0.05, 0.2] {
+            let was = time + age + offset, now = 50 + offset
+            #expect(abs(top(resumed, now) - top(b, was)) < 0.1)
+            #expect(abs((top(resumed, now + step) - top(resumed, now)) - (top(b, was + step) - top(b, was))) < 0.01)
+        }
+        #expect(gliding.aged(by: 5).glide.isEmpty)
+        #expect(gliding.aged(by: 5).drawnTop == gliding.top)
     }
 
     @Test func aCardThatWaitsWaitsAgainWhenReplacedByOneThatWaits() {

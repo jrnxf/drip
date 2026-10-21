@@ -100,38 +100,42 @@ public struct StackHandOff: Equatable, Sendable, Codable {
 /// A card handed on as it is on screen.
 public struct HandedCard: Equatable, Sendable, Codable {
     public var card: Card
-    /// Its capsule's top, from the notch down; for a card that is leaving, where it was when it
-    /// started to.
+    /// Where its capsule's top is heading, from the notch down; for a card that is leaving, where it
+    /// was when it started to.
     public var top: Double
     /// Seconds left on its countdown, or on its wait limit while it still waits.
     public var remaining: Double
     public var isWaiting: Bool
     /// How long ago it started to leave; nil while it shows.
     public var leaving: Double?
-    /// Where its capsule's top glides to, as it closes a gap; nil at rest.
-    public var target: Double?
+    /// The springs still taking its top there, as it glides into a gap; none at rest.
+    public var glide: [SpringMotion]
 
     public init(
-        card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil, target: Double? = nil
+        card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil,
+        glide: [SpringMotion] = []
     ) {
         self.card = card
         self.top = top
         self.remaining = remaining
         self.isWaiting = isWaiting
         self.leaving = leaving
-        self.target = target
+        self.glide = glide
     }
 
-    /// The card `age` seconds on: that much less time left, that much further into leaving, and
-    /// that much further on its way to `target`, as a card in a stack glides into a gap.
+    /// Where its capsule's top is drawn.
+    public var drawnTop: Double {
+        glide.reduce(top) { $0 - $1.left }
+    }
+
+    /// The card `age` seconds on: that much less time left, and that much further into leaving and
+    /// on its glide.
     public func aged(by age: Double) -> HandedCard {
         var card = self
         card.remaining = max(remaining - age, 0)
         card.leaving = leaving.map { $0 + age }
-        if let target {
-            let progress = IslandAnimator.settle.progress(at: age)
-            card.top = top + (target - top) * progress
-        }
+        card.glide = glide.map { SpringMotion(change: $0.change, spring: $0.spring, elapsed: $0.elapsed + age) }
+            .filter { $0.elapsed < $0.spring.settlingTime }
         return card
     }
 }

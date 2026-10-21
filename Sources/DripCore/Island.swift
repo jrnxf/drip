@@ -361,6 +361,16 @@ public struct IslandAnimator: Sendable {
     /// Where the capsule's top is heading.
     public var targetTop: Double { dropCenter.target - metrics.pillHeight / 2 }
 
+    /// The springs still moving the capsule's top towards `targetTop` at `time`.
+    public func glide(at time: Double) -> [SpringMotion] {
+        dropCenter.motion(at: time)
+    }
+
+    /// Goes on with `glide`, as `glide(at:)` gave it, from `time`, towards the top `top`.
+    public mutating func resume(_ glide: [SpringMotion], to top: Double, at time: Double) {
+        dropCenter.resume(glide, to: top + metrics.pillHeight / 2, at: time)
+    }
+
     /// Jumps straight to fully open, for reduced motion and offscreen rendering, with the capsule's
     /// top at `top`, below the notch unless given.
     public mutating func open(top: Double? = nil) {

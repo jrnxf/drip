@@ -7,7 +7,7 @@ import Foundation
 
 /// A damped spring described the way Apple's APIs describe one: how long it takes to look settled and
 /// how much it bounces. The same parameters as `CASpringAnimation(perceptualDuration:bounce:)`.
-public struct Spring: Equatable, Sendable {
+public struct Spring: Equatable, Sendable, Codable {
     /// Seconds until it looks settled.
     public var duration: Double
     /// 0 never overshoots; higher values overshoot more. Below 1.
@@ -51,6 +51,24 @@ public struct Spring: Equatable, Sendable {
     }
 }
 
+/// One spring of a `SpringValue` still running: how far it moves the value, and how long it has run.
+public struct SpringMotion: Equatable, Sendable, Codable {
+    public var change: Double
+    public var spring: Spring
+    public var elapsed: Double
+
+    public init(change: Double, spring: Spring, elapsed: Double) {
+        self.change = change
+        self.spring = spring
+        self.elapsed = elapsed
+    }
+
+    /// How far the value still has to go.
+    public var left: Double {
+        change * (1 - spring.progress(at: elapsed))
+    }
+}
+
 /// A value that springs towards each new target. A new target adds a spring on top of the ones still
 /// running instead of restarting, so the value keeps its velocity through an interruption.
 public struct SpringValue: Equatable, Sendable {
@@ -87,6 +105,23 @@ public struct SpringValue: Equatable, Sendable {
     public mutating func jump(to value: Double) {
         base = value
         parts = []
+    }
+
+    /// The springs still running at `time`, each with how long it has run, which take the value to
+    /// `target`.
+    public func motion(at time: Double) -> [SpringMotion] {
+        parts.filter { time - $0.start < $0.settled }.map {
+            SpringMotion(change: $0.change, spring: $0.spring, elapsed: time - $0.start)
+        }
+    }
+
+    /// Takes over `motion` at `time`, as `motion(at:)` gave it, towards `target`: the value goes on
+    /// where it was, as fast as it was going.
+    public mutating func resume(_ motion: [SpringMotion], to target: Double, at time: Double) {
+        base = motion.reduce(target) { $0 - $1.change }
+        parts = motion.map {
+            Part(change: $0.change, spring: $0.spring, start: time - $0.elapsed, settled: $0.spring.settlingTime)
+        }
     }
 
     public func value(at time: Double) -> Double {
