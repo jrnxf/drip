@@ -1211,12 +1211,14 @@ final class IslandPresenter: CardPresenting {
     }
 
     /// Hands the exit of an answered question on to a background drip, which plays it on from where
-    /// it is, so drip exits with the answer at once; with motion reduced, or when no background drip
-    /// can take it, the exit plays here first.
+    /// it is, so drip exits with the answer at once; with motion reduced the card goes at once, with
+    /// no exit, and when no background drip can take it, the exit plays here first.
     private func handOffExit() {
-        guard card.asksQuestion, animator != nil, let layers else { return }
+        guard card.asksQuestion else { return }
+        guard animator != nil, let layers else { return finish(waitingForSound: false) }
         let request = BackgroundRequest(
             handOff: .leaving(card, top: layers.metrics.pillTop, at: Date().timeIntervalSince1970))
+        CATransaction.flush()
         if standby.map({ $0.send(request) }) ?? BackgroundDrip.start(request) { finish(waitingForSound: false) }
     }
 

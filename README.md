@@ -379,7 +379,7 @@ waits, then exits 0 if the button was clicked. `--no` adds a quieter button to i
 answers no: drip exits 1 when it is clicked. At the notch, drip exits as soon as a button is
 clicked, while the card is still on its way out, so the command after it starts at once; a
 background drip plays the card's exit, and any cards stacked with it, on from where they are.
-Elsewhere, or with reduced motion, it exits once the card's short exit has played. With either, drip exits 5 when
+Elsewhere, or with reduced motion, the card goes at once, with no exit, and drip exits with it. With either, drip exits 5 when
 no button was clicked: the card timed out, a newer card with the same `--id` replaced it, or it was
 clicked away from its buttons. 0 and 1 read as yes and no, so the script decides what happens:
 

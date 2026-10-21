@@ -353,7 +353,7 @@ final class StackPresenter: CardPresenting {
         }
         updateAccessibility()
         CATransaction.flush()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { BackgroundDrip.sayShown() }
+        BackgroundDrip.sayShown()
     }
 
     /// Shows `card` in place of the one `entry` shows: the capsule springs to the new card's size
@@ -487,6 +487,7 @@ final class StackPresenter: CardPresenting {
             // background drip shows them on, where they are, or this stack does when none can.
             let request = BackgroundRequest(
                 handOff: StackHandOff(settings: stack.settings, cards: cards, time: Date().timeIntervalSince1970))
+            CATransaction.flush()
             if cards.isEmpty || (standby.map { $0.send(request) } ?? BackgroundDrip.start(request)) {
                 finish()
             } else {

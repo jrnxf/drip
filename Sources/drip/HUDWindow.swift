@@ -510,7 +510,7 @@ final class CardPresenter: CardPresenting {
                 button?.onClick = { [self] in
                     guard !leaving else { return }
                     CardActions.answer(answer, to: action, console: console)
-                    leave(clicked: true)
+                    if card.asksQuestion { answered() } else { leave(clicked: true) }
                 }
             }
         }
@@ -538,6 +538,18 @@ final class CardPresenter: CardPresenting {
         let work = DispatchWorkItem { [self] in leave(clicked: false) }
         departure = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    /// Takes an answered question's card away at once, with no exit and without waiting for its
+    /// sound, so drip exits with the answer in the moment it is given.
+    private func answered() {
+        guard !leaving else { return }
+        leaving = true
+        departure?.cancel()
+        panel?.orderOut(nil)
+        let done = onFinish
+        onFinish = nil
+        done?(true)
     }
 
     private func leave(clicked: Bool) {
