@@ -26,7 +26,18 @@ sha256() {
 fetch() {
     if [ -f "$3" ] && [ "$(sha256 "$3")" = "$2" ]; then return; fi
     echo "Downloading $1"
-    curl -sSfL --retry 3 -o "$3.part" "$1"
+    # A stalled download aborts rather than hanging the build. curl's own retries do not cover
+    # a speed-limit abort on every version, so the loop restarts the download, up to 3 times.
+    attempt=1
+    until curl -sSfL --connect-timeout 20 --speed-limit 100000 --speed-time 30 \
+        --retry 5 --retry-delay 5 --retry-all-errors -o "$3.part" "$1"; do
+        if [ "$attempt" -ge 3 ]; then
+            echo "$1: download failed $attempt times" >&2
+            exit 1
+        fi
+        attempt=$((attempt + 1))
+        echo "Downloading $1 again, attempt $attempt of 3"
+    done
     actual=$(sha256 "$3.part")
     if [ "$actual" != "$2" ]; then
         echo "$1: expected sha256 $2, got $actual" >&2
