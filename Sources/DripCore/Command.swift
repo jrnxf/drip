@@ -599,7 +599,13 @@ public enum CommandLineParser {
     private static func failure(_ error: Error, arguments: [String]) -> ParseResult {
         let message = DripCommand.message(for: error)
         if DripCommand.exitCode(for: error) == .success {
-            let text = message == DripCommand.helpMessage() ? rootHelp : message
+            var text = message == DripCommand.helpMessage() ? rootHelp : message
+            if message == DripCommand.helpMessage(for: RunCommand.self) {
+                // drip run takes --version as the start of its command and rejects it, so its help
+                // does not offer the flag ArgumentParser lists for every subcommand.
+                text = text.split(separator: "\n", omittingEmptySubsequences: false)
+                    .filter { !$0.hasPrefix("  --version ") }.joined(separator: "\n")
+            }
             return .exit(status: ExitStatus.shown, message: HelpSections(text).usageFirst ?? text)
         }
         let subcommand = DripCommand.configuration.subcommands

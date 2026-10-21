@@ -350,6 +350,20 @@ struct CommandTests {
         #expect(version == dripVersion)
     }
 
+    /// drip run rejects --version, so its help does not offer it; drip's own help does.
+    @Test func runHelpDoesNotOfferVersion() {
+        for arguments in [["run", "--help"], ["help", "run"]] {
+            guard case let .exit(status, help) = CommandLineParser.parse(arguments) else {
+                Issue.record("\(arguments) did not exit"); continue
+            }
+            #expect(status == 0, "\(arguments)")
+            #expect(help.contains("-h, --help"), "\(arguments): \(help)")
+            #expect(!help.contains("--version"), "\(arguments): \(help)")
+        }
+        guard case let .exit(_, root) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
+        #expect(root.contains("--version"))
+    }
+
     /// The usage first, then examples, the card options, the subcommands and the exit codes.
     @Test func helpListsTheSubcommandsAndHidesRender() throws {
         guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
