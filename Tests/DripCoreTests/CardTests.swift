@@ -96,6 +96,16 @@ struct CardTests {
         #expect(custom.ringGlyph == nil)
     }
 
+    @Test func aFailureOrAnAskIsReadOutFirst() {
+        #expect(Preset.builtIn.filter { Card(preset: $0, title: "t").isUrgent }.map(\.name) == ["fail", "ask"])
+        // An ask card that counts down or has a button still waits on you.
+        var asking = Card(preset: .ask, title: "my-app needs you")
+        asking.waitLimit = nil
+        asking.action = CardAction(label: "Approve", open: nil)
+        #expect(asking.isUrgent)
+        #expect(!Card(preset: Preset(name: "deploy", icon: .none, color: .system(.purple), sound: .none), title: "t").isUrgent)
+    }
+
     @Test func colorParsesHexAndNames() {
         #expect(CardColor(parsing: "#a78bfa") == .rgb(red: 0xA7, green: 0x8B, blue: 0xFA))
         #expect(CardColor(parsing: "#A78BFA") == .rgb(red: 0xA7, green: 0x8B, blue: 0xFA))

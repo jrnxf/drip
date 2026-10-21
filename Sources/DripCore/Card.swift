@@ -345,6 +345,12 @@ public struct Card: Equatable, Sendable, Codable {
         icon != .none && !(icon == fallbackIcon && ringGlyph != nil && action == nil)
     }
 
+    /// Whether VoiceOver reads the card out before whatever it is reading: a failure, or something
+    /// that waits on you.
+    public var isUrgent: Bool {
+        kind == Preset.fail.name || kind == Preset.ask.name
+    }
+
     /// A card that uses every value of `preset`.
     public init(preset: Preset, title: String, detail: String? = nil) {
         self.init(
