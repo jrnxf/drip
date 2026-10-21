@@ -218,32 +218,79 @@ struct CardStackTests {
         let done = stack.enter(card("done", seconds: 30), metrics: metrics, own: false, decided: time, at: time)
         let needsYou = stack.enter(asking("needs you"), metrics: metrics, own: false, decided: time, at: time)
         time = run(stack, from: time, until: time + 3)
-        #expect(stack.adoptedLeft() == nil)
+        #expect(stack.handOff(at: time) == nil)
 
         let answered = time
         stack.live[0].answer = .yes
         stack.live[0].dismissed = true
-        var handed: (time: Double, cards: [Card], left: [Double])?
+        var handed: (time: Double, cards: [HandedCard], left: [Double], tops: [Double])?
         run(stack, from: time, until: time + 5) { now, _ in
-            guard handed == nil, let cards = stack.adoptedLeft() else { return }
-            handed = (now, cards, [done.remaining, needsYou.remaining])
+            guard handed == nil, let cards = stack.handOff(at: now) else { return }
+            handed = (
+                now, cards, [done.remaining, needsYou.remaining],
+                [done, needsYou].map { $0.animator.shape(at: now).pillTop })
         }
         let handOff = try #require(handed)
         #expect(handOff.time - answered < 1)
-        #expect(handOff.cards.map(\.title) == ["done", "needs you"])
-        #expect(!handOff.cards[0].waits)
-        #expect(handOff.cards[0].seconds == handOff.left[0])
-        #expect(handOff.cards[0].seconds > 25)
-        #expect(handOff.cards[1].waitLimit == handOff.left[1])
+        #expect(handOff.cards.map(\.card) == [card("done", seconds: 30), asking("needs you")])
+        #expect(handOff.cards.map(\.remaining) == handOff.left)
+        #expect(handOff.cards.map(\.top) == handOff.tops)
+        #expect(handOff.cards[0].remaining > 25)
+        #expect(handOff.cards.map(\.isWaiting) == [false, true])
+        #expect(handOff.cards.allSatisfy { $0.leaving == nil })
         #expect(!stack.holdsOwn)
     }
 
     @Test func aStackWithNoAdoptedCardsHandsOnNothing() {
         let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 1)])
-        #expect(stack.adoptedLeft() == nil)
-        run(stack, until: 4)
+        #expect(stack.handOff(at: 0) == nil)
+        let time = run(stack, until: 4)
         #expect(stack.entries.isEmpty)
-        #expect(stack.adoptedLeft() == [])
+        #expect(stack.handOff(at: time) == [])
+    }
+
+    /// The cards handed on show in the new stack where they were, in the same order, with the time
+    /// they had left, and a card that was leaving goes on leaving from as far as it had got.
+    @Test func handedOnCardsShowAsTheyWere() throws {
+        let settings = StackSettings(mode: .chain, max: 3)
+        let before = CardStack(settings: settings)
+        var time = 0.0
+        for title in ["a", "b", "c"] {
+            before.enter(card(title, seconds: 30), metrics: metrics, own: false, decided: time, at: time)
+            time = run(before, from: time, until: time + 1)
+        }
+        time = run(before, from: time, until: time + 2)
+        let leaving = before.live[2]
+        leaving.dismissed = true
+        time = run(before, from: time, until: time + 0.1)
+        let handed = try #require(before.handOff(at: time))
+        #expect(handed.map(\.card.title) == ["a", "b", "c"])
+        let fade = try #require(handed[2].leaving)
+        #expect(fade > 0 && fade < 0.2)
+
+        let after = CardStack(settings: settings)
+        let resumed = handed.map { after.resume($0, metrics: metrics, at: 50) }
+        #expect(titles(after.entries) == ["a", "b", "c"])
+        #expect(titles(after.live) == ["a", "b"])
+        #expect(after.entries.map(\.remaining) == handed.map(\.remaining))
+        #expect(resumed.map { $0.exit == nil } == [true, true, false])
+        for (old, new) in zip(before.entries, after.entries) {
+            let was = old.animator.shape(at: time), now = new.animator.shape(at: 50)
+            #expect(abs(was.pillTop - now.pillTop) < 0.01)
+            #expect(abs(was.pillWidth - now.pillWidth) < 0.01)
+            #expect(abs(was.pillHeight - now.pillHeight) < 0.01)
+        }
+        // Both go on as one: the leaving card is gone at the same moment, the others count down.
+        var gone: (before: Double?, after: Double?) = (nil, nil)
+        run(before, from: time, until: time + 2) { now, changes in
+            if gone.before == nil, !changes.gone.isEmpty { gone.before = now - time }
+        }
+        run(after, from: 50, until: 52) { now, changes in
+            if gone.after == nil, !changes.gone.isEmpty { gone.after = now - 50 }
+        }
+        let goneBefore = try #require(gone.before), goneAfter = try #require(gone.after)
+        #expect(abs(goneBefore - goneAfter) < 0.05)
+        #expect(after.live.allSatisfy { $0.remaining < 30 && $0.remaining > 20 })
     }
 
     @Test func aCardThatWaitsWaitsAgainWhenReplacedByOneThatWaits() {

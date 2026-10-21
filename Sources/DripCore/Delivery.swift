@@ -31,21 +31,33 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
     public var cards: [Card]
     /// False for cards shown again from the history, which keeps them already.
     public var record: Bool
+    /// Set when the cards are already on screen in a stack that hands them on, to show where they
+    /// are instead of dropping them in again.
+    public var handOff: StackHandOff?
 
     public init(cards: [Card], record: Bool = true) {
         self.cards = cards
         self.record = record
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case cards, record
+    /// A request for the cards `handOff` hands on, which are recorded already.
+    public init(handOff: StackHandOff) {
+        cards = handOff.cards.map(\.card)
+        record = false
+        self.handOff = handOff
     }
 
-    /// A request from a drip that predates `record` is recorded.
+    private enum CodingKeys: String, CodingKey {
+        case cards, record, handOff
+    }
+
+    /// A request from a drip that predates `record` is recorded, and one that predates `handOff`
+    /// hands nothing on.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         cards = try container.decode([Card].self, forKey: .cards)
         record = try container.decodeIfPresent(Bool.self, forKey: .record) ?? true
+        handOff = try container.decodeIfPresent(StackHandOff.self, forKey: .handOff)
     }
 
     /// What the background drip does with the cards while the screen is locked.
@@ -57,6 +69,41 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
 
     public static func decode(_ data: Data) throws -> BackgroundRequest {
         try JSONDecoder().decode(BackgroundRequest.self, from: data)
+    }
+}
+
+/// The cards a stack at the notch hands on to a background drip when the drip that shows it exits,
+/// as a drip that waited for its question's answer does: the background drip shows them on, as
+/// they are, in a stack with the same settings.
+public struct StackHandOff: Equatable, Sendable, Codable {
+    public var settings: StackSettings
+    /// Top to bottom.
+    public var cards: [HandedCard]
+
+    public init(settings: StackSettings, cards: [HandedCard]) {
+        self.settings = settings
+        self.cards = cards
+    }
+}
+
+/// A card handed on as it is on screen.
+public struct HandedCard: Equatable, Sendable, Codable {
+    public var card: Card
+    /// Its capsule's top, from the notch down; for a card that is leaving, where it was when it
+    /// started to.
+    public var top: Double
+    /// Seconds left on its countdown, or on its wait limit while it still waits.
+    public var remaining: Double
+    public var isWaiting: Bool
+    /// How long ago it started to leave; nil while it shows.
+    public var leaving: Double?
+
+    public init(card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil) {
+        self.card = card
+        self.top = top
+        self.remaining = remaining
+        self.isWaiting = isWaiting
+        self.leaving = leaving
     }
 }
 

@@ -41,6 +41,10 @@ final class StackPresenter: CardPresenting {
     private let adopting: Bool
     /// Whether one of this drip's own cards is a question that waits for its answer.
     private let asks: Bool
+    /// Cards another drip's stack handed on, to show as they were there when this one starts.
+    private var handed: [HandedCard] = []
+    /// Whether no background drip could take the cards this stack took in, so it shows them itself.
+    private var handOffFailed = false
     private var panel: IslandPanel?
     private var view: IslandView?
     private let container = CALayer()
@@ -106,6 +110,16 @@ final class StackPresenter: CardPresenting {
         self.console = console
     }
 
+    /// A background drip's stack for the cards another drip's stack handed on; nil without a screen.
+    static func resume(_ handOff: StackHandOff, console: Console) -> StackPresenter? {
+        guard let screen = CardPresenters.targetScreen() else { return nil }
+        let presenter = StackPresenter(
+            cards: [], settings: handOff.settings, notch: NotchGeometry.island(on: screen), adopting: true,
+            console: console)
+        presenter.handed = handOff.cards
+        return presenter
+    }
+
     var canReplace: Bool { false }
     func replace(with card: Card) {}
     /// The stack's cards give way on their own, as `CardStack` decides.
@@ -150,6 +164,7 @@ final class StackPresenter: CardPresenting {
         panel.orderFrontRegardless()
 
         started = CACurrentMediaTime()
+        if !handed.isEmpty { resumeHanded() }
         // Countdowns, the pointer and the queue; the motion itself runs in Core Animation. The timer
         // keeps the stack alive until `finish` stops it.
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [self] _ in tick() }
@@ -299,6 +314,41 @@ final class StackPresenter: CardPresenting {
         updateAccessibility()
     }
 
+    /// Shows the cards another drip's stack handed on where they were, as they were: no drop, no
+    /// sound and no announcement, each counting down what it had left, and one that was leaving as
+    /// far into it. Then tells that drip, so its stack can go.
+    private func resumeHanded() {
+        let decided = now
+        var resumed: [(entry: CardStack.Entry, exit: IslandCues?, layers: IslandLayers)] = []
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for card in handed {
+            let layers = makeLayers(for: card.card)
+            let (entry, exit) = stack.resume(card, metrics: layers.metrics, at: decided)
+            drawings[entry.id] = Drawing(layers: layers)
+            container.addSublayer(layers.root)
+            resumed.append((entry, exit, layers))
+        }
+        CATransaction.commit()
+        handed = []
+        replan(from: decided)
+        for (entry, exit, layers) in resumed {
+            layers.showContent()
+            if let exit, let leaving = entry.exit {
+                layers.fade(exit, into: false, at: started + leaving.time)
+            } else if entry.isWaiting {
+                layers.hold(pinging: true, at: started + decided)
+            } else {
+                layers.drain(
+                    from: min(entry.remaining / max(entry.card.seconds, 0.01), 1), over: entry.remaining,
+                    at: started + decided)
+            }
+        }
+        updateAccessibility()
+        CATransaction.flush()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { BackgroundDrip.sayShown() }
+    }
+
     /// Shows `card` in place of the one `entry` shows: the capsule springs to the new card's size
     /// where it is, the cards below make room or close up, what changed crossfades and a new state's
     /// colour settles, and its countdown restarts, the ring refilling first. With motion reduced, the
@@ -423,13 +473,17 @@ final class StackPresenter: CardPresenting {
         if !changes.left.isEmpty || !changes.gone.isEmpty { updateAccessibility() }
 
         // Done once nothing is on screen, nothing of its own is left, and the queue had nothing new.
-        if adopting {
+        if adopting || handOffFailed {
             if stack.entries.isEmpty, stack.waiting.isEmpty, !foundAdoptable { finish() }
-        } else if let adopted = stack.adoptedLeft() {
+        } else if let cards = stack.handOff(at: time) {
             // A question's answer never waits for the cards it took in: a background drip shows the
-            // rest of them, already recorded.
-            if !adopted.isEmpty { _ = BackgroundDrip.start(BackgroundRequest(cards: adopted, record: false)) }
-            finish()
+            // rest of them on, where they are, or this stack does when none can.
+            let request = BackgroundRequest(handOff: StackHandOff(settings: stack.settings, cards: cards))
+            if cards.isEmpty || BackgroundDrip.start(request) {
+                finish()
+            } else {
+                handOffFailed = true
+            }
         }
     }
 

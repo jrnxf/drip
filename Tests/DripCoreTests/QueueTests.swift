@@ -29,6 +29,19 @@ struct QueueTests {
         #expect(QueueTicket.name(stamp: 999, pid: 40) < QueueTicket.name(stamp: 1_000, pid: 7, start: 1))
     }
 
+    /// A background drip a stack is handed on to takes its place: right after its ticket, before
+    /// any queued later.
+    @Test func aHandOffTicketSortsRightAfterItsParent() throws {
+        let parent = QueueTicket.name(stamp: 999, pid: 90_000, start: 5)
+        let later = QueueTicket.name(stamp: 1_001, pid: 7)
+        let handOff = try #require(QueueTicket.name(after: parent, pid: 1, start: 6))
+        #expect([later, handOff, parent].sorted() == [parent, handOff, later])
+        let ticket = try #require(QueueTicket(name: handOff))
+        #expect(ticket.pid == 1)
+        #expect(ticket.start == 6)
+        #expect(QueueTicket.name(after: "not a ticket", pid: 1) == nil)
+    }
+
     @Test func onlyTicketNamesAreTickets() {
         for name in ["00000000000000000999-40.claimed", ".00000000000000000999-40.40.tmp", "999-40",
                      "00000000000000000999-", "00000000000000000999-4x", "00000000000000000999-40-",

@@ -169,6 +169,7 @@ struct DripCLI {
     private func background() -> Int32 {
         #if canImport(AppKit)
         guard let request = BackgroundDrip.readRequest() else { return ExitStatus.usage }
+        if let handOff = request.handOff { return HUDDisplay().resume(handOff, console: Console(quiet: true)) }
         return display.show(request.cards, locked: request.locked, console: Console(quiet: true))
         #else
         return ExitStatus.noGUISession

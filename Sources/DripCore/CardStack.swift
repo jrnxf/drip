@@ -38,6 +38,8 @@ public final class CardStack {
         public var dismissed: Bool?
         /// The button a click landed on, when `dismissed` is true: yes, or a question's no.
         public var answer: CardAnswer?
+        /// When it started to leave, and its capsule's top then.
+        public internal(set) var exit: (time: Double, top: Double)?
 
         init(id: Int, card: Card, own: Bool, metrics: IslandMetrics, animator: IslandAnimator) {
             self.id = id
@@ -117,22 +119,42 @@ public final class CardStack {
     /// question takes other drips' cards in only while it does, so it can exit soon after the answer.
     public var holdsOwn: Bool { !waiting.isEmpty || live.contains(where: \.own) }
 
-    /// Once none of this drip's own cards is still to come, on screen or leaving, the other drips'
-    /// cards it took in and still shows, each with what it has left: its seconds, or its wait limit
-    /// while it still waits. Nil while an own card remains. A drip that waits for its question's
-    /// answer hands these on to be shown without it, so it exits as soon as its own card has gone.
-    public func adoptedLeft() -> [Card]? {
-        guard waiting.isEmpty, !entries.contains(where: \.own) else { return nil }
-        return live.filter { $0.remaining > 0 }.map { entry in
-            var card = entry.card
-            if entry.isWaiting {
-                card.waitLimit = entry.remaining
-            } else {
-                card.waitLimit = nil
-                card.seconds = entry.remaining
-            }
-            return card
+    /// Whether every one of this drip's own cards has come and gone, leaving included.
+    public var ownCardsGone: Bool { waiting.isEmpty && !entries.contains(where: \.own) }
+
+    /// Once this drip's own cards have gone, the other drips' cards it took in and still shows, top
+    /// to bottom, as they are at `time`: where each is, what it has left and how far into leaving it
+    /// is. Nil while an own card remains. A drip that waits for its question's answer hands these on
+    /// to a background drip, so it exits as soon as its own card has gone.
+    public func handOff(at time: Double) -> [HandedCard]? {
+        guard ownCardsGone else { return nil }
+        return entries.map { entry in
+            let top = entry.exit?.top
+                ?? (entry.isShown ? entry.animator.shape(at: time).pillTop : entry.animator.targetTop)
+            return HandedCard(
+                card: entry.card, top: top, remaining: max(entry.remaining, 0), isWaiting: entry.isWaiting,
+                leaving: entry.exit.map { max(time - $0.time, 0) })
         }
+    }
+
+    /// Shows `handed`, laid out as `metrics`, at the bottom of the stack at `time`, as it was on
+    /// screen when it was handed on: open where it was, with the time it had left, and as far into
+    /// leaving as it was, with its fade cues when it is leaving. Then moves every card to its place.
+    @discardableResult
+    public func resume(_ handed: HandedCard, metrics: IslandMetrics, at time: Double) -> (entry: Entry, exit: IslandCues?) {
+        var animator = IslandAnimator(metrics: metrics)
+        animator.open(top: handed.top)
+        let entry = Entry(id: nextID, card: handed.card, own: false, metrics: metrics, animator: animator)
+        nextID += 1
+        entry.anchor = settings.mode == .chain ? live.last : nil
+        entry.remaining = handed.remaining
+        entry.isWaiting = handed.isWaiting
+        entry.countdownFrom = time
+        entries.append(entry)
+        lastEntrance = time
+        let exit = handed.leaving.flatMap { leave(entry, at: time - $0) }
+        place(at: time)
+        return (entry, exit)
     }
 
     /// This drip's next own card, taken off `waiting`, when there is room and its pause is over.
@@ -240,6 +262,7 @@ public final class CardStack {
         let above = entries[..<position].last { !$0.isLeaving }
         entry.anchor = above
         let anchor = above.map { DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.metrics) }
+        entry.exit = (time, entry.animator.shape(at: time).pillTop)
         let cues = entry.animator.exit(at: time, into: anchor)
         entry.holdsPlaceUntil = entry.animator.riseTime ?? time
         entry.phase = .leaving(until: entry.animator.end)

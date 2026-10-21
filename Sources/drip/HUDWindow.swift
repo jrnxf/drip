@@ -71,6 +71,20 @@ struct HUDDisplay: CardDisplay {
         return ExitStatus.answered(missed: CardActions.missed || unanswered, declined: CardActions.declined)
     }
 
+    /// Shows on the cards another drip's stack handed on, in that drip's place in the queue, as a
+    /// background drip, and returns once they have gone.
+    func resume(_ handOff: StackHandOff, console: Console) -> Int32 {
+        guard CGSessionCopyCurrentDictionary() != nil else { return ExitStatus.noGUISession }
+        CardQueue.join()
+        BackgroundWatchdog.extend(by: handOff.cards.reduce(0) { $0 + $1.remaining } + 600)
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        guard let stack = StackPresenter.resume(handOff, console: console) else { return ExitStatus.noGUISession }
+        DispatchQueue.main.async { stack.start { _ in stopApplication() } }
+        app.run()
+        return ExitStatus.shown
+    }
+
     func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32 {
         guard CGSessionCopyCurrentDictionary() != nil else {
             console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")

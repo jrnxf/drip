@@ -173,6 +173,23 @@ struct DeliveryTests {
         #expect(try BackgroundRequest.decode(request.encoded()) == request)
     }
 
+    @Test func aHandOffSurvivesTheTripToTheBackgroundDrip() throws {
+        let handOff = StackHandOff(settings: StackSettings(mode: .push, max: 2), cards: [
+            HandedCard(card: Card(preset: .ok, title: "done"), top: 42, remaining: 12.5, isWaiting: false),
+            HandedCard(card: Card(preset: .ask, title: "needs you"), top: 98, remaining: 590, isWaiting: true, leaving: 0.04),
+        ])
+        let request = BackgroundRequest(handOff: handOff)
+        #expect(request.cards.map(\.title) == ["done", "needs you"])
+        #expect(!request.record)
+        #expect(try BackgroundRequest.decode(request.encoded()) == request)
+    }
+
+    @Test func aRequestFromBeforeHandOffsHandsNothingOn() throws {
+        let old = try BackgroundRequest.decode(Data(#"{"cards":[],"record":false}"#.utf8))
+        #expect(old == BackgroundRequest(cards: [], record: false))
+        #expect(old.handOff == nil)
+    }
+
     @Test func garbageIsNotARequest() {
         #expect(throws: (any Error).self) { try BackgroundRequest.decode(Data("not json".utf8)) }
     }

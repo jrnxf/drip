@@ -518,7 +518,7 @@ final class StackSession {
 
     /// Whether the stack takes `card` in now. A question never is.
     func takes(_ card: Card) -> Bool {
-        !card.asksQuestion && (adopts || (asks && (stack.adoptedLeft() != nil || !card.waits)))
+        !card.asksQuestion && (adopts || (asks && (stack.ownCardsGone || !card.waits)))
     }
 }
 

@@ -52,6 +52,14 @@ public struct QueueTicket: Equatable, Sendable {
             + (start.map { "-\($0)" } ?? "")
     }
 
+    /// The file name for a ticket that takes `parent`'s place in the queue: queued a nanosecond after
+    /// it, so it sorts right after it and before every ticket queued later. Nil when `parent` is not
+    /// a ticket.
+    public static func name(after parent: String, pid: Int32, start: UInt64? = nil) -> String? {
+        guard QueueTicket(name: parent) != nil, let stamp = UInt64(parent.prefix(20)) else { return nil }
+        return name(stamp: stamp + 1, pid: pid, start: start)
+    }
+
     /// The file beside a ticket that lists its claimed ids.
     public static func claimName(for ticket: String) -> String {
         ticket + ".claimed"
