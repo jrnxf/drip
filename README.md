@@ -41,7 +41,7 @@ prints nothing. `drip demo` then drops a few cards from the notch, stacking them
 
 Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs, in a few
 seconds: nothing to compile, and no Xcode. Install it with Homebrew rather than downloading the
-binary from the release page: the binary is signed ad hoc, not notarized, so Gatekeeper blocks a
+archive from the release page: the binary is signed ad hoc, not notarized, so Gatekeeper blocks a
 copy downloaded in a browser, while brew's download runs as it is. To build the latest `main` from
 source instead, run `brew install --HEAD jrnxf/tap/drip`.
 
