@@ -44,7 +44,7 @@ struct CommandTests {
 
     /// `drip help run` shows run's help, as `drip run --help` does.
     @Test func helpForASubcommand() {
-        for name in ["run", "hook", "demo", "history", "show"] {
+        for name in ["run", "hook", "setup", "demo", "history", "show"] {
             guard case let .exit(status, help) = CommandLineParser.parse(["help", name]),
                   case let .exit(_, flag) = CommandLineParser.parse([name, "--help"]),
                   case let .exit(_, short) = CommandLineParser.parse([name, "-h"])
@@ -199,6 +199,8 @@ struct CommandTests {
             (["run"], "drip run --help"), (["run", "--nope", "make"], "drip run --help"),
             (["run", "--version"], "drip run --help"),
             (["hook"], "drip hook --help"), (["hook", "cursor"], "drip hook --help"),
+            (["setup"], "drip setup --help"), (["setup", "cursor"], "drip setup --help"),
+            (["setup", "claude", "--seconds", "3"], "drip setup --help"),
             (["demo", "sideways"], "drip demo --help"), (["history", "--json", "--replay"], "drip history --help"),
         ]
         for (arguments, help) in mistakes {
@@ -308,6 +310,27 @@ struct CommandTests {
         else { Issue.record(); return }
         #expect(codex.agent == .codex)
         #expect(codex.payload == #"{"type":"x"}"#)
+        guard case let .invocation(.hook(gemini)) = CommandLineParser.parse(["hook", "gemini"])
+        else { Issue.record(); return }
+        #expect(gemini.agent == .gemini)
+    }
+
+    @Test func setupTakesTheAgentAndPrint() throws {
+        for agent in AgentHook.Agent.allCases {
+            guard case let .invocation(.setup(setup)) = CommandLineParser.parse(["setup", agent.rawValue])
+            else { Issue.record("\(agent)"); continue }
+            #expect(setup.agent == agent)
+            #expect(!setup.printOnly)
+        }
+        guard case let .invocation(.setup(printing)) = CommandLineParser.parse(["setup", "codex", "--print"])
+        else { Issue.record(); return }
+        #expect(printing.agent == .codex)
+        #expect(printing.printOnly)
+        // Without an agent, one line says what is missing, not the whole help; a mistake is a usage error.
+        guard case let .exit(status, missing) = CommandLineParser.parse(["setup"]) else { Issue.record(); return }
+        #expect(status == ExitStatus.usage)
+        #expect(missing == "drip: missing the agent: drip setup claude, drip setup codex or drip setup gemini\n"
+            + "See 'drip setup --help'.")
     }
 
     @Test func hookMistakesExitOneNotTwo() {
@@ -321,7 +344,8 @@ struct CommandTests {
         }
         // Without an agent, one line says what is missing, not the whole help.
         guard case let .exit(_, missing) = CommandLineParser.parse(["hook"]) else { Issue.record(); return }
-        #expect(missing == "drip: missing the agent: drip hook claude or drip hook codex\nSee 'drip hook --help'.")
+        #expect(missing == "drip: missing the agent: drip hook claude, drip hook codex or drip hook gemini\n"
+            + "See 'drip hook --help'.")
         guard case let .exit(status, _) = CommandLineParser.parse(["hook", "--help"]) else { Issue.record(); return }
         #expect(status == 0)
     }
@@ -369,14 +393,15 @@ struct CommandTests {
         guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
         #expect(help.hasPrefix("OVERVIEW: Show a brief card at the notch on macOS.\n\nUSAGE: drip [KIND] [TITLE] [options]"), "\(help)")
         #expect(help.contains("drip run [options] [--] <command> [args...]"), "\(help)")
-        #expect(help.contains("drip hook claude|codex [options]"), "\(help)")
+        #expect(help.contains("drip hook claude|codex|gemini [options]"), "\(help)")
+        #expect(help.contains("drip setup claude|codex|gemini [--print]"), "\(help)")
         #expect(help.contains("drip history [--missed] [--json | --replay]"), "\(help)")
         let order = ["USAGE:", "EXAMPLES:", "ARGUMENTS:", "OPTIONS:", "SUBCOMMANDS:", "EXIT CODES:"].map {
             help.firstRange(of: "\n\($0)")?.lowerBound
         }
         #expect(order.allSatisfy { $0 != nil }, "\(help)")
         #expect(order.compactMap { $0 } == order.compactMap { $0 }.sorted(), "\(help)")
-        for subcommand in ["run", "hook", "demo", "history"] {
+        for subcommand in ["run", "hook", "setup", "demo", "history"] {
             #expect(help.contains("\n  \(subcommand) "), "\(subcommand)")
         }
         #expect(help.contains("--seconds"), "\(help)")

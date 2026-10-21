@@ -14,9 +14,12 @@ public enum ExitStatus {
     public static let invalidConfig: Int32 = 4
     /// drip asked with `--confirm` and the button was not clicked.
     public static let notClicked: Int32 = 5
-    /// `drip hook` could not make a card. Never 2: Claude Code reads exit 2 from a hook as "block",
-    /// which would stop Claude from finishing its turn.
+    /// `drip hook` could not make a card, for any reason. Never 2 or more: Claude Code and Codex read
+    /// exit 2 from a hook as "block", and Gemini CLI reads any code but 0 and 1 as "deny", which after
+    /// a turn makes it try the turn again.
     public static let hookFailed: Int32 = 1
+    /// `drip setup` left the agent's settings alone: a symlink, read-only or not plain JSON.
+    public static let setupFailed: Int32 = 1
 }
 
 extension Position: ExpressibleByArgument {}
@@ -243,14 +246,15 @@ public struct DripCommand: ParsableCommand {
         usage: """
             drip [KIND] [TITLE] [options]
             drip run [options] [--] <command> [args...]
-            drip hook claude|codex [options] [payload]
+            drip hook claude|codex|gemini [options] [payload]
+            drip setup claude|codex|gemini [--print]
             drip demo [chain|push] [options]
             drip history [--missed] [--json | --replay]
             """,
         version: dripVersion,
         subcommands: [
-            ShowCommand.self, RunCommand.self, HookCommand.self, DemoCommand.self, HistoryCommand.self,
-            RenderCommand.self, BackgroundCommand.self,
+            ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, DemoCommand.self,
+            HistoryCommand.self, RenderCommand.self, BackgroundCommand.self,
         ],
         defaultSubcommand: ShowCommand.self
     )
@@ -266,13 +270,14 @@ public struct DripCommand: ParsableCommand {
           drip run --open "$CI_URL" --button "View run" ./deploy.sh
           drip warn "staging is ready" --confirm Promote && ./promote.sh
           drip ask "my-app needs you" --icon app:com.openai.chat
+          drip setup claude
         """
 
     /// What `drip --help` ends with.
     static let exitCodes = """
         EXIT CODES:
           0  The card was shown, or handed off to be shown.
-          1  drip hook could not make a card.
+          1  drip hook could not make a card, or drip setup left the settings alone.
           2  Usage error.
           3  No GUI session, such as over ssh.
           4  The config file is invalid.
@@ -352,17 +357,17 @@ public struct RunCommand: ParsableCommand {
     }
 }
 
-/// `drip hook claude|codex [options] [payload]`: shows a card from a coding agent's hook.
+/// `drip hook claude|codex|gemini [options] [payload]`: shows a card from a coding agent's hook.
 public struct HookCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "hook",
-        abstract: "Show a card from a Claude Code or Codex hook.",
-        usage: "drip hook claude|codex [options] [payload]",
+        abstract: "Show a card from a Claude Code, Codex or Gemini CLI hook.",
+        usage: "drip hook claude|codex|gemini [options] [payload]",
         discussion: """
-            The payload is the hook's JSON: an argument, as Codex's notify passes it, or stdin, as \
-            Claude Code's hooks do. The card names the project and whether the agent needs you or is \
-            done, and each session's card replaces its last. Exits 1 instead of 2 on a mistake, since \
-            a hook that exits 2 blocks the agent.
+            The payload is the hook's JSON, on stdin as hooks pass it, or an argument as Codex's older \
+            notify does. The card names the project and whether the agent needs you, is done or \
+            stopped on an error, and each session's card replaces its last. drip setup adds these \
+            hooks for you. Any failure exits 1, since an agent reads some other codes as "block".
             """
     )
 
@@ -384,7 +389,43 @@ public struct HookCommand: ParsableCommand {
 
     public func validate() throws {
         if agentName == nil {
-            throw ValidationError("missing the agent: drip hook claude or drip hook codex")
+            throw ValidationError("missing the agent: drip hook claude, drip hook codex or drip hook gemini")
+        }
+    }
+}
+
+/// `drip setup claude|codex|gemini [--print]`: adds drip's hooks to a coding agent's settings.
+public struct SetupCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "setup",
+        abstract: "Add drip's hooks to Claude Code's, Codex's or Gemini CLI's settings.",
+        usage: "drip setup claude|codex|gemini [--print]",
+        discussion: """
+            Adds drip hook to ~/.claude/settings.json, ~/.codex/hooks.json or ~/.gemini/settings.json, \
+            keeping everything else, and backs the old file up next to it. Running it again changes \
+            nothing. A settings file that is a symlink or read-only, as home-manager makes, or that \
+            is not plain JSON is left alone: drip prints the hooks to add yourself and exits 1. For \
+            Codex it also takes drip out of notify in ~/.codex/config.toml, which the Stop hook replaces.
+            """
+    )
+
+    /// Optional here so that `drip setup` alone is a one-line error, not the whole help.
+    @Argument(help: ArgumentHelp("The agent whose settings get drip's hooks.", valueName: "agent"))
+    var agentName: AgentHook.Agent?
+
+    /// The agent whose settings get drip's hooks; `validate()` makes sure there is one.
+    public var agent: AgentHook.Agent {
+        agentName ?? .claude
+    }
+
+    @Flag(name: .customLong("print"), help: "Print drip's hooks for the agent's settings instead of adding them.")
+    public var printOnly = false
+
+    public init() {}
+
+    public func validate() throws {
+        if agentName == nil {
+            throw ValidationError("missing the agent: drip setup claude, drip setup codex or drip setup gemini")
         }
     }
 }
@@ -552,6 +593,7 @@ public enum Invocation {
     case run(RunCommand)
     case demo(DemoCommand)
     case hook(HookCommand)
+    case setup(SetupCommand)
     case history(HistoryCommand)
     case render(RenderCommand)
     /// The background drip: shows the cards it reads from standard input.
@@ -581,6 +623,7 @@ public enum CommandLineParser {
             case let command as ShowCommand: return .invocation(.show(command))
             case let command as RunCommand: return .invocation(.run(command))
             case let command as HookCommand: return .invocation(.hook(command))
+            case let command as SetupCommand: return .invocation(.setup(command))
             case let command as DemoCommand: return .invocation(.demo(command))
             case let command as HistoryCommand: return .invocation(.history(command))
             case let command as RenderCommand: return .invocation(.render(command))
