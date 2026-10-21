@@ -284,9 +284,12 @@ final class StackPresenter: CardPresenting {
         } else {
             layers.drain(over: card.seconds, at: started + entry.countdownFrom)
         }
-        // The sound lands as the drop first shows.
+        // The sound and VoiceOver's announcement land as the drop first shows.
         drawing.sound = CardSound(card.sound, console: console)
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(start - now, 0) + 0.05) { drawing.sound?.play() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(start - now, 0) + 0.05) {
+            drawing.sound?.play()
+            CardPresenters.announce(card)
+        }
         updateAccessibility()
     }
 
@@ -323,6 +326,7 @@ final class StackPresenter: CardPresenting {
         }
         drawing.sound = CardSound(card.sound, console: console)
         drawing.sound?.play()
+        CardPresenters.announce(card)
         updateAccessibility()
     }
 

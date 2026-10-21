@@ -854,6 +854,7 @@ final class IslandPresenter: CardPresenting {
         layers.apply(layers.frame(animator.shape(at: 0), layout: animator.content(for: animator.shape(at: 0))))
         panel.orderFrontRegardless()
         sound = CardSound(card.sound, console: console)
+        CardPresenters.announce(card)
 
         let motion = CardPresenters.motion(for: card)
         waiting = card.waits
@@ -963,6 +964,7 @@ final class IslandPresenter: CardPresenting {
         hovering = false
         sound = CardSound(card.sound, console: console)
         sound?.play()
+        CardPresenters.announce(card)
 
         waiting = card.waits
         if waiting {

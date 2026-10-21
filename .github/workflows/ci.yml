@@ -32,7 +32,7 @@ jobs:
       - run: swift test --skip-build
 
   macos:
-    # The release build, the way the Homebrew formula makes it.
+    # The release build, the way the Homebrew formula makes it for `brew install --HEAD`.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-latest
     steps:

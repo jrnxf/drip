@@ -38,10 +38,14 @@ drip ok "drip works"
 A green card grows out of the notch, or out of the top edge of a screen without one, and drip
 prints nothing. `drip demo` then drops a few cards from the notch, stacking them under one another.
 
-Homebrew builds drip from source with the Swift in the Command Line Tools, which Homebrew already
-needs, in about a minute. Xcode is not needed.
+Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs, in a few
+seconds: nothing to compile, and no Xcode. Install it with Homebrew rather than downloading the
+binary from the release page: the binary is signed ad hoc, not notarized, so Gatekeeper blocks a
+copy downloaded in a browser, while brew's download runs as it is. To build the latest `main` from
+source instead, run `brew install --HEAD jrnxf/tap/drip`.
 
-Without Homebrew, build it the same way and put the binary on your `PATH`:
+Without Homebrew, build it from source with the Swift in the Command Line Tools and put the binary
+on your `PATH`:
 
 ```sh
 xcode-select --install   # only if swift is not found; drip needs Swift 5.9 or newer

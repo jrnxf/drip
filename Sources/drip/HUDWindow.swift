@@ -309,6 +309,18 @@ enum CardPresenters {
             ?? NSScreen.screens.first
     }
 
+    /// Has VoiceOver read `card` out as it shows. The panels never take focus, so VoiceOver would
+    /// not move to them on its own. A failure or an ask interrupts what it is reading.
+    static func announce(_ card: Card) {
+        let priority: NSAccessibilityPriorityLevel = card.isUrgent ? .high : .medium
+        NSAccessibility.post(
+            element: NSApplication.shared, notification: .announcementRequested,
+            userInfo: [
+                .announcement: CardText.spoken(title: card.title, detail: card.detail),
+                .priority: priority.rawValue,
+            ])
+    }
+
     /// The card's motion setting, capped by Reduce Motion.
     static func motion(for card: Card) -> Motion {
         card.motion.capped(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
@@ -426,6 +438,7 @@ final class CardPresenter: CardPresenting {
         panel.invalidateShadow()
         sound = CardSound(card.sound, console: console)
         sound?.play()
+        CardPresenters.announce(card)
 
         self.travel = travel
         motionAmount = motion
@@ -455,6 +468,7 @@ final class CardPresenter: CardPresenting {
         handleClicks(on: built, pointerInside: held)
         sound = CardSound(card.sound, console: console)
         sound?.play()
+        CardPresenters.announce(card)
         waiting = card.waits
         hovering = held
         if held {
