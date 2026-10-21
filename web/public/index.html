@@ -1,694 +1,471 @@
 <!doctype html>
-<html lang="en" data-dir="a" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>drip - the notch, finally useful</title>
-<meta name="description" content="drip drops a native card out of your Mac's camera notch from any shell command: what finished, and how it went. This page runs drip's real engine, compiled to WebAssembly.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3c5 7 9 11.5 9 16.5A9 9 0 0 1 7 19.5C7 14.5 11 10 16 3z' fill='%2330d158'/%3E%3C/svg%3E">
+<title>drip - cards from your Mac's notch</title>
+<meta name="description" content="drip is a command-line tool for macOS. One shell command drops a card out of the camera notch: what finished, and how it went. This page runs drip's engine, compiled to WebAssembly.">
+<link rel="canonical" href="https://drip.jrnxf.co/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="drip">
+<meta property="og:url" content="https://drip.jrnxf.co">
+<meta property="og:title" content="drip - cards from your Mac's notch">
+<meta property="og:description" content="One shell command drops a card out of your Mac's camera notch: what finished, and how it went. Try it in the page: it runs drip's engine.">
+<meta property="og:image" content="https://drip.jrnxf.co/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="drip, drawn as a small grey device: a display with a drip card under the notch, a printer tape, and a row of keys.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="drip - cards from your Mac's notch">
+<meta name="twitter:description" content="One shell command drops a card out of your Mac's camera notch: what finished, and how it went.">
+<meta name="twitter:image" content="https://drip.jrnxf.co/og.png">
+<meta name="twitter:image:alt" content="drip, drawn as a small grey device: a display with a drip card under the notch, a printer tape, and a row of keys.">
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#d9d9d5" media="(prefers-color-scheme: light)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3c5 7 9 11.5 9 16.5A9 9 0 0 1 7 19.5C7 14.5 11 10 16 3z' fill='%23ff4f00'/%3E%3C/svg%3E">
+<link rel="preload" href="archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="martian-mono.woff2" as="font" type="font/woff2" crossorigin>
+<script>
+  // The theme before the first paint: ?theme=, then the visitor's last choice, then the system's.
+  (() => {
+    const ok = (v) => (v === "dark" || v === "light" ? v : null);
+    let saved = null;
+    try { saved = localStorage.getItem("drip-theme"); } catch {}
+    document.documentElement.dataset.theme = ok(new URLSearchParams(location.search).get("theme")) ?? ok(saved)
+      ?? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  })();
+</script>
 <style>
-  /* ---------- tokens ---------- */
-  :root {
-    /* The island's own font, which the engine measures text in. Never changed by a direction. */
-    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-    --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
-    --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
-    --body: var(--sans);
-    --ok: #30d158; --warn: #ff9f0a; --fail: #ff453a; --info: #0a84ff; --purple: #bf5af2;
-    --radius: 22px; --radius-sm: 12px; --gutter: 16px;
-    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Archivo and Martian Mono, latin subsets, self-hosted (licences in web/THIRD_PARTY.md). */
+  @font-face {
+    font-family: "Archivo"; font-style: normal; font-weight: 100 900; font-stretch: 62% 125%; font-display: swap;
+    src: url(archivo.woff2) format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
   }
-  /* Direction A, "Aurora": liquid, glassy, a glow behind the screen. */
-  html[data-dir="a"][data-theme="dark"] {
-    color-scheme: dark;
-    --bg: #050608; --bg-2: #0b0c10; --surface: rgba(255,255,255,.035); --surface-2: rgba(255,255,255,.06);
-    --border: rgba(255,255,255,.09); --border-2: rgba(255,255,255,.16);
-    --text: #f5f5f7; --muted: #a0a0ab; --faint: #6c6c78;
-    --accent: #30d158; --accent-ink: #04120a; --link: #64d2ff;
-    --glow-1: rgba(48,209,88,.28); --glow-2: rgba(10,132,255,.30); --glow-3: rgba(191,90,242,.22);
-    --wall: radial-gradient(90% 120% at 12% -10%, #5b3fb0 0%, transparent 55%),
-            radial-gradient(80% 110% at 95% 0%, #0d6e86 0%, transparent 58%),
-            radial-gradient(70% 90% at 50% 120%, #b4467a 0%, transparent 60%),
-            linear-gradient(180deg, #1c1838, #0c1224);
-    --term-bg: rgba(14,14,20,.78); --term-text: #e9e9ef; --term-dim: #8a8a96; --term-border: rgba(255,255,255,.12);
-    --bezel: #0d0d10;
-  }
-  html[data-dir="a"][data-theme="light"] {
-    color-scheme: light;
-    --bg: #f6f6f9; --bg-2: #ffffff; --surface: rgba(255,255,255,.72); --surface-2: #ffffff;
-    --border: rgba(10,10,30,.09); --border-2: rgba(10,10,30,.18);
-    --text: #0b0b12; --muted: #54545f; --faint: #8a8a96;
-    --accent: #18a148; --accent-ink: #ffffff; --link: #0a6fd6;
-    --glow-1: rgba(48,209,88,.30); --glow-2: rgba(10,132,255,.24); --glow-3: rgba(191,90,242,.20);
-    --wall: radial-gradient(90% 120% at 10% -10%, #c9b8ff 0%, transparent 55%),
-            radial-gradient(80% 110% at 95% 0%, #9fe4f2 0%, transparent 58%),
-            radial-gradient(70% 90% at 50% 120%, #ffc2d9 0%, transparent 60%),
-            linear-gradient(180deg, #ece8ff, #e3f2fb);
-    --term-bg: rgba(18,18,26,.86); --term-text: #ececf2; --term-dim: #9191a0; --term-border: rgba(255,255,255,.10);
-    --bezel: #1a1a1f;
-  }
-  /* Direction B, "Signal": editorial, monospaced, hairlines, one highlighter. */
-  html[data-dir="b"] {
-    --display: var(--mono); --radius: 4px; --radius-sm: 3px;
-  }
-  html[data-dir="b"][data-theme="dark"] {
-    color-scheme: dark;
-    --bg: #0a0a0a; --bg-2: #0f0f0f; --surface: #0f0f0f; --surface-2: #151515;
-    --border: #232323; --border-2: #3a3a3a;
-    --text: #ededed; --muted: #8f8f8f; --faint: #5e5e5e;
-    --accent: #c6ff3a; --accent-ink: #0a0a0a; --link: #c6ff3a; --mark: #c6ff3a;
-    --wall: radial-gradient(circle at 1px 1px, #2a2a2a 1px, transparent 1.2px) 0 0 / 18px 18px, #121212;
-    --term-bg: #070707; --term-text: #e6e6e6; --term-dim: #7a7a7a; --term-border: #2a2a2a;
-    --bezel: #000;
-  }
-  html[data-dir="b"][data-theme="light"] {
-    color-scheme: light;
-    --bg: #f3f1ea; --bg-2: #faf9f4; --surface: #faf9f4; --surface-2: #ffffff;
-    --border: #d8d4c8; --border-2: #b5b0a2;
-    --text: #111111; --muted: #57544c; --faint: #8b877c;
-    --accent: #111111; --accent-ink: #f3f1ea; --link: #111111; --mark: #d4ff4a;
-    --wall: radial-gradient(circle at 1px 1px, #c9c4b5 1px, transparent 1.2px) 0 0 / 18px 18px, #e7e3d7;
-    --term-bg: #faf9f4; --term-text: #161616; --term-dim: #7d796e; --term-border: #cfcabd;
-    --bezel: #111;
+  @font-face {
+    font-family: "Martian Mono"; font-style: normal; font-weight: 100 800; font-stretch: 75% 112.5%; font-display: swap;
+    src: url(martian-mono.woff2) format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
   }
 
-  /* ---------- base ---------- */
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
-  body {
-    margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 var(--body);
-    -webkit-font-smoothing: antialiased; overflow-x: hidden; text-rendering: optimizeLegibility;
-    transition: background-color .3s var(--ease-out), color .3s var(--ease-out);
+  /* drip drawn as a small piece of hardware: a display that runs the engine, keys you press and
+     a printer that prints what ran. One orange. */
+  :root {
+    --sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --mono: "Martian Mono", ui-monospace, Menlo, monospace;
+    /* The cards are macOS UI: their text is measured and painted in the system font. */
+    --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    --orange: #ff4f00; --orange-hi: #ff7a3d; --orange-lo: #a83300;
+    --ease: cubic-bezier(.23, 1, .32, 1);
   }
-  a { color: inherit; }
-  button { font: inherit; color: inherit; }
-  :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 6px; }
-  code, kbd, .mono { font-family: var(--mono); }
-  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 var(--gutter); }
+  :root, :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111111; --ink: #ecece8; --ink-2: #b0b0aa; --ink-3: #8a8a84; --rule: #2a2a28; --focus: var(--orange);
+    --body: #222221; --body-2: #1b1b1a; --edge: #333331; --shade: rgba(0,0,0,.6); --lip: rgba(255,255,255,.06);
+    --lcd: #2b2f2a; --lcd-ink: #d9e3d2; --lcd-grid: rgba(255,255,255,.025);
+    --key: #343432; --key-2: #252524; --key-ink: #e6e6e2; --key-floor: #0b0b0b;
+    --paper: #e9e7df; --paper-ink: #1d1d1b;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #d9d9d5; --ink: #151515; --ink-2: #42423f; --ink-3: #5c5c57; --rule: #b9b9b3; --focus: #c43a00;
+    --body: #eeeeeb; --body-2: #e2e2de; --edge: #b5b5af; --shade: rgba(0,0,0,.18); --lip: rgba(255,255,255,.55);
+    --lcd: #c3c8bd; --lcd-ink: #1d211b; --lcd-grid: rgba(0,0,0,.04);
+    --key: #f7f7f5; --key-2: #d8d8d3; --key-ink: #222; --key-floor: var(--edge);
+    --paper: #fbfbf8; --paper-ink: #222;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 16px; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 300 17px/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  a { color: inherit; text-underline-offset: 3px; }
+  button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  code, kbd, input, textarea { font-family: var(--mono); }
+  code { font-size: .82em; }
+  b { font-weight: 600; }
+  .lbl { font: 500 10.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .wrap { max-width: 1480px; margin: 0 auto; padding: 0 36px; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-  /* ---------- nav ---------- */
-  .nav {
-    position: sticky; top: 0; z-index: 50; padding-top: env(safe-area-inset-top);
-    background: color-mix(in srgb, var(--bg) 72%, transparent);
-    backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px);
-    border-bottom: 1px solid transparent; transition: border-color .2s;
-  }
-  .nav.scrolled { border-bottom-color: var(--border); }
-  .nav .wrap { display: flex; align-items: center; gap: 12px; height: 60px; }
-  .brand { display: flex; align-items: center; gap: 9px; text-decoration: none; font: 700 19px/1 var(--display); letter-spacing: -0.03em; }
-  .brand svg { width: 22px; height: 22px; }
-  .nav .links { display: flex; gap: 4px; margin-left: 18px; }
-  .nav .links a { text-decoration: none; color: var(--muted); font-size: 14px; padding: 7px 11px; border-radius: 999px; transition: color .15s, background .15s; }
-  .nav .links a:hover { color: var(--text); background: var(--surface-2); }
-  .nav .spacer { flex: 1; }
-  .seg { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
-  .seg button {
-    border: 0; background: transparent; padding: 5px 11px; border-radius: 999px; cursor: pointer;
-    font: 600 12px/1 var(--mono); color: var(--muted); letter-spacing: .02em; transition: color .15s, background .2s;
-  }
-  .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
-  .seg button .long { font-weight: 500; opacity: .8; }
-  .iconbtn {
-    display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 999px; cursor: pointer;
-    border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; transition: background .15s, border-color .15s;
-  }
-  .iconbtn:hover { border-color: var(--border-2); }
-  .iconbtn svg { width: 17px; height: 17px; }
-  html[data-theme="dark"] .sun, html[data-theme="light"] .moon { display: none; }
-  html[data-dir="b"] .seg, html[data-dir="b"] .seg button, html[data-dir="b"] .iconbtn { border-radius: 3px; }
+  /* ---------- top ---------- */
+  .top { display: flex; align-items: center; gap: 22px; height: 58px; }
+  .word { font: 750 22px/1 var(--sans); font-stretch: 125%; letter-spacing: -.02em; text-decoration: none; }
+  .word i { font-style: normal; color: var(--orange); }
+  .top .sp { flex: 1; }
+  .top nav { display: flex; gap: 22px; }
+  .top a.lbl { text-decoration: none; }
+  .top a.lbl:hover { color: var(--ink); }
+  /* Two-position slide switches: the theme, the readout. */
+  .slide { display: flex; align-items: center; gap: 9px; border: 0; background: none; padding: 0; cursor: pointer; }
+  .slide .track { position: relative; flex: none; width: 44px; height: 20px; border-radius: 5px; background: var(--body-2); box-shadow: inset 0 1px 3px var(--shade); border: 1px solid var(--edge); }
+  .slide .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 14px; border-radius: 3px; background: var(--key); box-shadow: 0 1px 0 var(--edge), 0 2px 4px var(--shade); transition: transform .25s var(--ease), background .2s; }
+  .slide[aria-checked="true"] .track::after { transform: translateX(20px); }
+  .slide.lit[aria-checked="true"] .track::after { background: var(--orange); }
 
   /* ---------- hero ---------- */
-  .hero { position: relative; padding: 40px 0 24px; }
-  .aurora { position: absolute; inset: -120px 0 auto 0; height: 980px; pointer-events: none; overflow: hidden; z-index: -1; }
-  .aurora i { position: absolute; border-radius: 50%; filter: blur(80px); opacity: .9; }
-  .aurora i:nth-child(1) { width: 620px; height: 420px; left: 8%; top: 300px; background: var(--glow-2); animation: drift 22s ease-in-out infinite alternate; }
-  .aurora i:nth-child(2) { width: 520px; height: 380px; right: 6%; top: 360px; background: var(--glow-3); animation: drift 26s ease-in-out infinite alternate-reverse; }
-  .aurora i:nth-child(3) { width: 520px; height: 300px; left: 34%; top: 520px; background: var(--glow-1); animation: drift 30s ease-in-out infinite alternate; }
-  @keyframes drift { from { transform: translate3d(-30px, 0, 0) scale(1); } to { transform: translate3d(40px, -30px, 0) scale(1.08); } }
-  html[data-dir="b"] .aurora { display: none; }
-  .hero .intro { text-align: center; max-width: 920px; margin: 0 auto; }
-  .eyebrow {
-    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px;
-    border: 1px solid var(--border); background: var(--surface); font: 500 13px/1 var(--body); color: var(--muted);
-    text-decoration: none;
+  .hero {
+    display: grid; grid-template-columns: minmax(300px, .7fr) minmax(0, 1.38fr); grid-template-areas: "intro device" "specs device";
+    grid-template-rows: auto auto; column-gap: 56px; align-items: start; align-content: center; padding: 8px 0 40px; min-height: calc(100svh - 58px);
   }
-  .eyebrow .live { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); font: 600 11px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase; }
-  .eyebrow .live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 0 currentColor; animation: pulse 2s infinite; }
-  @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent); } 70%, 100% { box-shadow: 0 0 0 7px transparent; } }
-  h1 {
-    margin: 18px 0 14px; font: 700 clamp(42px, 6.4vw, 84px)/0.96 var(--display); letter-spacing: -0.055em; text-wrap: balance;
-  }
-  h1 .hl {
-    background: linear-gradient(100deg, #30d158 0%, #64d2ff 45%, #bf5af2 90%); -webkit-background-clip: text; background-clip: text; color: transparent;
-    padding-right: .04em;
-  }
-  html[data-theme="light"][data-dir="a"] h1 .hl { background-image: linear-gradient(100deg, #16a34a 0%, #0a84ff 50%, #9333ea 95%); }
-  .lede { margin: 0 auto; max-width: 640px; font-size: clamp(17px, 2vw, 20px); line-height: 1.5; color: var(--muted); text-wrap: pretty; }
-  .lede b { color: var(--text); font-weight: 600; }
-  .ctas { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
-  .install {
-    display: inline-flex; align-items: center; gap: 12px; padding: 7px 7px 7px 18px; border-radius: 999px;
-    background: var(--surface); border: 1px solid var(--border-2); font: 500 15px/1 var(--mono); max-width: 100%;
-  }
-  .install .dollar { color: var(--faint); user-select: none; }
-  .install code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 999px; cursor: pointer;
-    border: 1px solid var(--border-2); background: var(--surface-2); font: 600 14px/1 var(--body); text-decoration: none; white-space: nowrap;
-    transition: transform .15s var(--ease-out), background .15s, border-color .15s;
-  }
-  .btn:hover { border-color: var(--text); }
-  .btn:active { transform: scale(.97); }
-  .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
-  .btn svg { width: 16px; height: 16px; }
-  .install .btn { height: 34px; padding: 0 12px; font-size: 13px; }
-  html[data-dir="b"] .install, html[data-dir="b"] .btn, html[data-dir="b"] .eyebrow, html[data-dir="b"] .eyebrow .live { border-radius: 3px; }
+  .intro { grid-area: intro; align-self: end; }
+  .hero .specs { grid-area: specs; }
+  .devwrap { grid-area: device; align-self: center; }
+  .model { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; }
+  .model span { padding: 4px 7px; border: 1px solid var(--ink); font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  .model span:first-child { background: var(--ink); color: var(--bg); }
+  h1 { margin: 0; font: 200 clamp(46px, 5vw, 84px)/.98 var(--sans); font-stretch: 125%; letter-spacing: -.035em; }
+  h1 b { font-weight: 600; }
+  .lede { margin: 22px 0 0; max-width: 34ch; font-size: 18px; color: var(--ink-2); }
+  .lede b { color: var(--ink); }
+  .plate { margin-top: 26px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; background: var(--body); border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--lip); }
+  .plate code { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .copy-btn { flex: none; border: 0; padding: 6px 10px; border-radius: 5px; background: var(--orange); color: #111; font: 600 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; box-shadow: 0 2px 0 var(--orange-lo); }
+  .copy-btn:active { transform: translateY(2px); box-shadow: none; }
+  .specs { margin: 26px 0 0; padding: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 18px; }
+  .specs dt { font: 500 10.5px/1.6 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .specs dd { margin: 0; font: 400 12px/1.6 var(--mono); }
+  .specs dd code { font-size: inherit; }
 
-  /* B's hero: left aligned, mono, highlighter. */
-  html[data-dir="b"] .hero .intro { text-align: left; max-width: none; display: grid; grid-template-columns: 1fr; gap: 0; }
-  html[data-dir="b"] h1 { font-weight: 700; letter-spacing: -0.06em; font-size: clamp(38px, 6.4vw, 84px); line-height: .98; }
-  html[data-dir="b"] h1 .hl { background: var(--mark); color: #0a0a0a; -webkit-background-clip: border-box; background-clip: border-box; padding: 0 .12em; margin-left: -.04em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
-  html[data-dir="b"] .lede { margin: 0; }
-  html[data-dir="b"] .ctas { justify-content: flex-start; }
-  html[data-dir="b"] .hero { padding-top: 40px; }
-  html[data-dir="b"] .eyebrow { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
-
-
-  .usage { display: none; }
-  @media (min-width: 1040px) {
-    html[data-dir="b"] .hero .intro { grid-template-columns: 1fr 360px; column-gap: 56px; align-items: end; }
-    html[data-dir="b"] .hero .intro > :not(.usage) { grid-column: 1; }
-    html[data-dir="b"] .usage { display: block; grid-column: 2; grid-row: 1 / span 4; align-self: end; margin-bottom: 4px; }
+  /* ---------- the device ---------- */
+  .devwrap { position: relative; padding: 26px 0 30px; }
+  .device, .module {
+    position: relative; border-radius: 26px; padding: 22px; background: linear-gradient(180deg, var(--body), var(--body-2));
+    border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--lip), 0 1px 0 var(--edge), 0 30px 60px -30px var(--shade), 0 12px 24px -16px var(--shade);
   }
-  .usage { border: 1px solid var(--border-2); font: 12.5px/1.75 var(--mono); color: var(--muted); }
-  .usage .h { display: flex; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid var(--border-2); color: var(--text); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 11px; }
-  .usage pre { margin: 0; padding: 12px 14px 14px; font: inherit; white-space: pre-wrap; }
-  .usage pre b { color: var(--text); font-weight: 600; }
-  .usage pre i { font-style: normal; color: var(--faint); }
-
-  /* ---------- the Mac ---------- */
-  .mac { position: relative; margin: 36px auto 0; max-width: 1120px; }
-  .bezel {
-    position: relative; padding: 10px 10px 0; border-radius: 26px 26px 0 0; background: var(--bezel);
-    box-shadow: 0 0 0 1px rgba(255,255,255,.07) inset, 0 40px 120px -30px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.4);
+  :root[data-theme="dark"] .device, :root[data-theme="dark"] .module { box-shadow: inset 0 1px 0 var(--lip), 0 30px 60px -30px #000, 0 12px 24px -16px #000; }
+  .screw { position: absolute; width: 11px; height: 11px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, var(--key), var(--key-2)); box-shadow: inset 0 0 0 1px var(--edge); }
+  .screw::after { content: ""; position: absolute; left: 2px; right: 2px; top: 5px; height: 1px; background: var(--ink-3); transform: rotate(var(--r, 30deg)); }
+  .screw.a { top: 9px; left: 9px; } .screw.b { top: 9px; right: 9px; --r: -20deg; } .screw.c { bottom: 9px; left: 9px; --r: 70deg; } .screw.d { bottom: 9px; right: 9px; --r: 10deg; }
+  .devgrid { --disp: 300px; display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 18px; }
+  .display {
+    position: relative; height: 300px; border-radius: 10px; overflow: hidden;
+    background: linear-gradient(var(--lcd-grid) 1px, transparent 1px) 0 0 / 3px 3px, linear-gradient(90deg, var(--lcd-grid) 1px, transparent 1px) 0 0 / 3px 3px, var(--lcd);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,.35), 0 0 0 4px var(--body-2), 0 0 0 5px var(--edge);
   }
-  .bezel::after { /* the laptop's lip */
-    content: ""; position: absolute; left: -2.5%; right: -2.5%; bottom: -14px; height: 14px; border-radius: 0 0 14px 14px;
-    background: linear-gradient(180deg, #2b2b31, #121215); box-shadow: 0 18px 40px -12px rgba(0,0,0,.6);
+  .devgrid .display { height: var(--disp); }
+  .display .stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
+  /* The display's own print, scaled with the notch so it keeps clear of it. */
+  .display .glyphs { position: absolute; inset: 0 0 auto 0; height: 32px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px; font: 500 10px/1 var(--mono); letter-spacing: .08em; color: var(--lcd-ink); opacity: .7; width: calc(100% / var(--fit, 1)); transform: scale(var(--fit, 1)); transform-origin: 0 0; }
+  .loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 16px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--lcd-ink); }
+  .side { display: flex; flex-direction: column; gap: 12px; min-width: 0; height: var(--disp); }
+  /* The printer keeps to its height: older lines leave the top of the tape, as paper does. */
+  .printer { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .slot { flex: none; height: 10px; border-radius: 5px; background: #0d0d0d; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--lip); margin: 0 4px; }
+  .tape {
+    position: relative; flex: 1; min-height: 0; margin: -4px 12px 0; padding: 12px 10px 10px; background: var(--paper); color: var(--paper-ink);
+    font: 400 9.5px/1.55 var(--mono); overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end;
+    -webkit-mask: linear-gradient(180deg, transparent 0, #000 18px, #000 100%); mask: linear-gradient(180deg, transparent 0, #000 18px, #000 100%);
+    box-shadow: 0 6px 14px -8px var(--shade);
   }
-  html[data-theme="light"] .bezel::after { background: linear-gradient(180deg, #d4d4da, #a9a9b1); }
-  .screen {
-    position: relative; overflow: hidden; border-radius: 16px 16px 0 0; height: clamp(420px, 44vw, 560px);
-    background: var(--wall);
-  }
-  html[data-dir="b"] .bezel { border-radius: 8px 8px 0 0; padding: 8px 8px 0; box-shadow: 0 0 0 1px var(--border-2); }
-  html[data-dir="b"] .bezel::after { border-radius: 0 0 4px 4px; }
-  html[data-dir="b"] .screen { border-radius: 3px 3px 0 0; }
-  .menubar {
-    position: absolute; inset: 0 0 auto 0; height: calc(32px * var(--fit, 1)); display: flex; align-items: center; justify-content: space-between;
-    padding: 0 14px; font: 13px/1 var(--sans); color: rgba(255,255,255,.92); z-index: 1;
-    background: rgba(18,18,28,.28); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
-  }
-  html[data-theme="light"] .menubar { color: rgba(0,0,0,.85); background: rgba(255,255,255,.35); }
-  .menubar .left, .menubar .right { display: flex; align-items: center; gap: 18px; white-space: nowrap; }
-  .menubar b { font-weight: 650; }
-  .menubar svg { width: 15px; height: 15px; display: block; }
-  .stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
-  .loading {
-    position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 4; display: flex; align-items: center; gap: 10px;
-    padding: 10px 16px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; font: 500 13px/1 var(--sans);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  }
-  .loading::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin .8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* The terminal window, on the desktop on wide screens and under the screen on narrow ones. */
-  .term {
-    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); width: min(720px, calc(100% - 48px)); z-index: 2;
-    border-radius: 12px; overflow: hidden; background: var(--term-bg); color: var(--term-text);
-    border: 1px solid var(--term-border); font: 13.5px/1.6 var(--mono);
-    box-shadow: 0 30px 80px -20px rgba(0,0,0,.6), 0 0 0 .5px rgba(0,0,0,.6);
-    backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%);
-  }
-  html[data-dir="b"] .term { border-radius: 4px; box-shadow: 8px 8px 0 0 rgba(0,0,0,.35); }
-  html[data-dir="b"][data-theme="light"] .term { box-shadow: 8px 8px 0 0 #111; }
-  .term .bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font: 12px/1 var(--sans); color: var(--term-dim); border-bottom: 1px solid var(--term-border); }
-  .term .bar .lights { display: flex; gap: 7px; }
-  .term .bar .lights i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
-  .term .bar .lights i:nth-child(2) { background: #febc2e; } .term .bar .lights i:nth-child(3) { background: #28c840; }
-  html[data-dir="b"] .term .bar .lights i { background: transparent; border: 1.5px solid var(--term-dim); border-radius: 2px; }
-  .term .bar .title { flex: 1; text-align: center; margin-right: 47px; }
-  .scroll { height: 178px; overflow-y: auto; padding: 10px 14px 0; white-space: pre-wrap; word-break: break-word; scrollbar-width: thin; }
-  .line { min-height: 1.6em; }
-  .prompt { color: var(--ok); user-select: none; }
-  html[data-dir="b"][data-theme="light"] .term .prompt { color: #3a7d00; }
-  .err { color: #ff6b62; }
-  html[data-dir="b"][data-theme="light"] .term .err { color: #c0281f; }
-  .dim { color: var(--term-dim); }
-  .inputline { display: flex; gap: 9px; padding: 2px 14px 8px; align-items: baseline; }
+  .tape .scroll { max-height: 100%; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .tape .line { min-height: 1.55em; }
+  .tape .prompt { font-weight: 700; }
+  .tape .err { text-decoration: underline wavy; text-underline-offset: 2px; }
+  .tape .dim { opacity: .62; }
+  .lcdline { flex: none; display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 38px; border-radius: 7px; background: var(--lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); color: var(--lcd-ink); font: 500 11.5px/1 var(--mono); }
+  .lcdline:focus-within { box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--focus); }
+  .lcdline .p { opacity: .7; }
   .field { position: relative; flex: 1; min-width: 0; }
-  .field input, .field .ghost { font: inherit; letter-spacing: normal; padding: 0; margin: 0; border: 0; }
-  .field input { position: relative; z-index: 1; width: 100%; background: transparent; outline: none; color: var(--term-text); caret-color: var(--ok); }
-  .field input::placeholder { color: var(--term-dim); opacity: .75; }
+  .field input, .field .ghost { font: inherit; padding: 0; margin: 0; border: 0; }
+  .field input { position: relative; z-index: 1; width: 100%; background: transparent; outline: none; color: var(--lcd-ink); caret-color: var(--orange); }
+  .field input::placeholder { color: var(--lcd-ink); opacity: .55; }
   .field .ghost { position: absolute; inset: 0; white-space: pre; overflow: hidden; color: transparent; pointer-events: none; }
-  .field .ghost span { color: var(--term-dim); opacity: .7; }
-  .hint {
-    display: flex; gap: 14px; align-items: center; padding: 7px 14px 9px; font: 11.5px/1.3 var(--sans); color: var(--term-dim);
-    border-top: 1px solid var(--term-border); min-height: 32px;
+  .field .ghost span { color: var(--lcd-ink); opacity: .45; }
+  .keys { margin-top: 18px; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 10px; }
+  .key {
+    position: relative; aspect-ratio: 1 / .9; border-radius: 10px; border: 1px solid var(--edge); cursor: pointer; padding: 9px 8px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start;
+    background: linear-gradient(180deg, var(--key), var(--key-2)); color: var(--key-ink); box-shadow: 0 3px 0 var(--key-floor), 0 6px 10px -4px var(--shade), inset 0 1px 0 var(--lip);
+    transition: transform .08s, box-shadow .08s; text-align: left; min-width: 0;
   }
-  .hint .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .hint .what code { color: var(--term-text); }
-  .hint kbd { font: 600 10.5px/1 var(--mono); padding: 3px 5px; border-radius: 4px; border: 1px solid var(--term-border); color: var(--term-text); }
-  .hint .keys { display: flex; gap: 10px; white-space: nowrap; }
+  .key:active { transform: translateY(3px); box-shadow: 0 0 0 var(--key-floor), 0 2px 4px -2px var(--shade), inset 0 1px 0 var(--lip); }
+  .key .led { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--c) 30%, var(--key-2)); box-shadow: inset 0 1px 1px rgba(0,0,0,.3); transition: background .15s, box-shadow .15s; }
+  .key.running .led { background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px var(--c); }
+  .key b { font: 600 10.5px/1.1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  /* The silkscreen under the keys: what the line you type means, the keys it takes, the readout switch. */
+  .strip { display: flex; align-items: center; gap: 18px; margin-top: 16px; min-height: 20px; }
+  .strip .hint { flex: 1; min-width: 0; font: 400 10.5px/1.5 var(--mono); color: var(--ink-2); }
+  .strip .hint code { font-size: inherit; color: var(--ink); }
+  .strip kbd { font: 600 9.5px/1 var(--mono); padding: 2px 4px; border: 1px solid var(--edge); border-radius: 3px; background: var(--key); color: var(--key-ink); }
+  .strip .legend { display: flex; gap: 12px; white-space: nowrap; }
+  /* Callouts, as on an exploded drawing. */
+  .callout { position: absolute; display: flex; align-items: center; gap: 8px; font: 500 10px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+  .callout::before { content: attr(data-n); display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid currentColor; font-size: 9px; letter-spacing: 0; }
+  .callout i { display: block; height: 1px; background: currentColor; width: var(--w, 40px); }
+  .callout.tl { top: 0; left: 0; } .callout.tr { top: 0; right: 0; } .callout.bl { bottom: 0; left: 0; } .callout.br { bottom: 0; right: 0; }
 
-  /* ---------- chips ---------- */
-  .tryit { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 34px auto 0; max-width: 980px; }
-  .tryit .label { width: 100%; text-align: center; font: 600 12px/1 var(--mono); color: var(--faint); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
-  .chip {
-    display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px 0 11px; border-radius: 999px; cursor: pointer;
-    border: 1px solid var(--border); background: var(--surface); font: 500 14px/1 var(--body); color: var(--text);
-    transition: transform .18s var(--ease-out), border-color .15s, background .15s;
-  }
-  .chip:hover { border-color: var(--border-2); background: var(--surface-2); transform: translateY(-1px); }
-  .chip:active { transform: scale(.96); }
-  .chip .dot { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: #fff; flex: none; }
-  .chip .dot svg { width: 11px; height: 11px; }
-  .chip.running { border-color: var(--text); }
-  html[data-dir="b"] .chip { border-radius: 3px; font-family: var(--mono); font-size: 13px; }
-  html[data-dir="b"] .chip .dot { border-radius: 2px; }
-  html[data-dir="b"] .tryit { justify-content: flex-start; max-width: none; }
-  html[data-dir="b"] .tryit .label { text-align: left; }
-  .readout-toggle { display: inline-flex; align-items: center; gap: 10px; height: 38px; padding: 0 14px; border-radius: 999px; border: 1px dashed var(--border-2); background: transparent; cursor: pointer; font: 500 13px/1 var(--mono); color: var(--muted); }
-  .readout-toggle .sw { position: relative; width: 28px; height: 16px; border-radius: 99px; background: var(--border-2); transition: background .2s; }
-  .readout-toggle .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .2s var(--ease-out); }
-  .readout-toggle[aria-pressed="true"] { color: var(--text); border-style: solid; }
-  .readout-toggle[aria-pressed="true"] .sw { background: var(--ok); }
-  .readout-toggle[aria-pressed="true"] .sw::after { transform: translateX(12px); }
-  html[data-dir="b"] .readout-toggle { border-radius: 3px; }
-
-  /* ---------- engine readout ---------- */
-  .readout { display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; max-width: 1120px; margin: 18px auto 0; }
+  /* ---------- the engine readout ---------- */
+  .readout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; padding: 0 0 56px; }
   .readout[hidden] { display: none; }
-  .panel { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-sm); padding: 16px 18px; min-width: 0; }
-  .panel h3 { margin: 0 0 4px; font: 600 12px/1.2 var(--mono); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
-  .panel p { margin: 0 0 12px; font-size: 13.5px; color: var(--muted); }
-  dl.nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 18px; margin: 0; font: 12.5px/1.5 var(--mono); }
-  dl.nums div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dashed var(--border); padding: 2px 0; }
-  dl.nums dt { color: var(--faint); } dl.nums dd { margin: 0; font-variant-numeric: tabular-nums; }
-  canvas.plot { width: 100%; height: 110px; display: block; margin-top: 12px; }
-  .toggles { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; font-size: 13px; color: var(--muted); }
-  .toggles label { display: inline-flex; gap: 7px; align-items: center; cursor: pointer; }
-  .toggles input { accent-color: var(--ok); }
-  textarea.config {
-    width: 100%; min-height: 128px; resize: vertical; background: var(--bg-2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 12px; font: 12.5px/1.55 var(--mono);
-  }
+  .module h3 { margin: 0 0 6px; font: 600 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  .module > p { margin: 0 0 14px; font-size: 14px; color: var(--ink-2); }
+  .nums { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .nums div { border-radius: 7px; padding: 8px 10px; background: var(--lcd); color: var(--lcd-ink); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); min-width: 0; }
+  .nums dt { font: 500 9px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; opacity: .7; }
+  .nums dd { margin: 4px 0 0; font: 600 12.5px/1.3 var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .plot { display: block; width: 100%; height: 120px; margin-top: 14px; border-radius: 7px; background: var(--lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); }
+  .toggles { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 14px; font: 400 11px/1.4 var(--mono); }
+  .toggles label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .toggles input { accent-color: var(--orange); margin: 0; }
+  .config { display: block; width: 100%; min-height: 150px; resize: vertical; border: 0; border-radius: 2px; padding: 14px; background: var(--paper); color: var(--paper-ink); font: 400 12px/1.6 var(--mono); box-shadow: 0 10px 20px -12px var(--shade); }
+  .config:focus-visible { outline-offset: 3px; }
 
   /* ---------- sections ---------- */
-  section.block { padding: 112px 0 0; }
-  .kicker { font: 600 12px/1 var(--mono); color: var(--accent); letter-spacing: .1em; text-transform: uppercase; }
-  html[data-dir="a"] .kicker { color: var(--ok); }
-  h2 { margin: 14px 0 14px; font: 700 clamp(32px, 5vw, 56px)/1.02 var(--display); letter-spacing: -0.045em; text-wrap: balance; max-width: 18ch; }
-  .sub { margin: 0; max-width: 60ch; color: var(--muted); font-size: 18px; text-wrap: pretty; }
-  html[data-dir="b"] h2 { letter-spacing: -0.05em; max-width: 22ch; }
-  html[data-dir="b"] .kicker::before { content: attr(data-n) "  /  "; color: var(--faint); }
-  html[data-dir="b"] .kicker { color: var(--text); }
+  .block { border-top: 1px solid var(--rule); padding: 48px 0 70px; }
+  .block h2 { margin: 10px 0 18px; font: 200 clamp(36px, 3.6vw, 58px)/1 var(--sans); font-stretch: 125%; letter-spacing: -.03em; }
+  .block h2 b { font-weight: 600; }
+  .block .sub { margin: 0; color: var(--ink-2); max-width: 52ch; }
+  .block .sub a { color: var(--ink); }
 
-  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; }
-  .feature {
-    position: relative; display: flex; flex-direction: column; border: 1px solid var(--border); background: var(--surface);
-    border-radius: var(--radius); overflow: hidden; min-width: 0; transition: border-color .2s, transform .3s var(--ease-out);
-  }
-  .feature:hover { border-color: var(--border-2); }
-  html[data-dir="b"] .features { gap: 0; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
-  html[data-dir="b"] .feature { border-radius: 0; border-width: 0 1px 1px 0; background: transparent; }
-  .mini { position: relative; height: 184px; background: var(--wall); overflow: hidden; border-bottom: 1px solid var(--border); }
-  .mini .menubar { font-size: 11px; }
-  .mini .menubar .left span, .mini .menubar .right .opt { display: none; }
-  .play {
-    position: absolute; right: 10px; bottom: 10px; z-index: 5; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 9px;
-    border-radius: 999px; border: 0; cursor: pointer; background: rgba(0,0,0,.6); color: #fff; font: 600 12px/1 var(--sans);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: background .15s, transform .15s var(--ease-out);
-  }
-  .play:hover { background: rgba(0,0,0,.8); } .play:active { transform: scale(.95); }
-  .play svg { width: 11px; height: 11px; }
-  html[data-dir="b"] .play { border-radius: 2px; }
-  .miniterm { background: var(--term-bg); color: var(--term-text); font: 12px/1.6 var(--mono); padding: 10px 14px; height: 92px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; border-bottom: 1px solid var(--border); }
-  html[data-dir="a"] .miniterm { background: color-mix(in srgb, var(--bg-2) 70%, #000); color: #e8e8ee; }
-  html[data-dir="a"][data-theme="light"] .miniterm { background: #16161d; }
-  .miniterm .line { white-space: pre; overflow: hidden; text-overflow: ellipsis; min-height: 1.6em; }
-  .feature .copy { padding: 20px 22px 24px; }
-  .feature h3 { margin: 0 0 6px; font: 650 20px/1.2 var(--display); letter-spacing: -0.02em; }
-  html[data-dir="b"] .feature h3 { font-size: 17px; letter-spacing: -0.03em; }
-  .feature p { margin: 0; color: var(--muted); font-size: 15px; }
-  .feature p code { font-size: 13px; color: var(--text); background: var(--surface-2); padding: 1px 5px; border-radius: 5px; border: 1px solid var(--border); }
+  /* What it does: six small modules, each on its own display. */
+  .features { margin-top: 36px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 28px; }
+  .feature .module { border-radius: 20px; padding: 16px; }
+  .feature .display { height: 190px; }
+  .feature .row { display: flex; align-items: flex-end; gap: 14px; margin-top: 14px; }
+  .feature .printer { height: 74px; flex: 1; }
+  .feature .tape { margin: -4px 8px 0; }
+  .feature h3 { margin: 18px 0 6px; font: 600 19px/1.25 var(--sans); font-stretch: 112%; letter-spacing: -.01em; display: flex; gap: 12px; align-items: baseline; }
+  .feature h3 .n { font: 500 10.5px/1 var(--mono); letter-spacing: .1em; color: var(--ink-3); }
+  .feature p { margin: 0; font-size: 15px; color: var(--ink-2); }
+  .feature p code { color: var(--ink); }
+  .bigbtn { flex: none; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--orange-lo); background: radial-gradient(circle at 40% 35%, var(--orange-hi), var(--orange)); box-shadow: 0 4px 0 var(--orange-lo), 0 8px 14px -6px var(--shade); cursor: pointer; display: grid; place-items: center; color: #111; font: 700 10px/1 var(--mono); letter-spacing: .08em; transition: transform .08s, box-shadow .08s; }
+  .bigbtn:active { transform: translateY(4px); box-shadow: 0 0 0 var(--orange-lo); }
+  .feature .bigbtn { width: 50px; height: 50px; font-size: 9.5px; }
 
+  /* Spec sheet: the stack module and the table. */
+  .sheet { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 56px; align-items: start; }
+  .sheet .sub { max-width: 46ch; }
+  table.spec { width: 100%; border-collapse: collapse; margin-top: 26px; }
+  table.spec th, table.spec td { text-align: left; padding: 9px 0; border-top: 1px solid var(--rule); vertical-align: top; }
+  table.spec th { width: 30%; padding-right: 16px; font: 500 10.5px/1.6 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  table.spec td { font: 400 12px/1.6 var(--mono); }
+  table.spec td code { font-size: inherit; }
+  .stackmod .display { height: 250px; }
+  .stackmod .row { display: flex; align-items: center; gap: 18px; margin-top: 18px; }
+  .stackmod .printer { flex: none; height: 82px; margin-top: 16px; }
+  .stackmod .tape { margin: -4px 10px 0; }
+  .switch3 { display: flex; align-items: center; gap: 10px; }
+  .switch3 .track { position: relative; display: flex; border-radius: 6px; background: var(--body-2); box-shadow: inset 0 1px 3px var(--shade); border: 1px solid var(--edge); padding: 2px; }
+  .switch3 button { border: 0; background: none; padding: 7px 12px; border-radius: 4px; cursor: pointer; font: 600 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  .switch3 button[aria-pressed="true"] { background: var(--key); color: var(--ink); box-shadow: 0 1px 0 var(--edge), 0 2px 4px var(--shade); }
 
-  /* ---------- stacks: the engine's, live ---------- */
-  .stackcard { display: grid; grid-template-columns: 1.15fr 1fr; margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
-  html[data-dir="b"] .stackcard { border-radius: 0; margin-top: 0; border-top: 0; }
-  .stackside { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--border); }
-  .stackvis { position: relative; height: 300px; background: var(--wall); overflow: hidden; border-bottom: 1px solid var(--border); }
-  .stackvis .menubar { font-size: 11px; }
-  .stackvis .menubar .left span { display: none; }
-  .stackside .miniterm { border-bottom: 0; flex: 1; }
-  .stackcard .copy { padding: 28px 28px 30px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
-  .stackcard h3 { margin: 0; font: 650 24px/1.15 var(--display); letter-spacing: -0.03em; }
-  .stackcard p { margin: 0; color: var(--muted); font-size: 15px; }
-  .stackcard .seg { align-self: flex-start; }
-  @media (max-width: 860px) { .stackcard { grid-template-columns: 1fr; } .stackside { border-right: 0; border-bottom: 1px solid var(--border); } .stackvis { height: 260px; } }
+  /* How this page works: three columns of a parts list. */
+  .parts { margin-top: 36px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+  .parts h3 { margin: 0; padding-bottom: 10px; border-bottom: 2px solid var(--ink); display: flex; align-items: center; gap: 10px; font: 600 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  .parts h3 i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+  .parts ul { list-style: none; margin: 0; padding: 0; }
+  .parts li { padding: 9px 0; border-bottom: 1px solid var(--rule); font: 400 12px/1.6 var(--mono); }
+  .parts li code { font-size: inherit; }
 
-  /* ---------- how / real ---------- */
-  .real { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 40px; }
-  .real .panel { padding: 22px; border-radius: var(--radius); }
-  .real .panel h3 { display: flex; align-items: center; gap: 8px; color: var(--text); }
-  .real .panel h3 i { width: 8px; height: 8px; border-radius: 50%; }
-  .real ul { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 14.5px; }
-  .real li { margin: 4px 0; }
-  html[data-dir="b"] .real .panel { border-radius: 0; }
+  /* Install: a receipt from the printer. */
+  .install { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 56px; align-items: start; }
+  .receipt {
+    margin: 0; padding: 22px 22px 30px; background: var(--paper); color: var(--paper-ink); box-shadow: 0 14px 30px -18px var(--shade);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 96% calc(100% - 6px), 92% 100%, 88% calc(100% - 6px), 84% 100%, 80% calc(100% - 6px), 76% 100%, 72% calc(100% - 6px), 68% 100%, 64% calc(100% - 6px), 60% 100%, 56% calc(100% - 6px), 52% 100%, 48% calc(100% - 6px), 44% 100%, 40% calc(100% - 6px), 36% 100%, 32% calc(100% - 6px), 28% 100%, 24% calc(100% - 6px), 20% 100%, 16% calc(100% - 6px), 12% 100%, 8% calc(100% - 6px), 4% 100%, 0 calc(100% - 6px));
+  }
+  .receipt .head { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--paper-ink); font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  .receipt .cmd { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px dashed rgba(0,0,0,.22); }
+  .receipt .cmd code { flex: 1; min-width: 0; font-size: 12.5px; overflow-wrap: anywhere; }
+  .receipt .cmd .c { opacity: .55; }
+  .receipt .tot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-top: 14px; font: 500 10.5px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+  .install .links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+  .install .links a { display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--edge); background: linear-gradient(180deg, var(--key), var(--key-2)); box-shadow: 0 3px 0 var(--key-floor); text-decoration: none; font: 600 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--key-ink); }
+  .install .links a:active { transform: translateY(3px); box-shadow: none; }
 
-  /* ---------- install ---------- */
-  .ship {
-    position: relative; margin-top: 44px; padding: clamp(28px, 5vw, 56px); border-radius: calc(var(--radius) + 6px); overflow: hidden;
-    border: 1px solid var(--border-2); background: var(--surface);
-  }
-  html[data-dir="a"] .ship::before {
-    content: ""; position: absolute; inset: auto -10% -60% -10%; height: 120%; z-index: -1;
-    background: radial-gradient(50% 50% at 30% 50%, var(--glow-1), transparent 70%), radial-gradient(50% 50% at 75% 50%, var(--glow-2), transparent 70%);
-    filter: blur(30px);
-  }
-  html[data-dir="a"] .ship { isolation: isolate; }
-  html[data-dir="b"] .ship { border-radius: 0; background: var(--mark); color: #0a0a0a; border: 0; }
-  .shell { margin-top: 26px; border-radius: 14px; background: #0b0b0f; color: #ececf1; border: 1px solid rgba(255,255,255,.08); font: 15px/1.7 var(--mono); overflow: hidden; }
-  html[data-dir="b"] .shell { border-radius: 3px; background: #0a0a0a; }
-  .shell .row { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 18px; border-bottom: 1px solid rgba(255,255,255,.07); }
-  .shell .row:last-child { border-bottom: 0; }
-  .shell .row code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
-  .shell .row .c { color: #6c6c78; }
-  .shell .copy { flex: none; height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); color: #fff; cursor: pointer; font: 600 12px/1 var(--sans); }
-  .shell .copy:hover { background: rgba(255,255,255,.12); }
-  .ship .meta { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 18px; color: var(--muted); font-size: 14px; }
-  html[data-dir="b"] .ship .meta, html[data-dir="b"] .ship .sub { color: #2b2b2b; }
-  html[data-dir="b"] .ship .kicker, html[data-dir="b"] .ship .kicker::before { color: #0a0a0a; }
-  .ship .ctas { justify-content: flex-start; }
-  html[data-dir="b"] .ship .btn { border-color: #0a0a0a; background: transparent; color: #0a0a0a; }
-  html[data-dir="b"] .ship .btn.primary { background: #0a0a0a; color: var(--mark); }
+  .foot { border-top: 1px solid var(--rule); padding: 22px 0 50px; display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; }
+  .foot a { color: var(--ink); }
 
-  footer { padding: 72px 0 calc(48px + env(safe-area-inset-bottom)); color: var(--faint); font-size: 13.5px; }
-  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 24px; }
-  footer a { color: var(--muted); }
-
-  /* ---------- entrance ---------- */
-  .rise { animation: rise .9s var(--ease-out) both; }
-  .rise.d1 { animation-delay: .06s; } .rise.d2 { animation-delay: .14s; } .rise.d3 { animation-delay: .22s; } .rise.d4 { animation-delay: .32s; }
-  @keyframes rise { from { opacity: 0; transform: translateY(14px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
-  html[data-dir="b"] .rise { animation-name: riseb; animation-duration: .5s; }
-  @keyframes riseb { from { opacity: 0; } to { opacity: 1; } }
-
-  /* ---------- responsive ---------- */
-  @media (max-width: 1040px) {
-    .features { grid-template-columns: repeat(2, 1fr); }
-    .real { grid-template-columns: 1fr; }
+  @media (width <= 1100px) {
+    .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "device" "specs"; grid-template-rows: auto; row-gap: 8px; min-height: 0; padding-top: 24px; }
+    .devwrap { padding: 12px 0 0; }
+    .callout { display: none; }
+    .sheet, .install { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+    .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .readout { grid-template-columns: minmax(0, 1fr); }
   }
-  @media (max-width: 860px) {
-    .nav .links { display: none; }
-    .screen { height: clamp(180px, 36vw, 300px); }
-    .term { position: relative; left: auto; bottom: auto; transform: none; width: auto; margin-top: 0; border-radius: 0 0 14px 14px; border-top: 0; box-shadow: 0 30px 60px -30px rgba(0,0,0,.5); }
-    html[data-dir="b"] .term { border-radius: 0 0 4px 4px; box-shadow: none; border-top: 1px solid var(--term-border); }
-    .bezel::after { display: none; }
-    .bezel { border-radius: 20px 20px 0 0; padding: 7px 7px 0; }
-    .screen { border-radius: 14px 14px 0 0; }
-    .menubar .left span, .menubar .right .opt { display: none; }
-    .readout { grid-template-columns: 1fr; }
-    .hint .keys { display: none; }
+  @media (width <= 760px) {
+    .wrap { padding: 0 16px; }
+    .top { gap: 16px; }
+    .top nav, .top .sub { display: none; }
+    .lede { font-size: 17px; }
+    .device { padding: 14px; border-radius: 20px; }
+    .device > .screw { display: none; }
+    .devgrid { --disp: 220px; grid-template-columns: minmax(0, 1fr); }
+    .side { height: auto; }
+    .side .printer { flex: none; height: 104px; }
+    .keys { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .keys .key { aspect-ratio: auto; height: 58px; }
+    .strip .legend { display: none; }
+    .features, .parts { grid-template-columns: minmax(0, 1fr); }
+    .stackmod .display { height: 200px; }
+    .module { padding: 16px; border-radius: 20px; }
+    .block { padding: 40px 0 56px; }
   }
-  @media (max-width: 640px) {
-    :root { --radius: 18px; }
-    .hero { padding-top: 36px; }
-    .features { grid-template-columns: 1fr; }
-    .seg button .long { display: none; }
-    .install { font-size: 13px; padding-left: 14px; gap: 8px; }
-    .chip { height: 36px; font-size: 13.5px; }
-    section.block { padding-top: 80px; }
-    .sub { font-size: 16.5px; }
-    .scroll { height: 150px; }
-    .shell { font-size: 13px; }
-    .shell .row { padding-left: 14px; }
-  }
-  @media (max-width: 380px) { .nav .gh { display: none; } }
-
-  /* ---------- the MacBook ---------- */
-  /* The menu bar is the notch's height and scales with it, as the stage draws the notch. */
-  .menubar { width: calc(100% / var(--fit, 1)); height: 32px; transform: scale(var(--fit, 1)); transform-origin: 0 0; }
-  /* On laptop-sized pages, a MacBook Pro adapted from devices.css (https://github.com/picturepan2/devices.css,
-     Copyright (c) 2017 Yan Zhu, MIT License; see web/THIRD_PARTY.md), at a 14-inch screen's 1512 by 982 points: the lid's aluminium edge round a thin black bezel and
-     chin, then the base with its thumb notch and feet. Sized in parts of the device's width. */
-  :root { --alu: #83878a; --alu-dark: #76797c; --alu-edge: #45484a; --alu-shadow: #2b2d2f; --alu-notch: #a7aaad; --alu-feet: #1a1a1a; }
-  html[data-theme="light"] { --alu: #e2e3e4; --alu-dark: #c8c9cb; --alu-edge: #a1a3a6; --alu-shadow: #6b6d70; --alu-notch: #d6d7d9; --alu-feet: #2a2a2a; }
-  .base { display: none; }
-  @media (width > 860px) {
-    .hero .mac { container-type: inline-size; max-width: none; }
-    .hero .bezel, html[data-dir="b"] .hero .bezel {
-      width: 83.5cqw; margin: 0 auto; padding: 1.216cqw 1.216cqw 3.108cqw; border-radius: 2.7cqw; background: #0d0d0d;
-      box-shadow: inset 0 0 0 2px var(--alu-dark), 0 40px 120px -40px rgba(0,0,0,.55);
-    }
-    .hero .bezel::after, html[data-dir="b"] .hero .bezel::after, html[data-theme="light"] .hero .bezel::after { /* the chin */
-      display: block; left: 2px; right: 2px; bottom: 2px; height: 3.24cqw; border-radius: 0 0 2.7cqw 2.7cqw;
-      background: linear-gradient(180deg, #272727, #0d0d0d); box-shadow: none;
-    }
-    .hero .screen, html[data-dir="b"] .hero .screen { height: auto; aspect-ratio: 1512 / 982; border-radius: 1.35cqw 1.35cqw 0 0; }
-    .base {
-      display: block; position: relative; z-index: 2; width: 100%; height: 3.24cqw; margin-top: -1.35cqw;
-      border: solid var(--alu-edge); border-width: 1px 2px 0; border-radius: 2px 2px 1.62cqw 1.62cqw;
-      background: radial-gradient(circle at center, var(--alu) 85%, var(--alu-dark) 100%);
-      box-shadow: inset 0 -2px 8px 0 var(--alu-shadow), 0 24px 40px -20px rgba(0,0,0,.5);
-    }
-    .base::after { /* the thumb notch */
-      content: ""; position: absolute; top: 0; left: 50%; width: 16.2cqw; margin-left: -8.1cqw; height: 1.35cqw;
-      border-radius: 0 0 1.35cqw 1.35cqw; background: var(--alu-notch); box-shadow: inset 0 0 4px 2px var(--alu-dark);
-    }
-    .base::before { /* the feet */
-      content: ""; position: absolute; bottom: -2px; left: 50%; width: 5.4cqw; margin-left: -2.7cqw; height: 2px;
-      border-radius: 0 0 3px 3px; box-shadow: -40.5cqw 0 var(--alu-feet), 40.5cqw 0 var(--alu-feet);
-    }
-    .hero .term { width: min(560px, 70%); bottom: calc(3.108cqw + 3.5%); font-size: 12.5px; }
-    .hero .scroll { height: 112px; }
-  }
-  /* Wide pages: the chips in a column beside the Mac, so the two fit one screen together. */
-  .hero { overflow-x: clip; }
-  @media (width > 1100px) {
-    .nav .wrap, .hero > .wrap { max-width: 1480px; }
-    .stagerow { display: grid; grid-template-columns: minmax(0, 1fr) 236px; column-gap: 28px; align-items: center; margin-top: 36px; }
-    .stagerow .mac { margin: 0; width: min(100%, calc((100svh - 104px) * 1.69)); justify-self: end; }
-    .stagerow .tryit, html[data-dir="b"] .stagerow .tryit { flex-direction: column; align-items: stretch; flex-wrap: nowrap; margin: 0; max-width: none; }
-    .stagerow .tryit .label { text-align: left; }
-    .stagerow .chip, .stagerow .readout-toggle { width: 100%; justify-content: flex-start; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
-    .aurora i { animation: none; }
-  }
+  @media (pointer: coarse) { .strip .legend { display: none; } }
+  @media (prefers-reduced-motion: reduce) { *, *::after { transition-duration: .001ms !important; } }
 </style>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="i-drop" viewBox="0 0 32 32"><path d="M16 3c5 7 9 11.5 9 16.5A9 9 0 0 1 7 19.5C7 14.5 11 10 16 3z" fill="currentColor"/></symbol>
-  <symbol id="i-gh" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
-  <symbol id="i-sun" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2M12 19.8V22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2 12h2.2M19.8 12H22M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"/></g></symbol>
-  <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z"/></symbol>
-  <symbol id="i-play" viewBox="0 0 12 12"><path d="M3 1.6v8.8L10.4 6z" fill="currentColor"/></symbol>
-  <symbol id="i-check" viewBox="0 0 12 12"><path d="M2.6 6.2l2.3 2.3 4.6-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="i-x" viewBox="0 0 12 12"><path d="M3.3 3.3l5.4 5.4M8.7 3.3L3.3 8.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-  <symbol id="i-bang" viewBox="0 0 12 12"><path d="M6 2.4v4.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="6" cy="9.2" r="1" fill="currentColor"/></symbol>
-  <symbol id="i-run" viewBox="0 0 12 12"><path d="M2.5 3.5L5 6 2.5 8.5M6.5 9h3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="i-ask" viewBox="0 0 12 12"><path d="M4.4 4.5a1.7 1.7 0 1 1 2.5 1.5c-.5.3-.9.7-.9 1.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="6" cy="9.4" r=".95" fill="currentColor"/></symbol>
-  <symbol id="i-spark" viewBox="0 0 12 12"><path d="M6 1.5l1.2 3.3 3.3 1.2-3.3 1.2L6 10.5 4.8 7.2 1.5 6l3.3-1.2z" fill="currentColor"/></symbol>
-  <symbol id="i-swap" viewBox="0 0 12 12"><path d="M2.5 4.5h6.5L7.2 2.7M9.5 7.5H3l1.8 1.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="i-hand" viewBox="0 0 12 12"><rect x="2" y="4" width="8" height="4" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
-  <symbol id="i-pipe" viewBox="0 0 12 12"><path d="M6 1.8v8.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-  <symbol id="i-plane" viewBox="0 0 12 12"><path d="M1.8 5.6l8.4-3.4-3 8-1.4-3.2z" fill="currentColor"/></symbol>
-  <symbol id="i-stack" viewBox="0 0 12 12"><path d="M2.5 3.5h7M2.5 6h7M2.5 8.5h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
-  <symbol id="i-wifi" viewBox="0 0 16 16"><path d="M8 12.6l1.6-1.8a2.2 2.2 0 0 0-3.2 0zM3.6 8.8a6.3 6.3 0 0 1 8.8 0l-1.3 1.4a4.4 4.4 0 0 0-6.2 0zM1 6.1a10 10 0 0 1 14 0l-1.3 1.4a8.1 8.1 0 0 0-11.4 0z" fill="currentColor"/></symbol>
-  <symbol id="i-batt" viewBox="0 0 26 13"><rect x=".7" y=".7" width="21.6" height="11.6" rx="3.4" fill="none" stroke="currentColor" stroke-opacity=".5" stroke-width="1.2"/><rect x="2.4" y="2.4" width="15" height="8.2" rx="2" fill="currentColor"/><path d="M23.6 4.6v3.8c.8-.3 1.3-1 1.3-1.9s-.5-1.6-1.3-1.9z" fill="currentColor" fill-opacity=".5"/></symbol>
-</svg>
+<div class="wrap">
+  <header class="top">
+    <a class="word" href="#top" aria-label="drip, back to top">drip<i>.</i></a><span class="lbl sub">for macOS</span>
+    <span class="sp"></span>
+    <nav aria-label="Sections"><a class="lbl" href="#features">features</a><a class="lbl" href="#sheet">spec sheet</a><a class="lbl" href="#install">install</a><a class="lbl" href="https://github.com/jrnxf/drip">source</a></nav>
+    <button type="button" class="slide" id="theme" role="switch" aria-checked="true" aria-label="Dark theme"><span class="lbl" aria-hidden="true">light</span><span class="track"></span><span class="lbl" aria-hidden="true">dark</span></button>
+  </header>
 
-<header class="nav" id="nav">
-  <div class="wrap">
-    <a class="brand" href="#top" aria-label="drip, back to top"><svg style="color:var(--ok)"><use href="#i-drop"/></svg>drip</a>
-    <nav class="links" aria-label="Sections">
-      <a href="#features">Features</a>
-      <a href="#engine">How it works</a>
-      <a href="#install">Install</a>
-    </nav>
-    <span class="spacer"></span>
-    <div class="seg" role="group" aria-label="Visual direction">
-      <button type="button" data-set-dir="a" aria-pressed="true" title="Direction A: Aurora">A<span class="long"> Aurora</span></button>
-      <button type="button" data-set-dir="b" aria-pressed="false" title="Direction B: Signal">B<span class="long"> Signal</span></button>
-    </div>
-    <button type="button" class="iconbtn" id="theme" aria-label="Switch between dark and light"><svg class="sun"><use href="#i-sun"/></svg><svg class="moon"><use href="#i-moon"/></svg></button>
-    <a class="iconbtn gh" href="https://github.com/jrnxf/drip" aria-label="drip on GitHub"><svg><use href="#i-gh"/></svg></a>
-  </div>
-</header>
-
-<main id="top">
-  <section class="hero">
-    <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
-    <div class="wrap">
+  <main id="top">
+    <section class="hero" aria-label="drip">
       <div class="intro">
-        <div class="rise"><a class="eyebrow" href="#engine"><span class="live">Live</span> drip's real engine, running in this page</a></div>
-        <h1 class="rise d1">The notch, <span class="hl">finally useful.</span></h1>
-        <p class="lede rise d2">One shell command drops a native card out of your Mac's camera notch: <b>what finished, and how it went</b>. For builds, deploys, tests and coding agents.</p>
-        <div class="ctas rise d3">
-          <div class="install"><span class="dollar">$</span><code>brew install jrnxf/tap/drip</code><button type="button" class="btn primary" data-copy="brew install jrnxf/tap/drip">Copy</button></div>
-          <a class="btn" href="https://github.com/jrnxf/drip"><svg><use href="#i-gh"/></svg>GitHub</a>
-        </div>
-        <aside class="usage rise d3" aria-label="drip usage at a glance"><div class="h"><span>drip(1)</span><span>macOS 13+</span></div><pre><b>drip</b> [KIND] [TITLE] [options]
-<b>drip run</b> [options] &lt;command&gt;
-<b>drip hook</b> claude|codex
-<b>drip demo</b>
-
-<i>KIND</i>    ok · warn · fail · info · ask
-<i>-d</i>      detail, up to 3 lines
-<i>--id</i>    replace a card in place
-<i>--open</i>  a button that opens a URL
-<i>exit</i>    at once, never slows you</pre></aside>
+        <div class="model"><span>drip</span><span>macOS 13+</span><span>MIT</span></div>
+        <h1>the notch, <b>finally useful.</b></h1>
+        <p class="lede">One shell command drops a card out of your Mac's camera notch: <b>what finished, and how it went.</b> Use it after builds, deploys and tests, or when a coding agent needs you.</p>
+        <div class="plate"><code>brew install jrnxf/tap/drip</code><button type="button" class="copy-btn" data-copy="brew install jrnxf/tap/drip" aria-label="Copy the install command">copy</button></div>
       </div>
+      <dl class="specs">
+        <dt>runs from</dt><dd>your shell, scripts, git hooks, agent hooks</dd>
+        <dt>shows</dt><dd>a card from the notch, or from the top edge of a screen without one</dd>
+        <dt>returns</dt><dd>at once; <code>--wait</code> holds until the card has gone</dd>
+        <dt>engine</dt><dd>DripCore, in Swift; WebAssembly on this page</dd>
+      </dl>
 
-      <div class="stagerow">
-      <div class="mac rise d4" id="hero-mac">
-        <div class="bezel">
-          <div class="screen" id="hero-screen" role="img" aria-label="The top of a Mac screen. drip's cards grow out of the camera notch.">
-            <div class="menubar">
-              <div class="left"><b>Terminal</b><span>Shell</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></div>
-              <div class="right"><svg class="opt"><use href="#i-wifi"/></svg><svg class="opt" style="width:24px"><use href="#i-batt"/></svg><span class="clock"></span></div>
+      <div class="devwrap">
+        <span class="callout tl" data-n="1" aria-hidden="true">display: DripCore, as WebAssembly<i style="--w:60px"></i></span>
+        <span class="callout tr" data-n="2" aria-hidden="true"><i style="--w:40px"></i>printer: what ran</span>
+        <div class="device">
+          <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
+          <div class="devgrid">
+            <div class="display" id="hero-screen" role="img" aria-label="A display where drip's cards drop out of the notch">
+              <div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="clock"></span></div>
+              <canvas class="stage-canvas"></canvas>
+              <div class="loading" id="loading">loading drip's engine</div>
             </div>
-            <canvas class="stage-canvas"></canvas>
-            <div class="loading" id="loading">Loading drip's engine</div>
-          </div>
-          <div class="term" id="hero-term">
-            <div class="bar"><span class="lights"><i></i><i></i><i></i></span><span class="title">~ - zsh - drip</span></div>
-            <div class="scroll" aria-live="polite"></div>
-            <div class="inputline">
-              <span class="prompt">~ $</span>
-              <div class="field">
-                <div class="ghost" aria-hidden="true"></div>
-                <input id="input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type a drip command" placeholder='try  drip ok "hello"' disabled enterkeyhint="go">
-              </div>
+            <div class="side">
+              <div class="printer"><div class="slot"></div><div class="tape"><div class="scroll" id="hero-tape" aria-live="polite"></div></div></div>
+              <div class="lcdline"><span class="p" aria-hidden="true">›</span><div class="field"><div class="ghost" aria-hidden="true"></div><input id="input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type a drip command" aria-describedby="hint" placeholder='drip ok "hello"' disabled enterkeyhint="go"></div></div>
             </div>
-            <div class="hint"><span class="what" id="hint-what">Type a <code>drip</code> command, or pick one.</span><span class="keys"><span><kbd>Tab</kbd> complete</span><span><kbd>↑</kbd> history</span><span><kbd>⏎</kbd> run</span></span></div>
+          </div>
+          <div class="keys" id="keys" role="group" aria-label="Examples"></div>
+          <div class="strip">
+            <span class="hint" id="hint">Type a <code>drip</code> command, or press a key.</span>
+            <span class="legend lbl" aria-hidden="true"><span><kbd>tab</kbd> complete</span><span><kbd>↑</kbd> history</span><span><kbd>enter</kbd> run</span></span>
+            <button type="button" class="slide lit" id="readout-toggle" role="switch" aria-checked="false" aria-controls="readout"><span class="lbl">readout</span><span class="track"></span></button>
           </div>
         </div>
-        <div class="base" aria-hidden="true"></div>
+        <span class="callout bl" data-n="3" aria-hidden="true">keys: one example each<i style="--w:50px"></i></span>
+        <span class="callout br" data-n="4" aria-hidden="true"><i style="--w:30px"></i>input: any drip command</span>
       </div>
+    </section>
 
-      <div class="tryit" id="chips"><div class="label">Try one</div></div>
-      </div>
-
-      <div class="readout" id="readout" hidden>
-        <div class="panel">
-          <h3>Engine readout</h3>
-          <p>Every number comes from DripCore's <code>IslandAnimator</code>, computed by the WebAssembly engine for each frame.</p>
-          <dl class="nums" id="live"></dl>
-          <canvas class="plot" id="plot"></canvas>
-          <div class="toggles">
-            <label><input type="checkbox" id="outline"> show the traced outline points</label>
-            <label><input type="checkbox" id="slow"> slow motion (¼ speed)</label>
-          </div>
+    <section class="readout" id="readout" aria-label="Engine readout" hidden>
+      <div class="module">
+        <h3>readout</h3>
+        <p>Every number comes from DripCore's <code>IslandAnimator</code>, computed by the engine for each frame of the newest card above.</p>
+        <dl class="nums" id="live"></dl>
+        <canvas class="plot" id="plot" aria-hidden="true"></canvas>
+        <div class="toggles">
+          <label><input type="checkbox" id="outline"> show the traced outline points</label>
+          <label><input type="checkbox" id="slow"> slow motion (¼ speed)</label>
         </div>
-        <div class="panel">
-          <h3>~/.config/drip/config.toml</h3>
-          <p>Read by drip's real TOML parser on every command. Try <code>drip deploy "shipped"</code>.</p>
-          <textarea class="config" id="config" spellcheck="false" aria-label="drip config file"># Read by the real TOML parser on every command.
+      </div>
+      <div class="module">
+        <h3>~/.config/drip/config.toml</h3>
+        <p>drip's TOML parser reads this on every command. Edit it, then try <code>drip deploy "shipped"</code>.</p>
+        <textarea class="config" id="config" spellcheck="false" aria-label="drip config file"># Read by drip's TOML parser on every command.
 [preset.deploy]
 icon  = "paperplane.fill"
 color = "#a78bfa"
 seconds = 6</textarea>
-          <dl class="nums" id="load" style="margin-top:12px"></dl>
-        </div>
+        <dl class="nums" id="load" style="margin-top:18px"></dl>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="block" id="features">
-    <div class="wrap">
-      <div class="kicker" data-n="01">What it does</div>
-      <h2>One line in, a glance out.</h2>
-      <p class="sub">Every card below is dropped by the same engine as the one above. Hit play on any of them.</p>
+    <section class="block" id="features">
+      <div class="lbl">01 / what it does</div>
+      <h2>what it <b>does.</b></h2>
+      <p class="sub">Each module below runs the same engine as the one above. It plays once when it scrolls into view; press PLAY to run it again.</p>
       <div class="features" id="feature-grid"></div>
-      <div class="stackcard" id="stacks">
-        <div class="stackside">
-          <div class="stackvis" role="img" aria-label="A Mac screen's top edge, where drip's engine stacks several cards under the notch">
-            <div class="menubar"><div class="left"><b>Terminal</b><span>Shell</span></div><div class="right"><span class="clock"></span></div></div>
-            <canvas class="stage-canvas"></canvas>
-            <button type="button" class="play" id="stack-play"><svg><use href="#i-play"/></svg>Play</button>
-          </div>
-          <div class="miniterm" id="stack-term"></div>
-        </div>
-        <div class="copy">
-          <h3>Up to three cards at once.</h3>
-          <p>Cards that arrive while one is showing stack below it. <b>Chain</b>, the default, drops each new card out of the bottom of the last one. <b>Push</b> drops it out of the notch once the others have moved down. A fourth waits until there is room.</p>
-          <p>This is the engine, not a picture: DripCore's <code>CardStack</code>, the same code the Mac app runs, places every card here, times it, and stops every countdown while your pointer is on a card. Pick a mode to play it.</p>
-          <div class="seg" role="group" aria-label="Stack mode"><button type="button" data-stack="chain" aria-pressed="true">chain</button><button type="button" data-stack="push" aria-pressed="false">push</button></div>
-        </div>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="block" id="engine">
-    <div class="wrap">
-      <div class="kicker" data-n="02">How this page works</div>
-      <h2>Not a video. The actual code.</h2>
-      <p class="sub">DripCore, drip's engine, is compiled from the same Swift sources to WebAssembly and loaded by this page. It parses each command line, resolves the card, wraps the text and springs the drop out of the notch. The page only paints what it computes. Turn on the <a href="#chips" id="readout-link">engine readout</a> to watch the numbers.</p>
-      <div class="real">
-        <div class="panel"><h3><i style="background:var(--ok)"></i>Real drip</h3><ul>
+    <section class="block sheet" id="sheet">
+      <div>
+        <div class="lbl">02 / spec sheet</div>
+        <h2>up to <b>three at once.</b></h2>
+        <p class="sub">Cards that arrive while one shows stack below it. In chain mode, the default, each new card drops out of the last one. In push mode it drops out of the notch and moves the others down. A fourth card waits for room. This module runs DripCore's <code>CardStack</code>: pick a mode, or press PLAY.</p>
+        <table class="spec">
+          <tr><th scope="row">kinds</th><td>ok, warn, fail, info, ask, and presets from your config</td></tr>
+          <tr><th scope="row">text</th><td>a title of up to 2 lines and a detail of up to 3, wrapped by the engine; a card is at most 640 pt wide</td></tr>
+          <tr><th scope="row">time</th><td>4.5 s by default; <code>--seconds</code> takes 0.5 to 60; an ask card waits for a click</td></tr>
+          <tr><th scope="row">buttons</th><td><code>--open</code> opens a URL or a file; <code>--confirm</code> asks, then exits 0 on a click and 5 without one</td></tr>
+          <tr><th scope="row">icons</th><td>SF Symbols, image files, app icons, and marks for Claude, Codex and Gemini</td></tr>
+          <tr><th scope="row">agents</th><td><code>drip hook claude</code> or <code>codex</code>, from the agent's own hooks</td></tr>
+          <tr><th scope="row">replace</th><td><code>--id</code>: a newer card with the same id takes the older one's place</td></tr>
+          <tr><th scope="row">history</th><td><code>drip history</code> lists past cards; <code>--missed</code>, the ones held while the screen was locked</td></tr>
+        </table>
+      </div>
+      <div class="module stackmod">
+        <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
+        <div class="display" id="stack-screen" role="img" aria-label="A display where drip stacks four cards"><div class="glyphs" aria-hidden="true"><span>STACK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas></div>
+        <div class="row">
+          <div class="switch3"><span class="lbl" id="mode-label">mode</span><div class="track" role="group" aria-labelledby="mode-label"><button type="button" data-stack="chain" aria-pressed="true">chain</button><button type="button" data-stack="push" aria-pressed="false">push</button></div></div>
+          <span style="flex:1"></span>
+          <button type="button" class="bigbtn" id="stack-play" aria-label="Play four cards">PLAY</button>
+        </div>
+        <div class="printer"><div class="slot"></div><div class="tape"><div class="scroll" id="stack-tape"></div></div></div>
+      </div>
+    </section>
+
+    <section class="block" id="engine">
+      <div class="lbl">03 / how this page works</div>
+      <h2>how this <b>page works.</b></h2>
+      <p class="sub">DripCore, drip's engine, is compiled from the same Swift sources to WebAssembly and loaded by this page. It parses each command line, resolves the card, wraps the text and runs the springs that drop it out of the notch. The page paints what it computes. Turn on the <a href="#readout" id="readout-link">readout</a> to see the numbers.</p>
+      <div class="parts">
+        <div><h3><i style="--c:#30d158"></i>real drip</h3><ul>
           <li>The command line, parsed by swift-argument-parser, with drip's own errors and <code>--help</code></li>
           <li>Presets, flags and your <code>config.toml</code></li>
-          <li><code>drip run</code>'s title and timing, <code>drip hook</code>'s payload reading</li>
-          <li>Text wrapping, every size, every spring, and the liquid outline traced by marching squares</li>
-          <li>Stacks of up to three cards, chained or pushed, and cards replaced in place: DripCore's <code>CardStack</code> places, times and springs them</li>
+          <li><code>drip run</code>'s title and timing, and <code>drip hook</code>'s reading of the payload</li>
+          <li>Text wrapping, sizes, springs, and the outline of the drop, traced by marching squares</li>
+          <li>Stacks of up to three cards, chained or pushed, and cards replaced in place: DripCore's <code>CardStack</code> places and times them</li>
         </ul></div>
-        <div class="panel"><h3><i style="background:var(--info)"></i>Drawn by this page</h3><ul>
-          <li>The paint: icons stand in for SF Symbols</li>
-          <li>Fonts are your browser's system font</li>
-          <li>Commands that <code>drip run</code> wraps are pretend, and timed for real</li>
+        <div><h3><i style="--c:#0a84ff"></i>drawn by this page</h3><ul>
+          <li>The paint: simple icons stand in for SF Symbols</li>
+          <li>The text, in your browser's system font</li>
+          <li>The commands <code>drip run</code> wraps: they only pretend to run, and drip times them</li>
           <li>The crossfade when a card is replaced in place, on drip's own timings</li>
           <li>No sound</li>
         </ul></div>
-        <div class="panel"><h3><i style="background:var(--warn)"></i>Only on a Mac</h3><ul>
+        <div><h3><i style="--c:#ff9f0a"></i>only on a Mac</h3><ul>
           <li>Other positions and styles: every card here is a notch card</li>
           <li>History and missed cards</li>
+          <li>App icons and image files as icons</li>
           <li>The system sounds</li>
         </ul></div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="block" id="install">
-    <div class="wrap">
-      <div class="ship">
-        <div class="kicker" data-n="03">Install</div>
-        <h2>A minute to your first drip.</h2>
-        <p class="sub">Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs, in a few seconds: nothing to compile, and no Xcode.</p>
-        <div class="shell">
-          <div class="row"><code><span class="c">$ </span>brew install jrnxf/tap/drip</code><button type="button" class="copy" data-copy="brew install jrnxf/tap/drip">Copy</button></div>
-          <div class="row"><code><span class="c">$ </span>drip ok "drip works"</code><button type="button" class="copy" data-copy='drip ok "drip works"'>Copy</button></div>
-          <div class="row"><code><span class="c">$ </span>drip run make test   <span class="c"># then wrap anything</span></code><button type="button" class="copy" data-copy="drip run make test">Copy</button></div>
-        </div>
-        <div class="meta"><span>macOS 13 or newer</span><span>Notch or no notch</span><span>MIT licensed</span></div>
-        <div class="ctas"><a class="btn primary" href="https://github.com/jrnxf/drip"><svg><use href="#i-gh"/></svg>Star on GitHub</a><a class="btn" href="https://github.com/jrnxf/drip#usage">Read the docs</a></div>
+    <section class="block install" id="install">
+      <div>
+        <div class="lbl">04 / install</div>
+        <h2>install <b>with Homebrew.</b></h2>
+        <p class="sub">Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs. Nothing compiles, and Xcode is not needed. The README covers building from source.</p>
+        <div class="links"><a href="https://github.com/jrnxf/drip">source on GitHub</a><a href="https://github.com/jrnxf/drip#usage">usage</a></div>
       </div>
-    </div>
-  </section>
-</main>
+      <div class="receipt">
+        <div class="head"><span>drip</span><span>install</span></div>
+        <div class="cmd"><code><span class="c">$ </span>brew install jrnxf/tap/drip</code><button type="button" class="copy-btn" data-copy="brew install jrnxf/tap/drip" aria-label="Copy: brew install jrnxf/tap/drip">copy</button></div>
+        <div class="cmd"><code><span class="c">$ </span>drip ok "drip works"</code><button type="button" class="copy-btn" data-copy='drip ok "drip works"' aria-label='Copy: drip ok "drip works"'>copy</button></div>
+        <div class="cmd"><code><span class="c">$ </span>drip run make test   <span class="c"># wrap any command</span></code><button type="button" class="copy-btn" data-copy="drip run make test" aria-label="Copy: drip run make test">copy</button></div>
+        <div class="tot"><span>macOS 13 or newer</span><span>notch optional</span><span>MIT</span></div>
+      </div>
+    </section>
+  </main>
 
-<footer>
-  <div class="wrap">
-    <span>drip: a HUD from the shell, for macOS.</span>
-    <span>The cards on this page are drawn by drip's own engine. <a href="https://github.com/jrnxf/drip">github.com/jrnxf/drip</a></span>
-  </div>
-</footer>
+  <footer class="foot">
+    <span class="lbl">drip by jrnxf · MIT</span>
+    <span class="lbl">the cards on this page are drawn by drip's engine · <a href="https://github.com/jrnxf/drip">source</a> · see also <a href="https://okfs.jrnxf.co">okfs</a></span>
+  </footer>
+</div>
 <div class="sr" aria-live="polite" id="announce"></div>
 
 <script type="module">
@@ -698,7 +475,8 @@ import { loadDrip } from "./drip-engine.js";
 const WASM = "__DRIP_WASM__";
 
 // ===== Measuring and painting =====
-const FONT = getComputedStyle(document.documentElement).getPropertyValue("--sans");
+// The cards are macOS UI, so their text is measured and painted in the system font, not the page's.
+const FONT = getComputedStyle(document.documentElement).getPropertyValue("--sys");
 const fonts = [(s) => `600 ${14 * s}px ${FONT}`, (s) => `400 ${12 * s}px ${FONT}`, (s) => `600 ${12.5 * s}px ${FONT}`];
 const measurer = document.createElement("canvas").getContext("2d");
 function measure(font, scale, text) { measurer.font = fonts[font](scale); return measurer.measureText(text).width; }
@@ -1322,18 +1100,14 @@ async function execOne(stages, term, stage, config) {
   return reply.status ?? 0;
 }
 
-// ===== The hero =====
+// ===== The hero: the device's display, printer, input line and keys =====
 const heroScreen = document.getElementById("hero-screen");
-const heroTerm = new Term(document.querySelector("#hero-term .scroll"));
-const heroTermBox = document.getElementById("hero-term");
-// On wide screens the terminal sits on the desktop, and a stack zooms out to stay above it.
-const heroRoom = () => getComputedStyle(heroTermBox).position === "absolute"
-  ? heroTermBox.getBoundingClientRect().top - heroScreen.getBoundingClientRect().top - 8 : null;
-// On a laptop-sized page the screen is a 14-inch MacBook Pro's, 1512 points wide, so the notch and
-// the cards keep their real size against it; a phone shows a close-up of the notch instead.
-const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (matchMedia("(width > 860px)").matches ? W / 1512 : 1), avail: heroRoom });
+const heroTerm = new Term(document.getElementById("hero-tape"), { max: 80 });
+const narrow = matchMedia("(width <= 760px)");
+// The notch and the cards at their real size, smaller only when the display is too narrow for them.
+const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 600)) });
 const stages = [hero];
-const input = document.getElementById("input"), ghost = document.querySelector(".ghost"), hintWhat = document.getElementById("hint-what");
+const input = document.getElementById("input"), ghost = document.querySelector(".ghost"), hintWhat = document.getElementById("hint");
 
 // Four drips at once: three stack, and the fourth waits for room.
 const STACK_LINES = (mode) => [
@@ -1342,17 +1116,17 @@ const STACK_LINES = (mode) => [
   `drip fail "Deploy failed" -d "staging: health check timed out"`,
   `drip info "Backup done" -d "412 files, 3.1 GB to the NAS"`,
 ].map((line) => (mode === "push" ? `DRIP_STACK=push ${line}` : line));
+// The keys: one example each, with the LED in the color of the card it shows.
 const CHIPS = [
-  { label: "Success", icon: "i-check", color: "var(--ok)", line: `drip ok "Build finished" -d "make test: 246 passed in 3.2s"` },
-  { label: "Failure", icon: "i-x", color: "var(--fail)", line: `drip fail "Deploy failed" -d "staging: health check timed out after 30s"` },
-  { label: "Warning", icon: "i-bang", color: "var(--warn)", line: `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"` },
-  { label: "drip run npm test", icon: "i-run", color: "#636366", line: `drip run npm test`, mono: true },
-  { label: "Claude needs you", icon: "i-ask", color: "var(--purple)", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'` },
-  { label: "Replace in place", icon: "i-swap", color: "var(--info)", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` },
-  { label: "With a button", icon: "i-hand", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip` },
-  { label: "Your own preset", icon: "i-plane", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` },
-  { label: "Stack of 3", icon: "i-stack", color: "#48484a", line: STACK_LINES("chain").join("; ") },
-  { label: "drip demo", icon: "i-stack", color: "#636366", line: `drip demo`, mono: true },
+  { key: "ok", name: "a success card", color: "#30d158", line: `drip ok "Build finished" -d "make test: 246 passed in 3.2s"` },
+  { key: "fail", name: "a failure card", color: "#ff453a", line: `drip fail "Deploy failed" -d "staging: health check timed out after 30s"` },
+  { key: "warn", name: "a warning card", color: "#ff9f0a", line: `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"` },
+  { key: "run", name: "drip run npm test", color: "#8e8e93", line: `drip run npm test` },
+  { key: "agent", name: "Claude needs you, then is done", color: "#bf5af2", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'` },
+  { key: "--id", name: "a card replaced in place", color: "#0a84ff", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` },
+  { key: "--open", name: "a card with a button", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip` },
+  { key: "preset", name: "your own preset", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` },
+  { key: "stack", name: "four cards at once", color: "#d0d0cc", line: STACK_LINES("chain").join("; ") },
 ];
 
 // Flags and kinds the hint line explains as you type, in drip's README words.
@@ -1369,9 +1143,9 @@ const KINDS = {
   ok: "a green check: it worked", warn: "orange: worth a look", fail: "red: it broke", info: "blue: for your information",
   ask: "purple: something waits on you, and the card waits until you click it",
   run: "runs a command and tells you how it went: drip run make test", hook: "reads a coding agent's hook payload: drip hook claude",
-  demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml (see the engine readout)",
+  demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml (see the readout)",
 };
-const COMPLETIONS = [...CHIPS.map((c) => c.line), `drip run make deploy-fail`, `drip --help`, `drip ok "drip works"`, `echo "Backup done" | drip ok`];
+const COMPLETIONS = [...CHIPS.map((c) => c.line), `drip run make deploy-fail`, `drip --help`, `drip ok "drip works"`, `echo "Backup done" | drip ok`, `drip demo`];
 
 function suggestion(value) {
   if (!value || /\s$/.test(value) && value.trim() === "drip") return value ? "ok \"hello\"" : "";
@@ -1393,10 +1167,10 @@ function explain(value) {
   const words = value.trim().split(/\s+/);
   for (let i = words.length - 1; i >= 0; i--) {
     const w = words[i];
-    if (FLAGS[w]) return `<code>${w}</code> ${FLAGS[w]}`;
-    if (i === 1 && words[0] === "drip" && KINDS[w]) return `<code>drip ${w}</code> ${KINDS[w]}`;
+    if (FLAGS[w]) return `<code>${escapeHTML(w)}</code> ${escapeHTML(FLAGS[w])}`;
+    if (i === 1 && words[0] === "drip" && KINDS[w]) return `<code>drip ${escapeHTML(w)}</code> ${escapeHTML(KINDS[w])}`;
   }
-  return value ? `Press <kbd>Tab</kbd> to complete, <kbd>⏎</kbd> to run.` : `Type a <code>drip</code> command, or pick one.`;
+  return value ? `Press <kbd>tab</kbd> to complete, <kbd>enter</kbd> to run.` : `Type a <code>drip</code> command, or press a key.`;
 }
 function renderGhost() {
   const value = input.value, rest = input.selectionStart === value.length ? suggestion(value) : "";
@@ -1414,7 +1188,16 @@ async function runHero(line, { fromUser = true } = {}) {
   const trimmed = line.trim();
   if (trimmed) { lineHistory.push(line); historyIndex = lineHistory.length; }
   busy = true; input.disabled = true;
-  try { await exec(line, heroTerm, hero); } finally { busy = false; input.disabled = false; if (fromUser && !matchMedia("(pointer: coarse)").matches) input.focus({ preventScroll: true }); renderGhost(); }
+  // The key whose example this is lights until its cards have gone, whoever pressed it.
+  const key = keyFor.get(line);
+  for (const k of keysBox.querySelectorAll(".running")) k.classList.remove("running");
+  key?.classList.add("running");
+  try { await exec(line, heroTerm, hero); } finally {
+    busy = false; input.disabled = false;
+    if (key) (async () => { while (hero.busy && !busy) await sleep(150); if (!busy) key.classList.remove("running"); })();
+    if (fromUser && !matchMedia("(pointer: coarse)").matches) input.focus({ preventScroll: true });
+    renderGhost();
+  }
 }
 input.addEventListener("input", () => { stopAttract(); renderGhost(); });
 input.addEventListener("keyup", renderGhost);
@@ -1430,7 +1213,7 @@ input.addEventListener("keydown", (event) => {
   else if (event.key === "l" && event.ctrlKey) { heroTerm.clear(); event.preventDefault(); }
 });
 
-// Types a line into the prompt, then runs it.
+// Types a line into the input, then runs it.
 async function typeAndRun(line, { fromUser = true } = {}) {
   if (busy) return;
   if (fromUser) stopAttract();
@@ -1444,76 +1227,28 @@ async function typeAndRun(line, { fromUser = true } = {}) {
   await runHero(line, { fromUser });
 }
 
-const chipsBox = document.getElementById("chips");
+const keyFor = new Map();
+const keysBox = document.getElementById("keys");
 for (const chip of CHIPS) {
   const b = document.createElement("button");
-  b.type = "button"; b.className = "chip"; b.title = chip.line;
-  b.innerHTML = `<span class="dot" style="background:${chip.color}"><svg><use href="#${chip.icon}"/></svg></span>`;
-  const text = document.createElement("span"); text.textContent = chip.label; if (chip.mono) text.style.fontFamily = "var(--mono)"; text.style.fontSize = chip.mono ? "13px" : "";
-  b.append(text);
+  b.type = "button"; b.className = "key"; b.title = chip.line; b.style.setProperty("--c", chip.color);
+  b.setAttribute("aria-label", `${chip.key}: ${chip.name}`);
+  b.innerHTML = `<span class="led"></span><b></b>`; b.querySelector("b").textContent = chip.key;
   b.addEventListener("click", () => { if (drip && !busy) typeAndRun(chip.line); });
-  chipsBox.append(b);
+  keysBox.append(b); keyFor.set(chip.line, b);
 }
-const toggle = document.createElement("button");
-toggle.type = "button"; toggle.className = "readout-toggle"; toggle.setAttribute("aria-pressed", "false"); toggle.setAttribute("aria-controls", "readout");
-toggle.innerHTML = `<span class="sw"></span>Engine readout`;
-chipsBox.append(toggle);
-const readout = document.getElementById("readout");
+
+// ===== The readout: the engine's numbers for the hero's newest card, and the config it reads =====
+const readout = document.getElementById("readout"), readoutToggle = document.getElementById("readout-toggle");
 function setReadout(on) {
-  toggle.setAttribute("aria-pressed", String(on)); readout.hidden = !on;
+  readoutToggle.setAttribute("aria-checked", String(on)); readout.hidden = !on;
   try { localStorage.setItem("drip-readout", on ? "1" : "0"); } catch {}
 }
-toggle.addEventListener("click", () => setReadout(readout.hidden));
+readoutToggle.addEventListener("click", () => setReadout(readout.hidden));
 document.getElementById("readout-link").addEventListener("click", () => setReadout(true));
 document.getElementById("outline").addEventListener("change", (e) => { hero.showOutline = e.target.checked; });
 document.getElementById("slow").addEventListener("change", (e) => { hero.speed = e.target.checked ? 0.25 : 1; });
 
-
-// Stacks: the engine's own, on a screen of their own. The toggle plays four drips at once, chained
-// or pushed.
-const stackTerm = new Term(document.getElementById("stack-term"), { max: 6 });
-const stackStage = new Stage(document.querySelector(".stackvis"), { term: stackTerm, zoom: () => 1 });
-stages.push(stackStage);
-let stackMode = "chain", stackRun = 0, stackPlayed = false;
-async function playStack(mode = stackMode) {
-  if (!drip) return;
-  stackMode = mode; stackPlayed = true;
-  for (const b of document.querySelectorAll("[data-stack]")) b.setAttribute("aria-pressed", String(b.dataset.stack === mode));
-  const run = ++stackRun;
-  stackStage.reset(); stackTerm.clear();
-  for (const line of STACK_LINES(mode)) {
-    if (run !== stackRun) return;
-    await exec(line, stackTerm, stackStage, { config: "", shown: line.replace(/ -d .*/, "") });
-    await sleep(120);
-  }
-}
-for (const b of document.querySelectorAll("[data-stack]")) b.addEventListener("click", () => playStack(b.dataset.stack));
-document.getElementById("stack-play").addEventListener("click", () => playStack());
-new IntersectionObserver(([entry]) => {
-  if (entry.intersectionRatio > 0.6 && !stackPlayed && !reduceMotion.matches && drip) playStack();
-}, { threshold: [0, 0.6] }).observe(document.querySelector(".stackvis"));
-stackStage.autoplay = () => {
-  const rect = document.querySelector(".stackvis").getBoundingClientRect();
-  if (!stackPlayed && !reduceMotion.matches && rect.top < innerHeight * 0.8 && rect.bottom > 0) playStack();
-};
-
-// Until the visitor does something, the hero plays a few cards by itself.
-const ATTRACT = [CHIPS[4].line, CHIPS[5].line, CHIPS[8].line, CHIPS[1].line, CHIPS[3].line, CHIPS[6].line, CHIPS[0].line];
-let attractOn = true, attractTimer = 0, attractIndex = 0;
-function stopAttract() { attractOn = false; clearTimeout(attractTimer); }
-function scheduleAttract(delay) {
-  clearTimeout(attractTimer);
-  if (!attractOn || reduceMotion.matches) return;
-  attractTimer = setTimeout(async () => {
-    if (!attractOn) return;
-    if (busy || hero.busy || !hero.visible || document.hidden) { scheduleAttract(1200); return; }
-    await typeAndRun(ATTRACT[attractIndex++ % ATTRACT.length], { fromUser: false });
-    scheduleAttract(2600);
-  }, delay);
-}
-hero.on((kind) => { if (kind === "end" && attractOn) scheduleAttract(1800); });
-
-// ===== Engine readout =====
 const live = document.getElementById("live");
 let liveTick = 0;
 function showLive(data) {
@@ -1538,25 +1273,25 @@ function plotSample(data) {
   plot.width = w * dpr; plot.height = h * dpr; pctx.scale(dpr, dpr);
   const style = getComputedStyle(document.documentElement);
   const span = Math.max(1.6, samples.at(-1).t);
-  pctx.strokeStyle = style.getPropertyValue("--border"); pctx.beginPath(); pctx.moveTo(0, h * 0.25); pctx.lineTo(w, h * 0.25); pctx.stroke();
-  const series = [["w", "#0a84ff", "width"], ["open", "#30d158", "open"], ["y", "#ff9f0a", "drop center"]];
+  pctx.strokeStyle = style.getPropertyValue("--lcd-ink"); pctx.globalAlpha = 0.25; pctx.beginPath(); pctx.moveTo(0, h * 0.25); pctx.lineTo(w, h * 0.25); pctx.stroke(); pctx.globalAlpha = 1;
+  const series = [["w", "#0a84ff", "width"], ["open", "#30d158", "open"], ["y", "#ff4f00", "drop center"]];
   series.forEach(([key, color, name], i) => {
     pctx.strokeStyle = color; pctx.lineWidth = 1.5; pctx.beginPath();
     samples.forEach((p, j) => { const x = p.t / span * w, y = h * 0.25 + (1 - p[key]) * h * 0.6; j ? pctx.lineTo(x, y) : pctx.moveTo(x, y); });
-    pctx.stroke(); pctx.fillStyle = color; pctx.font = `11px ${FONT}`; pctx.fillText(name, 4 + i * 80, 12);
+    pctx.stroke(); pctx.fillStyle = color; pctx.font = `500 10px ${style.getPropertyValue("--mono")}`; pctx.fillText(name, 8 + i * 90, 16);
   });
 }
 hero.on((kind, data) => { if (kind === "frame") { showLive(data); plotSample(data); } });
 
-// ===== Feature demos, each its own little screen on the same engine =====
+// ===== What it does: six modules, each its own display on the same engine =====
 const CLAUDE = (event, extra) => JSON.stringify({ hook_event_name: event, cwd: "/work/my-app", session_id: "s1", ...extra });
 const FEATURES = [
   {
-    title: "Wrap any command", body: "<code>drip run</code> runs it, times it and tells you how it went: green on exit 0, red with the exit code otherwise. Your exit status passes through.",
+    label: "RUN", title: "Wrap a command", body: "<code>drip run</code> runs it, times it and shows how it went: green on exit 0, red with the exit code otherwise. drip then exits with the command's status.",
     steps: [{ line: `drip run make test` }],
   },
   {
-    title: "Agents that tap you on the shoulder", body: "Point Claude Code's or Codex's hooks at <code>drip hook</code>. A card says which project needs you, and why, then that it is done.",
+    label: "HOOK", title: "Hear from coding agents", body: "Point Claude Code's or Codex's hooks at <code>drip hook</code>. A card names the project and what the agent needs, then says when it has finished.",
     steps: [
       { shown: "drip hook claude   # Notification", line: `drip hook claude '${CLAUDE("Notification", { notification_type: "permission_prompt", message: "Claude needs your permission to use Bash" })}'` },
       { sleep: 2.6 },
@@ -1564,39 +1299,45 @@ const FEATURES = [
     ],
   },
   {
-    title: "Updates in place", body: "Give cards an <code>--id</code> and a newer one takes the older one's place: the card springs to its new size instead of queueing.",
+    label: "--ID", title: "Update in place", body: "Cards with the same <code>--id</code> replace each other. When the older card is on screen, it springs to the new card's size instead of queueing a second one.",
     steps: [{ line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy` }, { sleep: 2 }, { line: `drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` }],
   },
   {
-    title: "Ask, then act", body: "<code>--confirm</code> asks a question: drip exits 0 on a click, so your script decides what happens next. Click it.",
+    label: "ASK", title: "Ask, then act", body: "<code>--confirm</code> asks a question and waits. drip exits 0 when you click the button, so <code>&amp;&amp;</code> runs the next step. Click it here.",
     steps: [{ shown: `drip warn "staging is ready" --confirm "Promote" && ./promote.sh`, line: `drip warn "staging is ready" -d "api 1.4.2" --confirm "Promote" --seconds 8`, then: "./promote.sh" }],
   },
   {
-    title: "Pipe anything in", body: "No title? drip reads stdin: the first line is the title and the rest is the detail. Perfect for git hooks and cron jobs.",
+    label: "STDIN", title: "Pipe text in", body: "With no title, drip reads stdin: the first line is the title and the rest is the detail. That suits git hooks and cron jobs.",
     steps: [{ line: `git log -1 --format='%s%n%an' | drip ok` }],
   },
   {
-    title: "Make it yours", body: "Presets, icons, colors, sounds and timing live in <code>~/.config/drip/config.toml</code>. Here, a custom <code>deploy</code> preset.",
+    label: "PRESET", title: "Your own presets", body: "Icons, colors, sounds and timing go in <code>~/.config/drip/config.toml</code>. This module defines a <code>deploy</code> preset.",
     config: `[preset.deploy]\nicon  = "paperplane.fill"\ncolor = "#a78bfa"\nseconds = 6`,
     steps: [{ line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` }],
   },
 ];
 const grid = document.getElementById("feature-grid");
-for (const feature of FEATURES) {
+FEATURES.forEach((feature, i) => {
   const card = document.createElement("article"); card.className = "feature";
   card.innerHTML = `
-    <div class="mini" role="img" aria-label="A Mac screen's top edge, where this card drops from the notch">
-      <div class="menubar"><div class="left"><b>Terminal</b><span>Shell</span></div><div class="right"><span class="clock"></span></div></div>
-      <canvas class="stage-canvas"></canvas>
-      <button type="button" class="play"><svg><use href="#i-play"/></svg>Play</button>
+    <div class="module">
+      <div class="display" role="img"><div class="glyphs" aria-hidden="true"><span></span><span class="clock"></span></div><canvas class="stage-canvas"></canvas></div>
+      <div class="row">
+        <div class="printer"><div class="slot"></div><div class="tape"><div class="scroll"></div></div></div>
+        <button type="button" class="bigbtn">PLAY</button>
+      </div>
     </div>
-    <div class="miniterm"></div>
-    <div class="copy"><h3></h3><p></p></div>`;
-  card.querySelector("h3").textContent = feature.title;
+    <h3><span class="n"></span><span class="t"></span></h3><p></p>`;
+  card.querySelector(".display").setAttribute("aria-label", `A display that plays: ${feature.title}`);
+  card.querySelector(".glyphs span").textContent = feature.label;
+  card.querySelector("h3 .n").textContent = String(i + 1).padStart(2, "0");
+  card.querySelector("h3 .t").textContent = feature.title;
   card.querySelector("p").innerHTML = feature.body;
+  card.querySelector(".bigbtn").setAttribute("aria-label", `Play: ${feature.title}`);
   grid.append(card);
-  const term = new Term(card.querySelector(".miniterm"), { max: 6 });
-  const stage = new Stage(card.querySelector(".mini"), { term, zoom: () => 1 });
+  const screen = card.querySelector(".display");
+  const term = new Term(card.querySelector(".scroll"), { max: 6 });
+  const stage = new Stage(screen, { term, zoom: () => 1 });
   stages.push(stage);
   let playing = false, played = false;
   const play = async () => {
@@ -1606,19 +1347,64 @@ for (const feature of FEATURES) {
       if (step.sleep) { await sleep(step.sleep * 1000); continue; }
       const status = await exec(step.line, term, stage, { config: feature.config ?? "", shown: step.shown ?? step.line });
       if (step.then && status === 0) {
-        const card = stage.lastCard;
-        if (card) card.onClick = () => { term.echo(step.then); exec(step.then, term, stage, { echo: false }); };
+        const last = stage.lastCard;
+        if (last) last.onClick = () => { term.echo(step.then); exec(step.then, term, stage, { echo: false }); };
       }
     }
     while (stage.busy) await sleep(200);
     playing = false;
   };
-  card.querySelector(".play").addEventListener("click", play);
+  card.querySelector(".bigbtn").addEventListener("click", play);
   new IntersectionObserver(([entry]) => {
     if (entry.intersectionRatio > 0.6 && !played && !reduceMotion.matches && drip) play();
-  }, { threshold: [0, 0.6] }).observe(card.querySelector(".mini"));
-  stage.autoplay = () => { if (!played && !reduceMotion.matches && card.getBoundingClientRect().top < innerHeight * 0.8 && card.getBoundingClientRect().bottom > 0) play(); };
+  }, { threshold: [0, 0.6] }).observe(screen);
+  stage.autoplay = () => { const r = screen.getBoundingClientRect(); if (!played && !reduceMotion.matches && r.top < innerHeight * 0.8 && r.bottom > 0) play(); };
+});
+
+// ===== Spec sheet: the engine's stack, on a display of its own; the switch picks chain or push =====
+const stackScreen = document.getElementById("stack-screen");
+const stackTerm = new Term(document.getElementById("stack-tape"), { max: 8 });
+const stackStage = new Stage(stackScreen, { term: stackTerm, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 640)) });
+stages.push(stackStage);
+let stackMode = "chain", stackRun = 0, stackPlayed = false;
+async function playStack(mode = stackMode) {
+  if (!drip) return;
+  stackMode = mode; stackPlayed = true;
+  for (const b of document.querySelectorAll("[data-stack]")) b.setAttribute("aria-pressed", String(b.dataset.stack === mode));
+  const run = ++stackRun;
+  stackStage.reset(); stackTerm.clear();
+  for (const line of STACK_LINES(mode)) {
+    if (run !== stackRun) return;
+    await exec(line, stackTerm, stackStage, { config: "", shown: line.replace(/ -d .*/, "") });
+    await sleep(120);
+  }
 }
+for (const b of document.querySelectorAll("[data-stack]")) b.addEventListener("click", () => playStack(b.dataset.stack));
+document.getElementById("stack-play").addEventListener("click", () => playStack());
+new IntersectionObserver(([entry]) => {
+  if (entry.intersectionRatio > 0.6 && !stackPlayed && !reduceMotion.matches && drip) playStack();
+}, { threshold: [0, 0.6] }).observe(stackScreen);
+stackStage.autoplay = () => {
+  const rect = stackScreen.getBoundingClientRect();
+  if (!stackPlayed && !reduceMotion.matches && rect.top < innerHeight * 0.8 && rect.bottom > 0) playStack();
+};
+stackTerm.print("press PLAY to print four cards", "dim");
+
+// Until the visitor does something, the hero plays a few cards by itself.
+const ATTRACT = [CHIPS[4].line, CHIPS[5].line, CHIPS[8].line, CHIPS[1].line, CHIPS[3].line, CHIPS[6].line, CHIPS[0].line];
+let attractOn = true, attractTimer = 0, attractIndex = 0;
+function stopAttract() { attractOn = false; clearTimeout(attractTimer); }
+function scheduleAttract(delay) {
+  clearTimeout(attractTimer);
+  if (!attractOn || reduceMotion.matches) return;
+  attractTimer = setTimeout(async () => {
+    if (!attractOn) return;
+    if (busy || hero.busy || !hero.visible || document.hidden) { scheduleAttract(1200); return; }
+    await typeAndRun(ATTRACT[attractIndex++ % ATTRACT.length], { fromUser: false });
+    scheduleAttract(2600);
+  }, delay);
+}
+hero.on((kind) => { if (kind === "end" && attractOn) scheduleAttract(1800); });
 
 // ===== One animation loop for every stage =====
 let lastNow = performance.now();
@@ -1628,24 +1414,19 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-// ===== Look: direction and theme =====
-const root = document.documentElement;
-function store(key, value) { try { localStorage.setItem(key, value); } catch {} }
-function stored(key) { try { return localStorage.getItem(key); } catch { return null; } }
-function setDir(dir) {
-  root.dataset.dir = dir; store("drip-dir", dir);
-  for (const b of document.querySelectorAll("[data-set-dir]")) b.setAttribute("aria-pressed", String(b.dataset.setDir === dir));
-  for (const s of stages) s.dirty = true;
+// ===== Theme =====
+// The head's script has set it before the first paint; the switch flips it and remembers.
+const root = document.documentElement, themeSwitch = document.getElementById("theme");
+function setTheme(theme, remember = true) {
+  root.dataset.theme = theme; themeSwitch.setAttribute("aria-checked", String(theme === "dark"));
+  if (remember) { try { localStorage.setItem("drip-theme", theme); } catch {} }
 }
-function setTheme(theme) { root.dataset.theme = theme; store("drip-theme", theme); }
+setTheme(root.dataset.theme, false);
+themeSwitch.addEventListener("click", () => setTheme(root.dataset.theme === "dark" ? "light" : "dark"));
 const params = new URLSearchParams(location.search);
-// Only a known direction and theme; anything else falls back to A, dark.
-const pick = (allowed, ...values) => values.find((value) => allowed.includes(value)) ?? allowed[0];
-setDir(pick(["a", "b"], params.get("dir"), stored("drip-dir")));
-setTheme(pick(["dark", "light"], params.get("theme"), stored("drip-theme")));
-if ((params.get("readout") ?? stored("drip-readout")) === "1") setReadout(true);
-for (const b of document.querySelectorAll("[data-set-dir]")) b.addEventListener("click", () => setDir(b.dataset.setDir));
-document.getElementById("theme").addEventListener("click", () => setTheme(root.dataset.theme === "dark" ? "light" : "dark"));
+let storedReadout = null;
+try { storedReadout = localStorage.getItem("drip-readout"); } catch {}
+if ((params.get("readout") ?? storedReadout) === "1") setReadout(true);
 
 // Copy buttons, with a fallback for file:// pages where the clipboard API is off.
 for (const b of document.querySelectorAll("[data-copy]")) {
@@ -1653,11 +1434,9 @@ for (const b of document.querySelectorAll("[data-copy]")) {
     const text = b.dataset.copy;
     try { await navigator.clipboard.writeText(text); }
     catch { const area = document.createElement("textarea"); area.value = text; document.body.append(area); area.select(); document.execCommand("copy"); area.remove(); }
-    const was = b.textContent; b.textContent = "Copied"; setTimeout(() => { b.textContent = was; }, 1400);
+    b.textContent = "copied"; clearTimeout(b.timer); b.timer = setTimeout(() => { b.textContent = "copy"; }, 1400);
   });
 }
-const nav = document.getElementById("nav");
-addEventListener("scroll", () => nav.classList.toggle("scrolled", scrollY > 8), { passive: true });
 
 function tick() { const text = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); for (const c of document.querySelectorAll(".clock")) c.textContent = text; }
 tick(); setInterval(tick, 10000);
@@ -1667,8 +1446,8 @@ requestAnimationFrame((now) => { lastNow = now; requestAnimationFrame(loop); });
 // For screenshots and the curious: drive the hero from the console.
 window.__drip = {
   run: (line) => runHero(line, { fromUser: false }), freeze: (t) => { hero.frozen = t; }, thaw: () => { hero.frozen = null; },
-  reset: () => hero.reset(), stopAttract, stages, setDir, setTheme, setReadout,
-  // The cards a stage's stack shows, top to bottom: 0 the hero, 1 the stacks demo, then the features.
+  reset: () => hero.reset(), stopAttract, stages, setTheme, setReadout, playStack,
+  // The cards a stage's stack shows, top to bottom: 0 the hero, 1-6 the features, 7 the stack module.
   stack: (i = 0) => {
     const st = stages[i].stack;
     return st?.frames?.map(({ handle, frame }) => {
@@ -1713,7 +1492,7 @@ try {
   renderGhost();
   for (const s of stages) s.autoplay?.();
   if (params.get("attract") === "0") stopAttract();
-  await typeAndRun(`drip ok "Build finished" -d "make test: 246 passed in 3.2s"`, { fromUser: false });
+  await typeAndRun(CHIPS[0].line, { fromUser: false });
 } catch (error) {
   document.getElementById("loading").textContent = "drip's engine did not load: " + error.message;
   console.error(error);
