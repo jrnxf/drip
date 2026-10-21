@@ -387,95 +387,143 @@ public func dripSpring(_ duration: Double, _ bounce: Double, _ time: Double) -> 
     Spring(duration: duration, bounce: bounce).progress(at: time)
 }
 
-// MARK: - The stack
+// MARK: - Stacks
 
-/// The cards stacked at the notch, laid out as their islands; one stack at a time.
-nonisolated(unsafe) var stack: CardStack?
-/// Whether the stack takes in later commands' cards.
-nonisolated(unsafe) var stackAdopts = false
-/// The islands of the stack's own cards still waiting, in order.
-nonisolated(unsafe) var stackOwn: [Int32] = []
-/// Later commands' islands, waiting for the stack to take them.
-nonisolated(unsafe) var stackAdoptable: [Int32] = []
-/// The island each card of the stack shows, by `CardStack.Entry.id`.
-nonisolated(unsafe) var stackIslands: [Int: Int32] = [:]
-nonisolated(unsafe) var stackClock = 0.0
+/// One stack of cards at a notch, laid out as their islands. A page can show several notches, each
+/// with its own stack, at once.
+final class StackSession {
+    let stack: CardStack
+    /// Whether the stack takes in later commands' cards, as the app's background drip does.
+    let adopts: Bool
+    /// The islands of the stack's own cards still waiting, in order.
+    var own: [Int32]
+    /// Later commands' islands, waiting for the stack to take them or to show them in place of a
+    /// card with the same id.
+    var adoptable: [Int32] = []
+    /// The island each card of the stack shows, by `CardStack.Entry.id`.
+    var islandOf: [Int: Int32] = [:]
+    var clock = 0.0
+
+    init(stack: CardStack, adopts: Bool, own: [Int32]) {
+        self.stack = stack
+        self.adopts = adopts
+        self.own = own
+    }
+}
+
+nonisolated(unsafe) var stacks: [Int32: StackSession] = [:]
+nonisolated(unsafe) var nextStack: Int32 = 1
 
 /// Starts a stack of the islands `handles`, from a delivery's settings: `{"mode": "chain", "max": 3,
-/// "pauses": [...], "adopting": true, "handles": [...]}`. Its clock starts at 0.
+/// "pauses": [...], "adopting": true, "handles": [...]}`. Its clock starts at 0. Returns its handle.
 @_expose(wasm, "drip_stack_start")
 @_cdecl("drip_stack_start")
-public func dripStackStart(_ pointer: UnsafePointer<UInt8>, _ length: Int32) {
+public func dripStackStart(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Int32 {
     let input = request(pointer, length)
     let handles = (input["handles"] as? [Double] ?? []).map { Int32($0) }.filter { islands[$0] != nil }
     let settings = StackSettings(
         mode: StackSettings.Mode(rawValue: input["mode"] as? String ?? "") ?? .chain,
         max: Int(input["max"] as? Double ?? Double(Defaults.stackMax)),
         pauses: input["pauses"] as? [Double] ?? [])
-    stack = CardStack(settings: settings, cards: handles.compactMap { islands[$0]?.card })
-    stackAdopts = input["adopting"] as? Bool ?? false
-    stackOwn = handles
-    stackAdoptable = []
-    stackIslands = [:]
-    stackClock = 0
+    let handle = nextStack
+    nextStack += 1
+    stacks[handle] = StackSession(
+        stack: CardStack(settings: settings, cards: handles.compactMap { islands[$0]?.card }),
+        adopts: input["adopting"] as? Bool ?? false, own: handles)
+    return handle
 }
 
-/// Hands a later command's island to the stack, which takes it in when there is room. Returns 0
-/// when the stack does not take cards in.
-@_expose(wasm, "drip_stack_adopt")
-@_cdecl("drip_stack_adopt")
-public func dripStackAdopt(_ handle: Int32) -> Int32 {
-    guard stack != nil, stackAdopts, islands[handle] != nil else { return 0 }
-    stackAdoptable.append(handle)
-    return 1
+/// Hands a later command's island to the stack, which shows it in place of a card with the same id,
+/// or takes it in when there is room. A newer island with the same id as one still waiting takes
+/// that one's place. Replies `{"taken": bool, "dropped": handle}`, `dropped` the waiting island it
+/// replaced (0 for none), which the page releases; nothing is taken when the stack does not adopt.
+@_expose(wasm, "drip_stack_offer")
+@_cdecl("drip_stack_offer")
+public func dripStackOffer(_ stackHandle: Int32, _ handle: Int32) -> UnsafePointer<UInt8> {
+    guard let session = stacks[stackHandle], session.adopts, let island = islands[handle] else {
+        return send(["taken": false, "dropped": 0])
+    }
+    var dropped: Int32 = 0
+    if let id = island.card.id,
+       let index = session.adoptable.firstIndex(where: { islands[$0]?.card.id == id })
+    {
+        dropped = session.adoptable.remove(at: index)
+    }
+    session.adoptable.append(handle)
+    return send(["taken": true, "dropped": dropped])
 }
 
-/// Moves the stack's clock to `time`, as the app's stack does every tick: lets a card in when the
-/// stack is ready for one, a later command's first, then counts down, sends cards off and closes the
-/// gaps. Replies `{"entered": [{handle, start, cues, countdownFrom}], "left": [{handle, cues, time,
-/// clicked}], "gone": [handle], "done": bool}`; `done` once nothing is left to show.
+/// Moves the stack's clock to `time`, as the app's stack does every tick. When the stack is at rest
+/// it takes in a later command's card, first one that shows in place of a card with the same id,
+/// then its own next card. Then it counts down, sends cards off and closes the gaps. Replies
+/// `{"entered": [{handle, start, cues, countdownFrom}], "swapped": [{handle, old, time, kept,
+/// newState}], "left": [{handle, cues, time, clicked}], "gone": [handle], "done": bool}`. `kept`
+/// says which of the new card's lines, title then detail, stay as they were, and `newState` whether
+/// its state changed, as the app's crossfade reads them. `done` once nothing is left to show.
 @_expose(wasm, "drip_stack_step")
 @_cdecl("drip_stack_step")
-public func dripStackStep(_ time: Double) -> UnsafePointer<UInt8> {
-    guard let stack else { return send(["done": true]) }
-    let elapsed = max(time - stackClock, 0)
-    stackClock = time
+public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer<UInt8> {
+    guard let session = stacks[stackHandle] else { return send(["done": true]) }
+    let stack = session.stack
+    let elapsed = max(time - session.clock, 0)
+    session.clock = time
     var entered: [[String: Any]] = []
+    var swapped: [[String: Any]] = []
     func enter(_ handle: Int32, own: Bool) {
         guard let island = islands[handle] else { return }
         let entry = stack.enter(island.card, metrics: island.animator.metrics, own: own, decided: time, at: time)
-        stackIslands[entry.id] = handle
+        session.islandOf[entry.id] = handle
         guard case let .entering(start, entryCues) = entry.phase else { return }
         entered.append(["handle": handle, "start": start, "cues": cues(entryCues), "countdownFrom": entry.countdownFrom])
     }
-    if stack.isReady(at: time) {
-        if let handle = stackAdoptable.first, stack.waiting.isEmpty, stack.hasRoom {
-            stackAdoptable.removeFirst()
+    // As StackPresenter.admit: one change at a time, into a stack at rest.
+    admit: if stack.isReady(at: time) {
+        for handle in session.adoptable {
+            guard let island = islands[handle] else { continue }
+            if let id = island.card.id,
+               let shown = stack.live.first(where: { $0.card.id == id && $0.isShown }),
+               CardReplacement.canSwap(shown.card, for: island.card),
+               let old = session.islandOf[shown.id], let before = islands[old]
+            {
+                session.adoptable.removeAll { $0 == handle }
+                stack.swap(shown, for: island.card, metrics: island.animator.metrics, at: time, reduced: false)
+                session.islandOf[shown.id] = handle
+                swapped.append([
+                    "handle": handle, "old": old, "time": time,
+                    "kept": IslandUpdate.unchanged(
+                        oldTitle: before.titleLines, oldDetail: before.detailLines,
+                        newTitle: island.titleLines, newDetail: island.detailLines,
+                        from: before.animator.metrics, to: island.animator.metrics),
+                    "newState": IslandUpdate.changesState(from: before.card, to: island.card),
+                ])
+                continue
+            }
+            guard stack.waiting.isEmpty, stack.hasRoom else { break }
+            session.adoptable.removeAll { $0 == handle }
             enter(handle, own: false)
-        } else if stack.nextOwn(at: time) != nil {
-            enter(stackOwn.removeFirst(), own: true)
+            break admit
         }
+        if stack.nextOwn(at: time) != nil { enter(session.own.removeFirst(), own: true) }
     }
     let changes = stack.advance(to: time, elapsed: elapsed, lead: 0)
     let left: [[String: Any]] = changes.left.compactMap { left in
-        stackIslands[left.entry.id].map {
+        session.islandOf[left.entry.id].map {
             ["handle": $0, "cues": cues(left.cues), "time": left.time, "clicked": left.clicked]
         }
     }
-    let gone = changes.gone.compactMap { stackIslands.removeValue(forKey: $0.id) }
-    let done = stack.entries.isEmpty && stack.waiting.isEmpty && stackAdoptable.isEmpty
-    if done { dripStackEnd() }
-    return send(["entered": entered, "left": left, "gone": gone, "done": done])
+    let gone = changes.gone.compactMap { session.islandOf.removeValue(forKey: $0.id) }
+    let done = stack.entries.isEmpty && stack.waiting.isEmpty && session.adoptable.isEmpty
+    if done { stacks[stackHandle] = nil }
+    return send(["entered": entered, "swapped": swapped, "left": left, "gone": gone, "done": done])
 }
 
-/// Ends the stack at once, as when the page is reset.
+/// Ends the stack at once, as when the page is reset. Replies with every island it still holds,
+/// waiting ones included, for the page to release.
 @_expose(wasm, "drip_stack_end")
 @_cdecl("drip_stack_end")
-public func dripStackEnd() {
-    stack = nil
-    stackOwn = []
-    stackAdoptable = []
-    stackIslands = [:]
+public func dripStackEnd(_ stackHandle: Int32) -> UnsafePointer<UInt8> {
+    guard let session = stacks.removeValue(forKey: stackHandle) else { return send(["handles": [Int32]()]) }
+    return send(["handles": Array(session.islandOf.values) + session.own + session.adoptable])
 }
 
 /// The pointer at x, y (x from the notch's center, y down from the screen's top) at `time`, or off
@@ -483,14 +531,14 @@ public func dripStackEnd() {
 /// with the island under it, 0 for none, and whether it is on that card's button.
 @_expose(wasm, "drip_stack_pointer")
 @_cdecl("drip_stack_pointer")
-public func dripStackPointer(_ x: Double, _ y: Double, _ inside: Int32, _ time: Double) -> UnsafePointer<UInt8> {
-    guard let stack else { return send(["handle": 0, "button": false]) }
+public func dripStackPointer(_ stackHandle: Int32, _ x: Double, _ y: Double, _ inside: Int32, _ time: Double) -> UnsafePointer<UInt8> {
+    guard let session = stacks[stackHandle] else { return send(["handle": 0, "button": false]) }
     let point = IslandPoint(x, y)
-    let under = inside != 0 ? stack.entry(at: point, time: time) : nil
-    stack.hover(under != nil)
+    let under = inside != 0 ? session.stack.entry(at: point, time: time) : nil
+    session.stack.hover(under != nil)
     return send([
-        "handle": under.flatMap { stackIslands[$0.id] } ?? 0,
-        "button": under.map { stack.isOnButton(of: $0, at: point, time: time) } ?? false,
+        "handle": under.flatMap { session.islandOf[$0.id] } ?? 0,
+        "button": under.map { session.stack.isOnButton(of: $0, at: point, time: time) } ?? false,
     ])
 }
 
@@ -498,13 +546,14 @@ public func dripStackPointer(_ x: Double, _ y: Double, _ inside: Int32, _ time: 
 /// brings the sending app forward, and either way that card goes. Replies as `drip_stack_pointer`.
 @_expose(wasm, "drip_stack_click")
 @_cdecl("drip_stack_click")
-public func dripStackClick(_ x: Double, _ y: Double, _ time: Double) -> UnsafePointer<UInt8> {
-    guard let stack else { return send(["handle": 0, "button": false]) }
+public func dripStackClick(_ stackHandle: Int32, _ x: Double, _ y: Double, _ time: Double) -> UnsafePointer<UInt8> {
     let point = IslandPoint(x, y)
-    guard let entry = stack.entry(at: point, time: time) else { return send(["handle": 0, "button": false]) }
-    let button = stack.isOnButton(of: entry, at: point, time: time)
+    guard let session = stacks[stackHandle], let entry = session.stack.entry(at: point, time: time) else {
+        return send(["handle": 0, "button": false])
+    }
+    let button = session.stack.isOnButton(of: entry, at: point, time: time)
     entry.dismissed = button || (entry.dismissed ?? false)
-    return send(["handle": stackIslands[entry.id] ?? 0, "button": button])
+    return send(["handle": session.islandOf[entry.id] ?? 0, "button": button])
 }
 
 /// Every card of the stack at `time`, top to bottom, leaving cards included, as doubles: the card
@@ -513,13 +562,14 @@ public func dripStackClick(_ x: Double, _ y: Double, _ time: Double) -> UnsafePo
 /// drop melts into the notch or the card above it. The page reads `drip_frame_length` doubles.
 @_expose(wasm, "drip_stack_frame")
 @_cdecl("drip_stack_frame")
-public func dripStackFrame(_ time: Double) -> UnsafePointer<Double> {
+public func dripStackFrame(_ stackHandle: Int32, _ time: Double) -> UnsafePointer<Double> {
     frameBuffer.removeAll(keepingCapacity: true)
-    let entries = stack?.entries ?? []
-    let pieces = stack?.outline.pieces(at: time) ?? []
+    let session = stacks[stackHandle]
+    let entries = session?.stack.entries ?? []
+    let pieces = session?.stack.outline.pieces(at: time) ?? []
     frameBuffer.append(Double(entries.count))
     for (entry, piece) in zip(entries, pieces) {
-        frameBuffer += [Double(stackIslands[entry.id] ?? 0), entry.remaining, entry.animator.targetTop]
+        frameBuffer += [Double(session?.islandOf[entry.id] ?? 0), entry.remaining, entry.animator.targetTop]
         let shape = entry.animator.shape(at: time)
         var field: DropletField?
         if case let .traced(traced) = piece { field = traced }

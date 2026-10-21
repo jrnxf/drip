@@ -1,150 +1,643 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-dir="a" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>drip</title>
-<meta name="description" content="drip shows a brief native card from the shell, grown out of your Mac's notch. This page runs drip's own engine, compiled to WebAssembly.">
-<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>drip - the notch, finally useful</title>
+<meta name="description" content="drip drops a native card out of your Mac's camera notch from any shell command: what finished, and how it went. This page runs drip's real engine, compiled to WebAssembly.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3c5 7 9 11.5 9 16.5A9 9 0 0 1 7 19.5C7 14.5 11 10 16 3z' fill='%2330d158'/%3E%3C/svg%3E">
 <style>
+  /* ---------- tokens ---------- */
   :root {
-    --bg: #0b0b0d;
-    --panel: #141417;
-    --panel-2: #1b1b1f;
-    --line: #2a2a30;
-    --text: #ececf1;
-    --muted: #9a9aa6;
-    --faint: #66666f;
-    --accent: #30d158;
-    --term: #0e0e10;
-    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    /* The island's own font, which the engine measures text in. Never changed by a direction. */
     --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+    --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+    --body: var(--sans);
+    --ok: #30d158; --warn: #ff9f0a; --fail: #ff453a; --info: #0a84ff; --purple: #bf5af2;
+    --radius: 22px; --radius-sm: 12px; --gutter: 16px;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  /* Direction A, "Aurora": liquid, glassy, a glow behind the screen. */
+  html[data-dir="a"][data-theme="dark"] {
     color-scheme: dark;
+    --bg: #050608; --bg-2: #0b0c10; --surface: rgba(255,255,255,.035); --surface-2: rgba(255,255,255,.06);
+    --border: rgba(255,255,255,.09); --border-2: rgba(255,255,255,.16);
+    --text: #f5f5f7; --muted: #a0a0ab; --faint: #6c6c78;
+    --accent: #30d158; --accent-ink: #04120a; --link: #64d2ff;
+    --glow-1: rgba(48,209,88,.28); --glow-2: rgba(10,132,255,.30); --glow-3: rgba(191,90,242,.22);
+    --wall: radial-gradient(90% 120% at 12% -10%, #5b3fb0 0%, transparent 55%),
+            radial-gradient(80% 110% at 95% 0%, #0d6e86 0%, transparent 58%),
+            radial-gradient(70% 90% at 50% 120%, #b4467a 0%, transparent 60%),
+            linear-gradient(180deg, #1c1838, #0c1224);
+    --term-bg: rgba(14,14,20,.78); --term-text: #e9e9ef; --term-dim: #8a8a96; --term-border: rgba(255,255,255,.12);
+    --bezel: #0d0d10;
   }
+  html[data-dir="a"][data-theme="light"] {
+    color-scheme: light;
+    --bg: #f6f6f9; --bg-2: #ffffff; --surface: rgba(255,255,255,.72); --surface-2: #ffffff;
+    --border: rgba(10,10,30,.09); --border-2: rgba(10,10,30,.18);
+    --text: #0b0b12; --muted: #54545f; --faint: #8a8a96;
+    --accent: #18a148; --accent-ink: #ffffff; --link: #0a6fd6;
+    --glow-1: rgba(48,209,88,.30); --glow-2: rgba(10,132,255,.24); --glow-3: rgba(191,90,242,.20);
+    --wall: radial-gradient(90% 120% at 10% -10%, #c9b8ff 0%, transparent 55%),
+            radial-gradient(80% 110% at 95% 0%, #9fe4f2 0%, transparent 58%),
+            radial-gradient(70% 90% at 50% 120%, #ffc2d9 0%, transparent 60%),
+            linear-gradient(180deg, #ece8ff, #e3f2fb);
+    --term-bg: rgba(18,18,26,.86); --term-text: #ececf2; --term-dim: #9191a0; --term-border: rgba(255,255,255,.10);
+    --bezel: #1a1a1f;
+  }
+  /* Direction B, "Signal": editorial, monospaced, hairlines, one highlighter. */
+  html[data-dir="b"] {
+    --display: var(--mono); --radius: 4px; --radius-sm: 3px;
+  }
+  html[data-dir="b"][data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0a0a0a; --bg-2: #0f0f0f; --surface: #0f0f0f; --surface-2: #151515;
+    --border: #232323; --border-2: #3a3a3a;
+    --text: #ededed; --muted: #8f8f8f; --faint: #5e5e5e;
+    --accent: #c6ff3a; --accent-ink: #0a0a0a; --link: #c6ff3a; --mark: #c6ff3a;
+    --wall: radial-gradient(circle at 1px 1px, #2a2a2a 1px, transparent 1.2px) 0 0 / 18px 18px, #121212;
+    --term-bg: #070707; --term-text: #e6e6e6; --term-dim: #7a7a7a; --term-border: #2a2a2a;
+    --bezel: #000;
+  }
+  html[data-dir="b"][data-theme="light"] {
+    color-scheme: light;
+    --bg: #f3f1ea; --bg-2: #faf9f4; --surface: #faf9f4; --surface-2: #ffffff;
+    --border: #d8d4c8; --border-2: #b5b0a2;
+    --text: #111111; --muted: #57544c; --faint: #8b877c;
+    --accent: #111111; --accent-ink: #f3f1ea; --link: #111111; --mark: #d4ff4a;
+    --wall: radial-gradient(circle at 1px 1px, #c9c4b5 1px, transparent 1.2px) 0 0 / 18px 18px, #e7e3d7;
+    --term-bg: #faf9f4; --term-text: #161616; --term-dim: #7d796e; --term-border: #cfcabd;
+    --bezel: #111;
+  }
+
+  /* ---------- base ---------- */
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--sans); }
-  main { max-width: 920px; margin: 0 auto; padding: 32px 16px 64px; }
-  h1 { font-size: 28px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; font-weight: 650; }
-  .lede { color: var(--muted); margin: 0 0 24px; max-width: 62ch; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 var(--body);
+    -webkit-font-smoothing: antialiased; overflow-x: hidden; text-rendering: optimizeLegibility;
+    transition: background-color .3s var(--ease-out), color .3s var(--ease-out);
+  }
+  a { color: inherit; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 6px; }
+  code, kbd, .mono { font-family: var(--mono); }
+  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 var(--gutter); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---------- nav ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 50; padding-top: env(safe-area-inset-top);
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px);
+    border-bottom: 1px solid transparent; transition: border-color .2s;
+  }
+  .nav.scrolled { border-bottom-color: var(--border); }
+  .nav .wrap { display: flex; align-items: center; gap: 12px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 9px; text-decoration: none; font: 700 19px/1 var(--display); letter-spacing: -0.03em; }
+  .brand svg { width: 22px; height: 22px; }
+  .nav .links { display: flex; gap: 4px; margin-left: 18px; }
+  .nav .links a { text-decoration: none; color: var(--muted); font-size: 14px; padding: 7px 11px; border-radius: 999px; transition: color .15s, background .15s; }
+  .nav .links a:hover { color: var(--text); background: var(--surface-2); }
+  .nav .spacer { flex: 1; }
+  .seg { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+  .seg button {
+    border: 0; background: transparent; padding: 5px 11px; border-radius: 999px; cursor: pointer;
+    font: 600 12px/1 var(--mono); color: var(--muted); letter-spacing: .02em; transition: color .15s, background .2s;
+  }
+  .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .seg button .long { font-weight: 500; opacity: .8; }
+  .iconbtn {
+    display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; transition: background .15s, border-color .15s;
+  }
+  .iconbtn:hover { border-color: var(--border-2); }
+  .iconbtn svg { width: 17px; height: 17px; }
+  html[data-theme="dark"] .sun, html[data-theme="light"] .moon { display: none; }
+  html[data-dir="b"] .seg, html[data-dir="b"] .seg button, html[data-dir="b"] .iconbtn { border-radius: 3px; }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; padding: 40px 0 24px; }
+  .aurora { position: absolute; inset: -120px 0 auto 0; height: 980px; pointer-events: none; overflow: hidden; z-index: -1; }
+  .aurora i { position: absolute; border-radius: 50%; filter: blur(80px); opacity: .9; }
+  .aurora i:nth-child(1) { width: 620px; height: 420px; left: 8%; top: 300px; background: var(--glow-2); animation: drift 22s ease-in-out infinite alternate; }
+  .aurora i:nth-child(2) { width: 520px; height: 380px; right: 6%; top: 360px; background: var(--glow-3); animation: drift 26s ease-in-out infinite alternate-reverse; }
+  .aurora i:nth-child(3) { width: 520px; height: 300px; left: 34%; top: 520px; background: var(--glow-1); animation: drift 30s ease-in-out infinite alternate; }
+  @keyframes drift { from { transform: translate3d(-30px, 0, 0) scale(1); } to { transform: translate3d(40px, -30px, 0) scale(1.08); } }
+  html[data-dir="b"] .aurora { display: none; }
+  .hero .intro { text-align: center; max-width: 920px; margin: 0 auto; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface); font: 500 13px/1 var(--body); color: var(--muted);
+    text-decoration: none;
+  }
+  .eyebrow .live { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); font: 600 11px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+  .eyebrow .live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 0 currentColor; animation: pulse 2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent); } 70%, 100% { box-shadow: 0 0 0 7px transparent; } }
+  h1 {
+    margin: 18px 0 14px; font: 700 clamp(42px, 6.4vw, 84px)/0.96 var(--display); letter-spacing: -0.055em; text-wrap: balance;
+  }
+  h1 .hl {
+    background: linear-gradient(100deg, #30d158 0%, #64d2ff 45%, #bf5af2 90%); -webkit-background-clip: text; background-clip: text; color: transparent;
+    padding-right: .04em;
+  }
+  html[data-theme="light"][data-dir="a"] h1 .hl { background-image: linear-gradient(100deg, #16a34a 0%, #0a84ff 50%, #9333ea 95%); }
+  .lede { margin: 0 auto; max-width: 640px; font-size: clamp(17px, 2vw, 20px); line-height: 1.5; color: var(--muted); text-wrap: pretty; }
   .lede b { color: var(--text); font-weight: 600; }
+  .ctas { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+  .install {
+    display: inline-flex; align-items: center; gap: 12px; padding: 7px 7px 7px 18px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--border-2); font: 500 15px/1 var(--mono); max-width: 100%;
+  }
+  .install .dollar { color: var(--faint); user-select: none; }
+  .install code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border-2); background: var(--surface-2); font: 600 14px/1 var(--body); text-decoration: none; white-space: nowrap;
+    transition: transform .15s var(--ease-out), background .15s, border-color .15s;
+  }
+  .btn:hover { border-color: var(--text); }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .btn svg { width: 16px; height: 16px; }
+  .install .btn { height: 34px; padding: 0 12px; font-size: 13px; }
+  html[data-dir="b"] .install, html[data-dir="b"] .btn, html[data-dir="b"] .eyebrow, html[data-dir="b"] .eyebrow .live { border-radius: 3px; }
 
+  /* B's hero: left aligned, mono, highlighter. */
+  html[data-dir="b"] .hero .intro { text-align: left; max-width: none; display: grid; grid-template-columns: 1fr; gap: 0; }
+  html[data-dir="b"] h1 { font-weight: 700; letter-spacing: -0.06em; font-size: clamp(38px, 6.4vw, 84px); line-height: .98; }
+  html[data-dir="b"] h1 .hl { background: var(--mark); color: #0a0a0a; -webkit-background-clip: border-box; background-clip: border-box; padding: 0 .12em; margin-left: -.04em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  html[data-dir="b"] .lede { margin: 0; }
+  html[data-dir="b"] .ctas { justify-content: flex-start; }
+  html[data-dir="b"] .hero { padding-top: 40px; }
+  html[data-dir="b"] .eyebrow { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+
+
+  .usage { display: none; }
+  @media (min-width: 1040px) {
+    html[data-dir="b"] .hero .intro { grid-template-columns: 1fr 360px; column-gap: 56px; align-items: end; }
+    html[data-dir="b"] .hero .intro > :not(.usage) { grid-column: 1; }
+    html[data-dir="b"] .usage { display: block; grid-column: 2; grid-row: 1 / span 4; align-self: end; margin-bottom: 4px; }
+  }
+  .usage { border: 1px solid var(--border-2); font: 12.5px/1.75 var(--mono); color: var(--muted); }
+  .usage .h { display: flex; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid var(--border-2); color: var(--text); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 11px; }
+  .usage pre { margin: 0; padding: 12px 14px 14px; font: inherit; white-space: pre-wrap; }
+  .usage pre b { color: var(--text); font-weight: 600; }
+  .usage pre i { font-style: normal; color: var(--faint); }
+
+  /* ---------- the Mac ---------- */
+  .mac { position: relative; margin: 36px auto 0; max-width: 1120px; }
+  .bezel {
+    position: relative; padding: 10px 10px 0; border-radius: 26px 26px 0 0; background: var(--bezel);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.07) inset, 0 40px 120px -30px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.4);
+  }
+  .bezel::after { /* the laptop's lip */
+    content: ""; position: absolute; left: -2.5%; right: -2.5%; bottom: -14px; height: 14px; border-radius: 0 0 14px 14px;
+    background: linear-gradient(180deg, #2b2b31, #121215); box-shadow: 0 18px 40px -12px rgba(0,0,0,.6);
+  }
+  html[data-theme="light"] .bezel::after { background: linear-gradient(180deg, #d4d4da, #a9a9b1); }
   .screen {
-    position: relative; border-radius: 14px 14px 0 0; overflow: hidden; height: var(--screen-height, 230px);
-    transition: height .35s cubic-bezier(.23, 1, .32, 1);
-    background:
-      radial-gradient(120% 140% at 15% 0%, #3b2f6b 0%, transparent 55%),
-      radial-gradient(110% 120% at 90% 10%, #0f4c5c 0%, transparent 60%),
-      linear-gradient(180deg, #1a1830, #0d1220);
-    border: 1px solid var(--line); border-bottom: 0;
+    position: relative; overflow: hidden; border-radius: 16px 16px 0 0; height: clamp(420px, 44vw, 560px);
+    background: var(--wall);
   }
+  html[data-dir="b"] .bezel { border-radius: 8px 8px 0 0; padding: 8px 8px 0; box-shadow: 0 0 0 1px var(--border-2); }
+  html[data-dir="b"] .bezel::after { border-radius: 0 0 4px 4px; }
+  html[data-dir="b"] .screen { border-radius: 3px 3px 0 0; }
   .menubar {
-    position: absolute; inset: 0 0 auto 0; height: calc(32px * var(--fit, 1)); display: flex; align-items: center;
-    justify-content: space-between; padding: 0 14px; font-size: 13px; color: rgba(255,255,255,.86);
-    background: rgba(20,20,28,.35); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    position: absolute; inset: 0 0 auto 0; height: calc(32px * var(--fit, 1)); display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; font: 13px/1 var(--sans); color: rgba(255,255,255,.92); z-index: 1;
+    background: rgba(18,18,28,.28); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
   }
-  .menubar span { margin-right: 16px; }
-  @media (max-width: 560px) { .menubar .left span { display: none; } }
-  .menubar .left b { font-weight: 650; }
-  #island { position: absolute; inset: 0; width: 100%; height: 100%; }
+  html[data-theme="light"] .menubar { color: rgba(0,0,0,.85); background: rgba(255,255,255,.35); }
+  .menubar .left, .menubar .right { display: flex; align-items: center; gap: 18px; white-space: nowrap; }
+  .menubar b { font-weight: 650; }
+  .menubar svg { width: 15px; height: 15px; display: block; }
+  .stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
+  .loading {
+    position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 4; display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; font: 500 13px/1 var(--sans);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .loading::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-  .terminal {
-    border: 1px solid var(--line); border-radius: 0 0 14px 14px; background: var(--term);
-    font: 13px/1.55 var(--mono); overflow: hidden;
+  /* The terminal window, on the desktop on wide screens and under the screen on narrow ones. */
+  .term {
+    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); width: min(720px, calc(100% - 48px)); z-index: 2;
+    border-radius: 12px; overflow: hidden; background: var(--term-bg); color: var(--term-text);
+    border: 1px solid var(--term-border); font: 13.5px/1.6 var(--mono);
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,.6), 0 0 0 .5px rgba(0,0,0,.6);
+    backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%);
   }
-  .titlebar {
-    display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--panel-2);
-    border-bottom: 1px solid var(--line); color: var(--faint); font: 12px var(--sans);
-  }
-  .dot { width: 11px; height: 11px; border-radius: 50%; background: #3a3a40; }
-  .titlebar .name { margin-left: 8px; }
-  #scroll { height: 260px; overflow-y: auto; padding: 12px 14px 4px; white-space: pre-wrap; word-break: break-word; }
-  .line { min-height: 1.55em; }
-  .prompt { color: var(--accent); }
+  html[data-dir="b"] .term { border-radius: 4px; box-shadow: 8px 8px 0 0 rgba(0,0,0,.35); }
+  html[data-dir="b"][data-theme="light"] .term { box-shadow: 8px 8px 0 0 #111; }
+  .term .bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font: 12px/1 var(--sans); color: var(--term-dim); border-bottom: 1px solid var(--term-border); }
+  .term .bar .lights { display: flex; gap: 7px; }
+  .term .bar .lights i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
+  .term .bar .lights i:nth-child(2) { background: #febc2e; } .term .bar .lights i:nth-child(3) { background: #28c840; }
+  html[data-dir="b"] .term .bar .lights i { background: transparent; border: 1.5px solid var(--term-dim); border-radius: 2px; }
+  .term .bar .title { flex: 1; text-align: center; margin-right: 47px; }
+  .scroll { height: 178px; overflow-y: auto; padding: 10px 14px 0; white-space: pre-wrap; word-break: break-word; scrollbar-width: thin; }
+  .line { min-height: 1.6em; }
+  .prompt { color: var(--ok); user-select: none; }
+  html[data-dir="b"][data-theme="light"] .term .prompt { color: #3a7d00; }
   .err { color: #ff6b62; }
-  .dim { color: var(--faint); }
-  .ok { color: #8be39b; }
-  .inputline { display: flex; gap: 8px; padding: 0 14px 12px; align-items: baseline; }
-  #input {
-    flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--text);
-    font: inherit; caret-color: var(--accent); padding: 0;
+  html[data-dir="b"][data-theme="light"] .term .err { color: #c0281f; }
+  .dim { color: var(--term-dim); }
+  .inputline { display: flex; gap: 9px; padding: 2px 14px 8px; align-items: baseline; }
+  .field { position: relative; flex: 1; min-width: 0; }
+  .field input, .field .ghost { font: inherit; letter-spacing: normal; padding: 0; margin: 0; border: 0; }
+  .field input { position: relative; z-index: 1; width: 100%; background: transparent; outline: none; color: var(--term-text); caret-color: var(--ok); }
+  .field input::placeholder { color: var(--term-dim); opacity: .75; }
+  .field .ghost { position: absolute; inset: 0; white-space: pre; overflow: hidden; color: transparent; pointer-events: none; }
+  .field .ghost span { color: var(--term-dim); opacity: .7; }
+  .hint {
+    display: flex; gap: 14px; align-items: center; padding: 7px 14px 9px; font: 11.5px/1.3 var(--sans); color: var(--term-dim);
+    border-top: 1px solid var(--term-border); min-height: 32px;
   }
+  .hint .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hint .what code { color: var(--term-text); }
+  .hint kbd { font: 600 10.5px/1 var(--mono); padding: 3px 5px; border-radius: 4px; border: 1px solid var(--term-border); color: var(--term-text); }
+  .hint .keys { display: flex; gap: 10px; white-space: nowrap; }
 
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 28px; }
+  /* ---------- chips ---------- */
+  .tryit { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 34px auto 0; max-width: 980px; }
+  .tryit .label { width: 100%; text-align: center; font: 600 12px/1 var(--mono); color: var(--faint); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
   .chip {
-    font: 12.5px/1 var(--mono); color: var(--text); background: var(--panel); border: 1px solid var(--line);
-    border-radius: 999px; padding: 8px 12px; cursor: pointer; transition: border-color .15s, background .15s;
+    display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px 0 11px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); font: 500 14px/1 var(--body); color: var(--text);
+    transition: transform .18s var(--ease-out), border-color .15s, background .15s;
   }
-  .chip:hover { border-color: #44444c; background: var(--panel-2); }
-  .chip:active { transform: scale(.97); }
+  .chip:hover { border-color: var(--border-2); background: var(--surface-2); transform: translateY(-1px); }
+  .chip:active { transform: scale(.96); }
+  .chip .dot { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: #fff; flex: none; }
+  .chip .dot svg { width: 11px; height: 11px; }
+  .chip.running { border-color: var(--text); }
+  html[data-dir="b"] .chip { border-radius: 3px; font-family: var(--mono); font-size: 13px; }
+  html[data-dir="b"] .chip .dot { border-radius: 2px; }
+  html[data-dir="b"] .tryit { justify-content: flex-start; max-width: none; }
+  html[data-dir="b"] .tryit .label { text-align: left; }
+  .readout-toggle { display: inline-flex; align-items: center; gap: 10px; height: 38px; padding: 0 14px; border-radius: 999px; border: 1px dashed var(--border-2); background: transparent; cursor: pointer; font: 500 13px/1 var(--mono); color: var(--muted); }
+  .readout-toggle .sw { position: relative; width: 28px; height: 16px; border-radius: 99px; background: var(--border-2); transition: background .2s; }
+  .readout-toggle .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .2s var(--ease-out); }
+  .readout-toggle[aria-pressed="true"] { color: var(--text); border-style: solid; }
+  .readout-toggle[aria-pressed="true"] .sw { background: var(--ok); }
+  .readout-toggle[aria-pressed="true"] .sw::after { transform: translateX(12px); }
+  html[data-dir="b"] .readout-toggle { border-radius: 3px; }
 
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 560px) { .screen { height: var(--screen-height, 170px); } }
-  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 23px; } #scroll { height: 220px; } }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
-  .panel h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--muted); letter-spacing: .02em; text-transform: uppercase; }
-  dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0; font: 12.5px/1.5 var(--mono); }
-  dt { color: var(--faint); }
-  dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-  textarea {
-    width: 100%; min-height: 150px; resize: vertical; background: var(--term); color: var(--text);
-    border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: 12.5px/1.5 var(--mono);
+  /* ---------- engine readout ---------- */
+  .readout { display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; max-width: 1120px; margin: 18px auto 0; }
+  .readout[hidden] { display: none; }
+  .panel { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-sm); padding: 16px 18px; min-width: 0; }
+  .panel h3 { margin: 0 0 4px; font: 600 12px/1.2 var(--mono); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+  .panel p { margin: 0 0 12px; font-size: 13.5px; color: var(--muted); }
+  dl.nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 18px; margin: 0; font: 12.5px/1.5 var(--mono); }
+  dl.nums div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dashed var(--border); padding: 2px 0; }
+  dl.nums dt { color: var(--faint); } dl.nums dd { margin: 0; font-variant-numeric: tabular-nums; }
+  canvas.plot { width: 100%; height: 110px; display: block; margin-top: 12px; }
+  .toggles { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .toggles label { display: inline-flex; gap: 7px; align-items: center; cursor: pointer; }
+  .toggles input { accent-color: var(--ok); }
+  textarea.config {
+    width: 100%; min-height: 128px; resize: vertical; background: var(--bg-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; font: 12.5px/1.55 var(--mono);
   }
-  label.toggle { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--muted); font-size: 13px; cursor: pointer; }
-  canvas#plot { width: 100%; height: 120px; display: block; margin-top: 4px; }
-  .notes { color: var(--muted); font-size: 14px; margin-top: 28px; }
-  .notes li { margin: 4px 0; }
-  code { font: 12.5px var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
-  #loading { position: absolute; left: 50%; top: 110px; transform: translateX(-50%); color: rgba(255,255,255,.7); font-size: 13px; }
+
+  /* ---------- sections ---------- */
+  section.block { padding: 112px 0 0; }
+  .kicker { font: 600 12px/1 var(--mono); color: var(--accent); letter-spacing: .1em; text-transform: uppercase; }
+  html[data-dir="a"] .kicker { color: var(--ok); }
+  h2 { margin: 14px 0 14px; font: 700 clamp(32px, 5vw, 56px)/1.02 var(--display); letter-spacing: -0.045em; text-wrap: balance; max-width: 18ch; }
+  .sub { margin: 0; max-width: 60ch; color: var(--muted); font-size: 18px; text-wrap: pretty; }
+  html[data-dir="b"] h2 { letter-spacing: -0.05em; max-width: 22ch; }
+  html[data-dir="b"] .kicker::before { content: attr(data-n) "  /  "; color: var(--faint); }
+  html[data-dir="b"] .kicker { color: var(--text); }
+
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; }
+  .feature {
+    position: relative; display: flex; flex-direction: column; border: 1px solid var(--border); background: var(--surface);
+    border-radius: var(--radius); overflow: hidden; min-width: 0; transition: border-color .2s, transform .3s var(--ease-out);
+  }
+  .feature:hover { border-color: var(--border-2); }
+  html[data-dir="b"] .features { gap: 0; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+  html[data-dir="b"] .feature { border-radius: 0; border-width: 0 1px 1px 0; background: transparent; }
+  .mini { position: relative; height: 184px; background: var(--wall); overflow: hidden; border-bottom: 1px solid var(--border); }
+  .mini .menubar { font-size: 11px; }
+  .mini .menubar .left span, .mini .menubar .right .opt { display: none; }
+  .play {
+    position: absolute; right: 10px; bottom: 10px; z-index: 5; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 9px;
+    border-radius: 999px; border: 0; cursor: pointer; background: rgba(0,0,0,.6); color: #fff; font: 600 12px/1 var(--sans);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: background .15s, transform .15s var(--ease-out);
+  }
+  .play:hover { background: rgba(0,0,0,.8); } .play:active { transform: scale(.95); }
+  .play svg { width: 11px; height: 11px; }
+  html[data-dir="b"] .play { border-radius: 2px; }
+  .miniterm { background: var(--term-bg); color: var(--term-text); font: 12px/1.6 var(--mono); padding: 10px 14px; height: 92px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; border-bottom: 1px solid var(--border); }
+  html[data-dir="a"] .miniterm { background: color-mix(in srgb, var(--bg-2) 70%, #000); color: #e8e8ee; }
+  html[data-dir="a"][data-theme="light"] .miniterm { background: #16161d; }
+  .miniterm .line { white-space: pre; overflow: hidden; text-overflow: ellipsis; min-height: 1.6em; }
+  .feature .copy { padding: 20px 22px 24px; }
+  .feature h3 { margin: 0 0 6px; font: 650 20px/1.2 var(--display); letter-spacing: -0.02em; }
+  html[data-dir="b"] .feature h3 { font-size: 17px; letter-spacing: -0.03em; }
+  .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+  .feature p code { font-size: 13px; color: var(--text); background: var(--surface-2); padding: 1px 5px; border-radius: 5px; border: 1px solid var(--border); }
+
+
+  /* ---------- stacks: the engine's, live ---------- */
+  .stackcard { display: grid; grid-template-columns: 1.15fr 1fr; margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+  html[data-dir="b"] .stackcard { border-radius: 0; margin-top: 0; border-top: 0; }
+  .stackside { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--border); }
+  .stackvis { position: relative; height: 300px; background: var(--wall); overflow: hidden; border-bottom: 1px solid var(--border); }
+  .stackvis .menubar { font-size: 11px; }
+  .stackvis .menubar .left span { display: none; }
+  .stackside .miniterm { border-bottom: 0; flex: 1; }
+  .stackcard .copy { padding: 28px 28px 30px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+  .stackcard h3 { margin: 0; font: 650 24px/1.15 var(--display); letter-spacing: -0.03em; }
+  .stackcard p { margin: 0; color: var(--muted); font-size: 15px; }
+  .stackcard .seg { align-self: flex-start; }
+  @media (max-width: 860px) { .stackcard { grid-template-columns: 1fr; } .stackside { border-right: 0; border-bottom: 1px solid var(--border); } .stackvis { height: 260px; } }
+
+  /* ---------- how / real ---------- */
+  .real { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 40px; }
+  .real .panel { padding: 22px; border-radius: var(--radius); }
+  .real .panel h3 { display: flex; align-items: center; gap: 8px; color: var(--text); }
+  .real .panel h3 i { width: 8px; height: 8px; border-radius: 50%; }
+  .real ul { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 14.5px; }
+  .real li { margin: 4px 0; }
+  html[data-dir="b"] .real .panel { border-radius: 0; }
+
+  /* ---------- install ---------- */
+  .ship {
+    position: relative; margin-top: 44px; padding: clamp(28px, 5vw, 56px); border-radius: calc(var(--radius) + 6px); overflow: hidden;
+    border: 1px solid var(--border-2); background: var(--surface);
+  }
+  html[data-dir="a"] .ship::before {
+    content: ""; position: absolute; inset: auto -10% -60% -10%; height: 120%; z-index: -1;
+    background: radial-gradient(50% 50% at 30% 50%, var(--glow-1), transparent 70%), radial-gradient(50% 50% at 75% 50%, var(--glow-2), transparent 70%);
+    filter: blur(30px);
+  }
+  html[data-dir="a"] .ship { isolation: isolate; }
+  html[data-dir="b"] .ship { border-radius: 0; background: var(--mark); color: #0a0a0a; border: 0; }
+  .shell { margin-top: 26px; border-radius: 14px; background: #0b0b0f; color: #ececf1; border: 1px solid rgba(255,255,255,.08); font: 15px/1.7 var(--mono); overflow: hidden; }
+  html[data-dir="b"] .shell { border-radius: 3px; background: #0a0a0a; }
+  .shell .row { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 18px; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .shell .row:last-child { border-bottom: 0; }
+  .shell .row code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .shell .row .c { color: #6c6c78; }
+  .shell .copy { flex: none; height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); color: #fff; cursor: pointer; font: 600 12px/1 var(--sans); }
+  .shell .copy:hover { background: rgba(255,255,255,.12); }
+  .ship .meta { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 18px; color: var(--muted); font-size: 14px; }
+  html[data-dir="b"] .ship .meta, html[data-dir="b"] .ship .sub { color: #2b2b2b; }
+  html[data-dir="b"] .ship .kicker, html[data-dir="b"] .ship .kicker::before { color: #0a0a0a; }
+  .ship .ctas { justify-content: flex-start; }
+  html[data-dir="b"] .ship .btn { border-color: #0a0a0a; background: transparent; color: #0a0a0a; }
+  html[data-dir="b"] .ship .btn.primary { background: #0a0a0a; color: var(--mark); }
+
+  footer { padding: 72px 0 calc(48px + env(safe-area-inset-bottom)); color: var(--faint); font-size: 13.5px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 24px; }
+  footer a { color: var(--muted); }
+
+  /* ---------- entrance ---------- */
+  .rise { animation: rise .9s var(--ease-out) both; }
+  .rise.d1 { animation-delay: .06s; } .rise.d2 { animation-delay: .14s; } .rise.d3 { animation-delay: .22s; } .rise.d4 { animation-delay: .32s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+  html[data-dir="b"] .rise { animation-name: riseb; animation-duration: .5s; }
+  @keyframes riseb { from { opacity: 0; } to { opacity: 1; } }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1040px) {
+    .features { grid-template-columns: repeat(2, 1fr); }
+    .real { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 860px) {
+    .nav .links { display: none; }
+    .screen { height: clamp(180px, 36vw, 300px); }
+    .term { position: relative; left: auto; bottom: auto; transform: none; width: auto; margin-top: 0; border-radius: 0 0 14px 14px; border-top: 0; box-shadow: 0 30px 60px -30px rgba(0,0,0,.5); }
+    html[data-dir="b"] .term { border-radius: 0 0 4px 4px; box-shadow: none; border-top: 1px solid var(--term-border); }
+    .bezel::after { display: none; }
+    .bezel { border-radius: 20px 20px 0 0; padding: 7px 7px 0; }
+    .screen { border-radius: 14px 14px 0 0; }
+    .menubar .left span, .menubar .right .opt { display: none; }
+    .readout { grid-template-columns: 1fr; }
+    .hint .keys { display: none; }
+  }
+  @media (max-width: 640px) {
+    :root { --radius: 18px; }
+    .hero { padding-top: 36px; }
+    .features { grid-template-columns: 1fr; }
+    .seg button .long { display: none; }
+    .install { font-size: 13px; padding-left: 14px; gap: 8px; }
+    .chip { height: 36px; font-size: 13.5px; }
+    section.block { padding-top: 80px; }
+    .sub { font-size: 16.5px; }
+    .scroll { height: 150px; }
+    .shell { font-size: 13px; }
+    .shell .row { padding-left: 14px; }
+  }
+  @media (max-width: 380px) { .nav .gh { display: none; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+    .aurora i { animation: none; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>drip, running in your browser</h1>
-  <p class="lede">This page loads <b>drip's own engine</b>, DripCore, compiled from the same Swift sources to WebAssembly.
-    Type a <code>drip</code> command: the engine parses it, resolves the card, wraps the text and springs the island out of the notch.
-    Send a few at once and they stack, up to three, each dropping out of the one above.
-    The page only paints what the engine computes, frame by frame.</p>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-drop" viewBox="0 0 32 32"><path d="M16 3c5 7 9 11.5 9 16.5A9 9 0 0 1 7 19.5C7 14.5 11 10 16 3z" fill="currentColor"/></symbol>
+  <symbol id="i-gh" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2M12 19.8V22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2 12h2.2M19.8 12H22M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"/></g></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 12 12"><path d="M3 1.6v8.8L10.4 6z" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 12 12"><path d="M2.6 6.2l2.3 2.3 4.6-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-x" viewBox="0 0 12 12"><path d="M3.3 3.3l5.4 5.4M8.7 3.3L3.3 8.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-bang" viewBox="0 0 12 12"><path d="M6 2.4v4.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="6" cy="9.2" r="1" fill="currentColor"/></symbol>
+  <symbol id="i-run" viewBox="0 0 12 12"><path d="M2.5 3.5L5 6 2.5 8.5M6.5 9h3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 12 12"><path d="M6 1.5l1.2 3.3 3.3 1.2-3.3 1.2L6 10.5 4.8 7.2 1.5 6l3.3-1.2z" fill="currentColor"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 12 12"><path d="M2.5 4.5h6.5L7.2 2.7M9.5 7.5H3l1.8 1.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 12 12"><rect x="2" y="4" width="8" height="4" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-pipe" viewBox="0 0 12 12"><path d="M6 1.8v8.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-plane" viewBox="0 0 12 12"><path d="M1.8 5.6l8.4-3.4-3 8-1.4-3.2z" fill="currentColor"/></symbol>
+  <symbol id="i-stack" viewBox="0 0 12 12"><path d="M2.5 3.5h7M2.5 6h7M2.5 8.5h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 16 16"><path d="M8 12.6l1.6-1.8a2.2 2.2 0 0 0-3.2 0zM3.6 8.8a6.3 6.3 0 0 1 8.8 0l-1.3 1.4a4.4 4.4 0 0 0-6.2 0zM1 6.1a10 10 0 0 1 14 0l-1.3 1.4a8.1 8.1 0 0 0-11.4 0z" fill="currentColor"/></symbol>
+  <symbol id="i-batt" viewBox="0 0 26 13"><rect x=".7" y=".7" width="21.6" height="11.6" rx="3.4" fill="none" stroke="currentColor" stroke-opacity=".5" stroke-width="1.2"/><rect x="2.4" y="2.4" width="15" height="8.2" rx="2" fill="currentColor"/><path d="M23.6 4.6v3.8c.8-.3 1.3-1 1.3-1.9s-.5-1.6-1.3-1.9z" fill="currentColor" fill-opacity=".5"/></symbol>
+</svg>
 
-  <div class="screen" id="screen" role="img" aria-label="A Mac screen's top edge, where the island drops from the notch">
-    <div class="menubar"><div class="left"><b>Terminal</b><span></span><span>Shell</span><span>Edit</span><span>View</span></div><div id="clock"></div></div>
-    <canvas id="island"></canvas>
-    <div id="loading">loading the drip engine…</div>
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="drip, back to top"><svg style="color:var(--ok)"><use href="#i-drop"/></svg>drip</a>
+    <nav class="links" aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#engine">How it works</a>
+      <a href="#install">Install</a>
+    </nav>
+    <span class="spacer"></span>
+    <div class="seg" role="group" aria-label="Visual direction">
+      <button type="button" data-set-dir="a" aria-pressed="true" title="Direction A: Aurora">A<span class="long"> Aurora</span></button>
+      <button type="button" data-set-dir="b" aria-pressed="false" title="Direction B: Signal">B<span class="long"> Signal</span></button>
+    </div>
+    <button type="button" class="iconbtn" id="theme" aria-label="Switch between dark and light"><svg class="sun"><use href="#i-sun"/></svg><svg class="moon"><use href="#i-moon"/></svg></button>
+    <a class="iconbtn gh" href="https://github.com/jrnxf/drip" aria-label="drip on GitHub"><svg><use href="#i-gh"/></svg></a>
   </div>
-  <div class="terminal">
-    <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="name">zsh, in a browser</span></div>
-    <div id="scroll"></div>
-    <div class="inputline"><span class="prompt">~ $</span><input id="input" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Command line" disabled></div>
-  </div>
+</header>
 
-  <div class="chips" id="chips"></div>
+<main id="top">
+  <section class="hero">
+    <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="wrap">
+      <div class="intro">
+        <div class="rise"><a class="eyebrow" href="#engine"><span class="live">Live</span> drip's real engine, running in this page</a></div>
+        <h1 class="rise d1">The notch, <span class="hl">finally useful.</span></h1>
+        <p class="lede rise d2">One shell command drops a native card out of your Mac's camera notch: <b>what finished, and how it went</b>. For builds, deploys, tests and coding agents.</p>
+        <div class="ctas rise d3">
+          <div class="install"><span class="dollar">$</span><code>brew install jrnxf/tap/drip</code><button type="button" class="btn primary" data-copy="brew install jrnxf/tap/drip">Copy</button></div>
+          <a class="btn" href="https://github.com/jrnxf/drip"><svg><use href="#i-gh"/></svg>GitHub</a>
+        </div>
+        <aside class="usage rise d3" aria-label="drip usage at a glance"><div class="h"><span>drip(1)</span><span>macOS 13+</span></div><pre><b>drip</b> [KIND] [TITLE] [options]
+<b>drip run</b> [options] -- &lt;command&gt;
+<b>drip hook</b> claude|codex
+<b>drip demo</b>
 
-  <div class="grid">
-    <section class="panel">
-      <h2>Engine, live</h2>
-      <dl id="live"></dl>
-      <canvas id="plot"></canvas>
-      <label class="toggle"><input type="checkbox" id="outline"> show the traced outline points</label>
-      <label class="toggle"><input type="checkbox" id="slow"> slow motion (quarter speed)</label>
-    </section>
-    <section class="panel">
-      <h2>~/.config/drip/config.toml</h2>
-      <textarea id="config" spellcheck="false"># Read by the real TOML parser on every command.
+<i>KIND</i>    ok · warn · fail · info
+<i>-d</i>      detail, up to 3 lines
+<i>--id</i>    replace a card in place
+<i>--open</i>  a button that opens a URL
+<i>exit</i>    at once, never slows you</pre></aside>
+      </div>
+
+      <div class="mac rise d4" id="hero-mac">
+        <div class="bezel">
+          <div class="screen" id="hero-screen" role="img" aria-label="The top of a Mac screen. drip's cards grow out of the camera notch.">
+            <div class="menubar">
+              <div class="left"><b>Terminal</b><span>Shell</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></div>
+              <div class="right"><svg class="opt"><use href="#i-wifi"/></svg><svg class="opt" style="width:24px"><use href="#i-batt"/></svg><span class="clock"></span></div>
+            </div>
+            <canvas class="stage-canvas"></canvas>
+            <div class="loading" id="loading">Loading drip's engine</div>
+          </div>
+          <div class="term" id="hero-term">
+            <div class="bar"><span class="lights"><i></i><i></i><i></i></span><span class="title">~ - zsh - drip</span></div>
+            <div class="scroll" aria-live="polite"></div>
+            <div class="inputline">
+              <span class="prompt">~ $</span>
+              <div class="field">
+                <div class="ghost" aria-hidden="true"></div>
+                <input id="input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type a drip command" placeholder='try  drip ok "hello"' disabled enterkeyhint="go">
+              </div>
+            </div>
+            <div class="hint"><span class="what" id="hint-what">Type a <code>drip</code> command, or pick one below.</span><span class="keys"><span><kbd>Tab</kbd> complete</span><span><kbd>↑</kbd> history</span><span><kbd>⏎</kbd> run</span></span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tryit" id="chips"><div class="label">Try one</div></div>
+
+      <div class="readout" id="readout" hidden>
+        <div class="panel">
+          <h3>Engine readout</h3>
+          <p>Every number comes from DripCore's <code>IslandAnimator</code>, computed by the WebAssembly engine for each frame.</p>
+          <dl class="nums" id="live"></dl>
+          <canvas class="plot" id="plot"></canvas>
+          <div class="toggles">
+            <label><input type="checkbox" id="outline"> show the traced outline points</label>
+            <label><input type="checkbox" id="slow"> slow motion (¼ speed)</label>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>~/.config/drip/config.toml</h3>
+          <p>Read by drip's real TOML parser on every command. Try <code>drip deploy "shipped"</code>.</p>
+          <textarea class="config" id="config" spellcheck="false" aria-label="drip config file"># Read by the real TOML parser on every command.
 [preset.deploy]
 icon  = "paperplane.fill"
 color = "#a78bfa"
 seconds = 6</textarea>
-      <dl id="load" style="margin-top:12px"></dl>
-    </section>
-  </div>
+          <dl class="nums" id="load" style="margin-top:12px"></dl>
+        </div>
+      </div>
+    </div>
+  </section>
 
-  <ul class="notes">
-    <li>Real: the command line (swift-argument-parser), presets, config, flags, <code>drip run</code>'s title and timing, line wrapping, the island's sizes, every spring and the liquid outline traced by marching squares.</li>
-    <li>Drawn by the page: the paint. Icons stand in for SF Symbols, fonts are the browser's system font, and there is no sound.</li>
-    <li>Stacks: cards sent while others show stack below them, chained (each drops out of the card above) or pushed (<code>DRIP_STACK=push drip …</code>, each drops out of the notch and pushes the others down). The engine places them, holds a fourth until there is room, and stops every countdown while the pointer is on a card.</li>
-    <li>Not here: other positions and styles (every card is a notch card), cards replaced in place, history.</li>
-  </ul>
+  <section class="block" id="features">
+    <div class="wrap">
+      <div class="kicker" data-n="01">What it does</div>
+      <h2>One line in, a glance out.</h2>
+      <p class="sub">Every card below is dropped by the same engine as the one above. Hit play on any of them.</p>
+      <div class="features" id="feature-grid"></div>
+      <div class="stackcard" id="stacks">
+        <div class="stackside">
+          <div class="stackvis" role="img" aria-label="A Mac screen's top edge, where drip's engine stacks several cards under the notch">
+            <div class="menubar"><div class="left"><b>Terminal</b><span>Shell</span></div><div class="right"><span class="clock"></span></div></div>
+            <canvas class="stage-canvas"></canvas>
+            <button type="button" class="play" id="stack-play"><svg><use href="#i-play"/></svg>Play</button>
+          </div>
+          <div class="miniterm" id="stack-term"></div>
+        </div>
+        <div class="copy">
+          <h3>Up to three cards at once.</h3>
+          <p>Cards that arrive while one is showing stack below it. <b>Chain</b>, the default, drops each new card out of the bottom of the last one. <b>Push</b> drops it out of the notch once the others have moved down. A fourth waits until there is room.</p>
+          <p>This is the engine, not a picture: DripCore's <code>CardStack</code>, the same code the Mac app runs, places every card here, times it, and stops every countdown while your pointer is on a card. Pick a mode to play it.</p>
+          <div class="seg" role="group" aria-label="Stack mode"><button type="button" data-stack="chain" aria-pressed="true">chain</button><button type="button" data-stack="push" aria-pressed="false">push</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="engine">
+    <div class="wrap">
+      <div class="kicker" data-n="02">How this page works</div>
+      <h2>Not a video. The actual code.</h2>
+      <p class="sub">DripCore, drip's engine, is compiled from the same Swift sources to WebAssembly and loaded by this page. It parses each command line, resolves the card, wraps the text and springs the drop out of the notch. The page only paints what it computes. Turn on the <a href="#chips" id="readout-link">engine readout</a> to watch the numbers.</p>
+      <div class="real">
+        <div class="panel"><h3><i style="background:var(--ok)"></i>Real drip</h3><ul>
+          <li>The command line, parsed by swift-argument-parser, with drip's own errors and <code>--help</code></li>
+          <li>Presets, flags and your <code>config.toml</code></li>
+          <li><code>drip run</code>'s title and timing, <code>drip hook</code>'s payload reading</li>
+          <li>Text wrapping, every size, every spring, and the liquid outline traced by marching squares</li>
+          <li>Stacks of up to three cards, chained or pushed, and cards replaced in place: DripCore's <code>CardStack</code> places, times and springs them</li>
+        </ul></div>
+        <div class="panel"><h3><i style="background:var(--info)"></i>Drawn by this page</h3><ul>
+          <li>The paint: icons stand in for SF Symbols</li>
+          <li>Fonts are your browser's system font</li>
+          <li>Commands that <code>drip run</code> wraps are pretend, and timed for real</li>
+          <li>The crossfade when a card is replaced in place, on drip's own timings</li>
+          <li>No sound</li>
+        </ul></div>
+        <div class="panel"><h3><i style="background:var(--warn)"></i>Only on a Mac</h3><ul>
+          <li>Other positions and styles: every card here is a notch card</li>
+          <li>History and missed cards</li>
+          <li>The system sounds</li>
+        </ul></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="install">
+    <div class="wrap">
+      <div class="ship">
+        <div class="kicker" data-n="03">Install</div>
+        <h2>A minute to your first drip.</h2>
+        <p class="sub">Homebrew builds drip from source with the Command Line Tools it already needs, in about a minute. Xcode is not needed.</p>
+        <div class="shell">
+          <div class="row"><code><span class="c">$ </span>brew install jrnxf/tap/drip</code><button type="button" class="copy" data-copy="brew install jrnxf/tap/drip">Copy</button></div>
+          <div class="row"><code><span class="c">$ </span>drip ok "drip works"</code><button type="button" class="copy" data-copy='drip ok "drip works"'>Copy</button></div>
+          <div class="row"><code><span class="c">$ </span>drip run -- make test   <span class="c"># then wrap anything</span></code><button type="button" class="copy" data-copy="drip run -- make test">Copy</button></div>
+        </div>
+        <div class="meta"><span>macOS 13 or newer</span><span>Notch or no notch</span><span>MIT licensed</span></div>
+        <div class="ctas"><a class="btn primary" href="https://github.com/jrnxf/drip"><svg><use href="#i-gh"/></svg>Star on GitHub</a><a class="btn" href="https://github.com/jrnxf/drip#usage">Read the docs</a></div>
+      </div>
+    </div>
+  </section>
 </main>
 
+<footer>
+  <div class="wrap">
+    <span>drip: a HUD from the shell, for macOS.</span>
+    <span>The cards on this page are drawn by drip's own engine. <a href="https://github.com/jrnxf/drip">github.com/jrnxf/drip</a></span>
+  </div>
+</footer>
+<div class="sr" aria-live="polite" id="announce"></div>
 
 <script type="module">
 import { loadDrip } from "./drip-engine.js";
@@ -152,6 +645,7 @@ import { loadDrip } from "./drip-engine.js";
 // The engine, named by its content when the site is built (web/build.sh).
 const WASM = "__DRIP_WASM__";
 
+// ===== Measuring and painting =====
 const FONT = getComputedStyle(document.documentElement).getPropertyValue("--sans");
 const fonts = [(s) => `600 ${14 * s}px ${FONT}`, (s) => `400 ${12 * s}px ${FONT}`, (s) => `600 ${12.5 * s}px ${FONT}`];
 const measurer = document.createElement("canvas").getContext("2d");
@@ -161,146 +655,6 @@ function measure(font, scale, text) { measurer.font = fonts[font](scale); return
 const SYSTEM = { green: "#30d158", orange: "#ff9f0a", red: "#ff453a", blue: "#0a84ff", purple: "#bf5af2", pink: "#ff375f", yellow: "#ffd60a", gray: "#8e8e93" };
 const accentOf = (color) => color.system ? SYSTEM[color.system._0] : `rgb(${color.rgb.red},${color.rgb.green},${color.rgb.blue})`;
 
-// ---- terminal ----
-const scroll = document.getElementById("scroll"), input = document.getElementById("input");
-function print(text, cls = "") {
-  for (const part of String(text).split("\n")) {
-    const div = document.createElement("div"); div.className = "line " + cls; div.textContent = part; scroll.append(div);
-  }
-  scroll.scrollTop = scroll.scrollHeight;
-}
-function echo(command) {
-  const div = document.createElement("div"); div.className = "line";
-  const p = document.createElement("span"); p.className = "prompt"; p.textContent = "~ $ ";
-  div.append(p, command); scroll.append(div); scroll.scrollTop = scroll.scrollHeight;
-}
-// Splits a command line as a POSIX shell would, quotes and backslashes included; pipes split stages.
-function shellSplit(line) {
-  const stages = [[]]; let word = null, quote = null;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (quote) {
-      if (c === quote) quote = null;
-      else if (c === "\\" && quote === '"' && i + 1 < line.length) word += line[++i];
-      else word += c;
-    } else if (c === "'" || c === '"') { quote = c; word ??= ""; }
-    else if (c === "\\" && i + 1 < line.length) { word = (word ?? "") + line[++i]; }
-    else if (/\s/.test(c)) { if (word !== null) { stages.at(-1).push(word); word = null; } }
-    else if (c === "|") { if (word !== null) { stages.at(-1).push(word); word = null; } stages.push([]); }
-    else word = (word ?? "") + c;
-  }
-  if (quote) throw new Error("unmatched " + quote);
-  if (word !== null) stages.at(-1).push(word);
-  return stages;
-}
-
-// A chip runs its lines one after another, as fast as they can be typed.
-const examples = [
-  [`drip "build done"`],
-  [`drip demo`],
-  [`drip ok "Build finished" -d "make test: 246 passed"`, `drip warn "Claude needs you" -d "permission to use Bash"`, `drip fail "Deploy failed" -d "staging: health check timed out"`, `drip info "Backup done" -d "412 files, 3.1 GB"`],
-  [`DRIP_STACK=push drip demo push`],
-  [`drip run -- npm test`],
-  [`drip run -- make deploy-fail`],
-  [`drip ok "Release 1.4 is out" --open https://github.com/jrnxf/drip`],
-  [`printf 'Backup done\\n412 files, 3.1 GB to nas' | drip ok`],
-  [`drip deploy "shipped to prod"`],
-  [`drip warn "Disk almost full" -d "12 GB left on Macintosh HD" --size large`],
-  [`drip hook claude '{"hook_event_name":"Stop","cwd":"/home/user/my-app","last_assistant_message":"All **246** tests pass. Pushed \`fix/notch\`."}'`],
-  [`drip --seconds 99 "too long"`],
-  [`drip --help`],
-];
-const chips = document.getElementById("chips");
-for (const lines of examples) {
-  const label = lines.length > 1 ? `${lines.length} drips at once` : lines[0];
-  const b = document.createElement("button"); b.className = "chip"; b.textContent = label.length > 58 ? label.slice(0, 55) + "…" : label;
-  b.title = lines.join("\n");
-  b.onclick = async () => { if (input.disabled) return; for (const line of lines) await run(line); };
-  chips.append(b);
-}
-
-const history = []; let historyIndex = 0;
-input.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") { const line = input.value; input.value = ""; if (line.trim()) { history.push(line); historyIndex = history.length; } run(line); }
-  else if (event.key === "ArrowUp" && historyIndex > 0) { input.value = history[--historyIndex]; event.preventDefault(); }
-  else if (event.key === "ArrowDown") { historyIndex = Math.min(historyIndex + 1, history.length); input.value = history[historyIndex] ?? ""; }
-  else if (event.key === "l" && event.ctrlKey) { scroll.textContent = ""; event.preventDefault(); }
-});
-
-// What `drip run` wraps never runs here; it pretends, and drip times the pretend.
-const fakeOutput = {
-  npm: ["", "> my-app@1.0.0 test", "> vitest run", "", " ✓ src/notch.test.ts (31 tests) 412ms", " ✓ src/queue.test.ts (18 tests) 205ms", "", " Test Files  2 passed (2)", "      Tests  49 passed (49)"],
-  make: ["swift build -c release", "Compiling DripCore Spring.swift", "Build complete!"],
-};
-function fakeRun(command) {
-  const joined = command.join(" ");
-  const fails = /fail|false|error|exit [1-9]/.test(joined);
-  const lines = fails ? [...(fakeOutput[command[0]] ?? []).slice(0, 2), "error: health check timed out"] : (fakeOutput[command[0]] ?? [`(pretending to run ${joined})`]);
-  const seconds = 1.2 + Math.random() * 1.8;
-  return { lines, seconds, status: fails ? (command[0] === "false" ? 1 : 2) : 0 };
-}
-
-let drip;
-const configText = () => document.getElementById("config").value;
-const notch = { width: 185, height: 32 };
-
-async function run(line) {
-  echo(line);
-  let stages;
-  try { stages = shellSplit(line); } catch (error) { print(`zsh: ${error.message}`, "err"); return; }
-  if (!stages[0].length) return;
-  let stdin;
-  if (stages.length > 1) {
-    const first = stages[0];
-    if (first[0] === "echo") stdin = first.slice(1).join(" ") + "\n";
-    else if (first[0] === "printf") stdin = (first[1] ?? "").replace(/\\n/g, "\n");
-    else { print(`zsh: only echo and printf can pipe into drip here`, "err"); return; }
-    stages = stages.slice(1);
-  }
-  // `NAME=value drip …` sets drip's environment, as DRIP_STACK=push.
-  const words = stages[0].slice(), env = {};
-  while (words.length > 1 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) {
-    const word = words.shift(), at = word.indexOf("=");
-    env[word.slice(0, at)] = word.slice(at + 1);
-  }
-  const [program, ...args] = words;
-  if (program === "clear") { scroll.textContent = ""; return; }
-  if (program !== "drip") { print(`zsh: command not found: ${program}  (this terminal only runs drip)`, "err"); return; }
-
-  let reply = drip.command({ args, env, config: configText(), notch, stdin });
-  if (reply.run) {
-    input.disabled = true;
-    const outcome = fakeRun(reply.run);
-    const started = performance.now();
-    for (const l of outcome.lines) { print(l, "dim"); await sleep(outcome.seconds * 1000 / (outcome.lines.length + 1)); }
-    await sleep(Math.max(0, outcome.seconds * 1000 - (performance.now() - started)));
-    input.disabled = false; input.focus();
-    reply = drip.command({ args, env, config: configText(), notch, run: { status: outcome.status, seconds: (performance.now() - started) / 1000 } });
-  }
-  if (reply.message !== undefined) { print(reply.message, reply.exit === 0 ? "" : "err"); return; }
-  for (const warning of reply.warnings ?? []) print(`drip: warning: ${warning}`, "dim");
-  if (reply.status) print(`zsh: exit ${reply.status}`, "dim");
-  deliveries.push(...reply.deliveries);
-}
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// ---- island ----
-// Each command's cards arrive as a delivery. A delivery with stack settings starts a stack, which
-// the engine runs: it lets cards in, places them, counts them down and sends them off. While it
-// shows, it takes in later commands' cards, as the app's background drip does. Cards that do not
-// stack (reduced motion, DRIP_STACK=off) show one at a time.
-const canvas = document.getElementById("island"), ctx = canvas.getContext("2d");
-const layer = document.createElement("canvas"), lctx = layer.getContext("2d");
-const textLayer = document.createElement("canvas"), tctx = textLayer.getContext("2d");
-const screen = document.getElementById("screen");
-const deliveries = [];
-// { kind: "stack", start, cards: Map(handle -> card), bottom } or { kind: "single", queue, current }
-let showing = null;
-let clock = 0, lastNow = performance.now();
-// For screenshots: holds the clock `frozen` seconds into what is showing.
-let frozen = null;
-let pointer = null;
-
 function bezier(x1, y1, x2, y2) {
   const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx, cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
   const x = (t) => ((ax * t + bx) * t + cx) * t, y = (t) => ((ay * t + by) * t + cy) * t, dx = (t) => (3 * ax * t + 2 * bx) * t + cx;
@@ -308,78 +662,7 @@ function bezier(x1, y1, x2, y2) {
 }
 const easeOut = bezier(0.23, 1, 0.32, 1);
 const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
-
-// How much the screen is scaled down: never, unless a card would not fit the page's width.
-let fit = 1;
-function fitFor(card) {
-  const W = canvas.getBoundingClientRect().width;
-  return Math.min(1, (W - 16) / Math.max(card ? card.metrics.maxWidth + 16 : 0, 380));
-}
-function setFit(value) { fit = value; screen.style.setProperty("--fit", fit); }
-// The screen grows to hold the stack, and settles back once it has gone.
-let screenHeight = 0;
-function holdDown(bottom) {
-  const base = innerWidth <= 560 ? 170 : 230, height = Math.max(base, Math.ceil((bottom + 24) * fit));
-  if (height !== screenHeight) { screenHeight = height; screen.style.setProperty("--screen-height", height + "px"); }
-}
-
-// A card as the page draws it; its times are its own, from when it starts to drop in.
-function prepare(card) {
-  return { ...card, accent: accentOf(card.card.color), ringSide: card.metrics.actionWidth || 22 * card.metrics.scale, start: Infinity };
-}
-
-function startNext() {
-  const delivery = deliveries.shift();
-  const cards = delivery.cards.map(prepare);
-  setFit(Math.min(...cards.map(fitFor)));
-  if (delivery.stack) {
-    showing = { kind: "stack", start: clock, cards: new Map(cards.map((card) => [card.handle, card])), bottom: 0, settings: delivery.stack };
-    drip.stack.start({ ...delivery.stack, adopting: delivery.adopting }, cards.map((card) => card.handle));
-  } else {
-    showing = { kind: "single", queue: cards, current: null };
-  }
-}
-
-// Later commands' stacking cards join the stack that shows, which lets them in when there is room.
-function adopt() {
-  while (showing?.kind === "stack" && deliveries[0]?.stack && deliveries[0].adopting) {
-    const cards = deliveries[0].cards.map(prepare);
-    if (!cards.every((card) => drip.stack.adopt(card.handle))) return;
-    deliveries.shift();
-    for (const card of cards) showing.cards.set(card.handle, card);
-    setFit(Math.min(fit, ...cards.map(fitFor)));
-  }
-}
-
-// One card on its own, with reduced motion as the app shows it.
-function begin(card) {
-  const motion = card.card.motion;
-  card.start = clock;
-  if (motion === "full") {
-    card.cues = drip.enter(card.handle, 0);
-    card.visible = (card.cues.title[0] ?? card.cues.sides) + 0.25;
-  } else {
-    drip.open(card.handle);
-    card.cues = { sides: 0, title: card.titleLines.map(() => 0), detail: card.detailLines.map(() => 0) };
-    card.visible = 0.15;
-    card.panelFade = motion === "none" ? 0 : 0.15;
-  }
-  card.exitAt = card.visible + card.seconds;
-  return card;
-}
-function leave(card, at) {
-  if (card.exitCues) return;
-  card.exitAt = at;
-  if (card.card.motion === "full") { card.exitCues = drip.exit(card.handle, at); card.done = drip.end(card.handle) + 0.05; }
-  else { card.exitCues = { sides: 0, title: [], detail: [] }; card.done = at + (card.panelFade || 0) + 0.02; }
-}
-
-function resize() {
-  const rect = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
-  for (const c of [canvas, layer, textLayer]) { c.width = Math.round(rect.width * dpr); c.height = Math.round(rect.height * dpr); }
-}
-new ResizeObserver(resize).observe(canvas);
-addEventListener("resize", () => { if (!showing) setFit(fitFor(null)); });
+const lerp = (a, b, p) => a + (b - a) * p;
 
 function roundedRect(c, x, y, w, h, r) {
   r = Math.min(r, w / 2, h / 2);
@@ -408,277 +691,875 @@ function drawIcon(c, name, accent, cx, cy, size) {
 }
 
 // Opacity of a part cued at `cue`: entrance fades over `duration` with drip's ease-out, exit over 0.12 s.
-function partAlpha(card, t, cue, duration) {
-  if (card.exitCues && t >= card.exitAt) {
-    return 1 - easeOut(clamp01((t - card.exitAt - (cue.exit ?? 0)) / 0.12));
+function partAlpha(state, t, cue, duration) {
+  if (state.exitCues && t >= state.exitAt) {
+    return 1 - easeOut(clamp01((t - state.exitAt - (cue.exit ?? 0)) / 0.12));
   }
-  if (card.card.motion !== "full") return 1;
+  if (state.card.motion !== "full") return 1;
   return easeOut(clamp01((t - cue.enter) / duration));
 }
 
-// The black shape: the traced liquid while the drop touches what it grows out of, a capsule once it
-// floats free. Returns how many outline points it traced.
-function fillShape(f) {
-  ctx.fillStyle = "#000"; ctx.beginPath();
-  let points = 0;
-  if (f.touchesNotch) {
-    for (const loop of f.loops) { ctx.moveTo(loop[0], loop[1]); for (let i = 2; i < loop.length; i += 2) ctx.lineTo(loop[i], loop[i + 1]); ctx.closePath(); points += loop.length / 2; }
-    ctx.fill();
-  } else { roundedRect(ctx, -f.pillWidth / 2, f.pillTop, f.pillWidth, f.pillHeight, f.pillRadius); ctx.fill(); }
-  if (document.getElementById("outline").checked && f.touchesNotch) {
-    ctx.fillStyle = "#30d158";
-    for (const loop of f.loops) for (let i = 0; i < loop.length; i += 2) ctx.fillRect(loop[i] - 0.4, loop[i + 1] - 0.4, 0.8, 0.8);
+// drip's own constants for a card replaced in place (IslandUpdate in DripCore's Island.swift).
+const UPDATE = { resize: [0.4, 0.1], fadeOut: 0.10, fadeIn: 0.18, settle: 0.24, popScale: 0.86, pop: [0.4, 0.35], refill: 0.24, reducedFade: 0.15 };
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+
+let drip = null;
+const notch = { width: 185, height: 32 };
+
+// A card replaced in place is in from the start; the crossfade decides what shows.
+const shownCues = (card) => ({ sides: -1, title: card.titleLines.map(() => -1), detail: card.detailLines.map(() => -1) });
+
+// ===== A stage: one Mac screen top, with its own clock, its stack and its queue of cards =====
+// Each command's cards arrive as a delivery. One with stack settings starts a stack, which the engine
+// runs: it lets cards in, places them, swaps a card with the same --id in place, counts them down and
+// sends them off. While it shows, it takes in later commands' cards, as the app's background drip
+// does. Cards that do not stack (reduced motion, DRIP_STACK=off) show one at a time.
+class Stage {
+  constructor(screen, { zoom = () => 1, term = null, avail = null } = {}) {
+    this.screen = screen; this.term = term; this.zoom = zoom; this.avail = avail;
+    this.canvas = screen.querySelector("canvas"); this.ctx = this.canvas.getContext("2d");
+    this.layer = document.createElement("canvas"); this.lctx = this.layer.getContext("2d");
+    this.textLayer = document.createElement("canvas"); this.tctx = this.textLayer.getContext("2d");
+    this.deliveries = []; this.queue = []; this.current = null; this.stack = null; this.lastCard = null;
+    this.clock = 0; this.fit = 1; this.speed = 1;
+    this.frozen = null; this.visible = true; this.dirty = true; this.pointer = null;
+    this.listeners = [];
+    new ResizeObserver(() => { this.resize(); this.setFit(this.fitFor(this.current)); this.dirty = true; }).observe(this.canvas);
+    new IntersectionObserver(([entry]) => { this.visible = entry.isIntersecting; this.dirty = true; }, { rootMargin: "80px" }).observe(screen);
+    screen.addEventListener("pointermove", (event) => {
+      this.pointer = this.islandPoint(event);
+      if (this.stack) return;
+      const hover = this.hitButton(this.pointer);
+      if (this.current) this.current.hover = hover;
+      screen.style.cursor = hover ? "pointer" : "";
+    });
+    screen.addEventListener("pointerleave", () => {
+      this.pointer = null; screen.style.cursor = "";
+      if (this.stack) { drip.stack.pointer(this.stack.id, 0, 0, false, this.clock - this.stack.start); for (const card of this.stack.cards.values()) card.hover = false; }
+      else if (this.current) this.current.hover = false;
+    });
+    screen.addEventListener("click", (event) => {
+      const point = this.islandPoint(event);
+      let card;
+      if (this.stack) {
+        const clicked = drip.stack.click(this.stack.id, point.x, point.y, this.clock - this.stack.start);
+        if (!clicked.handle) return;
+        event.stopPropagation();
+        if (!clicked.button) return;
+        card = this.stack.cards.get(clicked.handle);
+      } else {
+        if (!this.current || !this.hitButton(point)) return;
+        event.stopPropagation();
+        card = this.current;
+        this.leave(card, this.clock - card.start);
+      }
+      const action = card.card.action;
+      this.term?.print(action.open ? `drip: opened ${action.open}` : `drip: "${action.label}" was clicked (exit 0)`, "dim");
+      if (action.open && /^https?:\/\//.test(action.open)) open(action.open, "_blank", "noopener");
+      card.onClick?.();
+    });
   }
-  return points;
+  get busy() { return !!this.current || this.queue.length > 0 || !!this.stack || this.deliveries.length > 0; }
+  resize() {
+    const rect = this.canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+    for (const c of [this.canvas, this.layer, this.textLayer]) { c.width = Math.max(1, Math.round(rect.width * dpr)); c.height = Math.max(1, Math.round(rect.height * dpr)); }
+  }
+  // The pointer in island coordinates: x from the notch's center, y down from the screen's top.
+  islandPoint(event) {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: (event.clientX - rect.left - rect.width / 2) / this.fit, y: (event.clientY - rect.top) / this.fit };
+  }
+  // How much the screen is scaled: up to the stage's zoom, and down when the card would not fit.
+  fitFor(card) {
+    const W = this.canvas.getBoundingClientRect().width;
+    return Math.min(this.zoom(W), (W - 16) / Math.max(card ? card.metrics.maxWidth + 16 : 0, 380));
+  }
+  setFit(value) { this.fit = Math.abs(value - this.restFit()) < 0.002 && !this.stack ? this.restFit() : value; this.screen.style.setProperty("--fit", this.fit); }
+  // The zoom with nothing on screen.
+  restFit() { return this.fitFor(null); }
+  reset() {
+    if (this.stack) {
+      for (const handle of drip.stack.end(this.stack.id)) drip.release(handle);
+      this.stack = null;
+    }
+    for (const delivery of this.deliveries) for (const card of delivery.cards) drip.release(card.handle);
+    for (const card of this.queue) drip.release(card.handle);
+    if (this.current) drip.release(this.current.handle);
+    this.deliveries.length = 0; this.queue.length = 0; this.current = null; this.dirty = true;
+  }
+  motionOf(card) { return reduceMotion.matches && card.card.motion === "full" ? "subtle" : card.card.motion; }
+  // A card as this stage paints it; its times are its own, from when it starts to drop in.
+  prepare(card) {
+    const state = { ...card, card: { ...card.card, motion: this.motionOf(card) }, accent: accentOf(card.card.color), ringSide: card.metrics.actionWidth || 22 * card.metrics.scale, start: Infinity };
+    this.lastCard = state;
+    return state;
+  }
+
+  // A command's cards: into the stack that shows when it takes them, else in turn.
+  deliver(delivery) {
+    const stackable = !!delivery.stack && !reduceMotion.matches;
+    if (!this.deliveries.length && this.stack?.adopting && stackable && delivery.adopting) this.offer(delivery);
+    else if (!this.deliveries.length && !this.stack && !stackable) for (const card of delivery.cards) this.push(this.prepare(card));
+    else this.deliveries.push(delivery);
+    this.dirty = true;
+  }
+  offer(delivery) {
+    for (const card of delivery.cards) {
+      const offered = drip.stack.offer(this.stack.id, card.handle);
+      if (offered.dropped) { drip.release(offered.dropped); this.stack.cards.delete(offered.dropped); }
+      this.stack.cards.set(card.handle, this.prepare(card));
+    }
+    this.stack.fit = Math.min(this.stack.fit, ...delivery.cards.map((card) => this.fitFor(card)));
+  }
+  // Starts the next delivery once nothing shows.
+  next() {
+    const delivery = this.deliveries.shift();
+    if (!delivery.stack || reduceMotion.matches) { for (const card of delivery.cards) this.push(this.prepare(card)); return; }
+    const cards = delivery.cards.map((card) => this.prepare(card));
+    this.stack = {
+      id: drip.stack.start({ ...delivery.stack, adopting: delivery.adopting }, cards.map((card) => card.handle)),
+      start: this.clock, adopting: delivery.adopting, settings: delivery.stack, bottom: 0,
+      cards: new Map(cards.map((card) => [card.handle, card])), fit: Math.min(...cards.map((card) => this.fitFor(card))),
+    };
+    while (this.deliveries[0]?.stack && this.deliveries[0].adopting && this.stack.adopting) this.offer(this.deliveries.shift());
+  }
+
+  // One card at a time: a newer card with the same --id replaces one still waiting its turn, or the
+  // one on screen.
+  push(card) {
+    const id = card.card.id;
+    if (id != null) {
+      const waiting = this.queue.findIndex((c) => c.card.id === id);
+      if (waiting >= 0) { drip.release(this.queue[waiting].handle); this.queue[waiting] = card; return; }
+      const s = this.current;
+      const asks = (c) => c.action && !c.action.open;
+      if (s && s.card.id === id && !s.exitCues && !asks(s.card) && !asks(card.card) && s.lastFrame) { this.replace(s, card); return; }
+    }
+    this.queue.push(card); this.dirty = true;
+  }
+  begin(state) {
+    this.setFit(this.fitFor(state));
+    state.start = this.clock;
+    if (state.card.motion === "full") {
+      state.cues = drip.enter(state.handle, 0);
+      state.visible = (state.cues.title[0] ?? state.cues.sides) + 0.25;
+    } else {
+      drip.open(state.handle);
+      state.cues = { sides: 0, title: state.titleLines.map(() => 0), detail: state.detailLines.map(() => 0) };
+      state.visible = 0.15;
+      state.panelFade = state.card.motion === "none" ? 0 : 0.15;
+    }
+    state.exitAt = state.visible + state.seconds;
+    announce(state);
+    this.emit("begin", state);
+    return state;
+  }
+  // With reduced motion a card replaced in place changes size at once and crossfades, as the app
+  // does; in a stack, the engine swaps it.
+  replace(old, state) {
+    this.setFit(Math.min(this.fit, this.fitFor(state)));
+    drip.open(state.handle);
+    state.start = this.clock;
+    state.cues = shownCues(state);
+    state.visible = 0;
+    state.exitAt = state.seconds;
+    state.swap = { old, frame: old.lastFrame, t: old.lastT, kept: [], iconChanged: true, ring: 1 };
+    drip.release(old.handle);
+    this.current = state; this.dirty = true;
+    announce(state);
+    this.emit("begin", state);
+  }
+  leave(state, at) {
+    if (state.exitCues) return;
+    state.exitAt = at;
+    if (state.card.motion === "full") { state.exitCues = drip.exit(state.handle, at); state.done = drip.end(state.handle) + 0.05; }
+    else { state.exitCues = { sides: 0, title: [], detail: [] }; state.done = at + (state.panelFade || 0.15) + 0.02; state.panelFade ||= 0.15; }
+  }
+  on(fn) { this.listeners.push(fn); }
+  emit(kind, data) { for (const fn of this.listeners) fn(kind, data); }
+
+  hitButton(point) {
+    const s = this.current, f = s?.lastFrame;
+    if (!f || !s.card.action || f.progress < 0.9) return false;
+    const k = f.ring.size / s.ringSide, w = s.ringSide * k, h = 26 * s.metrics.scale * k;
+    return Math.abs(point.x - f.ring.x) <= w / 2 + 4 && Math.abs(point.y - f.ring.y) <= h / 2 + 4;
+  }
+
+  // Draws a card's icon, ring or button and text onto the layers, shifted by dxL (things anchored
+  // to the left edge), dxR (the right edge) and dy, as a replaced card fades off the capsule
+  // springing to the new card's size. `lineAlpha(i)` scales line i, title lines first.
+  paintContent(s, f, t, { alpha = 1, dxL = 0, dxR = 0, dy = 0, iconScale = 1, iconAlpha = null, lineAlpha = () => 1, ring = null } = {}) {
+    const { lctx, tctx } = this, m = s.metrics, cues = s.cues, exitSides = s.exitCues?.sides ?? 0;
+    lctx.save();
+    lctx.globalAlpha = alpha * (iconAlpha ?? (m.hasIcon ? partAlpha(s, t, { enter: cues.sides, exit: exitSides }, 0.18) : 0));
+    if (m.hasIcon) {
+      lctx.save(); lctx.translate(f.icon.x + dxL, f.icon.y + dy); lctx.scale(iconScale, iconScale);
+      drawIcon(lctx, s.card.icon.symbol?._0 ?? "", s.accent, 0, 0, f.icon.size); lctx.restore();
+    }
+    lctx.globalAlpha = alpha * partAlpha(s, t, { enter: cues.sides, exit: exitSides }, 0.18);
+    const k = f.ring.size / s.ringSide;
+    lctx.translate(f.ring.x + dxR, f.ring.y + dy); lctx.scale(k, k);
+    if (s.card.action) {
+      const w = s.ringSide, h = 26 * m.scale, c = s.buttonColor;
+      const hover = s.hover ? 0.12 : 0;
+      lctx.fillStyle = `rgb(${[0, 1, 2].map((i) => Math.round(255 * (c[i] + (1 - c[i]) * hover))).join(",")})`;
+      roundedRect(lctx, -w / 2, -h / 2, w, h, h / 2); lctx.fill();
+      lctx.fillStyle = "#fff"; lctx.font = fonts[2](m.scale); lctx.textAlign = "center"; lctx.textBaseline = "middle";
+      lctx.fillText(s.card.action.label, 0, 0.5);
+    } else {
+      const side = s.ringSide, r = side / 2 - 1.6, lw = 2.4 * m.scale;
+      const fraction = ring ?? 1 - clamp01((t - s.visible) / s.card.seconds);
+      lctx.lineWidth = lw; lctx.strokeStyle = s.accent;
+      lctx.save(); lctx.globalAlpha *= 0.28; lctx.beginPath(); lctx.arc(0, 0, r, 0, Math.PI * 2); lctx.stroke(); lctx.restore();
+      if (fraction > 0.001) { lctx.lineCap = "round"; lctx.beginPath(); lctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2); lctx.stroke(); }
+    }
+    lctx.restore();
+
+    // Text: one line per layer, stacked from the block's top, fading and rising in on its cue.
+    let y = f.textCenterY + dy - m.textHeight / 2;
+    const lines = [
+      ...s.titleLines.map((text, i) => ({ text, font: 0, color: "#fff", height: s.titleLineHeight, cue: cues.title[i], exit: s.exitCues?.title[i] })),
+      ...s.detailLines.map((text, i) => ({ text, font: 1, color: "rgb(158,158,158)", height: s.detailLineHeight, cue: cues.detail[i], exit: s.exitCues?.detail[i], gap: i === 0 ? s.detailSpacing : 0 })),
+    ];
+    lines.forEach((line, i) => {
+      y += line.gap ?? 0;
+      const a = partAlpha(s, t, { enter: line.cue, exit: line.exit ?? 0 }, 0.25);
+      const rise = s.card.motion === "full" && !(s.exitCues && t >= s.exitAt) ? 4 * (1 - easeOut(clamp01((t - line.cue) / 0.25))) : 0;
+      const size = (line.font === 0 ? 14 : 12) * m.scale;
+      tctx.globalAlpha = a * alpha * lineAlpha(i); tctx.fillStyle = line.color; tctx.font = fonts[line.font](m.scale); tctx.textBaseline = "alphabetic";
+      tctx.fillText(line.text, f.textX + dxL, y + rise + size * 0.952);
+      y += line.height;
+    });
+    tctx.globalAlpha = 1;
+  }
+
+  // A card's content, with a card it replaced fading off it, onto the screen clipped to its capsule.
+  paintCard(s, f, t, ring, W, H) {
+    const { ctx, lctx, tctx, fit } = this, dpr = devicePixelRatio || 1;
+    for (const c of [lctx, tctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, this.layer.width, this.layer.height); c.setTransform(dpr * fit, 0, 0, dpr * fit, dpr * W / 2, 0); }
+    const swap = s.swap;
+    if (swap && t < 1) {
+      // drip's crossfade (IslandLayers.takeOver): changed lines and parts fade out and in, kept lines
+      // stay, a new state's icon pops in, and the ring refills before it drains again.
+      const reduced = s.card.motion !== "full", none = s.card.motion === "none";
+      const fadeOut = none ? 0 : reduced ? UPDATE.reducedFade : UPDATE.fadeOut;
+      const fadeIn = none ? 0 : reduced ? UPDATE.reducedFade : UPDATE.fadeIn;
+      const outA = fadeOut ? 1 - easeOut(clamp01(t / fadeOut)) : 0;
+      const inA = fadeIn ? easeOut(clamp01((t - (reduced ? 0 : fadeOut)) / fadeIn)) : 1;
+      const pop = reduced || !swap.iconChanged ? 1 : lerp(UPDATE.popScale, 1, drip.spring(UPDATE.pop[0], UPDATE.pop[1], t));
+      const o = swap.frame;
+      if (outA > 0.001 && o) {
+        const shift = (f.contentWidth - o.contentWidth) / 2;
+        this.paintContent(swap.old, o, swap.t, {
+          alpha: outA, dxL: -shift, dxR: shift, dy: f.textCenterY - o.textCenterY,
+          iconAlpha: swap.iconChanged ? 1 : 0, lineAlpha: (i) => (swap.kept[i] ? 0 : 1),
+        });
+      }
+      const refill = reduced ? 1 : easeOut(clamp01(t / UPDATE.refill));
+      this.paintContent(s, f, t, {
+        iconScale: pop, iconAlpha: swap.iconChanged ? inA : 1, lineAlpha: (i) => (swap.kept[i] ? 1 : inA),
+        ring: ring === null ? null : lerp(swap.ring, ring, refill),
+      });
+    } else {
+      s.swap = null;
+      this.paintContent(s, f, t, { ring });
+    }
+    // Text is cut with a soft edge at the end of its column.
+    const edgeEnd = f.textX + f.textRoom + s.textEdge;
+    const gradient = tctx.createLinearGradient(edgeEnd - s.textEdge, 0, edgeEnd, 0);
+    gradient.addColorStop(0, "rgba(0,0,0,0)"); gradient.addColorStop(1, "#000");
+    tctx.globalCompositeOperation = "destination-out";
+    tctx.fillStyle = gradient; tctx.fillRect(edgeEnd - s.textEdge, -50, s.textEdge, H + 100);
+    tctx.fillStyle = "#000"; tctx.fillRect(edgeEnd, -50, 2000, H + 100);
+    tctx.globalCompositeOperation = "source-over";
+    lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.drawImage(this.textLayer, 0, 0);
+    // The content, drawn whole and revealed by the drop, as the app clips it.
+    ctx.save();
+    roundedRect(ctx, -f.pillWidth / 2, f.pillTop, f.pillWidth, f.pillHeight, f.pillRadius); ctx.clip();
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(this.layer, 0, 0); ctx.restore();
+  }
+
+  // The black shape: the traced liquid while the drop touches what it grows out of, a capsule once it
+  // floats free. Returns how many outline points it traced.
+  fillShape(f) {
+    const { ctx } = this;
+    let points = 0;
+    ctx.fillStyle = "#000"; ctx.beginPath();
+    if (f.touchesNotch) {
+      for (const loop of f.loops) { ctx.moveTo(loop[0], loop[1]); for (let i = 2; i < loop.length; i += 2) ctx.lineTo(loop[i], loop[i + 1]); ctx.closePath(); points += loop.length / 2; }
+      ctx.fill();
+    } else { roundedRect(ctx, -f.pillWidth / 2, f.pillTop, f.pillWidth, f.pillHeight, f.pillRadius); ctx.fill(); }
+    if (this.showOutline && f.touchesNotch) {
+      ctx.fillStyle = "#30d158";
+      for (const loop of f.loops) for (let i = 0; i < loop.length; i += 2) ctx.fillRect(loop[i] - 0.4, loop[i + 1] - 0.4, 0.8, 0.8);
+    }
+    return points;
+  }
+
+  step(now, dt) {
+    if (!drip) return;
+    if (!this.stack && !this.current && !this.queue.length && this.deliveries.length) this.next();
+    if (!this.current && this.queue.length && !this.stack) this.current = this.begin(this.queue.shift());
+    if (!this.current && !this.stack && !this.dirty && this.fit === this.restFit()) return;
+    const started = this.stack?.start ?? this.current?.start;
+    if (this.frozen !== null && started !== undefined && started !== Infinity) this.clock = started + this.frozen;
+    else this.clock += Math.min(dt, 0.1) * this.speed;
+    if (!this.stack && !this.current) this.setFit(this.fit + (this.restFit() - this.fit) * (1 - Math.exp(-Math.min(dt, 0.1) * 9)));
+    if (this.stack) {
+      // The stack zooms out to hold its cards, and back in once it has gone.
+      const height = this.avail?.() ?? this.canvas.getBoundingClientRect().height;
+      const target = this.stack.fit = Math.min(this.stack.fit, (height - 10) / Math.max(this.stack.bottom + 10, 1));
+      this.setFit(this.frozen !== null ? target : this.fit + (target - this.fit) * (1 - Math.exp(-Math.min(dt, 0.1) * 9)));
+    }
+    this.paint();
+  }
+
+  paint() {
+    const { canvas, ctx, fit } = this;
+    const dpr = devicePixelRatio || 1, W = canvas.width / dpr, H = canvas.height / dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.setTransform(dpr * fit, 0, 0, dpr * fit, dpr * W / 2, 0);
+    this.dirty = false;
+
+    // The hardware notch.
+    ctx.fillStyle = "#000"; ctx.beginPath(); notchPath(ctx, { notchWidth: notch.width, notchHeight: notch.height, notchRadius: Math.min(10, notch.height / 3) }); ctx.fill();
+    if (this.stack) { this.paintStack(W, H); return; }
+
+    const s = this.current;
+    if (!s) { this.emit("frame", null); return; }
+    const t = this.clock - s.start;
+    if (!s.exitCues && t >= s.exitAt && !s.hover) this.leave(s, t);
+    else if (!s.exitCues && t >= s.exitAt) s.exitAt = t; // hovering holds the card, as on a Mac
+    const started = performance.now();
+    const f = drip.frame(s.handle, t);
+    const computeMs = performance.now() - started;
+    let panel = 1;
+    if (s.card.motion !== "full" && s.panelFade !== undefined) {
+      panel = s.panelFade === 0 ? 1 : clamp01(t / s.panelFade);
+      if (s.exitCues) panel = s.panelFade === 0 ? (t < s.exitAt ? 1 : 0) : 1 - clamp01((t - s.exitAt) / s.panelFade);
+    }
+    ctx.globalAlpha = panel;
+    const points = this.fillShape(f);
+    this.paintCard(s, f, t, null, W, H);
+    ctx.globalAlpha = 1;
+    s.lastFrame = f; s.lastT = t;
+    this.emit("frame", { s, f, t, computeMs, points });
+    if (s.exitCues && t >= s.done) { drip.release(s.handle); this.current = null; this.dirty = true; this.emit("end", s); }
+  }
+
+  paintStack(W, H) {
+    const st = this.stack, t = this.clock - st.start;
+    if (this.pointer) {
+      const under = drip.stack.pointer(st.id, this.pointer.x, this.pointer.y, true, t);
+      for (const card of st.cards.values()) card.hover = card.handle === under.handle && under.button;
+      this.screen.style.cursor = under.handle ? "pointer" : "";
+    }
+    const changes = drip.stack.step(st.id, t);
+    for (const entered of changes.entered ?? []) {
+      const card = st.cards.get(entered.handle);
+      Object.assign(card, { start: entered.start, cues: entered.cues, visible: entered.countdownFrom - entered.start });
+      st.newest = card; announce(card); this.emit("begin", card);
+    }
+    for (const swapped of changes.swapped ?? []) {
+      const card = st.cards.get(swapped.handle), old = st.cards.get(swapped.old);
+      const newIcon = (old.card.icon.symbol?._0 ?? "") !== (card.card.icon.symbol?._0 ?? "") || old.accent !== card.accent;
+      Object.assign(card, {
+        start: swapped.time, cues: shownCues(card), visible: 0,
+        swap: { old, frame: old.lastFrame, t: old.lastT, kept: swapped.kept, iconChanged: swapped.newState || newIcon, ring: old.ring ?? 1 },
+      });
+      drip.release(swapped.old); st.cards.delete(swapped.old);
+      st.newest = card; announce(card); this.emit("begin", card);
+    }
+    for (const left of changes.left ?? []) {
+      const card = st.cards.get(left.handle);
+      card.exitCues = left.cues; card.exitAt = left.time - card.start;
+    }
+    for (const handle of changes.gone ?? []) { drip.release(handle); st.cards.delete(handle); }
+
+    const started = performance.now();
+    const frames = drip.stack.frame(st.id, t);
+    const computeMs = performance.now() - started;
+    let points = 0, bottom = 0;
+    for (const { frame } of frames) points += this.fillShape(frame);
+    for (const { handle, remaining, targetTop, frame } of frames) {
+      const card = st.cards.get(handle), ct = t - card.start;
+      card.ring = card.card.action ? null : clamp01(remaining / card.seconds);
+      this.paintCard(card, frame, ct, card.ring, W, H);
+      card.lastFrame = frame; card.lastT = ct;
+      bottom = Math.max(bottom, targetTop + card.metrics.pillHeight, frame.pillTop + frame.pillHeight);
+    }
+    st.bottom = bottom || st.bottom; st.frames = frames;
+    const newest = st.newest && st.cards.has(st.newest.handle) ? st.newest : null;
+    this.emit("frame", newest?.lastFrame ? { s: newest, f: newest.lastFrame, t: newest.lastT, computeMs, points, stack: { mode: st.settings.mode, shown: frames.length, max: st.settings.max } } : null);
+    if (changes.done) { this.stack = null; this.dirty = true; this.screen.style.cursor = ""; this.emit("end", null); }
+  }
 }
 
-// A card's icon, ring or button, and text, drawn whole and revealed by its capsule, as the app clips
-// them. `t` is the card's own time and `ring` how much of its countdown is left.
-function drawContent(card, f, t, ring, W, H) {
-  const dpr = devicePixelRatio || 1, m = card.metrics;
-  for (const c of [lctx, tctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, layer.width, layer.height); c.setTransform(dpr * fit, 0, 0, dpr * fit, dpr * W / 2, 0); }
-  const cues = card.cues;
-  const exitSides = card.exitCues?.sides ?? 0;
-  lctx.save();
-  lctx.globalAlpha = m.hasIcon ? partAlpha(card, t, { enter: cues.sides, exit: exitSides }, 0.18) : 0;
-  drawIcon(lctx, card.card.icon.symbol?._0 ?? "", card.accent, f.icon.x, f.icon.y, f.icon.size);
-  lctx.globalAlpha = partAlpha(card, t, { enter: cues.sides, exit: exitSides }, 0.18);
-  const k = f.ring.size / card.ringSide;
-  lctx.translate(f.ring.x, f.ring.y); lctx.scale(k, k);
-  if (card.card.action) {
-    const w = card.ringSide, h = 26 * m.scale, c = card.buttonColor;
-    const hover = card.hover ? 0.12 : 0;
-    lctx.fillStyle = `rgb(${[0, 1, 2].map((i) => Math.round(255 * (c[i] + (1 - c[i]) * hover))).join(",")})`;
-    roundedRect(lctx, -w / 2, -h / 2, w, h, h / 2); lctx.fill();
-    lctx.fillStyle = "#fff"; lctx.font = fonts[2](m.scale); lctx.textAlign = "center"; lctx.textBaseline = "middle";
-    lctx.fillText(card.card.action.label, 0, 0.5);
-  } else {
-    const r = card.ringSide / 2 - 1.6;
-    lctx.lineWidth = 2.4 * m.scale; lctx.strokeStyle = card.accent;
-    lctx.save(); lctx.globalAlpha *= 0.28; lctx.beginPath(); lctx.arc(0, 0, r, 0, Math.PI * 2); lctx.stroke(); lctx.restore();
-    if (ring > 0.001) { lctx.lineCap = "round"; lctx.beginPath(); lctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + ring * Math.PI * 2); lctx.stroke(); }
-  }
-  lctx.restore();
+// Screen readers hear each card as it shows.
+const announcer = document.getElementById("announce");
+function announce(card) { announcer.textContent = `drip card: ${card.card.title}${card.card.detail ? ". " + card.card.detail : ""}`; }
 
-  // Text: one line per layer, stacked from the block's top, fading and rising in on its cue, and cut
-  // with a soft edge at the end of the column.
-  let y = f.textCenterY - m.textHeight / 2;
-  const lines = [
-    ...card.titleLines.map((text, i) => ({ text, font: 0, color: "#fff", height: card.titleLineHeight, cue: cues.title[i], exit: card.exitCues?.title[i] })),
-    ...card.detailLines.map((text, i) => ({ text, font: 1, color: "rgb(158,158,158)", height: card.detailLineHeight, cue: cues.detail[i], exit: card.exitCues?.detail[i], gap: i === 0 ? card.detailSpacing : 0 })),
-  ];
-  for (const line of lines) {
-    y += line.gap ?? 0;
-    const alpha = partAlpha(card, t, { enter: line.cue, exit: line.exit ?? 0 }, 0.25);
-    const rise = card.card.motion === "full" && !(card.exitCues && t >= card.exitAt) ? 4 * (1 - easeOut(clamp01((t - line.cue) / 0.25))) : 0;
-    const size = (line.font === 0 ? 14 : 12) * m.scale;
-    tctx.globalAlpha = alpha; tctx.fillStyle = line.color; tctx.font = fonts[line.font](m.scale); tctx.textBaseline = "alphabetic";
-    tctx.fillText(line.text, f.textX, y + rise + size * 0.952);
-    y += line.height;
+// ===== Terminals =====
+class Term {
+  constructor(scroll, { max = 400 } = {}) { this.scroll = scroll; this.max = max; }
+  add(div) { this.scroll.append(div); while (this.scroll.childElementCount > this.max) this.scroll.firstElementChild.remove(); this.scroll.scrollTop = this.scroll.scrollHeight; }
+  print(text, cls = "") { for (const part of String(text).split("\n")) { const div = document.createElement("div"); div.className = "line " + cls; div.textContent = part; this.add(div); } }
+  echo(command) {
+    const div = document.createElement("div"); div.className = "line";
+    const p = document.createElement("span"); p.className = "prompt"; p.textContent = "~ $ ";
+    div.append(p, command); this.add(div); return div;
   }
-  tctx.globalAlpha = 1;
-  const edgeEnd = f.textX + f.textRoom + card.textEdge;
-  const gradient = tctx.createLinearGradient(edgeEnd - card.textEdge, 0, edgeEnd, 0);
-  gradient.addColorStop(0, "rgba(0,0,0,0)"); gradient.addColorStop(1, "#000");
-  tctx.globalCompositeOperation = "destination-out";
-  tctx.fillStyle = gradient; tctx.fillRect(edgeEnd - card.textEdge, -50, card.textEdge, H + 100);
-  tctx.fillStyle = "#000"; tctx.fillRect(edgeEnd, -50, 2000, H + 100);
-  tctx.globalCompositeOperation = "source-over";
-  lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.drawImage(textLayer, 0, 0);
-
-  ctx.save();
-  roundedRect(ctx, -f.pillWidth / 2, f.pillTop, f.pillWidth, f.pillHeight, f.pillRadius); ctx.clip();
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(layer, 0, 0); ctx.restore();
+  clear() { this.scroll.textContent = ""; }
 }
 
-// The pointer in island coordinates: x from the notch's center, y down from the screen's top.
-function islandPoint(event) {
-  const rect = canvas.getBoundingClientRect();
-  return { x: (event.clientX - rect.left - rect.width / 2) / fit, y: (event.clientY - rect.top) / fit };
+// Splits a command line as a POSIX shell would, quotes and backslashes included: `;` and `&&`
+// separate commands and `|` separates a pipeline's stages.
+function parseLine(line) {
+  const commands = [{ op: ";", stages: [[]] }]; let word = null, quote = null;
+  const stages = () => commands.at(-1).stages;
+  const end = () => { if (word !== null) { stages().at(-1).push(word); word = null; } };
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      else if (c === "\\" && quote === '"' && i + 1 < line.length) word += line[++i];
+      else word += c;
+    } else if (c === "'" || c === '"') { quote = c; word ??= ""; }
+    else if (c === "\\" && i + 1 < line.length) { word = (word ?? "") + line[++i]; }
+    else if (/\s/.test(c)) end();
+    else if (c === "&" && line[i + 1] === "&") { end(); commands.push({ op: "&&", stages: [[]] }); i++; }
+    else if (c === ";") { end(); commands.push({ op: ";", stages: [[]] }); }
+    else if (c === "|") { end(); stages().push([]); }
+    else word = (word ?? "") + c;
+  }
+  if (quote) throw new Error("unmatched " + quote);
+  end();
+  return commands.filter((c) => c.stages[0].length);
 }
 
-function drawStack(s, W, H) {
-  const t = clock - s.start;
-  if (pointer) {
-    const under = drip.stack.pointer(pointer.x, pointer.y, true, t);
-    for (const card of s.cards.values()) card.hover = card.handle === under.handle && under.button;
-    canvas.style.cursor = under.handle ? "pointer" : "";
-  }
-  const changes = drip.stack.step(t);
-  for (const entered of changes.entered ?? []) {
-    Object.assign(s.cards.get(entered.handle), { start: entered.start, cues: entered.cues, countdownFrom: entered.countdownFrom });
-    s.newest = entered.handle;
-  }
-  for (const left of changes.left ?? []) {
-    const card = s.cards.get(left.handle);
-    card.exitCues = left.cues; card.exitAt = left.time - card.start;
-  }
-  for (const handle of changes.gone ?? []) { drip.release(handle); s.cards.delete(handle); }
-
-  const started = performance.now();
-  const frames = drip.stack.frame(t);
-  const computeMs = performance.now() - started;
-  let points = 0, bottom = 0;
-  for (const { frame } of frames) points += fillShape(frame);
-  for (const { handle, remaining, targetTop, frame } of frames) {
-    const card = s.cards.get(handle);
-    drawContent(card, frame, t - card.start, clamp01(remaining / card.seconds), W, H);
-    bottom = Math.max(bottom, targetTop + card.metrics.pillHeight, frame.pillTop + frame.pillHeight);
-  }
-  s.bottom = Math.max(s.bottom, bottom);
-  holdDown(s.bottom);
-  const newest = frames.find((entry) => entry.handle === s.newest);
-  if (newest) plotSample(t - s.cards.get(newest.handle).start, newest.frame, s.cards.get(newest.handle).metrics);
-  s.frames = frames;
-  if (changes.done) showing = null;
-  return [
-    ["stack", `${s.settings.mode}, ${frames.filter((entry) => !s.cards.get(entry.handle).exitCues).length} of ${s.settings.max} shown`],
-    ...(newest ? frameRows(newest.frame, t - s.cards.get(newest.handle).start, points) : []),
-    ["engine frame", computeMs.toFixed(2) + " ms"],
-  ];
+// What `drip run` wraps never runs here; it pretends, and drip times the pretend.
+const fakeOutput = {
+  npm: ["", "> my-app@1.0.0 test", "> vitest run", "", " ✓ src/notch.test.ts (31 tests) 412ms", " ✓ src/queue.test.ts (18 tests) 205ms", "", " Test Files  2 passed (2)", "      Tests  49 passed (49)"],
+  make: ["swift build -c release", "Compiling DripCore Spring.swift", "Build complete!", "swift test", "✔ Test run with 246 tests passed"],
+  "./deploy.sh": ["building api 1.4.2", "pushing image", "rolling out to production"],
+};
+function fakeRun(command) {
+  const joined = command.join(" ");
+  const fails = /fail|false|error|exit [1-9]/.test(joined);
+  const out = fakeOutput[command[0]] ?? [`(pretending to run ${joined})`];
+  const lines = fails ? [...out.slice(0, 2), "error: health check timed out"] : out;
+  const seconds = 1.2 + Math.random() * 1.6;
+  return { lines, seconds, status: fails ? (command[0] === "false" ? 1 : 2) : 0 };
+}
+// What a pipe can feed drip here.
+function producer(words) {
+  const [program, ...rest] = words;
+  if (program === "echo") return rest.join(" ") + "\n";
+  if (program === "printf") return (rest[0] ?? "").replace(/\\n/g, "\n");
+  if (program === "git" && rest[0] === "log") return "feat(nvim): show hidden files\nAda Lovelace\n";
+  return null;
 }
 
-function drawSingle(s, W, H) {
-  if (!s.current) {
-    if (!s.queue.length) { showing = null; return null; }
-    s.current = begin(s.queue.shift());
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const configText = () => document.getElementById("config").value;
+
+// Runs one typed line in a terminal against a stage. Resolves with the last command's status.
+async function exec(line, term, stage, { config = configText(), echo = true, shown = line } = {}) {
+  if (echo) term.echo(shown);
+  let commands;
+  try { commands = parseLine(line); } catch (error) { term.print(`zsh: ${error.message}`, "err"); return 1; }
+  let status = 0;
+  for (const { op, stages: allStages } of commands) {
+    if (op === "&&" && status !== 0) continue;
+    status = await execOne(allStages, term, stage, config);
   }
-  const card = s.current, t = clock - card.start;
-  if (!card.exitCues && t >= card.exitAt) leave(card, card.exitAt);
-  const started = performance.now();
-  const f = drip.frame(card.handle, t);
-  const computeMs = performance.now() - started;
-  let panel = 1;
-  if (card.card.motion !== "full" && card.panelFade !== undefined) {
-    panel = card.panelFade === 0 ? 1 : clamp01(t / card.panelFade);
-    if (card.exitCues) panel = card.panelFade === 0 ? (t < card.exitAt ? 1 : 0) : 1 - clamp01((t - card.exitAt) / card.panelFade);
+  return status;
+}
+async function execOne(stages, term, stage, config) {
+  let stdin;
+  if (stages.length > 1) {
+    stdin = producer(stages[0]);
+    if (stdin === null) { term.print(`zsh: only echo, printf and git log can pipe into drip here`, "err"); return 1; }
+    stages = stages.slice(1);
   }
-  ctx.globalAlpha = panel;
-  const points = fillShape(f);
-  drawContent(card, f, t, 1 - clamp01((t - card.visible) / card.seconds), W, H);
-  ctx.globalAlpha = 1;
-  holdDown(f.pillTop + f.pillHeight);
-  card.lastFrame = f;
-  plotSample(t, f, card.metrics);
-  if (card.exitCues && t >= card.done) { drip.release(card.handle); s.current = null; }
-  return [...frameRows(f, t, points), ["engine frame", computeMs.toFixed(2) + " ms"]];
+  // `NAME=value drip …` sets drip's environment, as DRIP_STACK=push.
+  const words = stages[0].slice(), env = {};
+  while (words.length > 1 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) {
+    const word = words.shift(), at = word.indexOf("=");
+    env[word.slice(0, at)] = word.slice(at + 1);
+  }
+  const [program, ...args] = words;
+  if (program === "clear") { term.clear(); return 0; }
+  if (program === "sleep") { await sleep(Math.min(Number(args[0]) || 0, 10) * 1000); return 0; }
+  if (program === "help") { term.print(`this terminal runs drip. try: drip ok "hello", drip run -- npm test, drip demo, drip --help`, "dim"); return 0; }
+  if (program === "./promote.sh") { term.print("promoting api 1.4.2 to production", "dim"); return 0; }
+  if (program !== "drip") { term.print(`zsh: command not found: ${program}  (this terminal only runs drip)`, "err"); return 127; }
+
+  let reply = drip.command({ args, env, config, notch, stdin });
+  if (reply.run) {
+    const outcome = fakeRun(reply.run);
+    const started = performance.now();
+    for (const l of outcome.lines) { term.print(l, "dim"); await sleep(outcome.seconds * 1000 / (outcome.lines.length + 1)); }
+    await sleep(Math.max(0, outcome.seconds * 1000 - (performance.now() - started)));
+    reply = drip.command({ args, env, config, notch, run: { status: outcome.status, seconds: (performance.now() - started) / 1000 } });
+  }
+  if (reply.message !== undefined) { term.print(reply.message, reply.exit === 0 ? "" : "err"); return reply.exit ?? 1; }
+  for (const warning of reply.warnings ?? []) term.print(`drip: warning: ${warning}`, "dim");
+  if (reply.status) term.print(`zsh: exit ${reply.status}`, "dim");
+  for (const delivery of reply.deliveries) stage.deliver(delivery);
+  return reply.status ?? 0;
 }
 
-function frame(now) {
-  const speed = document.getElementById("slow").checked ? 0.25 : 1;
-  if (drip) {
-    if (!showing && deliveries.length) startNext();
-    adopt();
+// ===== The hero =====
+const heroScreen = document.getElementById("hero-screen");
+const heroTerm = new Term(document.querySelector("#hero-term .scroll"));
+const heroTermBox = document.getElementById("hero-term");
+// On wide screens the terminal sits on the desktop, and a stack zooms out to stay above it.
+const heroRoom = () => getComputedStyle(heroTermBox).position === "absolute"
+  ? heroTermBox.getBoundingClientRect().top - heroScreen.getBoundingClientRect().top - 8 : null;
+const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (W >= 1000 ? 1.5 : W >= 760 ? 1.3 : 1), avail: heroRoom });
+const stages = [hero];
+const input = document.getElementById("input"), ghost = document.querySelector(".ghost"), hintWhat = document.getElementById("hint-what");
+
+// Four drips at once: three stack, and the fourth waits for room.
+const STACK_LINES = (mode) => [
+  `drip ok "Build finished" -d "make test: 246 passed in 3.2s"`,
+  `drip warn "my-app needs you" -d "Claude needs your permission to use Bash"`,
+  `drip fail "Deploy failed" -d "staging: health check timed out"`,
+  `drip info "Backup done" -d "412 files, 3.1 GB to the NAS"`,
+].map((line) => (mode === "push" ? `DRIP_STACK=push ${line}` : line));
+const CHIPS = [
+  { label: "Success", icon: "i-check", color: "var(--ok)", line: `drip ok "Build finished" -d "make test: 246 passed in 3.2s"` },
+  { label: "Failure", icon: "i-x", color: "var(--fail)", line: `drip fail "Deploy failed" -d "staging: health check timed out after 30s"` },
+  { label: "Warning", icon: "i-bang", color: "var(--warn)", line: `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"` },
+  { label: "drip run -- npm test", icon: "i-run", color: "#636366", line: `drip run -- npm test`, mono: true },
+  { label: "Claude needs you", icon: "i-spark", color: "#d97757", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'` },
+  { label: "Replace in place", icon: "i-swap", color: "var(--info)", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` },
+  { label: "With a button", icon: "i-hand", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip` },
+  { label: "Your own preset", icon: "i-plane", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` },
+  { label: "Stack of 3", icon: "i-stack", color: "#48484a", line: STACK_LINES("chain").join("; ") },
+  { label: "drip demo", icon: "i-stack", color: "#636366", line: `drip demo`, mono: true },
+];
+
+// Flags and kinds the hint line explains as you type, in drip's README words.
+const FLAGS = {
+  "-d": "the gray text under the title, up to 3 lines", "--detail": "the gray text under the title, up to 3 lines",
+  "-s": "time fully visible: 0.5 to 60 seconds", "--seconds": "time fully visible: 0.5 to 60 seconds",
+  "--button": "the button's label, up to 24 characters", "--open": "adds a button that opens a URL",
+  "--id": "names what the card is about: a newer card with the same id replaces it", "--size": "compact, regular or large",
+  "--color": "#rrggbb, or green, orange, red, blue, purple, pink, yellow, gray", "--icon": "an SF Symbol name, or none",
+  "DRIP_STACK=push": "drops each new card out of the notch and pushes the others down", "--motion": "full, subtle or none", "--sound": "a system sound (this page plays none)", "--help": "drip's own help text", "--version": "the engine's version",
+};
+const KINDS = {
+  ok: "a green check: it worked", warn: "orange: worth a look", fail: "red: it broke", info: "blue: for your information",
+  run: "runs a command and tells you how it went: drip run -- make test", hook: "reads a coding agent's hook payload: drip hook claude",
+  demo: "a few cards, chained then pushed", deploy: "a custom preset from config.toml (see the engine readout)",
+};
+const COMPLETIONS = [...CHIPS.map((c) => c.line), `drip run -- make deploy-fail`, `drip --help`, `drip ok "drip works"`, `echo "Backup done" | drip ok`];
+
+function suggestion(value) {
+  if (!value || /\s$/.test(value) && value.trim() === "drip") return value ? "ok \"hello\"" : "";
+  const example = COMPLETIONS.find((c) => c.startsWith(value) && c.length > value.length);
+  if (example) return example.slice(value.length);
+  const words = value.split(/\s+/), last = words.at(-1);
+  if (last.startsWith("--") && !/\s$/.test(value)) {
+    const flag = Object.keys(FLAGS).find((f) => f.startsWith(last) && f !== last);
+    if (flag) return flag.slice(last.length) + " ";
   }
-  if (frozen !== null && showing) clock = (showing.start ?? showing.current?.start ?? clock) + frozen;
-  else clock += Math.min((now - lastNow) / 1000, 0.1) * speed;
-  lastNow = now;
-  const dpr = devicePixelRatio || 1, W = canvas.width / dpr, H = canvas.height / dpr;
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.setTransform(dpr * fit, 0, 0, dpr * fit, dpr * W / 2, 0);
-
-  // The hardware notch.
-  ctx.fillStyle = "#000"; ctx.beginPath(); notchPath(ctx, { notchWidth: notch.width, notchHeight: notch.height, notchRadius: Math.min(10, notch.height / 3) }); ctx.fill();
-
-  let rows = null;
-  if (showing?.kind === "stack") rows = drawStack(showing, W, H);
-  else if (showing?.kind === "single") rows = drawSingle(showing, W, H);
-  if (!showing) { holdDown(0); canvas.style.cursor = ""; }
-  showLive(rows);
-  requestAnimationFrame(frame);
+  if (words.length === 2 && words[0] === "drip" && last) {
+    const kind = Object.keys(KINDS).find((k) => k.startsWith(last) && k !== last);
+    if (kind) return kind.slice(last.length) + " ";
+  }
+  if ("drip".startsWith(value) && value !== "drip") return "drip".slice(value.length) + " ";
+  return "";
 }
-
-// Pointing at a stack holds it still; clicking a card sends it off, and its button runs its action.
-canvas.addEventListener("pointermove", (event) => {
-  pointer = islandPoint(event);
-  if (showing?.kind === "single" && showing.current) {
-    showing.current.hover = hitButton(showing.current, pointer);
-    canvas.style.cursor = showing.current.hover ? "pointer" : "";
+function explain(value) {
+  const words = value.trim().split(/\s+/);
+  for (let i = words.length - 1; i >= 0; i--) {
+    const w = words[i];
+    if (FLAGS[w]) return `<code>${w}</code> ${FLAGS[w]}`;
+    if (i === 1 && words[0] === "drip" && KINDS[w]) return `<code>drip ${w}</code> ${KINDS[w]}`;
   }
+  return value ? `Press <kbd>Tab</kbd> to complete, <kbd>⏎</kbd> to run.` : `Type a <code>drip</code> command, or pick one below.`;
+}
+function renderGhost() {
+  const value = input.value, rest = input.selectionStart === value.length ? suggestion(value) : "";
+  ghost.textContent = value; ghost.dataset.rest = rest;
+  if (rest && input.scrollWidth <= input.clientWidth + 1) { const span = document.createElement("span"); span.textContent = rest; ghost.append(span); }
+  hintWhat.innerHTML = explain(value);
+}
+const escapeHTML = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+const lineHistory = []; let historyIndex = 0;
+let busy = false;
+async function runHero(line, { fromUser = true } = {}) {
+  if (fromUser) stopAttract();
+  if (busy) return;
+  const trimmed = line.trim();
+  if (trimmed) { lineHistory.push(line); historyIndex = lineHistory.length; }
+  busy = true; input.disabled = true;
+  try { await exec(line, heroTerm, hero); } finally { busy = false; input.disabled = false; if (fromUser && !matchMedia("(pointer: coarse)").matches) input.focus({ preventScroll: true }); renderGhost(); }
+}
+input.addEventListener("input", () => { stopAttract(); renderGhost(); });
+input.addEventListener("keyup", renderGhost);
+input.addEventListener("click", renderGhost);
+input.addEventListener("keydown", (event) => {
+  const rest = ghost.dataset.rest;
+  if ((event.key === "Tab" || (event.key === "ArrowRight" && input.selectionStart === input.value.length)) && rest) {
+    event.preventDefault(); input.value += rest; renderGhost(); return;
+  }
+  if (event.key === "Enter") { const line = input.value; input.value = ""; renderGhost(); if (line.trim()) runHero(line); }
+  else if (event.key === "ArrowUp" && historyIndex > 0) { input.value = lineHistory[--historyIndex]; event.preventDefault(); renderGhost(); }
+  else if (event.key === "ArrowDown") { historyIndex = Math.min(historyIndex + 1, lineHistory.length); input.value = lineHistory[historyIndex] ?? ""; renderGhost(); }
+  else if (event.key === "l" && event.ctrlKey) { heroTerm.clear(); event.preventDefault(); }
 });
-canvas.addEventListener("pointerleave", () => {
-  pointer = null;
-  if (showing?.kind === "stack") {
-    drip.stack.pointer(0, 0, false, clock - showing.start);
-    for (const card of showing.cards.values()) card.hover = false;
+
+// Types a line into the prompt, then runs it.
+async function typeAndRun(line, { fromUser = true } = {}) {
+  if (busy) return;
+  if (fromUser) stopAttract();
+  if (!reduceMotion.matches) {
+    const step = Math.max(6, Math.min(22, 520 / line.length));
+    input.value = ""; input.readOnly = true;
+    try { for (let i = 0; i < line.length; i += 2) { input.value = line.slice(0, i + 2); ghost.textContent = ""; await sleep(step); } }
+    finally { input.readOnly = false; }
   }
-  canvas.style.cursor = "";
-});
-canvas.addEventListener("click", (event) => {
-  const point = islandPoint(event);
-  let card;
-  if (showing?.kind === "stack") {
-    const clicked = drip.stack.click(point.x, point.y, clock - showing.start);
-    if (!clicked.handle || !clicked.button) return;
-    card = showing.cards.get(clicked.handle);
-  } else if (showing?.kind === "single" && showing.current && hitButton(showing.current, point)) {
-    card = showing.current;
-    leave(card, clock - card.start);
-  } else return;
-  const action = card.card.action;
-  print(action.open ? `drip: opened ${action.open}` : "drip: the button was clicked (exit 0)", "dim");
-  if (action.open && /^https?:\/\//.test(action.open)) open(action.open, "_blank", "noopener");
-});
-function hitButton(card, point) {
-  const f = card.lastFrame;
-  if (!f || !card.card.action || f.progress < 0.9) return false;
-  const k = f.ring.size / card.ringSide, w = card.ringSide * k, h = 26 * card.metrics.scale * k;
-  return Math.abs(point.x - f.ring.x) <= w / 2 && Math.abs(point.y - f.ring.y) <= h / 2;
+  input.value = ""; renderGhost();
+  await runHero(line, { fromUser });
 }
 
-// ---- readouts ----
+const chipsBox = document.getElementById("chips");
+for (const chip of CHIPS) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.title = chip.line;
+  b.innerHTML = `<span class="dot" style="background:${chip.color}"><svg><use href="#${chip.icon}"/></svg></span>`;
+  const text = document.createElement("span"); text.textContent = chip.label; if (chip.mono) text.style.fontFamily = "var(--mono)"; text.style.fontSize = chip.mono ? "13px" : "";
+  b.append(text);
+  b.addEventListener("click", () => { if (drip && !busy) typeAndRun(chip.line); });
+  chipsBox.append(b);
+}
+const toggle = document.createElement("button");
+toggle.type = "button"; toggle.className = "readout-toggle"; toggle.setAttribute("aria-pressed", "false"); toggle.setAttribute("aria-controls", "readout");
+toggle.innerHTML = `<span class="sw"></span>Engine readout`;
+chipsBox.append(toggle);
+const readout = document.getElementById("readout");
+function setReadout(on) {
+  toggle.setAttribute("aria-pressed", String(on)); readout.hidden = !on;
+  try { localStorage.setItem("drip-readout", on ? "1" : "0"); } catch {}
+}
+toggle.addEventListener("click", () => setReadout(readout.hidden));
+document.getElementById("readout-link").addEventListener("click", () => setReadout(true));
+document.getElementById("outline").addEventListener("change", (e) => { hero.showOutline = e.target.checked; });
+document.getElementById("slow").addEventListener("change", (e) => { hero.speed = e.target.checked ? 0.25 : 1; });
+
+
+// Stacks: the engine's own, on a screen of their own. The toggle plays four drips at once, chained
+// or pushed.
+const stackTerm = new Term(document.getElementById("stack-term"), { max: 6 });
+const stackStage = new Stage(document.querySelector(".stackvis"), { term: stackTerm, zoom: () => 1 });
+stages.push(stackStage);
+let stackMode = "chain", stackRun = 0, stackPlayed = false;
+async function playStack(mode = stackMode) {
+  if (!drip) return;
+  stackMode = mode; stackPlayed = true;
+  for (const b of document.querySelectorAll("[data-stack]")) b.setAttribute("aria-pressed", String(b.dataset.stack === mode));
+  const run = ++stackRun;
+  stackStage.reset(); stackTerm.clear();
+  for (const line of STACK_LINES(mode)) {
+    if (run !== stackRun) return;
+    await exec(line, stackTerm, stackStage, { config: "", shown: line.replace(/ -d .*/, "") });
+    await sleep(120);
+  }
+}
+for (const b of document.querySelectorAll("[data-stack]")) b.addEventListener("click", () => playStack(b.dataset.stack));
+document.getElementById("stack-play").addEventListener("click", () => playStack());
+new IntersectionObserver(([entry]) => {
+  if (entry.intersectionRatio > 0.6 && !stackPlayed && !reduceMotion.matches && drip) playStack();
+}, { threshold: [0, 0.6] }).observe(document.querySelector(".stackvis"));
+stackStage.autoplay = () => {
+  const rect = document.querySelector(".stackvis").getBoundingClientRect();
+  if (!stackPlayed && !reduceMotion.matches && rect.top < innerHeight * 0.8 && rect.bottom > 0) playStack();
+};
+
+// Until the visitor does something, the hero plays a few cards by itself.
+const ATTRACT = [CHIPS[4].line, CHIPS[5].line, CHIPS[8].line, CHIPS[1].line, CHIPS[3].line, CHIPS[6].line, CHIPS[0].line];
+let attractOn = true, attractTimer = 0, attractIndex = 0;
+function stopAttract() { attractOn = false; clearTimeout(attractTimer); }
+function scheduleAttract(delay) {
+  clearTimeout(attractTimer);
+  if (!attractOn || reduceMotion.matches) return;
+  attractTimer = setTimeout(async () => {
+    if (!attractOn) return;
+    if (busy || hero.busy || !hero.visible || document.hidden) { scheduleAttract(1200); return; }
+    await typeAndRun(ATTRACT[attractIndex++ % ATTRACT.length], { fromUser: false });
+    scheduleAttract(2600);
+  }, delay);
+}
+hero.on((kind) => { if (kind === "end" && attractOn) scheduleAttract(1800); });
+
+// ===== Engine readout =====
 const live = document.getElementById("live");
 let liveTick = 0;
-function frameRows(f, t, points) {
-  return [
-    ["t", t.toFixed(2) + " s"], ["capsule", `${f.pillWidth.toFixed(1)} × ${f.pillHeight.toFixed(1)} pt`],
-    ["top", f.pillTop.toFixed(1) + " pt"], ["open", f.progress.toFixed(3)], ["melt (blend)", f.blend.toFixed(2) + " pt"],
-    ["outline", f.touchesNotch ? `${points} points` : "free capsule"],
-  ];
-}
-function showLive(rows) {
-  if (++liveTick % 4) return;
-  rows ??= [["island", "at rest"], ["waiting", deliveries.reduce((n, d) => n + d.cards.length, 0) + " cards"]];
-  live.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+function showLive(data) {
+  if (readout.hidden || ++liveTick % 4) return;
+  const rows = data ? [
+    ["t", data.t.toFixed(2) + " s"], ["capsule", `${data.f.pillWidth.toFixed(1)} × ${data.f.pillHeight.toFixed(1)} pt`],
+    ["top", data.f.pillTop.toFixed(1) + " pt"], ["open", data.f.progress.toFixed(3)], ["melt", data.f.blend.toFixed(2) + " pt"],
+    ["outline", data.f.touchesNotch ? `${data.points} points` : "free capsule"], ["engine frame", data.computeMs.toFixed(2) + " ms"],
+    ["card", data.s.card.kind + (data.s.card.id ? ` · id ${data.s.card.id}` : "")],
+    ...(data.stack ? [["stack", `${data.stack.mode}, ${data.stack.shown} of ${data.stack.max}`]] : []),
+  ] : [["island", "at rest"], ["waiting", hero.deliveries.reduce((n, d) => n + d.cards.length, hero.queue.length) + " cards"]];
+  live.innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${escapeHTML(String(v))}</dd></div>`).join("");
 }
 const plot = document.getElementById("plot"), pctx = plot.getContext("2d");
 let samples = [];
-function plotSample(t, f, m) {
+function plotSample(data) {
+  if (readout.hidden || !data) return;
+  const { t, f, s } = data;
   if (!samples.length || t < samples.at(-1).t) samples = [];
-  samples.push({ t, w: f.pillWidth / m.pillWidth, open: f.progress, y: (f.pillTop + f.pillHeight / 2) / (m.pillTop + m.pillHeight / 2) });
+  samples.push({ t, w: f.pillWidth / s.metrics.pillWidth, open: f.progress, y: (f.pillTop + f.pillHeight / 2) / (s.metrics.pillTop + s.metrics.pillHeight / 2) });
   const dpr = devicePixelRatio || 1, w = plot.clientWidth, h = plot.clientHeight;
   plot.width = w * dpr; plot.height = h * dpr; pctx.scale(dpr, dpr);
+  const style = getComputedStyle(document.documentElement);
   const span = Math.max(1.6, samples.at(-1).t);
-  pctx.strokeStyle = "#2a2a30"; pctx.beginPath(); pctx.moveTo(0, h * 0.25); pctx.lineTo(w, h * 0.25); pctx.stroke();
+  pctx.strokeStyle = style.getPropertyValue("--border"); pctx.beginPath(); pctx.moveTo(0, h * 0.25); pctx.lineTo(w, h * 0.25); pctx.stroke();
   const series = [["w", "#0a84ff", "width"], ["open", "#30d158", "open"], ["y", "#ff9f0a", "drop center"]];
   series.forEach(([key, color, name], i) => {
     pctx.strokeStyle = color; pctx.lineWidth = 1.5; pctx.beginPath();
-    samples.forEach((s, j) => { const x = s.t / span * w, y = h * 0.25 + (1 - s[key]) * h * 0.6; j ? pctx.lineTo(x, y) : pctx.moveTo(x, y); });
+    samples.forEach((p, j) => { const x = p.t / span * w, y = h * 0.25 + (1 - p[key]) * h * 0.6; j ? pctx.lineTo(x, y) : pctx.moveTo(x, y); });
     pctx.stroke(); pctx.fillStyle = color; pctx.font = `11px ${FONT}`; pctx.fillText(name, 4 + i * 80, 12);
   });
 }
+hero.on((kind, data) => { if (kind === "frame") { showLive(data); plotSample(data); } });
 
-// For checking the page from a script: run commands, hold the clock, and read the stack.
-window.__drip = {
-  run: (line) => run(line),
-  freeze: (t) => { frozen = t; },
-  thaw: () => { frozen = null; },
-  reset: () => {
-    drip.stack.end();
-    if (showing?.kind === "stack") for (const handle of showing.cards.keys()) drip.release(handle);
-    if (showing?.kind === "single") for (const card of [showing.current, ...showing.queue]) if (card) drip.release(card.handle);
-    showing = null; deliveries.length = 0;
+// ===== Feature demos, each its own little screen on the same engine =====
+const CLAUDE = (event, extra) => JSON.stringify({ hook_event_name: event, cwd: "/work/my-app", session_id: "s1", ...extra });
+const FEATURES = [
+  {
+    title: "Wrap any command", body: "<code>drip run</code> runs it, times it and tells you how it went: green on exit 0, red with the exit code otherwise. Your exit status passes through.",
+    steps: [{ line: `drip run -- make test` }],
   },
-  stack: () => showing?.kind === "stack"
-    ? showing.frames?.map(({ handle, frame }) => ({ title: showing.cards.get(handle).card.title, top: frame.pillTop, height: frame.pillHeight, leaving: !!showing.cards.get(handle).exitCues, traced: frame.touchesNotch }))
-    : null,
+  {
+    title: "Agents that tap you on the shoulder", body: "Point Claude Code's or Codex's hooks at <code>drip hook</code>. A card says which project needs you, and why, then that it is done.",
+    steps: [
+      { shown: "drip hook claude   # Notification", line: `drip hook claude '${CLAUDE("Notification", { notification_type: "permission_prompt", message: "Claude needs your permission to use Bash" })}'` },
+      { sleep: 2.6 },
+      { shown: "drip hook claude   # Stop", line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'` },
+    ],
+  },
+  {
+    title: "Updates in place", body: "Give cards an <code>--id</code> and a newer one takes the older one's place: the card springs to its new size instead of queueing.",
+    steps: [{ line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy` }, { sleep: 2 }, { line: `drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` }],
+  },
+  {
+    title: "Ask, then act", body: "<code>--button</code> without <code>--open</code> asks a question: drip exits 0 on a click, so your script decides what happens next. Click it.",
+    steps: [{ shown: `drip warn "staging is ready" --button "Promote" && ./promote.sh`, line: `drip warn "staging is ready" -d "api 1.4.2" --button "Promote" --seconds 8`, then: "./promote.sh" }],
+  },
+  {
+    title: "Pipe anything in", body: "No title? drip reads stdin: the first line is the title and the rest is the detail. Perfect for git hooks and cron jobs.",
+    steps: [{ line: `git log -1 --format='%s%n%an' | drip ok` }],
+  },
+  {
+    title: "Make it yours", body: "Presets, icons, colors, sounds and timing live in <code>~/.config/drip/config.toml</code>. Here, a custom <code>deploy</code> preset.",
+    config: `[preset.deploy]\nicon  = "paperplane.fill"\ncolor = "#a78bfa"\nseconds = 6`,
+    steps: [{ line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` }],
+  },
+];
+const grid = document.getElementById("feature-grid");
+for (const feature of FEATURES) {
+  const card = document.createElement("article"); card.className = "feature";
+  card.innerHTML = `
+    <div class="mini" role="img" aria-label="A Mac screen's top edge, where this card drops from the notch">
+      <div class="menubar"><div class="left"><b>Terminal</b><span>Shell</span></div><div class="right"><span class="clock"></span></div></div>
+      <canvas class="stage-canvas"></canvas>
+      <button type="button" class="play"><svg><use href="#i-play"/></svg>Play</button>
+    </div>
+    <div class="miniterm"></div>
+    <div class="copy"><h3></h3><p></p></div>`;
+  card.querySelector("h3").textContent = feature.title;
+  card.querySelector("p").innerHTML = feature.body;
+  grid.append(card);
+  const term = new Term(card.querySelector(".miniterm"), { max: 6 });
+  const stage = new Stage(card.querySelector(".mini"), { term, zoom: () => 1 });
+  stages.push(stage);
+  let playing = false, played = false;
+  const play = async () => {
+    if (playing || !drip) return;
+    playing = true; played = true; stage.reset(); term.clear();
+    for (const step of feature.steps) {
+      if (step.sleep) { await sleep(step.sleep * 1000); continue; }
+      const status = await exec(step.line, term, stage, { config: feature.config ?? "", shown: step.shown ?? step.line });
+      if (step.then && status === 0) {
+        const card = stage.lastCard;
+        if (card) card.onClick = () => { term.echo(step.then); exec(step.then, term, stage, { echo: false }); };
+      }
+    }
+    while (stage.busy) await sleep(200);
+    playing = false;
+  };
+  card.querySelector(".play").addEventListener("click", play);
+  new IntersectionObserver(([entry]) => {
+    if (entry.intersectionRatio > 0.6 && !played && !reduceMotion.matches && drip) play();
+  }, { threshold: [0, 0.6] }).observe(card.querySelector(".mini"));
+  stage.autoplay = () => { if (!played && !reduceMotion.matches && card.getBoundingClientRect().top < innerHeight * 0.8 && card.getBoundingClientRect().bottom > 0) play(); };
+}
+
+// ===== One animation loop for every stage =====
+let lastNow = performance.now();
+function loop(now) {
+  const dt = (now - lastNow) / 1000; lastNow = now;
+  for (const stage of stages) if (stage.visible) stage.step(now, dt);
+  requestAnimationFrame(loop);
+}
+
+// ===== Look: direction and theme =====
+const root = document.documentElement;
+function store(key, value) { try { localStorage.setItem(key, value); } catch {} }
+function stored(key) { try { return localStorage.getItem(key); } catch { return null; } }
+function setDir(dir) {
+  root.dataset.dir = dir; store("drip-dir", dir);
+  for (const b of document.querySelectorAll("[data-set-dir]")) b.setAttribute("aria-pressed", String(b.dataset.setDir === dir));
+  for (const s of stages) s.dirty = true;
+}
+function setTheme(theme) { root.dataset.theme = theme; store("drip-theme", theme); }
+const params = new URLSearchParams(location.search);
+setDir(params.get("dir") ?? stored("drip-dir") ?? "a");
+setTheme(params.get("theme") ?? stored("drip-theme") ?? "dark");
+if ((params.get("readout") ?? stored("drip-readout")) === "1") setReadout(true);
+for (const b of document.querySelectorAll("[data-set-dir]")) b.addEventListener("click", () => setDir(b.dataset.setDir));
+document.getElementById("theme").addEventListener("click", () => setTheme(root.dataset.theme === "dark" ? "light" : "dark"));
+
+// Copy buttons, with a fallback for file:// pages where the clipboard API is off.
+for (const b of document.querySelectorAll("[data-copy]")) {
+  b.addEventListener("click", async () => {
+    const text = b.dataset.copy;
+    try { await navigator.clipboard.writeText(text); }
+    catch { const area = document.createElement("textarea"); area.value = text; document.body.append(area); area.select(); document.execCommand("copy"); area.remove(); }
+    const was = b.textContent; b.textContent = "Copied"; setTimeout(() => { b.textContent = was; }, 1400);
+  });
+}
+const nav = document.getElementById("nav");
+addEventListener("scroll", () => nav.classList.toggle("scrolled", scrollY > 8), { passive: true });
+
+function tick() { const text = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); for (const c of document.querySelectorAll(".clock")) c.textContent = text; }
+tick(); setInterval(tick, 10000);
+for (const s of stages) { s.resize(); s.setFit(s.fitFor(null)); }
+requestAnimationFrame((now) => { lastNow = now; requestAnimationFrame(loop); });
+
+// For screenshots and the curious: drive the hero from the console.
+window.__drip = {
+  run: (line) => runHero(line, { fromUser: false }), freeze: (t) => { hero.frozen = t; }, thaw: () => { hero.frozen = null; },
+  reset: () => hero.reset(), stopAttract, stages, setDir, setTheme, setReadout,
+  // The cards a stage's stack shows, top to bottom: 0 the hero, 1 the stacks demo, then the features.
+  stack: (i = 0) => {
+    const st = stages[i].stack;
+    return st?.frames?.map(({ handle, frame }) => {
+      const card = st.cards.get(handle);
+      return { title: card?.card.title, top: Math.round(frame.pillTop), leaving: !!card?.exitCues, traced: frame.touchesNotch, swapping: !!card?.swap };
+    }) ?? null;
+  },
 };
 
-// ---- load ----
-function tick() { document.getElementById("clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
-tick(); setInterval(tick, 10000);
-resize(); setFit(fitFor(null)); holdDown(0);
-requestAnimationFrame((now) => { lastNow = now; frame(now); });
-
+// ===== Load the engine =====
 // Compiles the engine as it downloads; a server that sends it with another type than
 // application/wasm gets it compiled from its bytes instead.
 async function compileEngine() {
@@ -692,9 +1573,8 @@ async function compileEngine() {
     return await WebAssembly.compile(await response.arrayBuffer());
   }
 }
-
 const loadRows = [];
-const showLoad = () => document.getElementById("load").innerHTML = loadRows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+const showLoad = () => document.getElementById("load").innerHTML = loadRows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
 try {
   const t0 = performance.now();
   const module = await compileEngine();
@@ -709,11 +1589,14 @@ try {
   showLoad();
   window.__dripLoad = { download: t1 - t0, start: t2 - t1, transferSize: timing?.transferSize, decodedBodySize: timing?.decodedBodySize };
   document.getElementById("loading").remove();
-  input.disabled = false; input.focus();
-  print(`drip ${drip.version}, compiled to WebAssembly, loaded in ${Math.round(t2 - t0)} ms. Try a command below, or type one.`, "dim");
-  run(`drip ok "Build finished" -d "make test: 246 passed in 3.2s"`);
+  input.disabled = false;
+  heroTerm.print(`drip ${drip.version}, compiled to WebAssembly, started in ${Math.round(t2 - t0)} ms.`, "dim");
+  renderGhost();
+  for (const s of stages) s.autoplay?.();
+  if (params.get("attract") === "0") stopAttract();
+  await typeAndRun(`drip ok "Build finished" -d "make test: 246 passed in 3.2s"`, { fromUser: false });
 } catch (error) {
-  document.getElementById("loading").textContent = "the drip engine did not load: " + error.message;
+  document.getElementById("loading").textContent = "drip's engine did not load: " + error.message;
   console.error(error);
 }
 </script>

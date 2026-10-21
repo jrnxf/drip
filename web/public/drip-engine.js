@@ -84,18 +84,19 @@ export async function loadDrip(source, measure) {
     release: (handle) => e.drip_release(handle),
     spring: (duration, bounce, time) => e.drip_spring(duration, bounce, time),
     frame: (handle, time) => readFrame(frameValues(e.drip_frame(handle, time)), 0)[0],
-    // The stack: one at a time, of cards the engine places, times and sends off as the app's does.
+    // Stacks of cards the engine places, times, swaps and sends off as the app's do; `id` is the
+    // handle `start` returns, one per notch on the page.
     stack: {
       start: (settings, handles) => pass(e.drip_stack_start, { ...settings, handles }),
-      adopt: (handle) => e.drip_stack_adopt(handle) === 1,
-      step: (time) => readReply(e.drip_stack_step(time)),
-      end: () => e.drip_stack_end(),
-      pointer: (x, y, inside, time) => readReply(e.drip_stack_pointer(x, y, inside ? 1 : 0, time)),
-      click: (x, y, time) => readReply(e.drip_stack_click(x, y, time)),
+      offer: (id, handle) => readReply(e.drip_stack_offer(id, handle)),
+      step: (id, time) => readReply(e.drip_stack_step(id, time)),
+      end: (id) => readReply(e.drip_stack_end(id)).handles,
+      pointer: (id, x, y, inside, time) => readReply(e.drip_stack_pointer(id, x, y, inside ? 1 : 0, time)),
+      click: (id, x, y, time) => readReply(e.drip_stack_click(id, x, y, time)),
       // Every card, top to bottom: its island's handle, the seconds left on its countdown, where its
       // capsule's top is heading, and its frame.
-      frame(time) {
-        const f = frameValues(e.drip_stack_frame(time));
+      frame(id, time) {
+        const f = frameValues(e.drip_stack_frame(id, time));
         const cards = [];
         let i = 1;
         for (let n = f[0]; n > 0; n--) {
