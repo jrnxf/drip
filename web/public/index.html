@@ -15,15 +15,20 @@
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="drip, drawn as a small grey device: a display with a drip card under the notch, a printer tape, and a row of keys.">
+<meta property="og:image:alt" content="drip's logo, a notch dripping two beads and an orange drop, beside the words the notch, finally useful, and a small screen showing a Build finished card.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="drip - cards from your Mac's notch">
 <meta name="twitter:description" content="One shell command drops a card out of your Mac's camera notch: what finished, and how it went.">
 <meta name="twitter:image" content="https://drip.jrnxf.co/og.png">
-<meta name="twitter:image:alt" content="drip, drawn as a small grey device: a display with a drip card under the notch, a printer tape, and a row of keys.">
+<meta name="twitter:image:alt" content="drip's logo, a notch dripping two beads and an orange drop, beside the words the notch, finally useful, and a small screen showing a Build finished card.">
 <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#d9d9d5" media="(prefers-color-scheme: light)">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3c5 7 9 11.5 9 16.5A9 9 0 0 1 7 19.5C7 14.5 11 10 16 3z' fill='%23ff4f00'/%3E%3C/svg%3E">
+<!-- The mark: the notch, two beads and a falling drop (masters in docs/logo). favicon.ico holds a
+     16 px drawing made pixel by pixel; favicon.svg turns the notch cream in a dark browser. -->
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
 <link rel="preload" href="archivo.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="martian-mono.woff2" as="font" type="font/woff2" crossorigin>
 <script>
@@ -91,8 +96,9 @@
 
   /* ---------- top ---------- */
   .top { display: flex; align-items: center; gap: 22px; height: 58px; }
-  .word { font: 750 22px/1 var(--sans); font-stretch: 125%; letter-spacing: -.02em; text-decoration: none; }
-  .word i { font-style: normal; color: var(--orange); }
+  /* The lockup is drawn inline: its ink follows the theme, its drop stays orange. */
+  .word { display: block; color: var(--ink); }
+  .word .mark { display: block; height: 24px; width: auto; }
   .top .sp { flex: 1; }
   .top nav { display: flex; gap: 22px; }
   .top a.lbl { text-decoration: none; }
@@ -294,7 +300,7 @@
 <body>
 <div class="wrap">
   <header class="top">
-    <a class="word" href="#top" aria-label="drip, back to top">drip<i>.</i></a><span class="lbl sub">for macOS</span>
+    <a class="word" href="#top" aria-label="drip, back to top"><svg class="mark" viewBox="12 60 520 136" aria-hidden="true"><g><path d="M12 71H244V93A12 12 0 0 1 232 105H157.71A12 12 0 0 0 147.32 123A20 20 0 1 1 112.68 123A12 12 0 0 0 102.29 105H96.98A9 9 0 0 0 87.99 113.69A20 20 0 1 1 48.01 113.69A9 9 0 0 0 39.02 105H24A12 12 0 0 1 12 93Z" fill="currentColor"/><path d="M170 165A20 20 0 1 1 210 165A20 20 0 1 1 170 165Z" fill="#ff4f00"/></g><g transform="translate(296 48.64) scale(0.62)"><path d="M0 128A58 58 0 1 1 116 128A58 58 0 1 1 0 128ZM26 128A32 32 0 1 0 90 128A32 32 0 1 0 26 128ZM90 24H116V184H90Z" fill="currentColor"/><path d="M138 72H164V184H138ZM138 128A52 58 0 0 1 190 70V96A26 32 0 0 0 164 128Z" fill="currentColor"/><path d="M212 72H238V184H212Z" fill="currentColor"/><path d="M210 38A15 15 0 1 1 240 38A15 15 0 1 1 210 38Z" fill="currentColor"/><path d="M264 72H290V232H264ZM264 128A58 58 0 1 1 380 128A58 58 0 1 1 264 128ZM290 128A32 32 0 1 0 354 128A32 32 0 1 0 290 128Z" fill="currentColor"/></g></svg></a><span class="lbl sub">for macOS</span>
     <span class="sp"></span>
     <nav aria-label="Sections"><a class="lbl" href="#features">features</a><a class="lbl" href="#sheet">spec sheet</a><a class="lbl" href="#install">install</a><a class="lbl" href="https://github.com/jrnxf/drip">source</a></nav>
     <button type="button" class="slide" id="theme" role="switch" aria-checked="true" aria-label="Dark theme"><span class="lbl" aria-hidden="true">light</span><span class="track"></span><span class="lbl" aria-hidden="true">dark</span></button>
