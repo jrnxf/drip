@@ -116,9 +116,10 @@ left alone.
 as it is, never tinted, at the size of the preset's icon; an app's icon loses the margin around its
 rounded square, so its mark fills the same place. When the icon is not the preset's own, a notch
 card shows the state in its ring instead, around the state's mark: a question for `ask`, a check for
-`ok`, and so on. The icon then says who, and the ring what. An `ask` card's ring always carries its
-question, since it has no countdown to show, so at the notch an `ask` card with the preset's own
-icon shows no icon: the question shows once, in the ring, and the text starts at the left:
+`ok`, and so on. The icon then says who, and the ring what. An `ask` card that waits always carries
+its question in the ring, since it has no countdown to show, so at the notch such a card with the
+preset's own icon shows no icon: the question shows once, in the ring, and the text starts at the
+left. A card with a button shows the button in place of the ring, so it keeps its icon:
 
 ```sh
 drip ask "my-app needs you" -d "Codex wants to run npm install" --icon app:com.openai.codex
