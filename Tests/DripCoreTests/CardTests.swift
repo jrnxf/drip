@@ -3,7 +3,7 @@ import Testing
 
 struct CardTests {
     @Test func builtInPresetsMatchTheSpec() {
-        #expect(Preset.builtIn.map(\.name) == ["ok", "warn", "fail", "info"])
+        #expect(Preset.builtIn.map(\.name) == ["ok", "warn", "fail", "info", "ask"])
         #expect(Preset.ok.icon == .symbol("checkmark.circle.fill"))
         #expect(Preset.ok.color == .system(.green))
         #expect(Preset.ok.sound == .named("Glass"))
@@ -16,7 +16,46 @@ struct CardTests {
         #expect(Preset.info.icon == .symbol("info.circle.fill"))
         #expect(Preset.info.color == .system(.blue))
         #expect(Preset.info.sound == .named("Tink"))
+        #expect(Preset.ask.icon == .symbol("questionmark.circle.fill"))
+        #expect(Preset.ask.color == .system(.purple))
+        #expect(Preset.ask.sound == .named("Ping"))
         #expect(Preset.builtIn.allSatisfy { $0.seconds == nil })
+        #expect(Preset.builtIn.filter(\.waits).map(\.name) == ["ask"])
+        #expect(Preset.builtIn.map(\.glyph) == ["checkmark", "exclamationmark", "xmark", "info", "questionmark"])
+    }
+
+    @Test func anAskCardWaitsForYou() {
+        let ask = Card(preset: .ask, title: "my-app needs you")
+        #expect(ask.waits)
+        #expect(ask.waitLimit == Defaults.waitLimit)
+        #expect(ask.duration == Defaults.waitLimit)
+        #expect(ask.seconds == Defaults.seconds)
+        // A click takes it away, even with nothing to bring forward.
+        #expect(ask.activate == nil && ask.action == nil && ask.isClickable)
+
+        let ok = Card(preset: .ok, title: "done")
+        #expect(!ok.waits)
+        #expect(ok.duration == Defaults.seconds)
+        #expect(!ok.isClickable)
+    }
+
+    @Test func theRingCarriesTheStateWhenTheIconIsNotTheStates() {
+        var card = Card(preset: .ask, title: "my-app needs you")
+        #expect(card.ringGlyph == nil)
+        card.icon = .app("com.anthropic.claudefordesktop")
+        #expect(card.ringGlyph == "questionmark")
+        card.icon = .image("/home/user/agent.png")
+        #expect(card.ringGlyph == "questionmark")
+        card.icon = .symbol("terminal.fill")
+        #expect(card.ringGlyph == "questionmark")
+        // No icon at all: the card reads as before.
+        card.icon = .none
+        #expect(card.ringGlyph == nil)
+
+        // A custom preset has no state of its own to show.
+        var custom = Card(preset: Preset(name: "deploy", icon: .symbol("paperplane.fill"), color: .system(.purple), sound: .none), title: "t")
+        custom.icon = .image("/home/user/logo.png")
+        #expect(custom.ringGlyph == nil)
     }
 
     @Test func colorParsesHexAndNames() {
@@ -38,6 +77,24 @@ struct CardTests {
     @Test func iconParsing() {
         #expect(Icon(parsing: "none") == Icon.none)
         #expect(Icon(parsing: "paperplane.fill") == .symbol("paperplane.fill"))
+        #expect(Icon(parsing: "app:com.openai.chat") == .app("com.openai.chat"))
+        #expect(Icon(parsing: "/home/user/claude.png") == .image("/home/user/claude.png"))
+        #expect(Icon(parsing: "~/claude.png") == .image("~/claude.png"))
+        #expect(Icon(parsing: "logo.PNG") == .image("logo.PNG"))
+        #expect(Icon(parsing: "mark.icns") == .image("mark.icns"))
+        #expect(Icon(parsing: "./mark") == .image("./mark"))
+        #expect(Icon(parsing: "app:com.openai.chat").problem == nil)
+        #expect(Icon(parsing: "app:").problem != nil)
+        #expect(Icon(parsing: "app:not a bundle id").problem != nil)
+        #expect(Icon(parsing: "paperplane.fill").problem == nil)
+    }
+
+    @Test func anImagePathIsMadeAbsolute() {
+        #expect(Icon.image("logos/claude.png").resolved(from: "/home/user/work") == .image("/home/user/work/logos/claude.png"))
+        #expect(Icon.image("../claude.png").resolved(from: "/home/user/work") == .image("/home/user/claude.png"))
+        #expect(Icon.image("/opt/claude.png").resolved(from: "/home/user") == .image("/opt/claude.png"))
+        #expect(Icon.symbol("star").resolved(from: "/home/user") == .symbol("star"))
+        #expect(Icon.app("com.openai.chat").resolved(from: "/home/user") == .app("com.openai.chat"))
     }
 
     @Test func soundParsing() {

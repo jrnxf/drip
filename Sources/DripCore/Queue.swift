@@ -108,6 +108,29 @@ public enum CardAdoption {
     }
 }
 
+/// Tells a card that waits for you whether a newer drip's card is waiting for its turn, so it can
+/// give way.
+public enum CardTurns {
+    /// The cards of live drips queued after `source` that still wait for their turn: not adopted,
+    /// claimed or replaced, and without an id in `except`, as such a card takes the place of a card
+    /// on screen instead. `adoptable` says whether a stack at the notch could take the card in.
+    public static func waiting(
+        after source: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool, except ids: Set<String> = []
+    ) -> [(card: Card, adoptable: Bool)] {
+        var found: [(card: Card, adoptable: Bool)] = []
+        for ticket in queue.sorted(by: { $0.name < $1.name }) where ticket.name > source && isAlive(ticket) {
+            for (index, card) in ticket.cards.enumerated()
+            where !ticket.claimed.contains(CardAdoption.claimKey(index: index))
+                && !(card.id.map(ids.contains) ?? false)
+                && !CardReplacement.isReplaced(card, in: ticket, queue: queue, isAlive: isAlive)
+            {
+                found.append((card, ticket.adoptable && card.position == .notch && !card.asksQuestion))
+            }
+        }
+        return found
+    }
+}
+
 /// Decides which cards a newer card with the same id replaces.
 public enum CardReplacement {
     /// Whether `card`, from `ticket`, should not be shown: a newer ticket whose drip is still alive

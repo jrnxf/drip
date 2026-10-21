@@ -146,7 +146,7 @@ struct StyleCommandTests {
     @Test func demoDropsSeveralNotchCards() throws {
         let cards = try DemoCommand.cards(
             CardResolver(), flags: CardFlags(position: .bottom, id: "shared"))
-        #expect(cards.map(\.kind) == ["ok", "warn", "fail", "info"])
+        #expect(cards.map(\.kind) == ["ok", "ask", "fail", "info"])
         #expect(Set(cards.map(\.title)).count == cards.count)
         for card in cards {
             #expect(card.position == .notch)

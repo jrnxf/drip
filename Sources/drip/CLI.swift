@@ -17,6 +17,9 @@ protocol CardDisplay {
     /// Checks the cards' sounds and icons, warning about and replacing any that cannot load.
     func prepare(_ cards: [Card], console: Console) -> [Card]
 
+    /// Whether an app with the bundle identifier is installed.
+    func isInstalled(_ bundleIdentifier: String) -> Bool
+
     /// Draws the card offscreen into a PNG file; a notch card `at` seconds into its entrance, or
     /// its exit when `leaving`.
     func render(
@@ -112,6 +115,7 @@ struct DripCLI {
             let event = try AgentHook.event(agent: command.agent, payload: payload)
             flags.id = flags.id ?? event.id
             flags.detail = flags.detail ?? event.detail
+            flags.icon = flags.icon ?? command.agent.icon(installed: display.isInstalled)
             let card = try makeResolver(console).resolve(kind: event.kind, title: event.title, flags: flags)
             status = deliver([card], wait: flags.wait, console: console)
         } catch {
@@ -278,6 +282,10 @@ struct UnavailableDisplay: CardDisplay {
 
     func prepare(_ cards: [Card], console: Console) -> [Card] {
         cards
+    }
+
+    func isInstalled(_ bundleIdentifier: String) -> Bool {
+        false
     }
 
     func render(

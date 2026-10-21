@@ -1,8 +1,9 @@
 #!/bin/sh
 # Builds and tests drip on a Mac, records any missing snapshot references, then shows each preset
-# card on screen once, drops the notch cards of drip demo in turn, shows a Claude hook
-# card that a newer card from the same session replaces in place, turns a deploy card into its next
-# step and then into ok and fail in place, and lists the history.
+# card on screen once, an ask card waiting until drip demo needs the notch, drops the notch cards
+# of drip demo in turn, shows a Claude hook card that a newer card from the same session replaces
+# in place, turns a deploy card into its next step and then into ok and fail in place, and lists
+# the history.
 #
 # Existing references are never overwritten: to regenerate one on purpose, delete its PNG in
 # Tests/Snapshots and run this script again.
@@ -54,12 +55,18 @@ for kind in ok warn fail info deploy; do
     echo "Showing the $kind card"
     XDG_CONFIG_HOME="$config" .build/release/drip "$kind" "drip $kind" --detail "mac-check: the $kind preset"
 done
+# Terminal's own icon, untinted, with the state in a breathing ring. It waits until it is clicked,
+# or until drip demo below waits for the notch: then it counts down like any other card.
+echo "Showing an ask card with Terminal's icon; it waits for a click, or for drip demo"
+XDG_CONFIG_HOME="$config" .build/release/drip ask "drip ask" --detail "mac-check: waits for you" \
+    --icon app:com.apple.Terminal
 
 echo "Playing drip demo"
 XDG_CONFIG_HOME="$config" .build/release/drip demo
 
 # The demo waits for its cards, so the queue is empty: the first hook card is on screen when the
-# second arrives, and the second takes its place.
+# second arrives, and the second takes its place. The first is an ask card with Claude's app icon,
+# or a plain terminal without Claude.app; the second turns its breathing question into a check.
 echo "Showing a Claude hook card, then a newer one from the same session in its place; click it to come back here"
 hook() {
     XDG_CONFIG_HOME="$config" .build/release/drip hook claude --seconds 8

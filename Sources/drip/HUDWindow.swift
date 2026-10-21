@@ -29,7 +29,7 @@ struct HUDDisplay: CardDisplay {
         var adopting = false
         if case .pool = locked {
             // However long the cards were held, a background drip never outlives them by much.
-            BackgroundWatchdog.extend(by: cards.reduce(0) { $0 + $1.seconds } + 600)
+            BackgroundWatchdog.extend(by: cards.reduce(0) { $0 + $1.duration } + 600)
             adopting = true
         }
         let app = NSApplication.shared
@@ -40,7 +40,7 @@ struct HUDDisplay: CardDisplay {
         var unanswered = false
         var remaining = cards[...]
         func next() {
-            guard let card = remaining.popFirst() else { return stopApplication() }
+            guard var card = remaining.popFirst() else { return stopApplication() }
             if CardQueue.isReplaced(card) {
                 unanswered = unanswered || card.asksQuestion
                 return next()
@@ -52,6 +52,8 @@ struct HUDDisplay: CardDisplay {
                     next()
                 }
             }
+            // Shown alone, a card with more of this drip's cards after it does not keep them waiting.
+            if !remaining.isEmpty { card.waitLimit = nil }
             let presenter = CardPresenters.make(for: card, console: console)
             let watch = ReplacementWatch(presenter: presenter, card: card)
             // The presenter keeps itself alive through the timers and animations it schedules.
@@ -149,7 +151,7 @@ struct HUDDisplay: CardDisplay {
     }
 
     /// Loads each card's sound and icon now, so a problem is reported before drip returns: a sound
-    /// that cannot play is dropped, and an unknown symbol falls back to the preset's icon.
+    /// that cannot play is dropped, and an icon that cannot load falls back to the preset's.
     func prepare(_ cards: [Card], console: Console) -> [Card] {
         cards.map { card in
             var card = card
@@ -173,12 +175,16 @@ struct HUDDisplay: CardDisplay {
             {
                 console.warn("'\(target)' does not exist yet; the button opens it if it does by then")
             }
-            if case let .symbol(name) = card.icon, NSImage(systemSymbolName: name, accessibilityDescription: nil) == nil {
-                console.warn("unknown SF Symbol '\(name)'; using the preset's icon")
+            if let problem = CardIcon.problem(card.icon), CardIcon(card.icon, pointSize: 28) == nil {
+                console.warn("\(problem); using the preset's icon")
                 card.icon = card.fallbackIcon
             }
             return card
         }
+    }
+
+    func isInstalled(_ bundleIdentifier: String) -> Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) != nil
     }
 
     /// Ends `NSApplication.run()`. `stop` takes effect only after the next event, so post one.
@@ -237,6 +243,10 @@ protocol CardPresenting: AnyObject {
 
     /// Shows `card` in place of the current one, with its sound, and restarts the time it stays.
     func replace(with card: Card)
+
+    /// Ends the wait of a card that waits for you, as another card waits for its turn: it counts
+    /// down from now like any other card.
+    func stopWaiting()
 }
 
 /// While a card with an id is on screen, looks for a newer card with the same id from another drip,
@@ -252,7 +262,7 @@ final class ReplacementWatch {
         self.presenter = presenter
         current = card
         source = CardQueue.mine?.name ?? ""
-        guard card.id != nil, CardQueue.mine != nil else { return }
+        guard card.id != nil || card.waits, CardQueue.mine != nil else { return }
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.look() }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
@@ -264,14 +274,20 @@ final class ReplacementWatch {
     }
 
     private func look() {
-        guard presenter.canReplace, let found = CardQueue.replacement(for: current, after: source),
-              let id = found.card.id
-        else { return }
-        // Claimed first, so the newer drip never shows the card too.
-        CardQueue.claim(id, in: found.ticket)
-        presenter.replace(with: found.card)
-        current = found.card
-        source = found.ticket
+        if presenter.canReplace, let found = CardQueue.replacement(for: current, after: source),
+           let id = found.card.id
+        {
+            // Claimed first, so the newer drip never shows the card too.
+            CardQueue.claim(id, in: found.ticket)
+            presenter.replace(with: found.card)
+            current = found.card
+            source = found.ticket
+            return
+        }
+        // A card that waits for you gives way to a newer drip waiting for its turn.
+        if current.waits, !CardQueue.waiting(except: Set([current.id].compactMap { $0 })).isEmpty {
+            presenter.stopWaiting()
+        }
     }
 }
 
@@ -367,6 +383,9 @@ final class CardPresenter: CardPresenting {
     /// Set once the entrance has finished.
     private var entered = false
     private var hover: HoverView?
+    /// Whether the card still waits for you rather than counting down.
+    private var waiting = false
+    private var hovering = false
 
     init(card: Card, console: Console) {
         self.card = card
@@ -412,9 +431,10 @@ final class CardPresenter: CardPresenting {
         motionAmount = motion
         self.onFinish = onFinish
         handleClicks(on: built)
+        waiting = card.waits
         enter(frame: frame, motion: motion) { [self] in
             entered = true
-            schedule(after: card.seconds)
+            if !hovering { schedule(after: waiting ? card.duration : card.seconds) }
         }
     }
 
@@ -435,11 +455,19 @@ final class CardPresenter: CardPresenting {
         handleClicks(on: built, pointerInside: held)
         sound = CardSound(card.sound, console: console)
         sound?.play()
+        waiting = card.waits
+        hovering = held
         if held {
             departure?.cancel()
         } else {
-            schedule(after: card.seconds)
+            schedule(after: card.duration)
         }
+    }
+
+    func stopWaiting() {
+        guard waiting, !leaving else { return }
+        waiting = false
+        if entered, !hovering { schedule(after: card.seconds) }
     }
 
     /// For a clickable card: hovering anywhere on it holds it, a click on the button runs the
@@ -453,8 +481,15 @@ final class CardPresenter: CardPresenting {
             }
         }
         let hover = HoverView(frame: NSRect(origin: .zero, size: frame.size), pointerInside: pointerInside)
-        hover.onEnter = { [self] in departure?.cancel() }
-        hover.onExit = { [self] in schedule(after: 1.5) }
+        hover.onEnter = { [self] in
+            hovering = true
+            departure?.cancel()
+        }
+        hover.onExit = { [self] in
+            hovering = false
+            // A card that waits for you goes on waiting; any other gets a moment more.
+            schedule(after: waiting ? card.duration : 1.5)
+        }
         hover.onClick = { [self] in
             if let target = card.activate { CardActions.activate(target, console: console) }
             leave(clicked: false)

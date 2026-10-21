@@ -84,7 +84,7 @@ final class IslandLayers {
         self.card = card
         let sizeScale = CGFloat(card.size.scale)
         let accent = card.color.nsColor
-        let image = CardViewBuilder.symbolImage(for: card, pointSize: 28 * sizeScale, console: console)
+        let image = CardViewBuilder.icon(for: card, pointSize: 28 * sizeScale, console: console)
         let buttonLabel = card.action.map {
             NSAttributedString(string: $0.label, attributes: [
                 .font: NSFont.systemFont(ofSize: 12.5 * sizeScale, weight: .semibold),
@@ -157,11 +157,14 @@ final class IslandLayers {
         icon.bounds = CGRect(x: 0, y: 0, width: iconSide, height: iconSide)
         icon.contentsScale = scale
         icon.contentsGravity = .resizeAspect
-        if let image {
+        if let image, image.isSymbol {
             // White mark on an accent disc for the built-in symbols; one-layer symbols draw white.
             let palette = NSImage.SymbolConfiguration(paletteColors: [.white, accent])
-            let tinted = image.withSymbolConfiguration(palette) ?? image
+            let tinted = image.image.withSymbolConfiguration(palette) ?? image.image
             icon.contents = tinted.layerContents(forContentsScale: scale)
+        } else if let image {
+            // A picture, such as an agent's app icon, is drawn as it is.
+            icon.contents = image.image.layerContents(forContentsScale: scale)
         }
         icon.opacity = 0
         content.addSublayer(icon)
@@ -169,7 +172,7 @@ final class IslandLayers {
         if let buttonLabel, let buttonSize {
             makeButton(buttonLabel, size: buttonSize, accent: accent, scale: scale)
         } else {
-            makeRing(accent: accent, lineWidth: 2.4 * sizeScale, scale: scale)
+            makeRing(accent: accent, lineWidth: 2.4 * sizeScale, glyph: card.ringGlyph, scale: scale)
         }
         ring.opacity = 0
         content.addSublayer(ring)
@@ -229,8 +232,9 @@ final class IslandLayers {
         CATransaction.commit()
     }
 
-    /// The countdown ring: a faint track and the accent arc that drains.
-    private func makeRing(accent: NSColor, lineWidth: CGFloat, scale: CGFloat) {
+    /// The countdown ring: a faint track and the accent arc that drains, around the state's `glyph`
+    /// when the icon is not the state's own.
+    private func makeRing(accent: NSColor, lineWidth: CGFloat, glyph: String?, scale: CGFloat) {
         ring.bounds = CGRect(x: 0, y: 0, width: ringSide, height: ringSide)
         let circle = CGPath(
             ellipseIn: CGRect(x: 0, y: 0, width: ringSide, height: ringSide).insetBy(dx: 1.6, dy: 1.6),
@@ -253,6 +257,18 @@ final class IslandLayers {
         track.frame = ring.bounds
         ring.addSublayer(track)
         ring.addSublayer(ringProgress)
+        let configuration = NSImage.SymbolConfiguration(pointSize: ringSide * 0.4, weight: .bold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
+        if let glyph, let image = NSImage(systemSymbolName: glyph, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
+        {
+            let mark = CALayer()
+            mark.frame = ring.bounds.insetBy(dx: ringSide * 0.24, dy: ringSide * 0.24)
+            mark.contentsGravity = .resizeAspect
+            mark.contentsScale = scale
+            mark.contents = image.layerContents(forContentsScale: scale)
+            ring.addSublayer(mark)
+        }
     }
 
     /// `text` broken into at most `maxLines` lines, each cut to fit `width`, the last with an ellipsis
@@ -449,6 +465,37 @@ extension IslandLayers {
         }
     }
 
+    /// Fills the ring from `fraction` full at `begin`, for a card that waits for you: with
+    /// `breathing`, its arc then breathes slowly instead of draining.
+    func hold(from fraction: Double = 1, breathing: Bool, at begin: CFTimeInterval = CACurrentMediaTime()) {
+        let fill = CABasicAnimation(keyPath: "strokeEnd")
+        fill.fromValue = fraction
+        fill.toValue = 1
+        fill.beginTime = begin
+        fill.duration = IslandUpdate.refill
+        fill.timingFunction = CardPresenters.easeOut
+        fill.fillMode = .backwards
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        ringProgress.strokeEnd = 1
+        ringProgress.speed = 1
+        ringProgress.timeOffset = 0
+        ringProgress.beginTime = 0
+        ringProgress.add(fill, forKey: "drain")
+        if breathing {
+            let breathe = CABasicAnimation(keyPath: "opacity")
+            breathe.fromValue = 1
+            breathe.toValue = IslandUpdate.breathOpacity
+            breathe.beginTime = begin + IslandUpdate.refill
+            breathe.duration = IslandUpdate.breath / 2
+            breathe.autoreverses = true
+            breathe.repeatCount = .infinity
+            breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            ringProgress.add(breathe, forKey: "breathe")
+        }
+        CATransaction.commit()
+    }
+
     /// Drains the countdown ring from `fraction` full to empty over `seconds`, starting at `begin`.
     func drain(from fraction: Double = 1, over seconds: Double, at begin: CFTimeInterval = CACurrentMediaTime()) {
         let drain = CABasicAnimation(keyPath: "strokeEnd")
@@ -460,6 +507,7 @@ extension IslandLayers {
         drain.timingFunction = CAMediaTimingFunction(name: .linear)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        ringProgress.removeAnimation(forKey: "breathe")
         ringProgress.strokeEnd = 0
         // A fresh clock: the new drain replaces whatever a pause left behind.
         ringProgress.speed = 1
@@ -491,6 +539,7 @@ extension IslandLayers {
         group.fillMode = .both
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        ringProgress.removeAnimation(forKey: "breathe")
         ringProgress.strokeEnd = 0
         ringProgress.speed = 1
         ringProgress.timeOffset = 0
@@ -560,27 +609,31 @@ extension IslandLayers {
                 fade(line, from: line.opacity, to: 0, over: fadeOut)
             }
         }
-        // The new icon waits underneath, whole, as the old one fades off it.
-        if newState {
+        /// Lands `layer` with a small pop, on top of whatever scale the island gives it.
+        func pop(_ layer: CALayer) {
+            let landing = CASpringAnimation(keyPath: "transform.scale")
+            let spring = IslandUpdate.pop
+            landing.mass = 1
+            landing.stiffness = spring.stiffness
+            landing.damping = spring.damping
+            landing.duration = spring.settlingTime
+            let scale = (layer.value(forKeyPath: "transform.scale") as? NSNumber)?.doubleValue ?? 1
+            landing.isAdditive = true
+            landing.fromValue = (IslandUpdate.popScale - 1) * scale
+            landing.toValue = 0
+            landing.beginTime = begin
+            landing.fillMode = .backwards
+            layer.add(landing, forKey: "pop")
+        }
+        // The new icon waits underneath, whole, as the old one fades off it. When the ring carries
+        // the state and the icon stays, such as an agent's, the icon stays still and the state lands
+        // in the ring instead.
+        if newState, !IslandUpdate.landsInRing(from: old.card, to: card) {
             fade(old.icon, from: old.icon.opacity, to: 0, over: settle)
-            if full, metrics.hasIcon {
-                let pop = CASpringAnimation(keyPath: "transform.scale")
-                let spring = IslandUpdate.pop
-                pop.mass = 1
-                pop.stiffness = spring.stiffness
-                pop.damping = spring.damping
-                pop.duration = spring.settlingTime
-                let scale = (icon.value(forKeyPath: "transform.scale") as? NSNumber)?.doubleValue ?? 1
-                // On top of whatever scale the island gives the icon.
-                pop.isAdditive = true
-                pop.fromValue = (IslandUpdate.popScale - 1) * scale
-                pop.toValue = 0
-                pop.beginTime = begin
-                pop.fillMode = .backwards
-                icon.add(pop, forKey: "pop")
-            }
+            if full, metrics.hasIcon { pop(icon) }
         } else {
             old.icon.opacity = 0
+            if newState, full, card.action == nil { pop(ring) }
         }
         if bothRings {
             // One ring, which takes the new colour from the old.
@@ -749,6 +802,8 @@ final class IslandPresenter: CardPresenting {
     private var onFinish: ((Bool) -> Void)?
     /// When the card is fully in.
     private var openAt = CFTimeInterval.infinity
+    /// Whether the card still waits for you rather than counting down.
+    private var waiting = false
 
     /// Keyframes per second when sampling the springs.
     private static let framesPerSecond = 240.0
@@ -800,17 +855,19 @@ final class IslandPresenter: CardPresenting {
         sound = CardSound(card.sound, console: console)
 
         let motion = CardPresenters.motion(for: card)
+        waiting = card.waits
         guard motion == .full else {
             sound?.play()
             animator.open()
             let open = animator.shape(at: 0)
             layers.apply(layers.frame(open, layout: animator.content(for: open)))
             layers.showContent()
+            if waiting { layers.hold(breathing: false) }
             panel.alphaValue = motion == .none ? 1 : 0
             fadePanel(to: 1, duration: motion == .none ? 0 : 0.15)
             departure = fadingDeparture(motion)
             openAt = CACurrentMediaTime() + 0.15
-            schedule(after: 0.15 + card.seconds)
+            schedule(after: 0.15 + card.duration)
             return
         }
 
@@ -826,10 +883,25 @@ final class IslandPresenter: CardPresenting {
         layers.fade(enterCues, into: true)
         // The countdown starts once the title's first line has faded in, however many lines follow.
         let visible = (enterCues.title.first ?? enterCues.sides) + 0.25
-        layers.drain(over: card.seconds, at: CACurrentMediaTime() + visible)
+        if waiting {
+            layers.hold(breathing: true, at: CACurrentMediaTime() + visible)
+        } else {
+            layers.drain(over: card.seconds, at: CACurrentMediaTime() + visible)
+        }
         departure = springingDeparture()
         openAt = started + visible
-        schedule(after: visible + card.seconds)
+        schedule(after: visible + card.duration)
+    }
+
+    func stopWaiting() {
+        guard waiting, departure != nil else { return }
+        waiting = false
+        layers?.drain(over: card.seconds)
+        if hovering {
+            layers.map { IslandLayers.pause($0.ringProgress, paused: true) }
+        } else {
+            schedule(after: card.seconds)
+        }
     }
 
     var canReplace: Bool { departure != nil && CACurrentMediaTime() >= openAt }
@@ -891,14 +963,16 @@ final class IslandPresenter: CardPresenting {
         sound = CardSound(card.sound, console: console)
         sound?.play()
 
-        if motion == .full {
+        waiting = card.waits
+        if waiting {
+            layers.hold(from: motion == .full ? ringFraction : 1, breathing: motion == .full)
+        } else if motion == .full {
             layers.refill(from: ringFraction, over: card.seconds)
-            departure = springingDeparture()
         } else {
             layers.drain(over: card.seconds)
-            departure = fadingDeparture(motion)
         }
-        schedule(after: card.seconds)
+        departure = motion == .full ? springingDeparture() : fadingDeparture(motion)
+        schedule(after: card.duration)
         pointer(at: view.convert(panel.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil))
     }
 
@@ -1010,7 +1084,8 @@ final class IslandPresenter: CardPresenting {
             layers.map { IslandLayers.pause($0.ringProgress, paused: true) }
         } else {
             layers.map { IslandLayers.pause($0.ringProgress, paused: false) }
-            schedule(after: 1.5)
+            // A card that waits for you goes on waiting; any other gets a moment more.
+            schedule(after: waiting ? card.duration : 1.5)
         }
     }
 

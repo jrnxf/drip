@@ -292,16 +292,19 @@ public enum MissedSummary {
         // Newest first: what happened last is likely what matters now.
         card.detail = CardText.line(held.reversed().map(\.title).joined(separator: " · "))
         card.seconds = held.map(\.seconds).max() ?? card.seconds
+        // A summary counts down: what it sums up is already in the past.
+        card.waitLimit = nil
         card.action = nil
         card.id = nil
         card.activate = Set(held.map(\.activate)).count == 1 ? held[0].activate : nil
         return [card]
     }
 
-    /// The newest fail card, else the newest warn card, else the newest card: the summary takes its
-    /// look and sound, so a failure among the held cards still reads as one.
+    /// The newest fail card, else the newest ask card, else the newest warn card, else the newest
+    /// card: the summary takes its look and sound, so a failure among the held cards still reads as
+    /// one, and something waiting on you next.
     private static func mostSevere(_ cards: [Card]) -> Card? {
-        for kind in [Preset.fail.name, Preset.warn.name] {
+        for kind in [Preset.fail.name, Preset.ask.name, Preset.warn.name] {
             if let card = cards.last(where: { $0.kind == kind }) { return card }
         }
         return cards.last
@@ -355,6 +358,8 @@ extension Icon {
         switch self {
         case .none: return "none"
         case let .symbol(name): return name
+        case let .image(path): return path
+        case let .app(identifier): return Icon.appPrefix + identifier
         }
     }
 }

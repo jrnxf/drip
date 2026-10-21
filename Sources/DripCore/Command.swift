@@ -59,8 +59,8 @@ public struct CardOptions: ParsableArguments {
     var sound: Sound?
 
     @Option(help: ArgumentHelp(
-        "An SF Symbol name, or none. Unknown names fall back to the preset's icon. (default: the preset's)",
-        valueName: "symbol|none"))
+        "An SF Symbol name, a path to an image, app: and an app's bundle identifier for its icon, or none. Icons that cannot load fall back to the preset's. (default: the preset's)",
+        valueName: "symbol|path|app:id|none"))
     var icon: Icon?
 
     @Option(help: ArgumentHelp(
@@ -131,6 +131,9 @@ public struct CardOptions: ParsableArguments {
         if let id, id.trimmingCharacters(in: .whitespaces).isEmpty || id.count > Defaults.idLimit {
             throw ValidationError("--id needs 1 to \(Defaults.idLimit) characters.")
         }
+        if let problem = icon?.problem {
+            throw ValidationError("--icon: \(problem).")
+        }
         if let activate, activate != CardActivation.none, !CardActivation.isBundleIdentifier(activate) {
             throw ValidationError("--activate: '\(activate)' is not a bundle identifier such as com.apple.Terminal.")
         }
@@ -139,7 +142,8 @@ public struct CardOptions: ParsableArguments {
     /// The parsed values, as a plain value.
     public var flags: CardFlags {
         CardFlags(
-            detail: detail, seconds: seconds, sound: sound, icon: icon, color: color, position: position,
+            detail: detail, seconds: seconds, sound: sound,
+            icon: icon.map { $0.resolved(from: FileManager.default.currentDirectoryPath) }, color: color, position: position,
             size: size, style: style, motion: motion, wait: wait, quiet: quiet,
             open: opensNothing ? nil : open.map { Self.target($0, from: FileManager.default.currentDirectoryPath) },
             button: opensNothing ? nil : button, id: id, activate: activate)
@@ -220,8 +224,9 @@ public struct DripCommand: ParsableCommand {
             drip --version | --help
             """,
         discussion: """
-            Presets: ok, warn, fail and info, plus any defined in $XDG_CONFIG_HOME/drip/config.toml \
-            or ~/.config/drip/config.toml.
+            Presets: ok, warn, fail, info and ask, plus any defined in $XDG_CONFIG_HOME/drip/config.toml \
+            or ~/.config/drip/config.toml. An ask card waits for you: it stays until it is clicked or \
+            replaced, unless --seconds is given.
 
             When no TITLE is given and stdin is not a terminal, drip reads stdin: the first \
             non-empty line is the title and the remaining lines are the detail, unless --detail \
@@ -250,7 +255,7 @@ public struct DripCommand: ParsableCommand {
     )
 
     @Argument(help: ArgumentHelp(
-        "ok, warn, fail, info or a custom preset. Taken as the title when it is not a preset. (default: info)",
+        "ok, warn, fail, info, ask or a custom preset. Taken as the title when it is not a preset. (default: info)",
         valueName: "kind"))
     public var kind: String?
 
@@ -332,7 +337,7 @@ public struct DemoCommand: ParsableCommand {
     /// with a button. `pause` is how long a card waits, at the least, after the one before it.
     public static let samples: [(kind: String, title: String, detail: String, open: String?, pause: Double)] = [
         ("ok", "Build finished", "make test: 246 passed in 3.2s", nil, 0),
-        ("warn", "Claude needs you", "Claude needs your permission to use Bash", nil, 0),
+        ("ask", "Claude needs you", "Claude needs your permission to use Bash", nil, 0),
         ("fail", "Deploy failed", "staging: health check timed out after 30s", nil, 0),
         ("info", "Report uploaded", "q3-review.pdf is on the file server", "https://github.com/jrnxf/drip", 3),
     ]

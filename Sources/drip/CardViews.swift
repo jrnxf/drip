@@ -133,7 +133,7 @@ enum CardViewBuilder {
             titleFont = .systemFont(ofSize: metrics.titleFontSize, weight: .semibold)
             detailFont = .systemFont(ofSize: metrics.detailFontSize, weight: .regular)
         }
-        let icon = style == .terminal ? nil : symbolImage(for: card, pointSize: metrics.iconSize, console: console)
+        let icon = style == .terminal ? nil : icon(for: card, pointSize: metrics.iconSize, console: console)
         let stripeWidth: CGFloat = style == .terminal ? 4 : 0
         // A button takes the trailing padding's place and brings its own: a gap after the text, and
         // room after the button.
@@ -173,9 +173,10 @@ enum CardViewBuilder {
         let content = NSView(frame: bounds)
         if let icon, let iconFrame = layout.iconFrame {
             let iconView = NSImageView(frame: iconFrame)
-            iconView.image = icon
+            iconView.image = icon.image
             iconView.imageScaling = .scaleProportionallyDown
-            iconView.contentTintColor = colors.icon
+            // A picture is drawn as it is; only a symbol takes the card's colour.
+            if icon.isSymbol { iconView.contentTintColor = colors.icon }
             content.addSubview(iconView)
         }
         if let eyebrow, let eyebrowFrame = layout.eyebrowFrame {
@@ -329,19 +330,84 @@ enum CardViewBuilder {
         return label
     }
 
-    /// The card's symbol at the spec's size and weight. An unknown symbol name falls back to the
-    /// preset's icon with a warning.
-    static func symbolImage(for card: Card, pointSize: CGFloat, console: Console) -> NSImage? {
-        let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
-        func image(_ icon: Icon) -> NSImage? {
-            guard case let .symbol(name) = icon else { return nil }
-            return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+    /// The card's icon at `pointSize`. One that cannot load falls back to the preset's icon with a
+    /// warning.
+    static func icon(for card: Card, pointSize: CGFloat, console: Console) -> CardIcon? {
+        if let found = CardIcon(card.icon, pointSize: pointSize) { return found }
+        guard let problem = CardIcon.problem(card.icon) else { return nil }
+        console.warn("\(problem); using the preset's icon")
+        return CardIcon(card.fallbackIcon, pointSize: pointSize)
+    }
+}
+
+/// A card's icon, loaded: an SF Symbol, which takes the card's colours, or a picture, an image
+/// file or an app's icon, which is drawn as it is.
+struct CardIcon {
+    var image: NSImage
+    var isSymbol: Bool
+
+    /// The transparent margin around the rounded square of a macOS app icon, as a fraction of its
+    /// side, which is cut off so the app's mark fills the icon's place like a symbol's disc does.
+    static let appIconMargin: CGFloat = 0.095
+
+    /// `icon` at `pointSize`: a symbol at the spec's weight, an image or an app's icon fitted into a
+    /// square. Nil for no icon, and for one that cannot load.
+    init?(_ icon: Icon, pointSize: CGFloat) {
+        switch icon {
+        case .none:
+            return nil
+        case let .symbol(name):
+            let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
+            guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
                 .withSymbolConfiguration(configuration)
+            else { return nil }
+            self.init(image: symbol, isSymbol: true)
+        case let .image(path):
+            guard let picture = NSImage(contentsOfFile: path), picture.isValid,
+                  let fitted = Self.fitted(picture, side: pointSize, margin: 0)
+            else { return nil }
+            self.init(image: fitted, isSymbol: false)
+        case let .app(identifier):
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier),
+                  let fitted = Self.fitted(
+                      NSWorkspace.shared.icon(forFile: url.path), side: pointSize, margin: Self.appIconMargin)
+            else { return nil }
+            self.init(image: fitted, isSymbol: false)
         }
-        guard case let .symbol(name) = card.icon else { return nil }
-        if let found = image(card.icon) { return found }
-        console.warn("unknown SF Symbol '\(name)'; using the preset's icon")
-        return image(card.fallbackIcon)
+    }
+
+    private init(image: NSImage, isSymbol: Bool) {
+        self.image = image
+        self.isSymbol = isSymbol
+    }
+
+    /// Why `icon` cannot load, for the warning before drip falls back to the preset's icon.
+    static func problem(_ icon: Icon) -> String? {
+        switch icon {
+        case .none: return nil
+        case let .symbol(name): return "unknown SF Symbol '\(name)'"
+        case let .image(path): return "cannot load the image '\(path)'"
+        case let .app(identifier): return "no app with the bundle identifier '\(identifier)' is installed"
+        }
+    }
+
+    /// `image` drawn into a `side` square, keeping its proportions, with `margin` of its side cut off
+    /// all round first. Drawn at whatever scale it is shown, so it stays sharp as the island grows,
+    /// and never a template, so nothing tints it.
+    private static func fitted(_ image: NSImage, side: CGFloat, margin: CGFloat) -> NSImage? {
+        let source = image.size
+        guard source.width > 0, source.height > 0 else { return nil }
+        let crop = NSRect(origin: .zero, size: source).insetBy(dx: source.width * margin, dy: source.height * margin)
+        let fitted = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            let scale = min(rect.width / crop.width, rect.height / crop.height)
+            let size = NSSize(width: crop.width * scale, height: crop.height * scale)
+            let target = NSRect(
+                x: rect.midX - size.width / 2, y: rect.midY - size.height / 2, width: size.width, height: size.height)
+            image.draw(in: target, from: crop, operation: .sourceOver, fraction: 1)
+            return true
+        }
+        fitted.isTemplate = false
+        return fitted
     }
 }
 

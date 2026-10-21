@@ -184,9 +184,20 @@ public enum IslandUpdate {
     /// fades out short of the ring instead of running under it, in points at regular size.
     public static let textEdge = 8.0
 
+    /// The ring of a card that waits for you, which has no countdown: its arc breathes, down to
+    /// this opacity and back over `breath` seconds.
+    public static let breathOpacity = 0.42
+    public static let breath = 1.8
+
     /// Whether `new` shows a different state than `old`: another icon or another colour.
     public static func changesState(from old: Card, to new: Card) -> Bool {
         old.icon != new.icon || old.color != new.color
+    }
+
+    /// Whether a new state lands in the ring rather than on the icon: the ring carries the state,
+    /// and the icon, such as an agent's, stays as it was.
+    public static func landsInRing(from old: Card, to new: Card) -> Bool {
+        new.ringGlyph != nil && old.icon == new.icon
     }
 
     /// For each line of the new card, title lines first, whether it shows the same text in the same

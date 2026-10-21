@@ -23,7 +23,27 @@ public enum AgentHook {
             case .codex: return "Codex"
             }
         }
+
+        /// The bundle identifiers of the agent's own apps, in the order their icon is preferred: the
+        /// command-line agent shows the icon of its maker's app when one is installed. drip ships no
+        /// logos of its own.
+        public var apps: [String] {
+            switch self {
+            case .claude: return ["com.anthropic.claudefordesktop"]
+            case .codex: return ["com.openai.codex", "com.openai.chat"]
+            }
+        }
+
+        /// The agent's card icon: the icon of the first of its apps that is installed, else drip's
+        /// neutral `fallbackIcon`.
+        public func icon(installed: (String) -> Bool) -> Icon {
+            apps.first(where: installed).map(Icon.app) ?? AgentHook.fallbackIcon
+        }
     }
+
+    /// The icon of an agent with no app installed: a plain terminal, so the ring at the notch still
+    /// carries the state.
+    public static let fallbackIcon = Icon.symbol("terminal.fill")
 
     /// The most a payload read from stdin may be. A Stop payload carries the agent's whole last
     /// message, which can be long.
@@ -31,7 +51,7 @@ public enum AgentHook {
 
     /// What the card says.
     public struct Event: Equatable, Sendable {
-        /// A preset name: `ok` when the agent is done, `warn` when it waits on a decision, `info`
+        /// A preset name: `ok` when the agent is done, `ask` when it waits on a decision, `info`
         /// when it is only idle.
         public var kind: String
         public var title: String
@@ -77,7 +97,7 @@ public enum AgentHook {
             case "Notification":
                 let kind: String
                 switch string("notification_type") {
-                case "permission_prompt", "elicitation_dialog": kind = Preset.warn.name
+                case "permission_prompt", "elicitation_dialog": kind = Preset.ask.name
                 default: kind = Preset.info.name
                 }
                 return Event(kind: kind, title: "\(project()) needs you", detail: string("message"), id: id)

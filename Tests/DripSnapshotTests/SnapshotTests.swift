@@ -117,6 +117,23 @@ struct SnapshotTests {
         ])
     }
 
+    /// An agent's card: its app's own icon, never tinted, with the state in the ring at the notch.
+    /// Terminal is on every Mac; drip ships no agent's logo.
+    @Test func agentIcons() throws {
+        let asking = ["ask", "my-app needs you", "--detail", "Claude needs your permission to use Bash"]
+        let done = ["ok", "my-app is done", "--detail", "All 246 tests pass. Pushed fix/notch."]
+        let app = ["--icon", "app:com.apple.Terminal"], notch = ["--position", "notch"]
+        try assertSnapshots([
+            Snapshot(name: "notch-ask", arguments: asking + notch),
+            Snapshot(name: "notch-ask-app", arguments: asking + app + notch),
+            Snapshot(name: "notch-ok-app", arguments: done + app + notch),
+            Snapshot(name: "notch-ask-no-app", arguments: asking + ["--icon", "terminal.fill"] + notch),
+            Snapshot(name: "notch-ask-image", arguments: asking + notch + [
+                "--icon", "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns",
+            ]),
+        ] + appearances("ask-app-hud", asking + app + ["--style", "hud"]))
+    }
+
     @Test func buttons() throws {
         let card = ["ok", "Deploy finished", "--detail", "api · 2m 14s", "--open", "https://example.com",
                     "--button", "View run"]
@@ -135,6 +152,7 @@ struct SnapshotTests {
         ("warn", "Claude needs you", "drip"),
         ("fail", "Deploy failed", "exit 1 after 2m 14s"),
         ("info", "Dotfiles up to date", "pulled 1 commit: feat(nvim): show hidden files"),
+        ("ask", "my-app needs you", "Claude needs your permission to use Bash"),
     ]
 }
 

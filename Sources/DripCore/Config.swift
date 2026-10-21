@@ -229,7 +229,12 @@ private struct ConfigReader {
             let key = "\(presetKey).\(field)"
             switch field {
             case "icon":
-                preset.icon = Icon(parsing: try string(item, key: key))
+                let icon = Icon(parsing: try string(item, key: key))
+                if let problem = icon.problem {
+                    throw ConfigError(path: path, line: item.line, key: key, message: problem)
+                }
+                // A relative image path is taken from the config file's own directory.
+                preset.icon = icon.resolved(from: (path as NSString).deletingLastPathComponent)
             case "color":
                 let text = try string(item, key: key)
                 guard let color = CardColor(parsing: text) else {
