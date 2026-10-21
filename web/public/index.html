@@ -150,8 +150,8 @@
   .display .glyphs { position: absolute; inset: 0 0 auto 0; height: 32px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px; font: 500 10px/1 var(--mono); letter-spacing: .08em; color: var(--lcd-ink); opacity: .7; width: calc(100% / var(--fit, 1)); transform: scale(var(--fit, 1)); transform-origin: 0 0; }
   .loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 16px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--lcd-ink); }
   /* Paper: the install receipt, and what each printer prints. A head over a bold rule, entries
-     between dashed rules, and an end torn off by hand (tear() in the script draws it). */
-  .paper { position: relative; filter: drop-shadow(0 12px 14px var(--shade)); }
+     between dashed rules, and an end torn off along its perforation (tear() in the script draws it). */
+  .paper { position: relative; filter: drop-shadow(0 1px 1px rgba(0,0,0,.18)) drop-shadow(0 8px 12px var(--shade)); }
   .slip { position: relative; background: var(--paper); color: var(--paper-ink); }
   .slip .head { flex: none; display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--paper-ink); font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
   /* A printer: a slot in the device, and the paper it feeds out over the device's edge. The newest
@@ -253,7 +253,7 @@
 
   /* Install: a receipt from the printer. */
   .install { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 56px; align-items: start; }
-  .receipt .slip { padding: 22px 22px 42px; }
+  .receipt .slip { padding: 22px 22px 34px; }
   .receipt .cmd { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px dashed rgba(0,0,0,.22); }
   .receipt .cmd code { flex: 1; min-width: 0; font-size: 12.5px; overflow-wrap: anywhere; }
   .receipt .cmd .c { opacity: .55; }
@@ -1324,27 +1324,36 @@ function setTheme(theme, remember = true) {
 setTheme(root.dataset.theme, false);
 themeSwitch.addEventListener("click", () => setTheme(root.dataset.theme === "dark" ? "light" : "dark"));
 
-// Paper torn off by hand: a line that sags and climbs over a few inches, a ragged walk along it, teeth
-// of uneven width and height, and now and then a deeper bite. Each slip has its own seed, so no two
-// tear alike, and keeps its edge when redrawn for a new width.
+// Receipt paper torn off along its perforation: a row of punched holes just above the edge, and
+// under it a fine tear, slightly ragged, with loose fibres. The edge is an SVG mask for the slip's
+// own width, so it stays crisp at any zoom, and each slip has its own seed, so no two tear alike.
+const TEAR = 16; // the height of the torn band at the bottom of a slip, in CSS pixels
 function tear(slip, seed) {
   const draw = () => {
-    const w = slip.offsetWidth;
+    const w = Math.round(slip.offsetWidth);
     if (!w) return;
     let state = Math.imul(seed, 2654435761) >>> 0;
     const rand = () => (state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296;
-    const waves = [0, 1].map(() => ({ length: 90 + rand() * 200, phase: rand() * Math.PI * 2, size: 1.5 + rand() * 2.5 }));
+    const n = (v) => +v.toFixed(2);
+    // The tear wanders a little about its line, in two slow waves and a fine jitter.
+    const waves = [[18 + rand() * 30, rand() * 7, 0.55], [5 + rand() * 6, rand() * 7, 0.3]];
+    const line = TEAR - 5;
+    const at = (x) => line + waves.reduce((sum, [length, phase, size]) => sum + size * Math.sin(x / length + phase), 0) + (rand() - 0.5) * 0.8;
     const edge = [];
-    let walk = 0;
-    const depth = (x) => 7 + walk + waves.reduce((sum, wave) => sum + wave.size * Math.sin(x / wave.length * Math.PI * 2 + wave.phase), 0);
-    for (let x = 0; x < w; x += rand() < 0.4 ? 1.5 + rand() * 3 : 5 + rand() * 13) {
-      walk = Math.min(2.5, Math.max(-2.5, walk + (rand() - 0.5) * 1.8));
-      const bite = rand() < 0.06 ? 3 + rand() * 4 : 0;
-      edge.push([x, Math.max(1, depth(x) + (rand() - 0.5) * 4 + bite)]);
+    for (let x = 0; x < w; x += 0.8 + rand() * 1.4) {
+      const y = at(x), fibre = rand();
+      if (fibre < 0.06) edge.push([x, y], [x + 0.3, y + 1.2 + rand() * 2.2], [x + 0.6, y]); // a loose fibre
+      else if (fibre < 0.1) edge.push([x, y - 0.6 - rand() * 0.9]); // a little bite
+      else edge.push([x, y]);
     }
-    edge.push([w, depth(w)]);
-    const at = ([x, depth]) => `${(x / w * 100).toFixed(3)}% calc(100% - ${depth.toFixed(2)}px)`;
-    slip.style.clipPath = `polygon(0 0, 100% 0, ${edge.reverse().map(at).join(", ")})`;
+    edge.push([w, at(w)]);
+    let d = `M0 0H${w}` + edge.reverse().map(([x, y]) => `L${n(Math.min(x, w))} ${n(y)}`).join("") + "Z";
+    // The perforation: holes on a steady pitch, as a machine punches them.
+    const pitch = 7.5, r = 1.4, cy = line - 5.5;
+    for (let x = pitch / 2 + rand() * pitch; x < w - r; x += pitch) d += `M${n(x - r)} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${TEAR}' viewBox='0 0 ${w} ${TEAR}'><path fill-rule='evenodd' d='${d}'/></svg>`;
+    const mask = { image: `linear-gradient(#000 0 0), url("data:image/svg+xml,${encodeURIComponent(svg)}")`, size: `100% calc(100% - ${TEAR - 1}px), 100% ${TEAR}px`, position: "top, bottom", repeat: "no-repeat" };
+    for (const [key, value] of Object.entries(mask)) { slip.style.setProperty(`mask-${key}`, value); slip.style.setProperty(`-webkit-mask-${key}`, value); }
   };
   new ResizeObserver(draw).observe(slip);
 }
