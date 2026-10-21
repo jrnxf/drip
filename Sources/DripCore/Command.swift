@@ -59,8 +59,8 @@ public struct CardOptions: ParsableArguments {
     var sound: Sound?
 
     @Option(help: ArgumentHelp(
-        "An SF Symbol name, a path to an image, app: and an app's bundle identifier for its icon, or none. Icons that cannot load fall back to the preset's. (default: the preset's)",
-        valueName: "symbol|path|app:id|none"))
+        "An SF Symbol name, a path to an image, app: and an app's bundle identifier for its icon, mark: and claude, openai or gemini for an agent's mark drip bundles, or none. Icons that cannot load fall back to the preset's. (default: the preset's)",
+        valueName: "symbol|path|app:id|mark:name|none"))
     var icon: Icon?
 
     @Option(help: ArgumentHelp(

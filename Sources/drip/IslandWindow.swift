@@ -84,7 +84,8 @@ final class IslandLayers {
         self.card = card
         let sizeScale = CGFloat(card.size.scale)
         let accent = card.color.nsColor
-        let image = CardViewBuilder.icon(for: card, pointSize: 28 * sizeScale, console: console)
+        let image = card.showsIconAtNotch
+            ? CardViewBuilder.icon(for: card, pointSize: 28 * sizeScale, onBlack: true, console: console) : nil
         let buttonLabel = card.action.map {
             NSAttributedString(string: $0.label, attributes: [
                 .font: NSFont.systemFont(ofSize: 12.5 * sizeScale, weight: .semibold),
@@ -138,7 +139,7 @@ final class IslandLayers {
         metrics = islandMetrics(textSize: block, titleLines: titleText.count, detailLines: detailText.count)
         size = CGSize(width: ceil(metrics.maxWidth) + 40, height: ceil(metrics.maxHeight))
         iconSide = 28 * sizeScale
-        ringSide = buttonSize?.width ?? 22 * sizeScale
+        ringSide = buttonSize?.width ?? 20 * sizeScale
         textEdge = CGFloat(IslandUpdate.textEdge) * sizeScale
 
         root.frame = CGRect(origin: .zero, size: size)
@@ -172,7 +173,7 @@ final class IslandLayers {
         if let buttonLabel, let buttonSize {
             makeButton(buttonLabel, size: buttonSize, accent: accent, scale: scale)
         } else {
-            makeRing(accent: accent, lineWidth: 2.4 * sizeScale, glyph: card.ringGlyph, scale: scale)
+            makeRing(accent: accent, lineWidth: 2.4 * sizeScale, inset: 1.4 * sizeScale, glyph: card.ringGlyph, scale: scale)
         }
         ring.opacity = 0
         content.addSublayer(ring)
@@ -232,12 +233,12 @@ final class IslandLayers {
         CATransaction.commit()
     }
 
-    /// The countdown ring: a faint track and the accent arc that drains, around the state's `glyph`
-    /// when the icon is not the state's own.
-    private func makeRing(accent: NSColor, lineWidth: CGFloat, glyph: String?, scale: CGFloat) {
+    /// The countdown ring: a faint track and the accent arc that drains, its centre line `inset`
+    /// from the ring's edge, around the state's `glyph` when the card shows one in its ring.
+    private func makeRing(accent: NSColor, lineWidth: CGFloat, inset: CGFloat, glyph: String?, scale: CGFloat) {
         ring.bounds = CGRect(x: 0, y: 0, width: ringSide, height: ringSide)
         let circle = CGPath(
-            ellipseIn: CGRect(x: 0, y: 0, width: ringSide, height: ringSide).insetBy(dx: 1.6, dy: 1.6),
+            ellipseIn: CGRect(x: 0, y: 0, width: ringSide, height: ringSide).insetBy(dx: inset, dy: inset),
             transform: nil)
         let track = CAShapeLayer()
         track.path = circle

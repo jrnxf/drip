@@ -157,8 +157,8 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         }
     }
 
-    // The page draws symbols only: as the app does with an icon that cannot load, a picture falls
-    // back to the preset's icon, with a warning.
+    // The page draws symbols and drip's bundled marks only: as the app does with an icon that cannot
+    // load, a picture falls back to the preset's icon, with a warning.
     func prepared(_ cards: [Card]) -> [Card] {
         cards.map { card in
             var card = card
@@ -169,7 +169,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             case let .app(identifier):
                 warnings.append("no app with the bundle identifier '\(identifier)' is installed in this page; using the preset's icon")
                 card.icon = card.fallbackIcon
-            case .none, .symbol:
+            case .none, .symbol, .mark:
                 break
             }
             return card
@@ -257,7 +257,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
 /// fonts, and an animator for its entrance and exit. Mirrors `IslandLayers.init` in the app.
 func island(for card: Card, notchWidth: Double, notchHeight: Double) -> [String: Any] {
     let scale = card.size.scale
-    let hasIcon = card.icon != .none
+    let hasIcon = card.showsIconAtNotch
     let buttonWidth = card.action.map { (measure(2, scale, $0.label)).rounded(.up) + 24 * scale } ?? 0
     func metrics(width: Double, height: Double, titleLines: Int, detailLines: Int) -> IslandMetrics {
         IslandMetrics(
@@ -309,12 +309,47 @@ func island(for card: Card, notchWidth: Double, notchHeight: Double) -> [String:
         "waits": card.waits,
         "ringGlyph": card.ringGlyph ?? "",
     ]
+    if case let .mark(name) = card.icon, let mark = AgentMark.named(name) {
+        reply["mark"] = drawing(of: mark)
+    }
     if card.action != nil {
         let (red, green, blue) = lightRGB(card.color)
         let palette = WashPalette(accent: SRGBColor(red: red, green: green, blue: blue))
         reply["buttonColor"] = [palette.top.red, palette.top.green, palette.top.blue]
     }
     return reply
+}
+
+/// A bundled mark as the page draws it at the notch, bare on the island's black, in a `size` icon
+/// centred on 0, 0: each layer's fill and its path in the icon's points, as opcodes and coordinates: 0 move x y,
+/// 1 line x y, 2 cubic x1 y1 x2 y2 x y, 3 close. A fill is `solid` red, green, blue, or `linear`
+/// x1 y1 x2 y2 with `stops` of offset, red, green, blue, opacity. Laid out for a 1 point icon; the
+/// page scales it.
+func drawing(of mark: AgentMark) -> [String: Any] {
+    let place = mark.placement(side: 1)
+    func point(_ x: Double, _ y: Double) -> [Double] { [x * place.scale + place.x - 0.5, y * place.scale + place.y - 0.5] }
+    let layers = zip(mark.layers, mark.outlines).map { layer, segments -> [String: Any] in
+        let path = segments.flatMap { segment -> [Double] in
+            switch segment {
+            case let .move(x, y): return [0] + point(x, y)
+            case let .line(x, y): return [1] + point(x, y)
+            case let .cubic(x1, y1, x2, y2, x, y): return [2] + point(x1, y1) + point(x2, y2) + point(x, y)
+            case .close: return [3]
+            }
+        }
+        let fill: [String: Any]
+        switch layer.fill {
+        case let .solid(color):
+            fill = ["solid": [color.red, color.green, color.blue]]
+        case let .linear(x1, y1, x2, y2, stops):
+            fill = [
+                "linear": point(x1, y1) + point(x2, y2),
+                "stops": stops.map { [$0.offset, $0.color.red, $0.color.green, $0.color.blue, $0.opacity] },
+            ]
+        }
+        return ["fill": fill, "path": path]
+    }
+    return ["layers": layers]
 }
 
 /// The accent as AppKit resolves it in the light appearance, which the island's button darkens.

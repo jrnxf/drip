@@ -739,10 +739,33 @@ function drawGlyph(c, name, size) {
   else if (name.startsWith("paperplane")) { c.moveTo(-r * 0.5, -r * 0.05); c.lineTo(r * 0.5, -r * 0.45); c.lineTo(r * 0.1, r * 0.5); c.lineTo(-r * 0.05, r * 0.08); c.closePath(); c.fill(); }
   else { c.arc(0, 0, r * 0.28, 0, Math.PI * 2); c.fill(); }
 }
-function drawIcon(c, name, accent, cx, cy, size) {
+// A bundled agent mark, bare on the island's black, as DripCore lays it out for a 1 point icon.
+function drawMark(c, mark, size) {
+  const rgb = (v) => `rgb(${v.map((x) => Math.round(x * 255)).join(",")})`;
+  for (const layer of mark.layers) {
+    const p = layer.path; c.beginPath();
+    for (let i = 0; i < p.length;) {
+      const op = p[i++];
+      if (op === 0) { c.moveTo(p[i] * size, p[i + 1] * size); i += 2; }
+      else if (op === 1) { c.lineTo(p[i] * size, p[i + 1] * size); i += 2; }
+      else if (op === 2) { c.bezierCurveTo(p[i] * size, p[i + 1] * size, p[i + 2] * size, p[i + 3] * size, p[i + 4] * size, p[i + 5] * size); i += 6; }
+      else c.closePath();
+    }
+    const f = layer.fill;
+    if (f.solid) c.fillStyle = rgb(f.solid);
+    else {
+      const g = c.createLinearGradient(f.linear[0] * size, f.linear[1] * size, f.linear[2] * size, f.linear[3] * size);
+      for (const [offset, r, gr, b, a] of f.stops) g.addColorStop(offset, `rgba(${[r, gr, b].map((x) => Math.round(x * 255)).join(",")},${a})`);
+      c.fillStyle = g;
+    }
+    c.fill();
+  }
+}
+function drawIcon(c, name, accent, cx, cy, size, mark) {
   if (size <= 0) return;
   const r = size / 2;
   c.save(); c.translate(cx, cy);
+  if (mark) { drawMark(c, mark, size); c.restore(); return; }
   if (name.startsWith("terminal")) {
     // drip's own icon for an agent with no app: a plain white terminal, its prompt cut out.
     roundedRect(c, -r * 0.92, -r * 0.74, r * 1.84, r * 1.48, r * 0.34); c.fillStyle = "#fff"; c.fill();
@@ -756,7 +779,7 @@ function drawIcon(c, name, accent, cx, cy, size) {
   c.restore();
 }
 // A card that waits for you breathes its ring, as IslandUpdate.breath and breathOpacity say.
-const breath = (t) => lerp(1, 0.42, (1 - Math.cos((2 * Math.PI * Math.max(t, 0)) / 1.8)) / 2);
+const breath = (t) => lerp(1, 0.7, (1 - Math.cos((2 * Math.PI * Math.max(t, 0)) / 1.8)) / 2);
 
 // Opacity of a part cued at `cue`: entrance fades over `duration` with drip's ease-out, exit over 0.12 s.
 function partAlpha(state, t, cue, duration) {
@@ -863,7 +886,7 @@ class Stage {
   motionOf(card) { return reduceMotion.matches && card.card.motion === "full" ? "subtle" : card.card.motion; }
   // A card as this stage paints it; its times are its own, from when it starts to drop in.
   prepare(card) {
-    const state = { ...card, card: { ...card.card, motion: this.motionOf(card) }, accent: accentOf(card.card.color), ringSide: card.metrics.actionWidth || 22 * card.metrics.scale, start: Infinity };
+    const state = { ...card, card: { ...card.card, motion: this.motionOf(card) }, accent: accentOf(card.card.color), ringSide: card.metrics.actionWidth || 20 * card.metrics.scale, start: Infinity };
     this.lastCard = state;
     return state;
   }
@@ -970,7 +993,7 @@ class Stage {
     lctx.globalAlpha = alpha * (iconAlpha ?? (m.hasIcon ? partAlpha(s, t, { enter: cues.sides, exit: exitSides }, 0.18) : 0));
     if (m.hasIcon) {
       lctx.save(); lctx.translate(f.icon.x + dxL, f.icon.y + dy); lctx.scale(iconScale, iconScale);
-      drawIcon(lctx, s.card.icon.symbol?._0 ?? "", s.accent, 0, 0, f.icon.size); lctx.restore();
+      drawIcon(lctx, s.card.icon.symbol?._0 ?? "", s.accent, 0, 0, f.icon.size, s.mark); lctx.restore();
     }
     lctx.globalAlpha = alpha * partAlpha(s, t, { enter: cues.sides, exit: exitSides }, 0.18);
     const k = f.ring.size / s.ringSide * ringScale;
@@ -983,7 +1006,7 @@ class Stage {
       lctx.fillStyle = "#fff"; lctx.font = fonts[2](m.scale); lctx.textAlign = "center"; lctx.textBaseline = "middle";
       lctx.fillText(s.card.action.label, 0, 0.5);
     } else {
-      const side = s.ringSide, r = side / 2 - 1.6, lw = 2.4 * m.scale;
+      const side = s.ringSide, r = side / 2 - 1.4 * m.scale, lw = 2.4 * m.scale;
       // Full while the card waits for you; else draining from when its countdown began.
       const fraction = ring ?? (s.waiting ? 1 : 1 - clamp01((t - (s.countFrom ?? s.visible)) / s.card.seconds));
       lctx.lineWidth = lw; lctx.strokeStyle = s.accent;
@@ -1148,7 +1171,7 @@ class Stage {
     }
     for (const swapped of changes.swapped ?? []) {
       const card = st.cards.get(swapped.handle), old = st.cards.get(swapped.old);
-      const newIcon = (old.card.icon.symbol?._0 ?? "") !== (card.card.icon.symbol?._0 ?? "") || old.accent !== card.accent;
+      const newIcon = JSON.stringify(old.card.icon) !== JSON.stringify(card.card.icon) || old.accent !== card.accent;
       // When the ring carries the state and the icon stays, the state lands in the ring.
       const inRing = swapped.inRing && swapped.newState;
       Object.assign(card, {
@@ -1338,7 +1361,7 @@ const FLAGS = {
   "-s": "time fully visible: 0.5 to 60 seconds", "--seconds": "time fully visible: 0.5 to 60 seconds",
   "--button": "the button's label, up to 24 characters", "--open": "adds a button that opens a URL",
   "--id": "names what the card is about: a newer card with the same id replaces it", "--size": "compact, regular or large",
-  "--color": "#rrggbb, or green, orange, red, blue, purple, pink, yellow, gray", "--icon": "an SF Symbol name, an image path, app: and a bundle id, or none (this page draws symbols only)",
+  "--color": "#rrggbb, or green, orange, red, blue, purple, pink, yellow, gray", "--icon": "an SF Symbol name, an image path, app: and a bundle id, mark:claude, mark:openai or mark:gemini, or none (this page draws symbols and marks only)",
   "DRIP_STACK=push": "drops each new card out of the notch and pushes the others down", "--motion": "full, subtle or none", "--sound": "a system sound (this page plays none)", "--help": "drip's own help text", "--version": "the engine's version",
 };
 const KINDS = {

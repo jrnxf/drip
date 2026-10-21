@@ -33,7 +33,7 @@ public enum CardColor: Equatable, Sendable, Codable {
     }
 }
 
-/// An SF Symbol, an image file, an app's own icon, or no icon at all.
+/// An SF Symbol, an image file, an app's own icon, a bundled agent mark, or no icon at all.
 public enum Icon: Equatable, Sendable, Codable {
     case none
     case symbol(String)
@@ -41,20 +41,25 @@ public enum Icon: Equatable, Sendable, Codable {
     case image(String)
     /// The icon of the app with this bundle identifier, such as `com.openai.chat`.
     case app(String)
+    /// A coding agent's mark that drip bundles, by its `AgentMark` name, such as `claude`.
+    case mark(String)
 
     /// The prefix that names an app by its bundle identifier.
     public static let appPrefix = "app:"
     /// The file extensions taken as images without a slash in the path.
     static let imageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".heic", ".tif", ".tiff", ".pdf", ".icns"]
 
-    /// `none` means no icon; `app:` and a bundle identifier name an app; a value containing a slash
-    /// or ending in an image file extension is a path; anything else is an SF Symbol name.
+    /// `none` means no icon; `app:` and a bundle identifier name an app; `mark:` and a name a
+    /// bundled agent mark; a value containing a slash or ending in an image file extension is a path;
+    /// anything else is an SF Symbol name.
     public init(parsing text: String) {
         let lowered = text.lowercased()
         if text == "none" {
             self = .none
         } else if text.hasPrefix(Self.appPrefix) {
             self = .app(String(text.dropFirst(Self.appPrefix.count)))
+        } else if text.hasPrefix(AgentMark.prefix) {
+            self = .mark(String(text.dropFirst(AgentMark.prefix.count)))
         } else if text.contains("/") || Self.imageExtensions.contains(where: lowered.hasSuffix) {
             self = .image(text)
         } else {
@@ -62,10 +67,18 @@ public enum Icon: Equatable, Sendable, Codable {
         }
     }
 
-    /// Why the icon cannot be used, or nil when it can: an `app:` icon needs a bundle identifier.
+    /// Why the icon cannot be used, or nil when it can: an `app:` icon needs a bundle identifier,
+    /// and a `mark:` icon one of the bundled marks.
     public var problem: String? {
-        guard case let .app(identifier) = self, !CardActivation.isBundleIdentifier(identifier) else { return nil }
-        return "'\(Self.appPrefix)\(identifier)' does not name an app by its bundle identifier, such as app:com.apple.Terminal"
+        switch self {
+        case let .app(identifier) where !CardActivation.isBundleIdentifier(identifier):
+            return "'\(Self.appPrefix)\(identifier)' does not name an app by its bundle identifier, such as app:com.apple.Terminal"
+        case let .mark(name) where AgentMark.named(name) == nil:
+            let names = AgentMark.all.map { AgentMark.prefix + $0.name }.joined(separator: ", ")
+            return "'\(AgentMark.prefix)\(name)' is not a mark drip bundles: \(names)"
+        default:
+            return nil
+        }
     }
 
     /// The icon with an image's path made absolute: `~` expanded, and a relative path taken from
@@ -316,11 +329,20 @@ public struct Card: Equatable, Sendable, Codable {
     }
 
     /// The state's mark the ring at the notch shows when the icon is not the state's own, such as an
-    /// agent's app icon: the icon then says who, and the ring what. Nil when the icon is the
-    /// preset's, when there is no icon, and for a custom preset.
+    /// agent's app icon: the icon then says who, and the ring what. A card that waits always shows
+    /// it, since its ring has no countdown to show: an empty ring would read as an unchecked radio
+    /// button. Nil otherwise when the icon is the preset's or there is no icon, and for a custom
+    /// preset.
     public var ringGlyph: String? {
-        guard icon != fallbackIcon, icon != .none else { return nil }
+        guard waits || (icon != fallbackIcon && icon != .none) else { return nil }
         return Preset.builtIn.first { $0.name == kind }?.glyph
+    }
+
+    /// Whether the notch shows the card's icon: not when it is the preset's own and the ring carries
+    /// the state's mark, as on a plain `ask` card, so the state shows once and the text starts where
+    /// the icon would be.
+    public var showsIconAtNotch: Bool {
+        icon != .none && !(icon == fallbackIcon && ringGlyph != nil)
     }
 
     /// A card that uses every value of `preset`.

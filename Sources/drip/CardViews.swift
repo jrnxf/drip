@@ -330,10 +330,10 @@ enum CardViewBuilder {
         return label
     }
 
-    /// The card's icon at `pointSize`. One that cannot load falls back to the preset's icon with a
-    /// warning.
-    static func icon(for card: Card, pointSize: CGFloat, console: Console) -> CardIcon? {
-        if let found = CardIcon(card.icon, pointSize: pointSize) { return found }
+    /// The card's icon at `pointSize`, `onBlack` at the notch. One that cannot load falls back to the
+    /// preset's icon with a warning.
+    static func icon(for card: Card, pointSize: CGFloat, onBlack: Bool = false, console: Console) -> CardIcon? {
+        if let found = CardIcon(card.icon, pointSize: pointSize, onBlack: onBlack) { return found }
         guard let problem = CardIcon.problem(card.icon) else { return nil }
         console.warn("\(problem); using the preset's icon")
         return CardIcon(card.fallbackIcon, pointSize: pointSize)
@@ -341,7 +341,7 @@ enum CardViewBuilder {
 }
 
 /// A card's icon, loaded: an SF Symbol, which takes the card's colours, or a picture, an image
-/// file or an app's icon, which is drawn as it is.
+/// file, an app's icon or a bundled agent mark, which is drawn as it is.
 struct CardIcon {
     var image: NSImage
     var isSymbol: Bool
@@ -351,8 +351,9 @@ struct CardIcon {
     static let appIconMargin: CGFloat = 0.095
 
     /// `icon` at `pointSize`: a symbol at the spec's weight, an image or an app's icon fitted into a
-    /// square. Nil for no icon, and for one that cannot load.
-    init?(_ icon: Icon, pointSize: CGFloat) {
+    /// square, or a bundled mark, bare when it is drawn `onBlack`, else on its disc. Nil for no
+    /// icon, and for one that cannot load.
+    init?(_ icon: Icon, pointSize: CGFloat, onBlack: Bool = false) {
         switch icon {
         case .none:
             return nil
@@ -373,6 +374,9 @@ struct CardIcon {
                       NSWorkspace.shared.icon(forFile: url.path), side: pointSize, margin: Self.appIconMargin)
             else { return nil }
             self.init(image: fitted, isSymbol: false)
+        case let .mark(name):
+            guard let mark = AgentMark.named(name) else { return nil }
+            self.init(image: Self.drawn(mark, side: pointSize, onDisc: !onBlack), isSymbol: false)
         }
     }
 
@@ -388,7 +392,73 @@ struct CardIcon {
         case let .symbol(name): return "unknown SF Symbol '\(name)'"
         case let .image(path): return "cannot load the image '\(path)'"
         case let .app(identifier): return "no app with the bundle identifier '\(identifier)' is installed"
+        case let .mark(name): return Icon.mark(name).problem
         }
+    }
+
+    /// `mark` in a `side` square, on its neutral disc when `onDisc`: vector paths, drawn at whatever
+    /// scale the image is shown, so it stays sharp at every size.
+    private static func drawn(_ mark: AgentMark, side: CGFloat, onDisc: Bool) -> NSImage {
+        let place = mark.placement(side: Double(side), onDisc: onDisc)
+        let transform = CGAffineTransform(
+            a: CGFloat(place.scale), b: 0, c: 0, d: CGFloat(place.scale), tx: CGFloat(place.x), ty: CGFloat(place.y))
+        let layers = zip(mark.layers, mark.outlines).map { layer, segments -> (CGPath, AgentMark.Paint) in
+            let path = CGMutablePath()
+            for segment in segments {
+                switch segment {
+                case let .move(x, y):
+                    path.move(to: CGPoint(x: x, y: y), transform: transform)
+                case let .line(x, y):
+                    path.addLine(to: CGPoint(x: x, y: y), transform: transform)
+                case let .cubic(x1, y1, x2, y2, x, y):
+                    path.addCurve(
+                        to: CGPoint(x: x, y: y), control1: CGPoint(x: x1, y: y1), control2: CGPoint(x: x2, y: y2),
+                        transform: transform)
+                case .close:
+                    path.closeSubpath()
+                }
+            }
+            return (path, layer.fill)
+        }
+        let sRGB = CGColorSpace(name: CGColorSpace.sRGB)
+        let disc = NSColor(AgentMark.disc).cgColor
+        // Flipped, so y runs down as in the SVG the paths come from.
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: true) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            if onDisc {
+                // As wide as a symbol's disc.
+                context.setFillColor(disc)
+                context.fillEllipse(in: rect.insetBy(dx: rect.width * 0.02, dy: rect.height * 0.02))
+            }
+            for (path, paint) in layers {
+                switch paint {
+                case let .solid(color):
+                    context.addPath(path)
+                    context.setFillColor(NSColor(color).cgColor)
+                    context.fillPath()
+                case let .linear(x1, y1, x2, y2, stops):
+                    let colors = stops.map {
+                        NSColor(srgbRed: $0.color.red, green: $0.color.green, blue: $0.color.blue, alpha: $0.opacity)
+                            .cgColor
+                    }
+                    var locations = stops.map { CGFloat($0.offset) }
+                    guard let gradient = CGGradient(
+                        colorsSpace: sRGB, colors: colors as CFArray, locations: &locations)
+                    else { continue }
+                    context.saveGState()
+                    context.addPath(path)
+                    context.clip()
+                    context.drawLinearGradient(
+                        gradient, start: CGPoint(x: x1, y: y1).applying(transform),
+                        end: CGPoint(x: x2, y: y2).applying(transform),
+                        options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+                    context.restoreGState()
+                }
+            }
+            return true
+        }
+        image.isTemplate = false
+        return image
     }
 
     /// `image` drawn into a `side` square, keeping its proportions, with `margin` of its side cut off

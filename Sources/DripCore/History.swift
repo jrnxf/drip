@@ -360,6 +360,7 @@ extension Icon {
         case let .symbol(name): return name
         case let .image(path): return path
         case let .app(identifier): return Icon.appPrefix + identifier
+        case let .mark(name): return AgentMark.prefix + name
         }
     }
 }
