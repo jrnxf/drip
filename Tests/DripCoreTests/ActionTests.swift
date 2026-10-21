@@ -172,4 +172,15 @@ struct IslandButtonTests {
         let layout = animator.content(for: animator.shape(at: 0))
         #expect(layout.textX + wide.textWidth <= layout.ringCenter.x - 180 / 2 - 10 + 1e-9)
     }
+
+    /// A screen narrower than the widest capsule narrows the capsule and its text column with it, so
+    /// long text wraps instead of running off the screen.
+    @Test func aNarrowerWidestPillNarrowsTheCapsuleAndTheColumn() {
+        let narrow = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 0, textHeight: 34, widestPill: 360)
+        #expect(narrow.textColumn == 360 - 140)
+        var full = narrow
+        full.textWidth = 1000
+        #expect(full.pillWidth == 360)
+        #expect(full.maxWidth == 360)
+    }
 }
