@@ -530,6 +530,16 @@ function drawWaitingMark(c, scale, t, pinging) {
   c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
 }
 
+// The countdown ring in `color`: a faint track, and the arc `fraction` full from twelve o'clock.
+function drawCountdown(c, side, scale, color, fraction) {
+  const r = side / 2 - 1.4 * scale;
+  c.lineWidth = 2.4 * scale; c.strokeStyle = color;
+  c.save(); c.globalAlpha *= 0.28; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.stroke(); c.restore();
+  if (fraction > 0.001) {
+    c.save(); c.lineCap = "round"; c.beginPath(); c.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2); c.stroke(); c.restore();
+  }
+}
+
 // Opacity of a part cued at `cue`: entrance fades over `duration` with drip's ease-out, exit over 0.12 s.
 function partAlpha(state, t, cue, duration) {
   if (state.exitCues && t >= state.exitAt) {
@@ -689,6 +699,11 @@ class Stage {
       start: this.clock, adopting: delivery.adopting,
       cards: new Map(cards.map((card) => [card.handle, card])),
     };
+    this.offerWaiting();
+  }
+  // Offers the deliveries waiting their turn to the stack, in order, until it refuses one: an
+  // answered question's stack takes them as a background drip's does.
+  offerWaiting() {
     while (this.deliveries[0]?.stack && this.deliveries[0].adoptable && this.stack.adopting) {
       const refused = this.offer(this.deliveries[0]);
       if (refused.length) { this.deliveries[0] = { ...this.deliveries[0], cards: refused }; break; }
@@ -789,16 +804,13 @@ class Stage {
       const hover = s.hover === "yes" ? 0.12 : 0;
       pill(action.label, s.ringSide - (no ? no + m.buttonGap : 0), `rgb(${[0, 1, 2].map((i) => Math.round(255 * (c[i] + (1 - c[i]) * hover))).join(",")})`);
     } else if (s.waitingMark) {
+      // Once the card stops waiting, a white ring drains around its dot.
+      if (!s.waiting) drawCountdown(lctx, s.ringSide, m.scale, "#fff", ring ?? 1 - clamp01((t - (s.countFrom ?? s.visible)) / s.card.seconds));
       drawWaitingMark(lctx, m.scale, t - (s.countFrom ?? s.visible), s.waiting && s.card.motion === "full");
     } else {
-      const side = s.ringSide, r = side / 2 - 1.4 * m.scale, lw = 2.4 * m.scale;
+      const side = s.ringSide;
       // Full while the card waits for you; else draining from when its countdown began.
-      const fraction = ring ?? (s.waiting ? 1 : 1 - clamp01((t - (s.countFrom ?? s.visible)) / s.card.seconds));
-      lctx.lineWidth = lw; lctx.strokeStyle = s.accent;
-      lctx.save(); lctx.globalAlpha *= 0.28; lctx.beginPath(); lctx.arc(0, 0, r, 0, Math.PI * 2); lctx.stroke(); lctx.restore();
-      if (fraction > 0.001) {
-        lctx.save(); lctx.lineCap = "round"; lctx.beginPath(); lctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2); lctx.stroke(); lctx.restore();
-      }
+      drawCountdown(lctx, side, m.scale, s.accent, ring ?? (s.waiting ? 1 : 1 - clamp01((t - (s.countFrom ?? s.visible)) / s.card.seconds)));
       // The state's mark, when the icon is not the state's own.
       if (s.ringGlyph) drawGlyph(lctx, s.ringGlyph, side * 0.78);
     }
@@ -926,6 +938,7 @@ class Stage {
   }
 
   paintStack(W, H) {
+    this.offerWaiting();
     const st = this.stack, t = this.clock - st.start;
     if (this.pointer) {
       const under = drip.stack.pointer(st.id, this.pointer.x, this.pointer.y, true, t);

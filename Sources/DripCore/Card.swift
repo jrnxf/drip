@@ -362,11 +362,11 @@ public struct Card: Equatable, Sendable, Codable {
         return Preset.builtIn.first { $0.name == kind }?.glyph
     }
 
-    /// Whether the notch shows the card's icon: not when it is the preset's own and the card waits
-    /// for you, as an `ask` card does, so the text starts where the icon would be and the right end,
-    /// its waiting mark or its answer buttons, says what it waits for.
+    /// Whether the notch shows the card's icon: not when it is the preset's own and the right end
+    /// says what the card waits for, its waiting mark on a plain `ask` card or a question's yes and
+    /// no buttons, so the text starts where the icon would be. A card with one button keeps its icon.
     public var showsIconAtNotch: Bool {
-        icon != .none && !(icon == fallbackIcon && ringGlyph != nil)
+        icon != .none && !(icon == fallbackIcon && ringGlyph != nil && (action == nil || action?.decline != nil))
     }
 
     /// Whether VoiceOver reads the card out before whatever it is reading: a failure, or something

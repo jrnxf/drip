@@ -117,6 +117,24 @@ public final class CardStack {
     /// question takes other drips' cards in only while it does, so it can exit soon after the answer.
     public var holdsOwn: Bool { !waiting.isEmpty || live.contains(where: \.own) }
 
+    /// Once none of this drip's own cards is still to come, on screen or leaving, the other drips'
+    /// cards it took in and still shows, each with what it has left: its seconds, or its wait limit
+    /// while it still waits. Nil while an own card remains. A drip that waits for its question's
+    /// answer hands these on to be shown without it, so it exits as soon as its own card has gone.
+    public func adoptedLeft() -> [Card]? {
+        guard waiting.isEmpty, !entries.contains(where: \.own) else { return nil }
+        return live.filter { $0.remaining > 0 }.map { entry in
+            var card = entry.card
+            if entry.isWaiting {
+                card.waitLimit = entry.remaining
+            } else {
+                card.waitLimit = nil
+                card.seconds = entry.remaining
+            }
+            return card
+        }
+    }
+
     /// This drip's next own card, taken off `waiting`, when there is room and its pause is over.
     public func nextOwn(at time: Double) -> Card? {
         let pause = admitted < settings.pauses.count ? settings.pauses[admitted] : 0

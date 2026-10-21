@@ -72,10 +72,11 @@ struct CardTests {
         // A plain ask card's question is in its ring, so its own question icon is not shown too.
         var asking = Card(preset: .ask, title: "my-app needs you")
         #expect(!asking.showsIconAtNotch)
-        // Its buttons take the ring's place and say what it asks: no icon either.
+        // Its one button takes the ring's place, so its icon shows the question.
         asking.action = CardAction(label: "Approve", open: nil)
         #expect(asking.ringGlyph == "questionmark")
-        #expect(!asking.showsIconAtNotch)
+        #expect(asking.showsIconAtNotch)
+        // Its yes and no buttons say what it asks: no icon.
         asking.action?.decline = "Deny"
         #expect(!asking.showsIconAtNotch)
         // A question that does not wait keeps its state's icon.

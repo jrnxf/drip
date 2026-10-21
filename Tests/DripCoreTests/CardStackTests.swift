@@ -208,6 +208,44 @@ struct CardStackTests {
         #expect(!stack.holdsOwn)
     }
 
+    /// Answered while a card it took in has long left, a question's stack hands that card on with
+    /// the time it has left, within a second of the answer.
+    @Test func anAnsweredQuestionHandsOnTheCardsItTookIn() throws {
+        var question = asking("merge?")
+        question.action = CardAction(label: "Merge", open: nil, decline: "Later")
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [question])
+        var time = run(stack, until: 2)
+        let done = stack.enter(card("done", seconds: 30), metrics: metrics, own: false, decided: time, at: time)
+        let needsYou = stack.enter(asking("needs you"), metrics: metrics, own: false, decided: time, at: time)
+        time = run(stack, from: time, until: time + 3)
+        #expect(stack.adoptedLeft() == nil)
+
+        let answered = time
+        stack.live[0].answer = .yes
+        stack.live[0].dismissed = true
+        var handed: (time: Double, cards: [Card], left: [Double])?
+        run(stack, from: time, until: time + 5) { now, _ in
+            guard handed == nil, let cards = stack.adoptedLeft() else { return }
+            handed = (now, cards, [done.remaining, needsYou.remaining])
+        }
+        let handOff = try #require(handed)
+        #expect(handOff.time - answered < 1)
+        #expect(handOff.cards.map(\.title) == ["done", "needs you"])
+        #expect(!handOff.cards[0].waits)
+        #expect(handOff.cards[0].seconds == handOff.left[0])
+        #expect(handOff.cards[0].seconds > 25)
+        #expect(handOff.cards[1].waitLimit == handOff.left[1])
+        #expect(!stack.holdsOwn)
+    }
+
+    @Test func aStackWithNoAdoptedCardsHandsOnNothing() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 1)])
+        #expect(stack.adoptedLeft() == nil)
+        run(stack, until: 4)
+        #expect(stack.entries.isEmpty)
+        #expect(stack.adoptedLeft() == [])
+    }
+
     @Test func aCardThatWaitsWaitsAgainWhenReplacedByOneThatWaits() {
         let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
         let time = run(stack, until: 3)

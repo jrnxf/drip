@@ -154,7 +154,7 @@ struct SnapshotTests {
 
     /// A question with a no button left of its yes button; at the notch, with no icon or mark.
     @Test func yesAndNo() throws {
-        let question = ["ask", "Merge drip #23?", "--detail", "firstmate · checks green, 1 approval",
+        let question = ["ask", "Merge drip #23?", "--detail", "my-app · checks green, 1 approval",
                         "--yes", "Merge", "--no", "Later"]
         try assertSnapshots(appearances("yes-no-hud", question + ["--style", "hud"]) + [
             Snapshot(name: "yes-no-wash", arguments: question + ["--style", "wash"]),

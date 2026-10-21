@@ -257,8 +257,10 @@ as it is, never tinted, at the size of the preset's icon; an app's icon loses th
 rounded square, so its mark fills the same place. When the icon is not the preset's own, a notch
 card shows the state in its ring instead, around the state's mark: a check for `ok`, a cross for
 `fail`, and so on. The icon then says who, and the ring what. An `ask` card that waits shows its
-waiting dot there instead, or its buttons, and at the notch such a card with the preset's own icon
-shows no icon: the text starts at the left, and the right end says it waits for you:
+waiting dot there instead, and at the notch such a card with the preset's own icon shows no icon,
+nor does a question with `--yes` and `--no` buttons: the text starts at the left, and the right end
+says it waits for you. A card with one button shows the button in place of the ring, so it keeps its
+icon:
 
 ```sh
 drip ask "my-app needs you" -d "Codex wants to run npm install" --icon app:com.openai.codex
@@ -446,7 +448,8 @@ moved down out of its way. `off` shows one card at a time. While the pointer is 
 stops, gaps stay open and new cards wait. A click on a card dismisses it. Only the cards of drips
 that returned at once stack; a card that waits (`--wait`, or a question) waits its turn. While a
 question shows, cards that count down stack around it; a card that waits, or another question,
-waits for its answer.
+waits for its answer. drip exits as soon as the answered question has gone, so the command after it
+runs at once, and the cards still in the stack play out without it.
 
 ### Exit codes
 

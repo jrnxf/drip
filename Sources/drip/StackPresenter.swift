@@ -337,8 +337,8 @@ final class StackPresenter: CardPresenting {
     }
 
     /// Whether the stack takes newer drips' cards in now: a background drip's always; one that waits
-    /// for its question's answer only while its own cards show, and only cards that count down, so
-    /// it exits soon after the answer.
+    /// for its question's answer only while its own cards show, and only cards that count down. Once
+    /// its own cards have gone, it hands the rest on and exits.
     private var adoptsNow: Bool { adopting || (asks && stack.holdsOwn) }
 
     /// Brings in this drip's next card, or a newer drip's, when there is room and the pointer is away.
@@ -423,7 +423,14 @@ final class StackPresenter: CardPresenting {
         if !changes.left.isEmpty || !changes.gone.isEmpty { updateAccessibility() }
 
         // Done once nothing is on screen, nothing of its own is left, and the queue had nothing new.
-        if stack.entries.isEmpty, stack.waiting.isEmpty, !foundAdoptable { finish() }
+        if adopting {
+            if stack.entries.isEmpty, stack.waiting.isEmpty, !foundAdoptable { finish() }
+        } else if let adopted = stack.adoptedLeft() {
+            // A question's answer never waits for the cards it took in: a background drip shows the
+            // rest of them, already recorded.
+            if !adopted.isEmpty { _ = BackgroundDrip.start(BackgroundRequest(cards: adopted, record: false)) }
+            finish()
+        }
     }
 
     // MARK: The pointer

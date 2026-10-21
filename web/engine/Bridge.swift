@@ -497,7 +497,8 @@ final class StackSession {
     /// one that waits for its question's answer, while the question shows.
     let adopts: Bool
     /// Whether one of its own cards is a question that waits for its answer: the stack then takes in
-    /// only cards that count down, and only while its own cards show, as the app's does.
+    /// only cards that count down while its own cards show, and once they have gone, any card, as
+    /// the background drip the app's hands its cards on to does.
     let asks: Bool
     /// The islands of the stack's own cards still waiting, in order.
     var own: [Int32]
@@ -517,7 +518,7 @@ final class StackSession {
 
     /// Whether the stack takes `card` in now. A question never is.
     func takes(_ card: Card) -> Bool {
-        !card.asksQuestion && (adopts || (asks && stack.holdsOwn && !card.waits))
+        !card.asksQuestion && (adopts || (asks && (stack.adoptedLeft() != nil || !card.waits)))
     }
 }
 

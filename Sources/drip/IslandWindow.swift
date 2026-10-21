@@ -69,6 +69,8 @@ final class IslandLayers {
     private(set) var buttons: [(answer: CardAnswer, frame: CGRect, fill: CAShapeLayer, plain: CGColor, hover: CGColor)] = []
     /// The waiting mark's halo, which sends out its ping.
     private var halo: CAShapeLayer?
+    /// The waiting mark's white countdown ring around its dot, hidden until the card stops waiting.
+    private var waitingCountdown: CALayer?
     let text = CALayer()
     /// Ends the text column short of the ring, with a soft edge: text the capsule is still growing to
     /// hold fades out there instead of running under the ring.
@@ -195,7 +197,9 @@ final class IslandLayers {
                 .yes, yesLabel, x: x, width: width(yesLabel), fill: yes,
                 hover: yes.blended(withFraction: 0.12, of: .white) ?? yes, scale: scale)
         } else if card.showsWaitingMark {
-            makeWaitingMark(side: 20 * sizeScale, dot: CGFloat(IslandUpdate.dot) * sizeScale, scale: scale)
+            makeWaitingMark(
+                side: 20 * sizeScale, dot: CGFloat(IslandUpdate.dot) * sizeScale, lineWidth: 2.4 * sizeScale,
+                inset: 1.4 * sizeScale, scale: scale)
         } else {
             makeRing(accent: accent, lineWidth: 2.4 * sizeScale, inset: 1.4 * sizeScale, glyph: card.ringGlyph, scale: scale)
         }
@@ -258,9 +262,16 @@ final class IslandLayers {
     }
 
     /// The waiting mark of a card that waits for you, in a `side` square: a white `dot`, and over it
-    /// a halo of the same size that sends out the ping, hidden until it does.
-    private func makeWaitingMark(side: CGFloat, dot: CGFloat, scale: CGFloat) {
+    /// a halo of the same size that sends out the ping, hidden until it does. Around the dot, a white
+    /// countdown ring, hidden until the card stops waiting and counts down.
+    private func makeWaitingMark(side: CGFloat, dot: CGFloat, lineWidth: CGFloat, inset: CGFloat, scale: CGFloat) {
         ring.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        let countdown = CALayer()
+        countdown.frame = ring.bounds
+        countdown.opacity = 0
+        addCountdown(to: countdown, color: .white, lineWidth: lineWidth, inset: inset, scale: scale)
+        ring.addSublayer(countdown)
+        waitingCountdown = countdown
         let frame = CGRect(x: (side - dot) / 2, y: (side - dot) / 2, width: dot, height: dot)
         let halo = CAShapeLayer(), core = CAShapeLayer()
         for layer in [halo, core] {
@@ -303,7 +314,7 @@ final class IslandLayers {
         let shown = ring.presentation() ?? ring
         let drawn = root.presentation() ?? root
         // Half the gap between two buttons, so a click there lands on the nearer one.
-        let reach: CGFloat = buttons.count > 1 ? 3 : 4
+        let reach = buttons.count > 1 ? CGFloat(IslandMetrics.buttonGap * card.size.scale) / 2 : 4
         return buttons.first { drawn.convert($0.frame, from: shown).insetBy(dx: -reach, dy: -4).contains(point) }?.answer
     }
 
@@ -311,27 +322,7 @@ final class IslandLayers {
     /// from the ring's edge, around the state's `glyph` when the card shows one in its ring.
     private func makeRing(accent: NSColor, lineWidth: CGFloat, inset: CGFloat, glyph: String?, scale: CGFloat) {
         ring.bounds = CGRect(x: 0, y: 0, width: ringSide, height: ringSide)
-        let circle = CGPath(
-            ellipseIn: CGRect(x: 0, y: 0, width: ringSide, height: ringSide).insetBy(dx: inset, dy: inset),
-            transform: nil)
-        let track = CAShapeLayer()
-        track.path = circle
-        track.fillColor = nil
-        track.strokeColor = accent.withAlphaComponent(0.28).cgColor
-        track.lineWidth = lineWidth
-        track.contentsScale = scale
-        ringProgress.path = circle
-        ringProgress.fillColor = nil
-        ringProgress.strokeColor = accent.cgColor
-        ringProgress.lineWidth = lineWidth
-        ringProgress.lineCap = .round
-        ringProgress.contentsScale = scale
-        // Start at twelve o'clock and drain clockwise.
-        ringProgress.frame = ring.bounds
-        ringProgress.transform = CATransform3DMakeRotation(-.pi / 2, 0, 0, 1)
-        track.frame = ring.bounds
-        ring.addSublayer(track)
-        ring.addSublayer(ringProgress)
+        addCountdown(to: ring, color: accent, lineWidth: lineWidth, inset: inset, scale: scale)
         let configuration = NSImage.SymbolConfiguration(pointSize: ringSide * 0.4, weight: .bold)
             .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
         if let glyph, let image = NSImage(systemSymbolName: glyph, accessibilityDescription: nil)?
@@ -344,6 +335,30 @@ final class IslandLayers {
             mark.contents = image.layerContents(forContentsScale: scale)
             ring.addSublayer(mark)
         }
+    }
+
+    /// A faint track and `ringProgress`, the arc that drains, both in `color` and filling `parent`,
+    /// their centre line `inset` from its edge.
+    private func addCountdown(to parent: CALayer, color: NSColor, lineWidth: CGFloat, inset: CGFloat, scale: CGFloat) {
+        let circle = CGPath(ellipseIn: parent.bounds.insetBy(dx: inset, dy: inset), transform: nil)
+        let track = CAShapeLayer()
+        track.path = circle
+        track.fillColor = nil
+        track.strokeColor = color.withAlphaComponent(0.28).cgColor
+        track.lineWidth = lineWidth
+        track.contentsScale = scale
+        ringProgress.path = circle
+        ringProgress.fillColor = nil
+        ringProgress.strokeColor = color.cgColor
+        ringProgress.lineWidth = lineWidth
+        ringProgress.lineCap = .round
+        ringProgress.contentsScale = scale
+        // Start at twelve o'clock and drain clockwise.
+        ringProgress.frame = parent.bounds
+        ringProgress.transform = CATransform3DMakeRotation(-.pi / 2, 0, 0, 1)
+        track.frame = parent.bounds
+        parent.addSublayer(track)
+        parent.addSublayer(ringProgress)
     }
 
     /// `text` broken into at most `maxLines` lines, each cut to fit `width`, the last with an ellipsis
@@ -562,8 +577,7 @@ extension IslandLayers {
         drain.timingFunction = CAMediaTimingFunction(name: .linear)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        // A card that stopped waiting: its mark stops sending out its ping.
-        halo?.removeAnimation(forKey: "ping")
+        showWaitingCountdown(at: begin)
         ringProgress.strokeEnd = 0
         // A fresh clock: the new drain replaces whatever a pause left behind.
         ringProgress.speed = 1
@@ -595,12 +609,29 @@ extension IslandLayers {
         group.fillMode = .both
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        showWaitingCountdown(at: begin)
         ringProgress.strokeEnd = 0
         ringProgress.speed = 1
         ringProgress.timeOffset = 0
         ringProgress.beginTime = 0
         ringProgress.add(group, forKey: "drain")
         CATransaction.commit()
+    }
+
+    /// For a card that stopped waiting, from `begin`: its mark stops sending out its ping, and the
+    /// white countdown ring fades in around its dot.
+    private func showWaitingCountdown(at begin: CFTimeInterval) {
+        halo?.removeAnimation(forKey: "ping")
+        guard let waitingCountdown, waitingCountdown.opacity != 1 else { return }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        fade.beginTime = begin
+        fade.duration = IslandUpdate.fadeIn
+        fade.timingFunction = CardPresenters.easeOut
+        fade.fillMode = .backwards
+        waitingCountdown.opacity = 1
+        waitingCountdown.add(fade, forKey: "show")
     }
 
     /// How full the countdown ring is drawn right now.
