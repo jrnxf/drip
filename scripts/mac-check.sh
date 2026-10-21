@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds and tests drip on a Mac, records any missing snapshot references, then shows each preset
-# card on screen once, an ask card waiting until drip demo needs the notch, drops the notch cards
-# of drip demo in turn, shows a Claude hook card that a newer card from the same session replaces
+# card on screen once, an ask card waiting until the next card needs the notch, the agent marks
+# drip bundles, drops the notch cards of drip demo in turn, shows a Claude hook card that a newer card from the same session replaces
 # in place, turns a deploy card into its next step and then into ok and fail in place, and lists
 # the history.
 #
@@ -56,17 +56,24 @@ for kind in ok warn fail info deploy; do
     XDG_CONFIG_HOME="$config" .build/release/drip "$kind" "drip $kind" --detail "mac-check: the $kind preset"
 done
 # Terminal's own icon, untinted, with the state in a breathing ring. It waits until it is clicked,
-# or until drip demo below waits for the notch: then it counts down like any other card.
-echo "Showing an ask card with Terminal's icon; it waits for a click, or for drip demo"
+# or until the next card below waits for the notch: then it counts down like any other card.
+echo "Showing an ask card with Terminal's icon; it waits for a click, or for the next card"
 XDG_CONFIG_HOME="$config" .build/release/drip ask "drip ask" --detail "mac-check: waits for you" \
     --icon app:com.apple.Terminal
+
+# The agent marks drip bundles, for an agent with no app installed, each with its state in the ring.
+for mark in claude openai gemini; do
+    echo "Showing the $mark mark"
+    XDG_CONFIG_HOME="$config" .build/release/drip ask "drip ask" --detail "mac-check: mark:$mark" \
+        --icon "mark:$mark" --seconds 3
+done
 
 echo "Playing drip demo"
 XDG_CONFIG_HOME="$config" .build/release/drip demo
 
 # The demo waits for its cards, so the queue is empty: the first hook card is on screen when the
 # second arrives, and the second takes its place. The first is an ask card with Claude's app icon,
-# or a plain terminal without Claude.app; the second turns its breathing question into a check.
+# or Claude's bundled mark without Claude.app; the second turns its breathing question into a check.
 echo "Showing a Claude hook card, then a newer one from the same session in its place; click it to come back here"
 hook() {
     XDG_CONFIG_HOME="$config" .build/release/drip hook claude --seconds 8

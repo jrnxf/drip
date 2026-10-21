@@ -185,8 +185,9 @@ public enum IslandUpdate {
     public static let textEdge = 8.0
 
     /// The ring of a card that waits for you, which has no countdown: its arc breathes, down to
-    /// this opacity and back over `breath` seconds.
-    public static let breathOpacity = 0.42
+    /// this opacity and back over `breath` seconds. Shallow, so the ring stays the state's colour
+    /// and the mark in it stays easy to read.
+    public static let breathOpacity = 0.7
     public static let breath = 1.8
 
     /// Whether `new` shows a different state than `old`: another icon or another colour.

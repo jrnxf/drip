@@ -25,8 +25,7 @@ public enum AgentHook {
         }
 
         /// The bundle identifiers of the agent's own apps, in the order their icon is preferred: the
-        /// command-line agent shows the icon of its maker's app when one is installed. drip ships no
-        /// logos of its own.
+        /// command-line agent shows the icon of its maker's app when one is installed.
         public var apps: [String] {
             switch self {
             case .claude: return ["com.anthropic.claudefordesktop"]
@@ -34,15 +33,23 @@ public enum AgentHook {
             }
         }
 
-        /// The agent's card icon: the icon of the first of its apps that is installed, else drip's
-        /// neutral `fallbackIcon`.
+        /// The maker's mark drip bundles, for when none of its apps is installed.
+        public var mark: AgentMark? {
+            switch self {
+            case .claude: return .claude
+            case .codex: return .openai
+            }
+        }
+
+        /// The agent's card icon: the icon of the first of its apps that is installed, else its
+        /// bundled mark, else drip's neutral `fallbackIcon`.
         public func icon(installed: (String) -> Bool) -> Icon {
-            apps.first(where: installed).map(Icon.app) ?? AgentHook.fallbackIcon
+            apps.first(where: installed).map(Icon.app) ?? mark.map { .mark($0.name) } ?? AgentHook.fallbackIcon
         }
     }
 
-    /// The icon of an agent with no app installed: a plain terminal, so the ring at the notch still
-    /// carries the state.
+    /// The icon of an agent with no app installed and no bundled mark: a plain terminal, so the ring
+    /// at the notch still carries the state.
     public static let fallbackIcon = Icon.symbol("terminal.fill")
 
     /// The most a payload read from stdin may be. A Stop payload carries the agent's whole last

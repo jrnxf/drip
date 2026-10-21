@@ -117,8 +117,8 @@ struct SnapshotTests {
         ])
     }
 
-    /// An agent's card: its app's own icon, never tinted, with the state in the ring at the notch.
-    /// Terminal is on every Mac; drip ships no agent's logo.
+    /// An agent's card: its app's own icon, never tinted, or its bundled mark, with the state in the
+    /// ring at the notch. Terminal is on every Mac.
     @Test func agentIcons() throws {
         let asking = ["ask", "my-app needs you", "--detail", "Claude needs your permission to use Bash"]
         let done = ["ok", "my-app is done", "--detail", "All 246 tests pass. Pushed fix/notch."]
@@ -128,10 +128,15 @@ struct SnapshotTests {
             Snapshot(name: "notch-ask-app", arguments: asking + app + notch),
             Snapshot(name: "notch-ok-app", arguments: done + app + notch),
             Snapshot(name: "notch-ask-no-app", arguments: asking + ["--icon", "terminal.fill"] + notch),
+            Snapshot(name: "notch-ask-mark-claude", arguments: asking + ["--icon", "mark:claude"] + notch),
+            Snapshot(name: "notch-ask-mark-openai", arguments: asking + ["--icon", "mark:openai"] + notch),
+            Snapshot(name: "notch-ask-mark-gemini", arguments: asking + ["--icon", "mark:gemini"] + notch),
+            Snapshot(name: "notch-ok-mark-claude", arguments: done + ["--icon", "mark:claude"] + notch),
             Snapshot(name: "notch-ask-image", arguments: asking + notch + [
                 "--icon", "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns",
             ]),
-        ] + appearances("ask-app-hud", asking + app + ["--style", "hud"]))
+        ] + appearances("ask-app-hud", asking + app + ["--style", "hud"])
+            + appearances("ask-mark-hud", asking + ["--icon", "mark:openai", "--style", "hud"]))
     }
 
     @Test func buttons() throws {

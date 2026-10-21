@@ -76,7 +76,7 @@ drip --version | --help
 | `-d`, `--detail TEXT` | The gray text under the title, up to 3 lines. | none |
 | `-s`, `--seconds N` | Time fully visible, excluding fades: 0.5 to 60. An `ask` card given a time counts it down instead of waiting. | 4.5 |
 | `--sound NAME\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. Unknown names print a warning and play nothing. | the preset's |
-| `--icon SYMBOL\|PATH\|app:ID\|none` | An SF Symbol name; a path to an image, such as a `.png`, `.pdf` or `.icns` file, drawn as it is; or `app:` and an app's bundle identifier, such as `app:com.openai.chat`, for that app's own icon. An icon that cannot load falls back to the preset's with a warning. See [Icons](#icons). | the preset's |
+| `--icon SYMBOL\|PATH\|app:ID\|mark:NAME\|none` | An SF Symbol name; a path to an image, such as a `.png`, `.pdf` or `.icns` file, drawn as it is; `app:` and an app's bundle identifier, such as `app:com.openai.chat`, for that app's own icon; or `mark:claude`, `mark:openai` or `mark:gemini` for an agent's mark that drip bundles. An icon that cannot load falls back to the preset's with a warning. See [Icons](#icons). | the preset's |
 | `--color HEX\|NAME` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
 | `--position bottom\|center\|top\|notch` | Where the card sits. `notch` grows it out of the camera notch, or out of the middle of the top edge on a screen without one. | `notch` |
 | `--size compact\|regular\|large` | Scales fonts, icon and padding by 0.85, 1.0 or 1.25. | `regular` |
@@ -112,11 +112,14 @@ left alone.
 
 ### Icons
 
-`--icon` takes an SF Symbol, an image file or an app's own icon. A picture is drawn as it is, never
-tinted, at the size of the preset's icon; an app's icon loses the margin around its rounded square,
-so its mark fills the same place. When the icon is not the preset's own, a notch card shows the
-state in its ring instead, around the state's mark: a question for `ask`, a check for `ok`, and so
-on. The icon then says who, and the ring what:
+`--icon` takes an SF Symbol, an image file, an app's own icon or an agent's mark. A picture is drawn
+as it is, never tinted, at the size of the preset's icon; an app's icon loses the margin around its
+rounded square, so its mark fills the same place. When the icon is not the preset's own, a notch
+card shows the state in its ring instead, around the state's mark: a question for `ask`, a check for
+`ok`, and so on. The icon then says who, and the ring what. An `ask` card that waits always carries
+its question in the ring, since it has no countdown to show, so at the notch such a card with the
+preset's own icon shows no icon: the question shows once, in the ring, and the text starts at the
+left. A card with a button shows the button in place of the ring, so it keeps its icon:
 
 ```sh
 drip ask "my-app needs you" -d "Codex wants to run npm install" --icon app:com.openai.codex
@@ -124,8 +127,17 @@ drip ok "backup done" --icon ~/Pictures/nas.png
 ```
 
 A relative image path is taken from the directory drip runs in, or, in the config file, from the
-config file's directory. drip ships no logos of other apps: an app's icon comes from the app
-installed on your Mac.
+config file's directory. An app's icon comes from the app installed on your Mac.
+
+**Agent marks.** For a coding agent with no app installed, drip bundles three marks, drawn as
+vectors in their own colours, so they are sharp at every size: bare on the island's black at the
+notch, and on a neutral disc on a card elsewhere, which may be light. `mark:claude`,
+Claude's spark from [Anthropic's press kit](https://www.anthropic.com/press-kit); `mark:openai`,
+OpenAI's Blossom from [OpenAI's brand page](https://openai.com/brand/); and `mark:gemini`, Gemini's
+spark in its colours from [LobeHub's icons](https://lobehub.com/icons/gemini) (MIT, see
+[THIRD_PARTY.md](THIRD_PARTY.md)), since Google publishes no vector of it outside its partner hub.
+The marks are their owners' trademarks, used unaltered to name the agent a card is about. drip is
+not affiliated with Anthropic, OpenAI or Google, and none of them endorses it.
 
 **Text that starts with a dash.** `-d`, `--button` and `--id` take their next argument whatever it
 starts with, so `-d "$err"` works when the error reads `--- FAIL: TestFoo`, and `--id --wait` is an
@@ -266,7 +278,8 @@ place, and a click on the card brings back the terminal the agent runs in.
 
 The card's icon is the agent's own app's, when it is installed: Claude.app for Claude Code
 (`com.anthropic.claudefordesktop`), and the Codex app or ChatGPT.app for Codex
-(`com.openai.codex`, `com.openai.chat`). Without one it is a plain terminal. Either way the ring at
+(`com.openai.codex`, `com.openai.chat`). Without one it is the maker's mark that drip bundles,
+`mark:claude` or `mark:openai` (see [Icons](#icons)). Either way the ring at
 the notch shows the state, a breathing question while the agent waits on you and a check when it
 is done. `--icon` sets another, such as `drip hook claude --icon ~/.config/drip/claude.png`.
 drip reads Claude Code's `Notification` and `Stop` events and Codex's `agent-turn-complete`; any

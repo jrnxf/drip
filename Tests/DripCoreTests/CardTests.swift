@@ -40,17 +40,55 @@ struct CardTests {
     }
 
     @Test func theRingCarriesTheStateWhenTheIconIsNotTheStates() {
-        var card = Card(preset: .ask, title: "my-app needs you")
+        var card = Card(preset: .ok, title: "my-app is done")
         #expect(card.ringGlyph == nil)
         card.icon = .app("com.anthropic.claudefordesktop")
-        #expect(card.ringGlyph == "questionmark")
+        #expect(card.ringGlyph == "checkmark")
         card.icon = .image("/home/user/agent.png")
-        #expect(card.ringGlyph == "questionmark")
+        #expect(card.ringGlyph == "checkmark")
         card.icon = .symbol("terminal.fill")
-        #expect(card.ringGlyph == "questionmark")
+        #expect(card.ringGlyph == "checkmark")
+        card.icon = .mark("claude")
+        #expect(card.ringGlyph == "checkmark")
         // No icon at all: the card reads as before.
         card.icon = .none
         #expect(card.ringGlyph == nil)
+
+        // A card that waits has no countdown in its ring, so the ring always carries the state,
+        // even beside the preset's own icon or none.
+        var asking = Card(preset: .ask, title: "my-app needs you")
+        #expect(asking.ringGlyph == "questionmark")
+        asking.icon = .none
+        #expect(asking.ringGlyph == "questionmark")
+        // Given a time, it counts down like any other card, and reads as one.
+        asking = Card(preset: .ask, title: "my-app needs you")
+        asking.waitLimit = nil
+        #expect(asking.ringGlyph == nil)
+        asking.icon = .app("com.anthropic.claudefordesktop")
+        #expect(asking.ringGlyph == "questionmark")
+    }
+
+    @Test func theNotchShowsTheStateOnce() {
+        // A plain ask card's question is in its ring, so its own question icon is not shown too.
+        var asking = Card(preset: .ask, title: "my-app needs you")
+        #expect(!asking.showsIconAtNotch)
+        // Its button takes the ring's place, so its icon shows the question.
+        asking.action = CardAction(label: "Approve", open: nil)
+        #expect(asking.ringGlyph == "questionmark")
+        #expect(asking.showsIconAtNotch)
+        asking.action = nil
+        asking.icon = .mark("claude")
+        #expect(asking.showsIconAtNotch)
+        asking.icon = .symbol("bell.fill")
+        #expect(asking.showsIconAtNotch)
+        // Counting down, its ring shows the time, and the icon the state.
+        asking = Card(preset: .ask, title: "my-app needs you")
+        asking.waitLimit = nil
+        #expect(asking.showsIconAtNotch)
+        #expect(Card(preset: .ok, title: "done").showsIconAtNotch)
+        var plain = Card(preset: .ok, title: "done")
+        plain.icon = .none
+        #expect(!plain.showsIconAtNotch)
 
         // A custom preset has no state of its own to show.
         var custom = Card(preset: Preset(name: "deploy", icon: .symbol("paperplane.fill"), color: .system(.purple), sound: .none), title: "t")
