@@ -105,9 +105,9 @@ The card's icon is the agent's own app's, when it is installed: Claude.app for C
 shows the state, a breathing question while the agent waits on you and a check when it is done.
 
 **drip hook** is what the hooks run: `drip hook claude`, `drip hook codex` or `drip hook gemini`,
-with the hook's JSON on stdin, or as an argument, as Codex's older `notify` passes it. Card options such as `--icon`, `--position` or `--seconds` work as
-usual, as in `drip hook claude --icon ~/.config/drip/claude.png`. A payload it does not know prints
-an error. Any failure, from a usage error to a payload it cannot read, an invalid config or no GUI
+with the hook's JSON on stdin, or as an argument, as Codex's older `notify` passes it. Card options
+such as `--icon`, `--position` or `--seconds` work as usual, as in
+`drip hook claude --icon ~/.config/drip/claude.png`. A payload it does not know prints an error. Any failure, from a usage error to a payload it cannot read, an invalid config or no GUI
 session, exits 1: Claude Code and Codex read exit 2 as "block", and Gemini CLI reads any code but 0
 and 1 that way, which after a turn makes it run the turn again. drip reads up to 4 MB of payload,
 and prints nothing on success, as Gemini CLI needs.
