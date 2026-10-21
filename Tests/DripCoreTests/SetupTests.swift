@@ -31,7 +31,6 @@ struct SetupTests {
             for agent in AgentHook.Agent.allCases {
                 let merge = try #require(try AgentSetup.merge(text, agent: agent))
                 #expect(merge.text == AgentSetup.snippet(for: agent))
-                #expect(merge.updated.isEmpty)
             }
         }
     }
@@ -80,7 +79,6 @@ struct SetupTests {
             """
         let merge = try #require(try AgentSetup.merge(text, agent: .claude))
         #expect(merge.added == ["StopFailure"])
-        #expect(merge.updated.isEmpty)
         // The matcher someone chose is theirs.
         #expect(try JSONValue(parsing: merge.text)["hooks"]?["Notification"]?.elements?.first?["matcher"]
             == .string("permission_prompt"))
@@ -88,28 +86,6 @@ struct SetupTests {
         #expect(!AgentSetup.runsDrip(command: "drip hook claude", agent: .codex))
         #expect(!AgentSetup.runsDrip(command: "dripper hook claude", agent: .claude))
         #expect(!AgentSetup.runsDrip(command: "drip ok hook claude", agent: .claude))
-    }
-
-    /// The matcher the README recommended before moves to the new one, without idle_prompt.
-    @Test func theOldMatcherIsUpdated() throws {
-        let text = """
-            {"hooks": {"Notification": [{"matcher": "permission_prompt|idle_prompt|elicitation_dialog",
-              "hooks": [{"type": "command", "command": "drip hook claude"}]}],
-              "Stop": [{"hooks": [{"type": "command", "command": "drip hook claude"}]}]}}
-            """
-        let merge = try #require(try AgentSetup.merge(text, agent: .claude))
-        #expect(merge.added == ["StopFailure"])
-        #expect(merge.updated == ["Notification"])
-        let notification = try JSONValue(parsing: merge.text)["hooks"]?["Notification"]?.elements
-        #expect(notification?.count == 1)
-        #expect(notification?.first?.members?.map(\.key) == ["matcher", "hooks"])
-        #expect(notification?.first?["matcher"] == .string("permission_prompt|elicitation_dialog"))
-        // Shared with another hook, the group is left as it is.
-        let shared = """
-            {"hooks": {"Notification": [{"matcher": "permission_prompt|idle_prompt|elicitation_dialog",
-              "hooks": [{"type": "command", "command": "drip hook claude"}, {"type": "command", "command": "say hi"}]}]}}
-            """
-        #expect(try #require(try AgentSetup.merge(shared, agent: .claude)).updated.isEmpty)
     }
 
     @Test func aFileDripCannotReadIsLeftAlone() {

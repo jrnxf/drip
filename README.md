@@ -139,8 +139,7 @@ and prints nothing on success, as Gemini CLI needs.
 ```
 
 The matcher leaves out `idle_prompt`: Claude Code sends it a minute after every finished turn, and
-its card would replace the done card that says what Claude did. `drip setup claude` moves the
-matcher drip's README used to recommend to this one.
+its card would replace the done card that says what Claude did.
 
 Codex takes the same shape in `~/.codex/hooks.json`, with `PermissionRequest` and `Stop` running
 `drip hook codex`, or as `[[hooks.Stop]]` tables in `~/.codex/config.toml`. Its older `notify =

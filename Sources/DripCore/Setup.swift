@@ -10,8 +10,6 @@ public enum AgentSetup {
     struct Hook: Equatable {
         var event: String
         var matcher: String?
-        /// Matchers drip recommended before, which setup moves to `matcher`.
-        var formerMatchers: [String] = []
     }
 
     /// drip's hooks for the agent, in the order setup adds them.
@@ -21,9 +19,7 @@ public enum AgentSetup {
             // Not idle_prompt: it comes a minute after every finished turn, and its card would replace
             // the done card that says what Claude did.
             return [
-                Hook(
-                    event: "Notification", matcher: "permission_prompt|elicitation_dialog",
-                    formerMatchers: ["permission_prompt|idle_prompt|elicitation_dialog"]),
+                Hook(event: "Notification", matcher: "permission_prompt|elicitation_dialog"),
                 Hook(event: "Stop"),
                 Hook(event: "StopFailure"),
             ]
@@ -84,8 +80,6 @@ public enum AgentSetup {
         public var text: String
         /// The events drip's hooks were added to.
         public var added: [String]
-        /// The events whose drip hook got drip's current matcher.
-        public var updated: [String]
     }
 
     /// Why setup leaves a settings file alone.
@@ -123,7 +117,6 @@ public enum AgentSetup {
         }
 
         var added: [String] = []
-        var updated: [String] = []
         for hook in hooks(for: agent) where !skipping.contains(hook.event) {
             let index = events.lastIndex { $0.key == hook.event }
             var groups: [JSONValue]
@@ -132,21 +125,16 @@ public enum AgentSetup {
             case let .array(elements)?: groups = elements
             default: throw Refusal(description: "has a \"hooks\".\"\(hook.event)\" that is not a list")
             }
-            if let found = groups.firstIndex(where: { runsDrip($0, agent: agent) }) {
-                guard let upgraded = upgrading(groups[found], to: hook) else { continue }
-                groups[found] = upgraded
-                updated.append(hook.event)
-            } else {
-                groups.append(group(hook, agent: agent))
-                added.append(hook.event)
-            }
+            guard !groups.contains(where: { runsDrip($0, agent: agent) }) else { continue }
+            groups.append(group(hook, agent: agent))
+            added.append(hook.event)
             if let index {
                 events[index].value = .array(groups)
             } else {
                 events.append(JSONMember(hook.event, .array(groups)))
             }
         }
-        guard !added.isEmpty || !updated.isEmpty else { return nil }
+        guard !added.isEmpty else { return nil }
 
         if let index = root.lastIndex(where: { $0.key == "hooks" }) {
             root[index].value = .object(events)
@@ -157,18 +145,7 @@ public enum AgentSetup {
         let indent = JSONValue.indent(of: original)
         // A new file, or one that ended with a newline, ends with one.
         let newline = empty || original.hasSuffix("\n") ? "\n" : ""
-        return Merge(text: JSONValue.object(root).formatted(indent: indent) + newline, added: added, updated: updated)
-    }
-
-    /// drip's own group, holding only drip's hook, with a matcher drip recommended before: with the
-    /// matcher drip uses now. Nil for any other group, which is left as its owner wrote it.
-    static func upgrading(_ group: JSONValue, to hook: Hook) -> JSONValue? {
-        guard let matcher = hook.matcher, var members = group.members, group["hooks"]?.elements?.count == 1,
-              let old = group["matcher"]?.string, hook.formerMatchers.contains(old),
-              let position = members.lastIndex(where: { $0.key == "matcher" })
-        else { return nil }
-        members[position].value = .string(matcher)
-        return .object(members)
+        return Merge(text: JSONValue.object(root).formatted(indent: indent) + newline, added: added)
     }
 
     /// The events, in order, whose hooks in a settings file's text run drip. None when it is not JSON.
@@ -404,13 +381,8 @@ public struct SetupInstaller {
                             ? "add these hooks where it comes from" : "add these hooks to it yourself")
                     }
                     writes.append((path, merge.text))
-                    if !merge.added.isEmpty {
-                        let noun = merge.added.count == 1 ? "hook" : "hooks"
-                        lines.append("Added drip's \(Self.list(merge.added)) \(noun) to \(display(path)).")
-                    }
-                    if !merge.updated.isEmpty {
-                        lines.append("Gave drip's \(Self.list(merge.updated)) hook its new matcher in \(display(path)).")
-                    }
+                    let noun = merge.added.count == 1 ? "hook" : "hooks"
+                    lines.append("Added drip's \(Self.list(merge.added)) \(noun) to \(display(path)).")
                     if agent == .codex {
                         hints.append("Codex runs a new hook only once you trust it: run /hooks in Codex.")
                     }
