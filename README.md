@@ -1,4 +1,9 @@
-# drip
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/drip-lockup-reversed.svg">
+    <img src="docs/logo/drip-lockup.svg" width="240" alt="drip">
+  </picture>
+</h1>
 
 <p align="center">
   <img src="docs/demo.gif" width="400" alt="Three drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then Claude needs you, with Claude needs your permission to use Bash, then Deploy failed, with staging: health check timed out after 30s">
