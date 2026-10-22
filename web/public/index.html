@@ -236,6 +236,8 @@
   .feature .row { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
   .feature .printer { flex: 1; min-width: 0; }
   .feature .printer .slip { padding: 14px 16px 10px; }
+  /* PLAY sits 24 px past the paper's right side, so the scissors reach only a little way out there. */
+  .feature .cutter { right: -8px; }
   .feature h3 { margin: 0 0 6px; font: 600 19px/1.25 var(--sans); font-stretch: 112%; letter-spacing: -.01em; display: flex; gap: 12px; align-items: baseline; }
   .feature h3 .n { font: 500 10.5px/1 var(--mono); letter-spacing: .1em; color: var(--ink-3); }
   .feature p { margin: 0; font-size: 15px; color: var(--ink-2); }
@@ -1060,7 +1062,7 @@ class Paper {
     // The page's room for the paper is kept where the layout reserves it.
     this.host = this.printer.closest(".hero, .feature, .stackmod");
     this.cut = null; // the paper's length once it has been cut; null while it has its starting end
-    this.length = 0; this.fed = 0;
+    this.length = 0; this.fed = 0; this.width = 0;
     this.slit = document.createElementNS("http://www.w3.org/2000/svg", "svg"); this.slit.classList.add("slit");
     this.slit.append(document.createElementNS("http://www.w3.org/2000/svg", "path"));
     this.slip.append(this.slit);
@@ -1068,9 +1070,11 @@ class Paper {
     this.cutter.style.cursor = scissors.openR;
     this.paper.append(this.cutter);
     this.bindScissors();
+    // A change of width only rewraps what is printed, so only growth at the same width is new print.
     new ResizeObserver(() => {
-      const height = this.feed.offsetHeight, fed = height - this.fed;
-      this.fed = height;
+      const height = this.feed.offsetHeight, width = this.feed.offsetWidth;
+      const fed = width === this.width ? height - this.fed : 0;
+      this.fed = height; this.width = width;
       this.measure(fed);
     }).observe(this.feed);
   }
