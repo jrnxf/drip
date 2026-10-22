@@ -1,11 +1,12 @@
 #!/bin/sh
-# Plays a paced tour of every kind of drip card, start to finish on its own, for a screen
-# recording: the presets, `drip run`, the chain and push stacks, the coding agents' hook cards, a
-# button and a question, and a card that `--id` updates in place. Every card is a notch card in the
-# default style, as in `drip demo`. Nothing waits for a click: every card counts down and goes. Run
-# it on a Mac with drip installed.
+# Plays a slow tour of every kind of drip card, start to finish on its own, for a screen recording:
+# the presets, `drip run`, the chain and push stacks, the coding agents' hook cards, a button and a
+# question, and a card that `--id` updates in place. Every card is a notch card in the default
+# style, as in `drip demo`, held long enough to read, with a pause before the next. Nothing waits
+# for a click or a key, questions time out on their own, and the tour prints nothing: start a
+# screen recording first, or pass --record. Run it on a Mac with drip installed.
 #
-#   scripts/demo-tour.sh                 # plays the tour; start Cmd+Shift+5 first to record it
+#   scripts/demo-tour.sh                 # plays the tour, in a little over two minutes
 #   scripts/demo-tour.sh --record FILE   # also records the screen to FILE.mov with screencapture
 #
 # Every card uses drip's built-in defaults, whatever the local config and DRIP_* variables say,
@@ -34,6 +35,9 @@ if ! command -v drip >/dev/null 2>&1; then
     exit 1
 fi
 
+# From here on the tour reads nothing and prints nothing, drip's own output included.
+exec </dev/null >/dev/null 2>&1
+
 work=$(mktemp -d)
 recorder=
 cleanup() {
@@ -51,97 +55,82 @@ unset DRIP_SECONDS DRIP_POSITION DRIP_SIZE DRIP_SOUND DRIP_STYLE DRIP_MOTION DRI
 # The commands `drip run` wraps: a test run that passes and a deploy that fails, each taking a moment.
 cat > "$work/test.sh" <<'SH'
 #!/bin/sh
-echo "running 246 tests"
-sleep 1.2
-echo "246 passed"
+sleep 1.5
 SH
 cat > "$work/deploy.sh" <<'SH'
 #!/bin/sh
-echo "deploying to staging"
-sleep 1
-echo "health check timed out after 30s" >&2
+sleep 1.5
 exit 1
 SH
 chmod +x "$work/test.sh" "$work/deploy.sh"
 
-step() {
-    printf '\n\033[1m%s\033[0m\n' "$1"
+# How long each card stays fully on screen, and the pause after it has gone.
+hold=4
+gap=1.2
+
+# Shows a card and waits until it has gone, then pauses.
+card() {
+    drip "$@" -s "$hold" --wait || true
+    sleep "$gap"
 }
 # A hook card, as a coding agent's hook sends it: the agent, then the hook's JSON payload.
 hook() {
-    printf '%s' "$2" | drip hook "$1" --seconds 2.5
+    printf '%s' "$2" | drip hook "$1" --seconds "$hold" || true
 }
 
-# The tour takes about 55 seconds; the recording runs a little longer so it never cuts the end.
-step "drip demo tour"
-echo "Every card grows out of the notch, or out of the top edge on a screen without one."
-echo "Nothing needs a click: sit back."
 if [ -n "$record" ]; then
     # Recording needs Screen Recording permission for this terminal, in System Settings >
-    # Privacy & Security; macOS asks the first time.
-    echo "Recording the screen to $record for 65 seconds, the pointer and clicks shown."
-    screencapture -v -V 65 -k -C -x "$record" &
+    # Privacy & Security; macOS asks the first time. The tour takes a little over two minutes.
+    screencapture -v -V 160 -k -C -x "$record" &
     recorder=$!
-else
-    echo "To record it, start a recording with Cmd+Shift+5 now; the tour starts in 5 seconds."
-    sleep 2
 fi
-for n in 3 2 1; do
-    printf '%s ' "$n"
-    sleep 1
-done
-echo
-
-step "1. The presets: ok, warn, fail, info and ask, each with its icon, colour and sound"
-drip ok "build finished" -d "make test: 246 passed in 3.2s" -s 2
-sleep 0.5
-drip warn "disk almost full" -d "/: 92% used" -s 2
-sleep 0.5
-drip fail "backup failed" -d "restic: repository is locked" -s 2
-sleep 0.5
-drip info "pulled main" -d "3 new commits" -s 2
-sleep 0.5
-drip ask "drip needs you" -d "an ask card waits for you, or counts down" -s 2 --wait
-
-step "2. drip run: a card when the command ends, with how long it took"
-(cd "$work" && drip run -s 2 ./test.sh)
-sleep 1
-(cd "$work" && drip run -s 2.5 --wait ./deploy.sh) || true
-
-step "3. Stacks: cards that come in together chain out of one another, or push down"
-drip demo chain -s 1.5
-drip demo push -s 1.5
-
-step "4. Coding agents: their hooks send a card, and a session's newer card takes its place"
-hook claude "{\"hook_event_name\":\"Notification\",\"notification_type\":\"permission_prompt\",\"session_id\":\"demo-tour\",\"cwd\":\"$work/my-app\",\"message\":\"Claude needs your permission to use Bash\"}"
 sleep 2
-hook claude "{\"hook_event_name\":\"Stop\",\"session_id\":\"demo-tour\",\"cwd\":\"$work/my-app\",\"last_assistant_message\":\"Fixed the flaky login test and pushed the branch.\"}"
-sleep 1
-hook codex "{\"hook_event_name\":\"PermissionRequest\",\"session_id\":\"demo-tour\",\"cwd\":\"$work/my-app\",\"tool_input\":{\"command\":\"npm install\"}}"
-sleep 1
-hook gemini "{\"hook_event_name\":\"AfterAgent\",\"session_id\":\"demo-tour\",\"cwd\":\"$work/my-app\",\"prompt_response\":\"Updated the README with the new flags.\"}"
+
+# 1. The presets, each with its icon, colour and sound.
+card ok "build finished" -d "make test: 246 passed in 3.2s"
+card warn "disk almost full" -d "/: 92% used"
+card fail "backup failed" -d "restic: repository is locked"
+card info "pulled main" -d "3 new commits"
+card ask "drip needs you" -d "an ask card waits for you, or counts down"
+
+# 2. drip run: a card when the command ends, with how long it took.
+(cd "$work" && drip run -s "$hold" --wait ./test.sh) || true
+sleep "$gap"
+(cd "$work" && drip run -s "$hold" --wait ./deploy.sh) || true
+sleep "$gap"
+
+# 3. Stacks: cards that come in together chain out of one another, then push down.
+drip demo chain -s "$hold" || true
+sleep "$gap"
+drip demo push -s "$hold" || true
+sleep "$gap"
+
+# 4. Coding agents: a session's newer card takes the place of its last one on screen.
+hook claude "{\"hook_event_name\":\"Notification\",\"notification_type\":\"permission_prompt\",\"session_id\":\"demo-tour\",\"cwd\":\"$work/my-app\",\"message\":\"Claude needs your permission to use Bash\"}"
 sleep 4
+hook claude "{\"hook_event_name\":\"Stop\",\"session_id\":\"demo-tour\",\"cwd\":\"$work/my-app\",\"last_assistant_message\":\"Fixed the flaky login test and pushed the branch.\"}"
+sleep 6
+hook codex "{\"hook_event_name\":\"PermissionRequest\",\"session_id\":\"demo-tour\",\"cwd\":\"$work/my-app\",\"tool_input\":{\"command\":\"npm install\"}}"
+sleep 6
+hook gemini "{\"hook_event_name\":\"AfterAgent\",\"session_id\":\"demo-tour\",\"cwd\":\"$work/my-app\",\"prompt_response\":\"Updated the README with the new flags.\"}"
+sleep 6.5
 
-step "5. Buttons: one that opens a link, and a yes/no question that times out here"
-drip info "CI passed" -d "main: 12 checks green" --open https://example.com --button "View run" -s 2.5
-sleep 3.5
+# 5. Buttons: one that opens a link, and a yes/no question that times out on its own.
+card info "CI passed" -d "main: 12 checks green" --open https://example.com --button "View run"
 drip ask "Merge #42?" -d "Claude: checks are green, 1 approval" --icon mark:claude \
-    --yes Merge --no Later -s 3 || true
+    --yes Merge --no Later -s "$hold" || true
+sleep 2.5
 
-step "6. --id: one deploy card, updated in place"
-drip info "deploying api" -d "step 1 of 2 · building image" --id demo-tour-deploy
-sleep 1.5
-drip info "deploying api" -d "step 2 of 2 · pushing image" --id demo-tour-deploy
-sleep 1.5
-drip ok "api deployed" -d "v1.4.2 is live" --id demo-tour-deploy -s 2 --wait
-sleep 0.5
-drip ok "that's drip" -d "brew install jrnxf/tap/drip" -s 2.5 --wait
+# 6. --id: one deploy card, updated in place.
+drip info "deploying api" -d "step 1 of 2 · building image" --id demo-tour-deploy -s "$hold"
+sleep 3.5
+drip info "deploying api" -d "step 2 of 2 · pushing image" --id demo-tour-deploy -s "$hold"
+sleep 3.5
+card ok "api deployed" -d "v1.4.2 is live" --id demo-tour-deploy
+
+card ok "that's drip" -d "brew install jrnxf/tap/drip"
 
 if [ -n "$recorder" ]; then
-    echo
-    echo "Waiting for the recording to finish..."
     wait "$recorder" || true
     recorder=
-    echo "Saved $record"
 fi
-step "Done"
