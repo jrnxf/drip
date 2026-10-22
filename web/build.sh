@@ -11,11 +11,8 @@ if wasm-opt --version 2>/dev/null | grep -q "version $BINARYEN_VERSION\b"; then
     wasm_opt=wasm-opt
 else
     binaryen=binaryen-version_$BINARYEN_VERSION
-    fetch "https://github.com/WebAssembly/binaryen/releases/download/version_$BINARYEN_VERSION/$binaryen-x86_64-linux.tar.gz" \
-        "$BINARYEN_SHA256" "$tools/$binaryen.tar.gz"
-    if [ ! -d "$tools/$binaryen" ]; then
-        tar -xzf "$tools/$binaryen.tar.gz" -C "$tools"
-    fi
+    provide "https://github.com/WebAssembly/binaryen/releases/download/version_$BINARYEN_VERSION/$binaryen-x86_64-linux.tar.gz" \
+        "$BINARYEN_SHA256" "$binaryen"
     wasm_opt=$tools/$binaryen/bin/wasm-opt
 fi
 

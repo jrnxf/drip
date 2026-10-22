@@ -600,7 +600,9 @@ web/test.sh   # the DripCore tests, compiled to WebAssembly, under wasmtime
 ```
 
 Both need Swift 6.4.1 with its matching Wasm SDK; `web/tools.sh` pins them and, on x86_64 Linux,
-downloads what is missing. Under WASI, DripCore builds against FoundationEssentials, and
+downloads what is missing. The downloads are shared by every checkout, checked against their
+pinned checksums: they live once in `~/.cache/drip/web-tools` (under `$XDG_CACHE_HOME` when it is
+set, or in `$DRIP_WEB_TOOLS`), while each checkout's builds stay in its own `.build`. Under WASI, DripCore builds against FoundationEssentials, and
 `Sources/DripCore/WASICompat.swift` fills in the little it lacks. CI runs `web/test.sh`, and Cloudflare's
 Workers Builds runs `web/build.sh` and deploys the `drip-web` Worker on every push to main that
 touches `web`, `Sources/DripCore` or the package.
