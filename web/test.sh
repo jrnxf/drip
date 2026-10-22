@@ -11,11 +11,8 @@ if wasmtime --version 2>/dev/null | grep -q "wasmtime $WASMTIME_VERSION "; then
     wasmtime=wasmtime
 else
     release=wasmtime-v$WASMTIME_VERSION-x86_64-linux
-    fetch "https://github.com/bytecodealliance/wasmtime/releases/download/v$WASMTIME_VERSION/$release.tar.xz" \
-        "$WASMTIME_SHA256" "$tools/$release.tar.xz"
-    if [ ! -d "$tools/$release" ]; then
-        tar -xJf "$tools/$release.tar.xz" -C "$tools"
-    fi
+    provide "https://github.com/bytecodealliance/wasmtime/releases/download/v$WASMTIME_VERSION/$release.tar.xz" \
+        "$WASMTIME_SHA256" "$release"
     wasmtime=$tools/$release/wasmtime
 fi
 
