@@ -4,7 +4,7 @@ import DripCore
 import QuartzCore
 
 /// Shows several cards at the notch at once, one below another, each grown out of the notch or out
-/// of the card above it, and adopts newer drips' notch cards from the queue while it shows: a
+/// of the card above it, and adopts newer drips' cards from the queue while it shows: a
 /// background drip's stack always, and a stack that waits for its question's answer while that
 /// shows, so other cards stack around the question instead of waiting for it.
 ///

@@ -197,7 +197,7 @@ public enum Defaults {
     public static let secondsRange: ClosedRange<Double> = 0.5...60
     /// The longest a card that waits for you stays, should nothing click or replace it.
     public static let waitLimit: Double = 600
-    /// The most notch cards on screen at once.
+    /// The most cards on screen at once.
     public static let stackMax = 3
     public static let stackMaxRange: ClosedRange<Int> = 1...6
     public static let size = CardSize.regular

@@ -5,7 +5,7 @@ import Foundation
 protocol CardDisplay {
     /// Shows the cards one after another, after any other drip's, and returns once the last has
     /// gone, or as soon as a question is answered, with the exit status to report. `locked` says what happens while the screen is locked;
-    /// a `stack` given stacks notch cards that way instead of as `stack` or `DRIP_STACK` says.
+    /// a `stack` given stacks cards that way instead of as `stack` or `DRIP_STACK` says.
     func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32
 
     /// Hands the cards to a background drip and returns at once, or shows them here when it cannot.
@@ -26,7 +26,7 @@ protocol CardDisplay {
 }
 
 extension CardDisplay {
-    /// Shows the cards, stacking notch cards as `stack` or `DRIP_STACK` says.
+    /// Shows the cards, stacking them as `stack` or `DRIP_STACK` says.
     func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
         show(cards, locked: locked, stack: nil, console: console)
     }
@@ -213,7 +213,7 @@ struct DripCLI {
         return outcome.status
     }
 
-    /// A few notch cards, stacking the way queued cards do: chained, then pushed, unless the command
+    /// A few cards, stacking the way queued cards do: chained, then pushed, unless the command
     /// names one. Each card plays its preset's sound, as a real card would.
     private func demo(_ command: DemoCommand) -> Int32 {
         var flags = command.options.flags

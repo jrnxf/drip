@@ -114,7 +114,7 @@ The card's icon is the agent's own app's, when it is installed: Claude.app for C
 (`com.anthropic.claudefordesktop`), and the Codex app or ChatGPT.app for Codex
 (`com.openai.codex`, `com.openai.chat`). Without one it is the maker's mark that drip bundles,
 `mark:claude`, `mark:codex` or `mark:gemini` (see [Icons](#icons)). Either way the right end of the
-card at the notch shows the state: a white dot that sends out a soft ping while the agent waits on
+card shows the state: a white dot that sends out a soft ping while the agent waits on
 you, and a check in a ring when it is done.
 
 **drip hook** is what the hooks run: `drip hook claude`, `drip hook codex` or `drip hook gemini`,
@@ -266,7 +266,7 @@ the notch on its springs and takes it back in, `subtle` only fades, `none` neith
 | `ask` | `questionmark.circle.fill` | purple | Ping |
 
 **Cards that wait.** `ask` is for something waiting on you, such as an agent asking for
-permission. Its card has no countdown: at the notch a white dot stands where the ring would be, and
+permission. Its card has no countdown: a white dot stands where the ring would be, and
 every 2.4 seconds a soft halo grows out of it to about twice its size and fades (with Reduce Motion,
 the dot alone). The card stays until you click it or a newer card with the same `--id` replaces it.
 It gives way to other cards: when another card waits for its place, the card counts down its
@@ -286,10 +286,10 @@ left alone.
 
 `--icon` takes an SF Symbol, an image file, an app's own icon or an agent's mark. A picture is drawn
 as it is, never tinted, at the size of the preset's icon; an app's icon loses the margin around its
-rounded square, so its mark fills the same place. When the icon is not the preset's own, a notch
+rounded square, so its mark fills the same place. When the icon is not the preset's own, the
 card shows the state in its ring instead, around the state's mark: a check for `ok`, a cross for
 `fail`, and so on. The icon then says who, and the ring what. An `ask` card that waits shows its
-waiting dot there instead, and at the notch such a card with the preset's own icon shows no icon,
+waiting dot there instead, and such a card with the preset's own icon shows no icon,
 nor does a question with `--yes` and `--no` buttons: the text starts at the left, and the right end
 says it waits for you. A card with one button shows the button in place of the ring, so it keeps its
 icon:
@@ -525,7 +525,7 @@ what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip'
 name kept for them: `run`, `hook`, `demo`, `history`, `show`, `help`, `version`, `setup`,
 `config`, `init`, `install`, `uninstall`, `completion`, `completions`, `doctor`, `mute`, `pause`,
 `listen` or `test`. A custom preset never waits,
-and its ring at the notch shows no state's mark. Unknown keys print a warning;
+and its ring shows no state's mark. Unknown keys print a warning;
 wrong types exit 4.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers

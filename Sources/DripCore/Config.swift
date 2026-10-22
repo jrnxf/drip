@@ -27,9 +27,9 @@ public struct Config: Equatable {
     /// The sound of every preset that sets none of its own; `none` mutes every preset.
     public var sound: Sound?
     public var motion: Motion?
-    /// How notch cards stack, or off.
+    /// How cards stack, or off.
     public var stack: StackSettings.Choice?
-    /// The most notch cards on screen at once.
+    /// The most cards on screen at once.
     public var stackMax: Int?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
@@ -327,9 +327,9 @@ public struct EnvironmentSettings: Equatable {
     public var size: CardSize?
     public var sound: Sound?
     public var motion: Motion?
-    /// How notch cards stack, or off.
+    /// How cards stack, or off.
     public var stack: StackSettings.Choice?
-    /// The most notch cards on screen at once.
+    /// The most cards on screen at once.
     public var stackMax: Int?
     /// The bundle identifier of the app drip was run from, from `__CFBundleIdentifier`.
     public var sender: String?
