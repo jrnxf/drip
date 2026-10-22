@@ -134,14 +134,10 @@
   .specs dd code { font-size: inherit; }
 
   /* ---------- the device ---------- */
-  /* Room under the device for the paper hanging out of it. --paper-h is the paper's starting
-     length and --paper-grow what printing has added to it since (the script sets it on the hero,
-     each feature and the stack module). The room is never less than the starting length needs, so
-     paper cut short never pulls the page up under the device.
-     Beside the intro, the hero makes the room under itself, so the device stays where the hero
-     centred it, and the callouts under it move down with the paper's end. */
-  .hero { --grown: max(0px, var(--paper-grow, 0px)); margin-bottom: var(--grown); }
-  .devwrap { --paper-h: 220px; --pad: 22px; position: relative; padding: 26px 0 calc(var(--paper-h) + var(--grown) - 5px - var(--pad) + 30px); margin-bottom: calc(-1 * var(--grown)); }
+  /* Room under the device for the paper hanging out of it, at its starting length (--paper-h).
+     Paper that printing feeds out further hangs over what is below it, so nothing on the page moves
+     as it grows; cut it shorter to see what it covers. */
+  .devwrap { --paper-h: 220px; --pad: 22px; position: relative; padding: 26px 0 calc(var(--paper-h) - 5px - var(--pad) + 30px); }
   .device, .module {
     position: relative; border-radius: 26px; padding: var(--pad, 22px); background: linear-gradient(180deg, var(--body), var(--body-2));
     border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--lip), 0 1px 0 var(--edge), 0 30px 60px -30px var(--shade), 0 12px 24px -16px var(--shade);
@@ -169,7 +165,8 @@
   .slip .head { flex: none; display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--paper-ink); font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
   /* A printer: a slot in the device, and the paper it feeds out over the device's edge. The newest
      entry is printed at the slot and older ones move down, feeding the paper further out. Drag the
-     scissors across the paper to cut it shorter. */
+     scissors across the paper to cut it shorter. --paper-grow is what printing has added to its
+     starting length (the script sets it, and stacks the printers so higher paper hangs in front). */
   .printer { position: relative; z-index: 2; height: 10px; }
   .device > .printer { max-width: 620px; margin: 20px auto 0; }
   .slot { position: relative; z-index: 1; height: 10px; border-radius: 5px; background: #0d0d0d; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--lip); }
@@ -231,7 +228,7 @@
   /* The paper hangs from a slot level with the middle of PLAY, 25 px down a 50 px row over a 16 px
      padding, and clears the title under it by 18 px. */
   .feature { --paper-h: 184px; }
-  .feature .module { border-radius: 20px; padding: 16px; margin-bottom: calc(var(--paper-h) + max(0px, var(--paper-grow, 0px)) - 23px); }
+  .feature .module { border-radius: 20px; padding: 16px; margin-bottom: calc(var(--paper-h) - 23px); }
   .feature .display { height: 190px; }
   .feature .row { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
   .feature .printer { flex: 1; min-width: 0; }
@@ -254,7 +251,7 @@
   table.spec th { width: 30%; padding-right: 16px; font: 500 10.5px/1.6 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
   table.spec td { font: 400 12px/1.6 var(--mono); }
   table.spec td code { font-size: inherit; }
-  .module.stackmod { --paper-h: 224px; padding-bottom: 22px; margin-bottom: calc(var(--paper-h) + max(0px, var(--paper-grow, 0px)) - 27px); }
+  .module.stackmod { --paper-h: 224px; padding-bottom: 22px; margin-bottom: calc(var(--paper-h) - 27px); }
   /* Tall enough for three cards at the notch's own size, so its fixed scale stays at 1. */
   .stackmod .display { height: 272px; }
   .stackmod .row { display: flex; align-items: center; gap: 18px; margin-top: 18px; }
@@ -287,8 +284,8 @@
   .foot a { color: var(--ink); }
 
   @media (width <= 1100px) {
-    .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "device" "specs"; grid-template-rows: auto; row-gap: 8px; min-height: 0; padding-top: 24px; margin-bottom: 0; }
-    .devwrap { padding-top: 12px; padding-bottom: calc(var(--paper-h) + var(--grown) - 5px - var(--pad) + 8px); margin-bottom: 0; }
+    .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "device" "specs"; grid-template-rows: auto; row-gap: 8px; min-height: 0; padding-top: 24px; }
+    .devwrap { padding-top: 12px; padding-bottom: calc(var(--paper-h) - 5px - var(--pad) + 8px); }
     .callout { display: none; }
     .sheet, .install { grid-template-columns: minmax(0, 1fr); gap: 36px; }
     .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1049,9 +1046,9 @@ class Term {
 
 // ===== Paper =====
 // A printer's paper is as long as its print, and at least its starting length (--paper-h): once
-// the print reaches the end, each line feeds the paper further out, and the page makes room for
-// it. Drag the scissors across it and it is cut there; what was under the cut falls away, and
-// later print feeds the cut end out from where it was.
+// the print reaches the end, each line feeds the paper further out, over whatever is below it,
+// and nothing on the page moves. Drag the scissors across it and it is cut there; what was under
+// the cut falls away, and later print feeds the cut end out from where it was.
 const PAPER_TAIL = 20; // blank paper between the last line and the end, in CSS pixels
 const CUT_STEP = 2; // a cut's edge is sampled every 2 px across the paper
 const scissors = scissorCursors();
@@ -1059,8 +1056,10 @@ class Paper {
   constructor(log, feed) {
     this.log = log; this.feed = feed;
     this.printer = log.closest(".printer"); this.paper = log.closest(".paper"); this.slip = log.closest(".slip");
-    // The page's room for the paper is kept where the layout reserves it.
-    this.host = this.printer.closest(".hero, .feature, .stackmod");
+    // Paper hangs over what is below it, a printer's displays and slot included, so a printer
+    // higher on the page is in front of one further down. All stay under the falling pieces.
+    const printers = document.querySelectorAll(".printer:not(.fallen)");
+    printers.forEach((printer, i) => { printer.style.zIndex = 5 + printers.length - i; });
     this.cut = null; // the paper's length once it has been cut; null while it has its starting end
     this.length = 0; this.fed = 0; this.width = 0;
     this.slit = document.createElementNS("http://www.w3.org/2000/svg", "svg"); this.slit.classList.add("slit");
@@ -1086,7 +1085,7 @@ class Paper {
     const length = this.cut ?? Math.max(base, Math.ceil(this.log.offsetTop + this.feed.offsetHeight + PAPER_TAIL));
     const grown = length - this.length;
     this.length = length;
-    this.host.style.setProperty("--paper-grow", `${length - base}px`);
+    this.paper.style.setProperty("--paper-grow", `${length - base}px`);
     // The end feeds out with the print, at the pace Term moves the entries down.
     if (grown > 0 && fed > 0 && !reduceMotion.matches) {
       this.paper.animate([{ height: `${-grown}px` }, { height: "0px" }], { duration: 320, easing: "cubic-bezier(.23, 1, .32, 1)", composite: "add" });
@@ -1188,13 +1187,7 @@ class Paper {
     for (const entry of [...this.feed.children]) if (entry.offsetTop >= bottom) entry.remove();
     cutEnd(this.slip, { ys, width: w, top: top - 1 });
     this.slit.firstChild.setAttribute("d", "");
-    // The page gives back the room under the paper. The browser would scroll to keep something
-    // further down in place, moving the paper away from the piece falling off it; it is in view,
-    // being cut, so it stays put and what is under it moves up instead.
-    const root = document.documentElement;
-    root.style.overflowAnchor = "none";
     this.measure(0);
-    requestAnimationFrame(() => requestAnimationFrame(() => root.style.removeProperty("overflow-anchor")));
     if (reduceMotion.matches) { piece.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).finished.then(() => piece.remove()); return; }
     // Let go of, the paper in the printer swings a little.
     this.paper.animate([{ transform: "none" }, { transform: `rotate(${-dir * 0.8}deg)` }, { transform: `rotate(${dir * 0.45}deg)` }, { transform: `rotate(${-dir * 0.2}deg)` }, { transform: "none" }], { duration: 900, easing: "ease-out" });
