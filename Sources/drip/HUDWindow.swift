@@ -102,42 +102,49 @@ struct HUDDisplay: CardDisplay {
         }
     }
 
-    /// Records the cards in the history, first holding them while the screen is locked. Returns the
-    /// cards to show now, in this drip's turn, or nil when another drip shows them on the unlock.
+    /// Records the cards in the history, first holding them while the screen is locked or drip is
+    /// paused. Returns the cards to show now, in this drip's turn, or nil when another drip shows
+    /// them once the screen unlocks and the pause ends.
     private func holdWhileLocked(_ cards: [Card], locked: LockedScreen, console: Console) -> [Card]? {
         let environment = ProcessInfo.processInfo.environment
         func record(_ cards: [Card], missed: Bool) {
             self.record(cards, missed: missed, locked: locked, console: console)
         }
-        /// Gives up the turn until the screen unlocks, so other drips can hold their cards too, and
-        /// waits again if it locks before the turn comes back.
-        func waitForUnlock() {
+        /// Gives up the turn until the screen unlocks and any pause ends, so other drips can hold
+        /// their cards too, and waits again if either starts before the turn comes back.
+        func waitUntilBack() {
             repeat {
                 CardQueue.leave()
-                ScreenLock.waitUntilUnlocked()
+                Away.waitUntilBack()
                 CardQueue.waitForTurn()
-            } while ScreenLock.isLocked
+            } while Away.isAway
         }
 
         switch locked {
         case .ignore:
             return cards
         case .wait:
-            let missed = ScreenLock.isLocked
-            record(cards, missed: missed)
-            if missed {
-                // This drip blocks its script until then, so say why.
+            let screenLocked = ScreenLock.isLocked
+            let pause = DripPause(environment: environment).end()
+            record(cards, missed: screenLocked || pause != nil)
+            // This drip blocks its script until then, so say why.
+            if screenLocked {
                 console.warn("the screen is locked, so drip waits for the unlock to show the card (Ctrl-C to stop)")
-                waitForUnlock()
+                waitUntilBack()
+            } else if let pause {
+                console.warn(
+                    "drip is paused, \(DripPause.describe(seconds: pause.timeIntervalSinceNow)) left, so drip waits "
+                        + "for the pause to end to show the card (Ctrl-C to stop, drip resume to unpause)")
+                waitUntilBack()
             }
             return cards
         case .pool:
             let held = HeldCards(environment: environment)
             let admission: HeldCards.Admission
             do {
-                admission = try held.admit(cards, locked: ScreenLock.isLocked, pid: getpid())
+                admission = try held.admit(cards, locked: Away.isAway, pid: getpid())
             } catch {
-                console.warn("cannot hold cards while the screen is locked: \(error)")
+                console.warn("cannot hold cards while the screen is locked or drip is paused: \(error)")
                 record(cards, missed: false)
                 return cards
             }
@@ -152,11 +159,11 @@ struct HUDDisplay: CardDisplay {
                 return nil
             case .holding:
                 record(cards, missed: true)
-                waitForUnlock()
+                waitUntilBack()
                 do {
                     return MissedSummary.cards(for: CardReplacement.latest(try held.release()))
                 } catch {
-                    console.warn("cannot read the cards held while the screen was locked: \(error)")
+                    console.warn("cannot read the cards held while the screen was locked or drip was paused: \(error)")
                     return cards
                 }
             }

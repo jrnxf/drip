@@ -151,7 +151,7 @@ struct ConfigTests {
     /// drip's subcommands, or of those it may have later.
     @Test func subcommandNamesAreReserved() {
         for name in ["run", "hook", "demo", "history", "show", "help", "version", "setup", "config", "init", "install",
-                     "uninstall", "completion", "completions", "doctor", "mute", "pause", "listen", "test"] {
+                     "uninstall", "completion", "completions", "doctor", "mute", "pause", "resume", "listen", "test"] {
             assertError("\n[preset.\(name)]", line: 2, key: "preset.\(name)", message: "'\(name)' is kept for drip's own commands")
         }
     }

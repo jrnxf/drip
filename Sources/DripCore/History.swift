@@ -12,8 +12,8 @@ import Glibc
 import WASILibc
 #endif
 
-/// Where drip keeps what it remembers between runs: the card history and the cards held while the
-/// screen is locked.
+/// Where drip keeps what it remembers between runs: the card history, the cards held while the
+/// screen is locked or drip is paused, and the pause.
 public enum StateDirectory {
     /// `$XDG_STATE_HOME/drip`, falling back to `~/.local/state/drip`.
     public static func path(environment: [String: String]) -> String {
@@ -43,7 +43,8 @@ public struct StateError: Error, Equatable, CustomStringConvertible {
 public struct HistoryEntry: Equatable, Sendable, Codable {
     /// When the card came up.
     public var time: Date
-    /// True when the screen was locked as the card came up, so it was held until the unlock.
+    /// True when the screen was locked or drip was paused as the card came up, so it was held until
+    /// the unlock and the end of the pause.
     public var missed: Bool
     public var card: Card
 
@@ -183,7 +184,8 @@ public enum HistoryListing {
     }
 }
 
-/// Cards that came up while the screen was locked, kept until it unlocks.
+/// Cards that came up while the screen was locked or drip was paused, kept until it unlocks and the
+/// pause ends.
 ///
 /// Every background drip that finds the screen locked at its turn adds its cards here and exits.
 /// The first of them becomes the holder: it waits for the unlock, then takes every held card and

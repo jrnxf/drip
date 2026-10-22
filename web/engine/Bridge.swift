@@ -276,6 +276,8 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         ])
     case .invocation(.history):
         return send(["exit": 1, "message": "drip: the history lives on your Mac, not in this page"])
+    case .invocation(.pause), .invocation(.resume):
+        return send(["exit": 1, "message": "drip: a pause holds the cards on your Mac, not in this page"])
     case .invocation(.render), .invocation(.background):
         return send(["exit": ExitStatus.noGUISession, "message": "drip: not in a browser"])
     }

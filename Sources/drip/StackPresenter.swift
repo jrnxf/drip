@@ -401,7 +401,7 @@ final class StackPresenter: CardPresenting {
             foundAdoptable = false
             othersWaiting = false
             needsRoom = false
-        } else if time - lastAdoptionCheck >= 0.25, !ScreenLock.isLocked {
+        } else if time - lastAdoptionCheck >= 0.25, !Away.isAway {
             lastAdoptionCheck = time
             let candidates = CardQueue.adoptable().filter { adopting || !$0.card.waits }
             foundAdoptable = !candidates.isEmpty

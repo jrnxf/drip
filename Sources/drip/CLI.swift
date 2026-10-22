@@ -76,6 +76,10 @@ struct DripCLI {
             return setup(command)
         case let .invocation(.history(command)):
             return history(command)
+        case let .invocation(.pause(command)):
+            return pause(command.seconds)
+        case .invocation(.resume):
+            return resume()
         case let .invocation(.render(command)):
             return render(command)
         case .invocation(.background):
@@ -117,7 +121,8 @@ struct DripCLI {
             flags.detail = flags.detail ?? event.detail
             flags.icon = flags.icon ?? command.agent.icon(installed: display.isInstalled)
             let card = try makeResolver(console).resolve(kind: event.kind, title: event.title, flags: flags)
-            status = deliver([card], wait: flags.wait, console: console)
+            // An agent's hook keeps its output clean, terminal or not.
+            status = deliver([card], wait: flags.wait, remind: false, console: console)
         } catch {
             status = report(error, console, subcommand: HookCommand.configuration.commandName)
         }
@@ -139,6 +144,7 @@ struct DripCLI {
         case let .done(lines, warnings):
             warnings.forEach(console.warn)
             lines.forEach { print($0) }
+            remindIfPaused(console)
             return ExitStatus.shown
         case let .refused(reason, snippet):
             console.error(reason)
@@ -152,11 +158,16 @@ struct DripCLI {
     }
 
     /// Everything that can fail is checked here, before the cards are handed off. `record` is false
-    /// for cards shown again from the history.
-    private func deliver(_ cards: [Card], wait: Bool, record: Bool = true, console: Console) -> Int32 {
+    /// for cards shown again from the history. `remind` says whether to print that drip is paused:
+    /// a drip that waits for its card says so as it starts to wait instead.
+    private func deliver(
+        _ cards: [Card], wait: Bool, record: Bool = true, remind: Bool = true, console: Console
+    ) -> Int32 {
         let cards = display.prepare(cards, console: console)
         switch Delivery.choose(for: cards, wait: wait) {
-        case .background: return display.showInBackground(BackgroundRequest(cards: cards, record: record), console: console)
+        case .background:
+            if remind { remindIfPaused(console) }
+            return display.showInBackground(BackgroundRequest(cards: cards, record: record), console: console)
         case .wait: return display.show(cards, locked: .wait(record: record), console: console)
         }
     }
@@ -226,6 +237,7 @@ struct DripCLI {
                 flags.seconds = 2
             }
             let cards = display.prepare(try DemoCommand.cards(resolver, flags: flags), console: console)
+            remindIfPaused(console)
             for mode in command.stacks {
                 let stack = DemoCommand.stack(
                     mode, environment: ProcessInfo.processInfo.environment, config: resolver.config)
@@ -255,7 +267,50 @@ struct DripCLI {
         } catch {
             return report(error, console)
         }
+        remindIfPaused(console)
         return ExitStatus.shown
+    }
+
+    /// Pauses drip for `seconds`, or, without them, says how long is left of the pause, pausing for
+    /// an hour when there is none.
+    private func pause(_ seconds: Double?) -> Int32 {
+        let pause = DripPause(environment: ProcessInfo.processInfo.environment)
+        let now = Date()
+        do {
+            let end: Date
+            if seconds == nil, let current = pause.end(now: now) {
+                end = current
+            } else {
+                end = now.addingTimeInterval(seconds ?? DripPause.defaultDuration)
+                try pause.pause(until: end)
+            }
+            print(DripPause.status(end: end, now: now) + ". drip resume ends it now.")
+            return ExitStatus.shown
+        } catch {
+            Console().error("\(error)")
+            return ExitStatus.pauseFailed
+        }
+    }
+
+    /// Ends the pause now; the cards it held show once the holder notices, within a second.
+    private func resume() -> Int32 {
+        do {
+            let paused = try DripPause(environment: ProcessInfo.processInfo.environment).resume()
+            print(paused ? "drip is no longer paused." : "drip is not paused.")
+            return ExitStatus.shown
+        } catch {
+            Console().error("\(error)")
+            return ExitStatus.pauseFailed
+        }
+    }
+
+    /// While drip is paused, says so on stderr with the time left, so a pause is never forgotten.
+    /// Only in a terminal: a pipe, a script's log and an agent's hook stay clean.
+    private func remindIfPaused(_ console: Console) {
+        guard !console.quiet, isatty(STDERR_FILENO) != 0,
+              let end = DripPause(environment: ProcessInfo.processInfo.environment).end()
+        else { return }
+        FileHandle.standardError.write(Data((DripPause.reminder(end: end) + "\n").utf8))
     }
 
     private func render(_ command: RenderCommand) -> Int32 {
