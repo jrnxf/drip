@@ -1,5 +1,5 @@
 #!/bin/sh
-# Draws docs/demo.gif: the first three notch cards drip demo drops, in turn, frame by frame with the hidden
+# Draws docs/demo.gif: three notch cards, in turn, frame by frame with the hidden
 # `drip __render --at`, which draws the same layers the island shows. Needs ImageMagick (`magick`).
 set -eu
 

@@ -121,8 +121,6 @@ struct HUDDisplay: CardDisplay {
         }
 
         switch locked {
-        case .ignore:
-            return cards
         case .wait:
             let screenLocked = ScreenLock.isLocked
             let pause = DripPause(environment: environment).end()

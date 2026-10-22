@@ -68,8 +68,6 @@ struct DripCLI {
             return show(command)
         case let .invocation(.run(command)):
             return run(command)
-        case let .invocation(.demo(command)):
-            return demo(command)
         case let .invocation(.hook(command)):
             return hook(command)
         case let .invocation(.setup(command)):
@@ -222,33 +220,6 @@ struct DripCLI {
         CommandRunner.endLikeTheCommand(outcome)
         #endif
         return outcome.status
-    }
-
-    /// A few cards, stacking the way queued cards do: chained, then pushed, unless the command
-    /// names one. Each card plays its preset's sound, as a real card would.
-    private func demo(_ command: DemoCommand) -> Int32 {
-        var flags = command.options.flags
-        let console = Console(quiet: flags.quiet)
-        console.warnAbout(command.options)
-        do {
-            let resolver = try makeResolver(console)
-            // Short, unless a flag, the environment or the config says otherwise.
-            if flags.seconds == nil, resolver.environment.seconds == nil, resolver.config.seconds == nil {
-                flags.seconds = 2
-            }
-            let cards = display.prepare(try DemoCommand.cards(resolver, flags: flags), console: console)
-            remindIfPaused(console)
-            for mode in command.stacks {
-                let stack = DemoCommand.stack(
-                    mode, environment: ProcessInfo.processInfo.environment, config: resolver.config)
-                let status = display.show(cards, locked: .ignore, stack: stack, console: console)
-                // The demo's button is there to try, not a question: leaving it alone is no failure.
-                if status != ExitStatus.shown, status != ExitStatus.notClicked { return status }
-            }
-            return ExitStatus.shown
-        } catch {
-            return report(error, console)
-        }
     }
 
     /// Lists the cards in the history, or shows them again, oldest first.

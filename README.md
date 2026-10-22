@@ -27,7 +27,6 @@ drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23
 drip ask "my-app needs you" --icon app:com.openai.chat
 drip info "deploying" --id deploy && drip ok "deployed" --id deploy
 drip setup claude             # Claude Code's hooks: which project needs you, and why
-drip demo                     # a few cards dropping from the notch, chained then pushed
 drip history --missed         # what came up while you were away
 drip pause 30m                # hold cards for half an hour; drip resume ends it early
 ```
@@ -38,11 +37,11 @@ Requires macOS 13 or newer.
 
 ```sh
 brew install jrnxf/tap/drip
-drip ok "drip works"
+drip ok "hello"               # try it
 ```
 
 A green card grows out of the notch, or out of the top edge of a screen without one, and drip
-prints nothing. `drip demo` then drops a few cards from the notch, stacking them under one another.
+prints nothing.
 
 Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs, in a few
 seconds: nothing to compile, and no Xcode. Install it with Homebrew rather than downloading the
@@ -214,8 +213,7 @@ drip makes no network connections, sends nothing anywhere and collects no analyt
 reads and writes your config, the agents' settings that `drip setup` edits, and its history.
 The history, `~/.local/state/drip/history.jsonl`, is readable only by you and keeps the last 1000
 cards. It holds each card's title and detail, up to 16,384 characters of each, so a card from a
-coding agent keeps the agent's last message. `drip demo` cards are not kept. Delete the file to
-clear it.
+coding agent keeps the agent's last message. Delete the file to clear it.
 
 ## Usage
 
@@ -224,7 +222,6 @@ drip [KIND] [TITLE] [options]
 drip run [options] [--] <command> [args...]
 drip hook claude|codex|gemini [options] [payload]
 drip setup claude|codex|gemini [--print]
-drip demo [chain|push] [options]
 drip history [--missed] [--json | --replay]
 drip pause [DURATION]
 drip resume
@@ -329,14 +326,6 @@ three, breaking between words, between Japanese or Chinese characters, or inside
 for a line. When text is still left over, the last line ends in an ellipsis. The card stays up for
 `--seconds` however many lines it has.
 
-**drip demo** drops four cards from the notch one after another, stacking the way queued cards do
-(see [At the notch](#at-the-notch)): ok, ask, fail, then an info card with an Open
-button that opens drip's GitHub page. It plays them twice, chained and then pushed; `drip demo
-chain` or `drip demo push` plays only that one, whatever `stack` or `DRIP_STACK` says. Each stays two
-seconds unless `--seconds`, `DRIP_SECONDS` or the config's `seconds` say otherwise, and each plays
-its preset's sound, as a real card would; `--sound none` mutes them. `--id` is ignored, so no card replaces another. Other options apply to
-every card, and `--open` or `--button` replace the last card's button.
-
 **Returning at once.** drip checks everything first (flags, config, stdin, sounds and icons), so a
 mistake still prints its message and exit status. Then it hands the card to a background drip and
 exits. Cards from every drip queue up and show one after another, in the order they were sent.
@@ -379,7 +368,7 @@ screen is locked, keeps waiting until the unlock and then shows its card on its 
 
 Every card is also kept in `$XDG_STATE_HOME/drip/history.jsonl`, or
 `~/.local/state/drip/history.jsonl`, one JSON object per line, readable only by you. drip keeps
-the last 1000 cards. `drip demo` cards are not kept.
+the last 1000 cards.
 
 ```sh
 drip history                  # every kept card, oldest first
@@ -421,8 +410,7 @@ It is kept as its end time in `$XDG_STATE_HOME/drip/pause`, or `~/.local/state/d
 holds across drips and restarts, and no drip keeps running for it but the one holding the cards.
 While drip is paused, every drip run in a terminal prints a reminder to stderr, such as `drip is
 paused, 23m left (drip resume to unpause)`. A drip whose stderr is not a terminal, such as one in a
-script's log, and `drip hook`, print nothing about it, and `--quiet` keeps it quiet too. `drip demo`
-still plays.
+script's log, and `drip hook`, print nothing about it, and `--quiet` keeps it quiet too.
 
 ### Buttons
 
@@ -551,7 +539,7 @@ Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `D
 environment exits 2. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
-name kept for them: `run`, `hook`, `demo`, `history`, `show`, `help`, `version`, `setup`,
+name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `setup`,
 `config`, `init`, `install`, `uninstall`, `completion`, `completions`, `doctor`, `mute`, `pause`,
 `resume`, `listen` or `test`. A custom preset never waits,
 and its ring shows no state's mark. Unknown keys print a warning;
@@ -580,9 +568,9 @@ or the environment.
 
 On a Mac, `scripts/mac-check.sh` builds, runs every test, records any missing snapshot references
 into `Tests/Snapshots`, shows each preset and a custom `deploy` preset on screen once, an `ask`
-card with Terminal's icon that waits until `drip demo` needs the notch, runs `drip demo`, shows a
-Claude hook card that a newer card from the same session replaces in place, then lists the last
-cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
+card with Terminal's icon that waits until the next card needs the notch, a few cards that stack
+under one another, a Claude hook card that a newer card from the same session replaces in place,
+then lists the last cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
 never overwrites a reference: to regenerate one on purpose, delete its PNG and run the script again.
 
 `scripts/demo-gif.sh` draws the animation at the top of this file frame by frame with

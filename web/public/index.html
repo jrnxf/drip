@@ -1446,7 +1446,7 @@ async function execOne(stages, term, stage, config, alive) {
   const [program, ...args] = words;
   if (program === "clear") { term.clear(); return 0; }
   if (program === "sleep") { await sleep(Math.min(Number(args[0]) || 0, 10) * 1000); return 0; }
-  if (program === "help") { term.print(`this terminal runs drip. try: drip ok "hello", drip run npm test, drip demo, drip --help`, "dim"); return 0; }
+  if (program === "help") { term.print(`this terminal runs drip. try: drip ok "hello", drip run npm test, drip --help`, "dim"); return 0; }
   if (program === "./promote.sh") { term.print("promoting api 1.4.2 to production", "dim"); return 0; }
   if (program === "gh" && args[0] === "pr" && args[1] === "merge") { term.print(`✓ Merged pull request #${args[2] ?? ""}`, "dim"); return 0; }
   if (program !== "drip") { term.print(`zsh: command not found: ${program}  (this terminal only runs drip)`, "err"); return 127; }

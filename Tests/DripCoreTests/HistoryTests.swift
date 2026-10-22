@@ -188,7 +188,6 @@ final class HistoryTests {
         let received = try BackgroundRequest.decode(replay.encoded())
         try received.locked.record(received.cards, missed: true, in: history)
         try LockedScreen.wait(record: received.record).record(received.cards, missed: false, in: history)
-        try LockedScreen.ignore.record(received.cards, missed: false, in: history)
         #expect(history.entries() == before)
         // A card sent as usual is recorded, by either path.
         let sent = try BackgroundRequest.decode(BackgroundRequest(cards: [card("c")]).encoded())

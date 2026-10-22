@@ -2,7 +2,7 @@
 # Builds and tests drip on a Mac, records any missing snapshot references, then shows each preset
 # card on screen once, an ask card waiting until the next card needs the notch, a yes/no question and
 # its exit status, the agent marks
-# drip bundles, drops the notch cards of drip demo in turn, shows a Claude hook card that a newer card from the same session replaces
+# drip bundles, drops a few cards that stack under one another, shows a Claude hook card that a newer card from the same session replaces
 # in place, turns a deploy card into its next step and then into ok and fail in place, and lists
 # the history.
 #
@@ -76,11 +76,14 @@ for mark in claude codex gemini; do
         --icon "mark:$mark" --seconds 3
 done
 
-echo "Playing drip demo"
-XDG_CONFIG_HOME="$config" .build/release/drip demo
+echo "Dropping a few cards at once; they stack under one another"
+for kind in ok warn fail; do
+    XDG_CONFIG_HOME="$config" .build/release/drip "$kind" "drip $kind" --detail "mac-check: stacked" --seconds 2
+done
+XDG_CONFIG_HOME="$config" .build/release/drip info "drip info" --detail "mac-check: after the stack" --seconds 2 --wait
 
-# The demo waits for its cards, so the queue is empty: the first hook card is on screen when the
-# second arrives, and the second takes its place. The first is an ask card with Claude's app icon,
+# The last card waited for its turn and its exit, so the queue is empty: the first hook card is on
+# screen when the second arrives, and the second takes its place. The first is an ask card with Claude's app icon,
 # or Claude's bundled mark without Claude.app; the second turns its waiting dot into a check.
 echo "Showing a Claude hook card, then a newer one from the same session in its place; click it to come back here"
 hook() {

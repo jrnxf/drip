@@ -155,16 +155,12 @@ public enum LockedScreen: Equatable, Sendable {
     case pool(record: Bool)
     /// Wait here until the screen unlocks, then show them: the caller is waiting for the outcome.
     case wait(record: Bool)
-    /// Show them anyway, and keep them out of the history: `drip demo`.
-    case ignore
 
     /// Adds the cards to `history`, unless they are kept out of it.
     public func record(_ cards: [Card], missed: Bool, in history: CardHistory) throws {
         switch self {
         case let .pool(record), let .wait(record):
             if record { try history.record(cards, missed: missed) }
-        case .ignore:
-            break
         }
     }
 }

@@ -36,7 +36,6 @@ public enum ExitStatus {
 
 extension CardSize: ExpressibleByArgument {}
 extension Motion: ExpressibleByArgument {}
-extension StackSettings.Mode: ExpressibleByArgument {}
 
 extension CardColor: ExpressibleByArgument {
     public init?(argument: String) {
@@ -270,15 +269,14 @@ public struct DripCommand: ParsableCommand {
             drip run [options] [--] <command> [args...]
             drip hook claude|codex|gemini [options] [payload]
             drip setup claude|codex|gemini [--print]
-            drip demo [chain|push] [options]
             drip history [--missed] [--json | --replay]
             drip pause [DURATION]
             drip resume
             """,
         version: dripVersion,
         subcommands: [
-            ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, DemoCommand.self,
-            HistoryCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self, BackgroundCommand.self,
+            ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, HistoryCommand.self,
+            PauseCommand.self, ResumeCommand.self, RenderCommand.self, BackgroundCommand.self,
         ],
         defaultSubcommand: ShowCommand.self
     )
@@ -457,66 +455,6 @@ public struct SetupCommand: ParsableCommand {
     }
 }
 
-/// `drip demo [chain|push] [options]`: drops a few cards from the notch, stacking them each way.
-public struct DemoCommand: ParsableCommand {
-    public static let configuration = CommandConfiguration(
-        commandName: "demo",
-        abstract: "Drop a few cards from the notch, stacking as queued cards do.",
-        usage: "drip demo [chain|push] [options]",
-        discussion: """
-            Plays the cards chained, each new card dropping out of the one above, then pushed, each \
-            new card dropping out of the notch as the others move down; chain or push plays only that \
-            one. Every card plays its preset's sound; --id is ignored.
-            """
-    )
-
-    /// The cards the demo drops, in order: one of each kind a build or an agent sends, the last
-    /// with a button. `pause` is how long a card waits, at the least, after the one before it.
-    public static let samples: [(kind: String, title: String, detail: String, open: String?, pause: Double)] = [
-        ("ok", "Build finished", "make test: 246 passed in 3.2s", nil, 0),
-        ("ask", "Claude needs you", "Claude needs your permission to use Bash", nil, 0),
-        ("fail", "Deploy failed", "staging: health check timed out after 30s", nil, 0),
-        ("info", "Report uploaded", "q3-review.pdf is on the file server", "https://github.com/jrnxf/drip", 3),
-    ]
-
-    /// How the demo stacks its cards `mode`'s way, whatever `stack` or `DRIP_STACK` says, the report
-    /// held back.
-    public static func stack(_ mode: StackSettings.Mode, environment: [String: String], config: Config) -> StackSettings {
-        var settings = StackSettings.current(environment: environment, config: config, mode: mode)
-            ?? StackSettings(mode: mode, max: Defaults.stackMax)
-        settings.pauses = samples.map(\.pause)
-        return settings
-    }
-
-    /// The demo's cards. --detail replaces every sample's detail.
-    public static func cards(_ resolver: CardResolver, flags: CardFlags) throws -> [Card] {
-        var flags = flags
-        // Every demo card would share one id and replace the one before.
-        flags.id = nil
-        return try samples.map { sample in
-            var cardFlags = flags
-            cardFlags.detail = flags.detail ?? sample.detail
-            if let open = sample.open, flags.open == nil, flags.button == nil {
-                cardFlags.open = open
-                cardFlags.button = "Open"
-            }
-            return try resolver.resolve(kind: sample.kind, title: sample.title, flags: cardFlags)
-        }
-    }
-
-    @Argument(help: ArgumentHelp("How the cards stack. (default: both, in turn)", valueName: "stack"))
-    public var stack: StackSettings.Mode?
-
-    /// The ways the demo stacks its cards, in turn.
-    public var stacks: [StackSettings.Mode] {
-        stack.map { [$0] } ?? StackSettings.Mode.allCases
-    }
-
-    @OptionGroup public var options: CardOptions
-
-    public init() {}
-}
-
 /// `drip history [--missed] [--json | --replay]`: lists or shows again the cards in the history.
 public struct HistoryCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
@@ -661,7 +599,6 @@ public struct BackgroundCommand: ParsableCommand {
 public enum Invocation {
     case show(ShowCommand)
     case run(RunCommand)
-    case demo(DemoCommand)
     case hook(HookCommand)
     case setup(SetupCommand)
     case history(HistoryCommand)
@@ -697,7 +634,6 @@ public enum CommandLineParser {
             case let command as RunCommand: return .invocation(.run(command))
             case let command as HookCommand: return .invocation(.hook(command))
             case let command as SetupCommand: return .invocation(.setup(command))
-            case let command as DemoCommand: return .invocation(.demo(command))
             case let command as HistoryCommand: return .invocation(.history(command))
             case let command as PauseCommand: return .invocation(.pause(command))
             case is ResumeCommand: return .invocation(.resume)

@@ -27,7 +27,7 @@ struct CardStackTests {
     ) -> Double {
         var time = from
         while time < until {
-            if stack.isReady(at: time), let next = stack.nextOwn(at: time) {
+            if stack.isReady(at: time), let next = stack.nextOwn() {
                 stack.enter(next, metrics: metrics, own: true, decided: time, at: time)
             }
             let changes = stack.advance(
@@ -420,16 +420,6 @@ struct CardStackTests {
         // A moment to read it once the pointer leaves.
         #expect(stack.hover(false))
         #expect(stack.live[0].remaining == 1.5)
-    }
-
-    @Test func pausesHoldTheNextCardBack() throws {
-        let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 3, pauses: [0, 2.5]), cards: [card("a", seconds: 10), card("b", seconds: 10)])
-        var entered: Double?
-        run(stack, until: 4) { time, _ in
-            if entered == nil, stack.entries.count == 2 { entered = time }
-        }
-        #expect(try #require(entered) >= 2.5)
     }
 
     @Test func theOutlineMeltsEachDropIntoWhatItGrowsOutOf() {
