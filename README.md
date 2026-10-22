@@ -581,10 +581,10 @@ never overwrites a reference: to regenerate one on purpose, delete its PNG and r
 `__render --at`, from the same layers the notch card shows, so it needs no screen recording.
 
 `scripts/demo-tour.sh` is for recording a demo video of drip: run it on a Mac with drip installed
-and it plays every kind of card in turn, on its own and with nothing to click, in about 75 seconds:
+and it plays every kind of card in turn, on its own and with nothing to click, in about 55 seconds:
 the presets, `drip run`, the chain and push stacks, the coding agents' hook cards, a button and a
-question that times out, a card that `--id` updates in place, and the styles, positions and sizes
-away from the notch. Start a screen recording with Cmd+Shift+5 first, or run
+question that times out, and a card that `--id` updates in place, all at the notch in the default
+style. Start a screen recording with Cmd+Shift+5 first, or run
 `scripts/demo-tour.sh --record tour.mov` to record the screen with `screencapture`, which needs
 Screen Recording permission for the terminal. The tour uses drip's built-in defaults in a temporary
 config and state directory, so it leaves your config and history alone.

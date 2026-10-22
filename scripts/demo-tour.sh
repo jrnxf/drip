@@ -1,9 +1,9 @@
 #!/bin/sh
 # Plays a paced tour of every kind of drip card, start to finish on its own, for a screen
 # recording: the presets, `drip run`, the chain and push stacks, the coding agents' hook cards, a
-# button and a question, a card that `--id` updates in place, and the styles, positions and sizes
-# away from the notch. Nothing waits for a click: every card counts down and goes. Run it on a Mac
-# with drip installed.
+# button and a question, and a card that `--id` updates in place. Every card is a notch card in the
+# default style, as in `drip demo`. Nothing waits for a click: every card counts down and goes. Run
+# it on a Mac with drip installed.
 #
 #   scripts/demo-tour.sh                 # plays the tour; start Cmd+Shift+5 first to record it
 #   scripts/demo-tour.sh --record FILE   # also records the screen to FILE.mov with screencapture
@@ -72,16 +72,15 @@ hook() {
     printf '%s' "$2" | drip hook "$1" --seconds 2.5
 }
 
-# The tour takes about 75 seconds; the recording runs a little longer so it never cuts the end.
+# The tour takes about 55 seconds; the recording runs a little longer so it never cuts the end.
 step "drip demo tour"
-echo "Every card grows out of the notch, or out of the top edge on a screen without one,"
-echo "until the last part, which shows the styles, positions and sizes away from the notch."
+echo "Every card grows out of the notch, or out of the top edge on a screen without one."
 echo "Nothing needs a click: sit back."
 if [ -n "$record" ]; then
     # Recording needs Screen Recording permission for this terminal, in System Settings >
     # Privacy & Security; macOS asks the first time.
-    echo "Recording the screen to $record for 90 seconds, the pointer and clicks shown."
-    screencapture -v -V 90 -k -C -x "$record" &
+    echo "Recording the screen to $record for 65 seconds, the pointer and clicks shown."
+    screencapture -v -V 65 -k -C -x "$record" &
     recorder=$!
 else
     echo "To record it, start a recording with Cmd+Shift+5 now; the tour starts in 5 seconds."
@@ -135,15 +134,7 @@ sleep 1.5
 drip info "deploying api" -d "step 2 of 2 · pushing image" --id demo-tour-deploy
 sleep 1.5
 drip ok "api deployed" -d "v1.4.2 is live" --id demo-tour-deploy -s 2 --wait
-
-step "7. Away from the notch: the styles, positions and sizes"
-drip ok "hud" -d "--position top --style hud" --position top --style hud -s 1.8 --wait
-drip info "glass" -d "--position top --style glass (macOS 26)" --position top --style glass -s 1.8 --wait
-drip fail "wash" -d "--position top --style wash: a failure shakes" --position top --style wash -s 1.8 --wait
-drip warn "terminal" -d "--position top --style terminal" --position top --style terminal -s 1.8 --wait
-drip ok "center" -d "--position center" --position center -s 1.8 --wait
-DRIP_SIZE=compact drip info "compact" -d "size = compact" --position bottom -s 1.8 --wait
-DRIP_SIZE=large drip info "large" -d "size = large" --position bottom -s 1.8 --wait
+sleep 0.5
 drip ok "that's drip" -d "brew install jrnxf/tap/drip" -s 2.5 --wait
 
 if [ -n "$recorder" ]; then
