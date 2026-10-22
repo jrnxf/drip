@@ -97,8 +97,8 @@ public enum CardAdoption {
         "#\(index)"
     }
 
-    /// The cards a stack showing for the ticket `source` can adopt, oldest first: notch cards from
-    /// newer, live, adoptable tickets that nobody claimed and no newer card with the same id replaced.
+    /// The cards a stack showing for the ticket `source` can adopt, oldest first: cards from newer,
+    /// live, adoptable tickets that nobody claimed and no newer card with the same id replaced.
     public static func candidates(
         after source: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool
     ) -> [(ticket: String, index: Int, card: Card)] {
@@ -106,7 +106,7 @@ public enum CardAdoption {
         for ticket in queue.sorted(by: { $0.name < $1.name })
         where ticket.name > source && ticket.adoptable && isAlive(ticket) {
             for (index, card) in ticket.cards.enumerated()
-            where card.position == .notch && !card.asksQuestion && !ticket.claimed.contains(claimKey(index: index))
+            where !card.asksQuestion && !ticket.claimed.contains(claimKey(index: index))
                 && !CardReplacement.isReplaced(card, in: ticket, queue: queue, isAlive: isAlive)
             {
                 found.append((ticket.name, index, card))
@@ -132,7 +132,7 @@ public enum CardTurns {
                 && !(card.id.map(ids.contains) ?? false)
                 && !CardReplacement.isReplaced(card, in: ticket, queue: queue, isAlive: isAlive)
             {
-                found.append((card, ticket.adoptable && card.position == .notch && !card.asksQuestion))
+                found.append((card, ticket.adoptable && !card.asksQuestion))
             }
         }
         return found
@@ -189,9 +189,8 @@ public enum CardReplacement {
     }
 
     /// Whether `new` can take the place of `old` on screen. A card that asks a question reports its
-    /// click to the drip that showed it, so it never swaps; and the new card must sit in the same
-    /// place.
+    /// click to the drip that showed it, so it never swaps.
     public static func canSwap(_ old: Card, for new: Card) -> Bool {
-        !old.asksQuestion && !new.asksQuestion && old.position == new.position
+        !old.asksQuestion && !new.asksQuestion
     }
 }

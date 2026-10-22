@@ -238,7 +238,7 @@ private struct LineParser {
         }
         if !["inf", "nan"].contains(token),
            token.unicodeScalars.allSatisfy({ $0.properties.isAlphabetic || "-_.".unicodeScalars.contains($0) }) {
-            // Such as position = top: a word without its quotes.
+            // Such as size = large: a word without its quotes.
             throw error("invalid value '\(token)'; a string needs quotes: \"\(token)\"")
         }
         throw error("invalid value '\(token)'")

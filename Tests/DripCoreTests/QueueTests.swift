@@ -113,7 +113,7 @@ struct QueueTests {
             == nil)
     }
 
-    @Test func swappingNeedsTheSamePlaceAndNoQuestion() {
+    @Test func swappingNeedsNoQuestion() {
         #expect(CardReplacement.canSwap(card("a"), for: card("a")))
         var linked = card("a")
         linked.action = CardAction(label: "View", open: "https://example.com")
@@ -122,9 +122,6 @@ struct QueueTests {
         question.action = CardAction(label: "Promote", open: nil)
         #expect(!CardReplacement.canSwap(question, for: card("a")))
         #expect(!CardReplacement.canSwap(card("a"), for: question))
-        var bottom = card("a")
-        bottom.position = .bottom
-        #expect(!CardReplacement.canSwap(card("a"), for: bottom))
     }
 
     @Test func onlyTheNewestCardForEachIDIsKeptInOrder() {
@@ -138,35 +135,33 @@ struct QueueTests {
 
     // MARK: Adoption into a stack at the notch
 
-    @Test func aStackAdoptsNewerNotchCardsFromLiveBackgroundDripsOldestFirst() {
-        let mine = ticket(1, pid: 10, notch(nil))
-        var elsewhere = card(nil, title: "elsewhere")
-        elsewhere.position = .bottom
+    @Test func aStackAdoptsNewerCardsFromLiveBackgroundDripsOldestFirst() {
+        let mine = ticket(1, pid: 10, card(nil))
         let queue = [
-            mine, adoptable(2, pid: 20, notch(nil, title: "b"), elsewhere),
-            adoptable(3, pid: 30, notch(nil, title: "c")),
+            mine, adoptable(2, pid: 20, card(nil, title: "b"), card(nil, title: "b2")),
+            adoptable(3, pid: 30, card(nil, title: "c")),
         ]
         let found = CardAdoption.candidates(after: mine.name, queue: queue, isAlive: { _ in true })
-        #expect(found.map(\.card.title) == ["b", "c"])
-        #expect(found.map(\.index) == [0, 0])
+        #expect(found.map(\.card.title) == ["b", "b2", "c"])
+        #expect(found.map(\.index) == [0, 1, 0])
     }
 
     @Test func aStackNeverAdoptsWaitingDripsQuestionsClaimedCardsDeadDripsOrOlderTickets() {
-        let mine = ticket(2, pid: 10, notch(nil))
-        var question = notch(nil)
+        let mine = ticket(2, pid: 10, card(nil))
+        var question = card(nil)
         question.action = CardAction(label: "OK", open: nil)
-        var claimed = adoptable(4, pid: 40, notch(nil))
+        var claimed = adoptable(4, pid: 40, card(nil))
         claimed.claimed = [CardAdoption.claimKey(index: 0)]
         let queue = [
-            adoptable(1, pid: 15, notch(nil)), mine, ticket(3, pid: 30, notch(nil)), claimed,
-            adoptable(5, pid: 50, question), adoptable(6, pid: 60, notch(nil)),
+            adoptable(1, pid: 15, card(nil)), mine, ticket(3, pid: 30, card(nil)), claimed,
+            adoptable(5, pid: 50, question), adoptable(6, pid: 60, card(nil)),
         ]
         #expect(CardAdoption.candidates(after: mine.name, queue: queue, isAlive: { $0.pid != 60 }).isEmpty)
     }
 
     @Test func aStackSkipsACardThatANewerOneWithTheSameIDReplaces() {
-        let mine = ticket(1, pid: 10, notch(nil))
-        let queue = [mine, adoptable(2, pid: 20, notch("x", title: "old")), adoptable(3, pid: 30, notch("x", title: "new"))]
+        let mine = ticket(1, pid: 10, card(nil))
+        let queue = [mine, adoptable(2, pid: 20, card("x", title: "old")), adoptable(3, pid: 30, card("x", title: "new"))]
         let found = CardAdoption.candidates(after: mine.name, queue: queue, isAlive: { _ in true })
         #expect(found.map(\.card.title) == ["new"])
     }
@@ -174,24 +169,24 @@ struct QueueTests {
     // MARK: Turns, for a card that waits for you
 
     @Test func newerDripsWaitingTheirTurnAreFoundAndMarkedAdoptable() {
-        let mine = ticket(2, pid: 10, notch(nil))
-        var elsewhere = card(nil, title: "elsewhere")
-        elsewhere.position = .bottom
-        var claimed = adoptable(4, pid: 40, notch(nil, title: "claimed"))
+        let mine = ticket(2, pid: 10, card(nil))
+        var question = card(nil, title: "question")
+        question.action = CardAction(label: "OK", open: nil)
+        var claimed = adoptable(4, pid: 40, card(nil, title: "claimed"))
         claimed.claimed = [CardAdoption.claimKey(index: 0)]
         let queue = [
-            ticket(1, pid: 5, notch(nil, title: "older")), mine,
-            adoptable(3, pid: 30, notch(nil, title: "notch"), elsewhere), claimed,
-            ticket(5, pid: 50, notch(nil, title: "foreground")), adoptable(6, pid: 60, notch(nil, title: "dead")),
+            ticket(1, pid: 5, card(nil, title: "older")), mine,
+            adoptable(3, pid: 30, card(nil, title: "notch"), question), claimed,
+            ticket(5, pid: 50, card(nil, title: "foreground")), adoptable(6, pid: 60, card(nil, title: "dead")),
         ]
         let waiting = CardTurns.waiting(after: mine.name, queue: queue, isAlive: { $0.pid != 60 })
-        #expect(waiting.map(\.card.title) == ["notch", "elsewhere", "foreground"])
+        #expect(waiting.map(\.card.title) == ["notch", "question", "foreground"])
         #expect(waiting.map(\.adoptable) == [true, false, false])
     }
 
     @Test func aCardForTheOneOnScreenIsNotWaitingItsTurn() {
-        let mine = ticket(1, pid: 10, notch("claude:s1"))
-        let queue = [mine, adoptable(2, pid: 20, notch("claude:s1", title: "done"))]
+        let mine = ticket(1, pid: 10, card("claude:s1"))
+        let queue = [mine, adoptable(2, pid: 20, card("claude:s1", title: "done"))]
         #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }, except: ["claude:s1"]).isEmpty)
         #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }).count == 1)
     }
@@ -201,7 +196,7 @@ struct QueueTests {
         var question = Card(preset: .ask, title: "merge?")
         question.action = CardAction(label: "Merge", open: nil, decline: "Later")
         let asking = ticket(1, pid: 10, question)
-        let mine = ticket(3, pid: 30, notch(nil))
+        let mine = ticket(3, pid: 30, card(nil))
         #expect(CardTurns.awaitsAnswer(before: mine.name, queue: [asking, mine], isAlive: { _ in true }))
         // Not once the question's drip is gone, nor for one queued after this drip.
         #expect(!CardTurns.awaitsAnswer(before: mine.name, queue: [asking, mine], isAlive: { $0.pid != 10 }))
@@ -215,7 +210,7 @@ struct QueueTests {
     }
 
     @Test func aTicketIsFullyAdoptedOnceEveryCardIsClaimed() {
-        var two = adoptable(1, pid: 10, notch(nil), notch(nil))
+        var two = adoptable(1, pid: 10, card(nil), card(nil))
         #expect(!two.isFullyAdopted)
         two.claimed = [CardAdoption.claimKey(index: 0)]
         #expect(!two.isFullyAdopted)
@@ -225,18 +220,12 @@ struct QueueTests {
     }
 
     @Test func ticketContentsReadBothFormats() throws {
-        let cards = [notch("a")]
+        let cards = [card("a")]
         let current = try JSONEncoder().encode(TicketContents(cards: cards, adoptable: true))
         #expect(TicketContents.decode(current) == TicketContents(cards: cards, adoptable: true))
         let older = try JSONEncoder().encode(cards)
         #expect(TicketContents.decode(older) == TicketContents(cards: cards, adoptable: false))
         #expect(TicketContents.decode(Data("nope".utf8)) == nil)
-    }
-
-    private func notch(_ id: String?, title: String = "hi") -> Card {
-        var card = card(id, title: title)
-        card.position = .notch
-        return card
     }
 
     private func adoptable(_ stamp: UInt64, pid: Int32, _ cards: Card...) -> QueueTicket {

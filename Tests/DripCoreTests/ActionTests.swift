@@ -165,8 +165,7 @@ struct DeliveryTests {
         var card = Card(
             kind: "deploy", title: "Deploy finished", detail: "api · 2m 14s", icon: .symbol("shippingbox.fill"),
             fallbackIcon: .symbol("checkmark.circle.fill"), color: .rgb(red: 1, green: 128, blue: 255),
-            sound: .file("~/sounds/done.aiff"), seconds: 7.5, position: .notch, size: .large, style: .wash,
-            motion: .subtle)
+            sound: .file("~/sounds/done.aiff"), seconds: 7.5, size: .large, motion: .subtle)
         card.action = CardAction(label: "View run", open: "https://example.com/run/1")
         let others = [Card(preset: .fail, title: "x"), Card(preset: .info, title: "y")]
         let request = BackgroundRequest(cards: [card] + others)

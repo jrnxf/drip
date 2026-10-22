@@ -42,13 +42,8 @@ public struct AgentMark: Equatable, Sendable {
         public var opacity: Double
     }
 
-    /// The disc a mark sits on where the card may be light, such as a corner card: a neutral grey
-    /// that keeps a white mark visible. At the notch the island's black is the mark's background.
-    public static let disc = SRGBColor(red: 0x2C / 255.0, green: 0x2C / 255.0, blue: 0x2E / 255.0)
-    /// How much of the icon's side the mark's drawn shape spans: bare, and on the disc, where it
-    /// keeps clear of the disc's edge.
+    /// How much of the icon's side the mark's drawn shape spans, bare on the island's black.
     public static let markFraction = 0.8
-    public static let discMarkFraction = 0.62
 
     /// The prefix that names a bundled mark.
     public static let prefix = "mark:"
@@ -168,11 +163,10 @@ public struct AgentMark: Equatable, Sendable {
 
     /// Where the paths go in an icon `side` points square, its top-left corner at 0, 0, y down: each
     /// point scaled by `scale`, then moved by `x` and `y`, so the mark's longer side spans
-    /// `markFraction` of the icon, or `discMarkFraction` on the disc, centred on it.
-    public func placement(side: Double, onDisc: Bool = false) -> (scale: Double, x: Double, y: Double) {
+    /// `markFraction` of the icon, centred on it.
+    public func placement(side: Double) -> (scale: Double, x: Double, y: Double) {
         let box = bounds
-        let fraction = onDisc ? Self.discMarkFraction : Self.markFraction
-        let scale = side * fraction / max(box.width, box.height, .leastNonzeroMagnitude)
+        let scale = side * Self.markFraction / max(box.width, box.height, .leastNonzeroMagnitude)
         return (scale, side / 2 - (box.minX + box.width / 2) * scale, side / 2 - (box.minY + box.height / 2) * scale)
     }
 }

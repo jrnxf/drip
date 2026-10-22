@@ -13,11 +13,12 @@ import ImageIO
 #if canImport(AppKit)
 struct SnapshotTests {
     @Test func presetsOneLine() throws {
-        try assertSnapshots(Self.presets.flatMap { preset in
-            appearances("\(preset.kind)-one-line", [preset.kind, preset.title])
+        try assertSnapshots(Self.presets.map { preset in
+            Snapshot(name: "\(preset.kind)-one-line", arguments: [preset.kind, preset.title])
         })
     }
 
+    /// In light and dark: the system colours of the ring and the icon's disc follow the appearance.
     @Test func presetsTwoLines() throws {
         try assertSnapshots(Self.presets.flatMap { preset in
             appearances("\(preset.kind)-two-lines", [preset.kind, preset.title, "--detail", preset.detail])
@@ -25,33 +26,24 @@ struct SnapshotTests {
     }
 
     @Test func sizes() throws {
-        try assertSnapshots(["compact", "large"].flatMap { size in
-            appearances("ok-\(size)-two-lines", ["ok", "Build finished", "--detail", "drip: 42 tests passed in 3.1s",
-                                                  "--size", size])
+        try assertSnapshots(["compact", "large"].map { size in
+            Snapshot(name: "ok-\(size)-two-lines", arguments: ["ok", "Build finished", "--detail",
+                                                                "drip: 42 tests passed in 3.1s", "--size", size])
         })
-    }
-
-    /// Long text: the title wraps to two lines and the detail to three, in a card
-    /// no wider than 640 points.
-    @Test func longTextWrapsWithin640Points() throws {
-        let long = String(repeating: "A very long title that keeps going ", count: 9)
-        try assertSnapshots(appearances("long-text", ["fail", long, "--detail", long]))
     }
 
     /// A title wider than the island's text column used to keep the island from showing at all; each
     /// line now gets its own layer, fitted to it. These references guard the layout only, not the
     /// live panel.
-    @Test func longTextAtTheNotch() throws {
+    @Test func longText() throws {
         let word = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
         let spaced = String(repeating: "A very long title that keeps going ", count: 3)
-        try assertSnapshots([
-            Snapshot(name: "notch-long-text", arguments: ["ok", word, "--detail", spaced, "--position", "notch"]),
-        ])
+        try assertSnapshots([Snapshot(name: "long-text", arguments: ["ok", word, "--detail", spaced])])
     }
 
     /// Titles wrap to two lines and details to three, the last ending in an ellipsis when the text
     /// runs on: in Latin, Japanese (which breaks between characters) and right-to-left text (which
-    /// hugs the right edge), in the panel and at the notch, and in the middle of the notch's exit.
+    /// hugs the right edge), beside a button, and in the middle of the exit.
     @Test func wrapping() throws {
         let latinDetail: String = "drip: every suite ran on macOS 13, 14 and 15; the slowest was the snapshot suite "
             + "at 2m 41s, and nothing flaked"
@@ -66,100 +58,72 @@ struct SnapshotTests {
             + "اختبارات اللقطات بدقيقتين وإحدى وأربعين ثانية"
         let rightToLeft = ["warn", "הבנייה הלילית הסתיימה: כל הבדיקות עברו בהצלחה ודוח הכיסוי מוכן לעיון",
                            "--detail", arabicDetail]
-        let notch = ["--position", "notch"]
-        try assertSnapshots(
-            appearances("wrap", latin)
-            + [
-                Snapshot(name: "wrap-terminal", arguments: latin + ["--style", "terminal"]),
-                Snapshot(name: "wrap-cjk-light", arguments: japanese),
-                Snapshot(name: "wrap-rtl-light", arguments: rightToLeft),
-                Snapshot(name: "notch-wrap", arguments: latin + notch),
-                Snapshot(name: "notch-wrap-cjk", arguments: japanese + notch),
-                Snapshot(name: "notch-wrap-rtl", arguments: rightToLeft + notch),
-                Snapshot(name: "notch-wrap-button", arguments: latin + notch + ["--open", "https://example.com",
-                                                                                 "--button", "View the coverage"]),
-                // The tall capsule gathering back into a drop.
-                Snapshot(name: "notch-wrap-leaving", arguments: latin + notch + ["--at", "0.12", "--leaving"]),
-            ])
+        try assertSnapshots([
+            Snapshot(name: "wrap", arguments: latin),
+            Snapshot(name: "wrap-cjk", arguments: japanese),
+            Snapshot(name: "wrap-rtl", arguments: rightToLeft),
+            Snapshot(name: "wrap-button", arguments: latin + ["--open", "https://example.com",
+                                                              "--button", "View the coverage"]),
+            // The tall capsule gathering back into a drop.
+            Snapshot(name: "wrap-leaving", arguments: latin + ["--at", "0.12", "--leaving"]),
+        ])
     }
 
     @Test func customIconAndColor() throws {
-        try assertSnapshots(appearances(
-            "custom-icon-color", ["shipped", "--icon", "paperplane.fill", "--color", "#a78bfa"]))
+        try assertSnapshots([
+            Snapshot(name: "custom-icon-color", arguments: ["shipped", "--icon", "paperplane.fill", "--color", "#a78bfa"]),
+        ])
     }
 
     @Test func scripts() throws {
         try assertSnapshots([
-            Snapshot(name: "scripts-light", arguments: ["info", "ビルド完了 🎉", "--detail", "שלום עולם: مرحبا بالعالم"]),
+            Snapshot(name: "scripts", arguments: ["info", "ビルド完了 🎉", "--detail", "שלום עולם: مرحبا بالعالم"]),
         ])
     }
 
-    @Test func styles() throws {
-        let two = ["--detail", "drip: 42 tests passed in 3.1s"]
-        try assertSnapshots(
-            appearances("glass", ["ok", "Build finished", "--style", "glass"] + two)
-            + Self.presets.map { preset in
-                Snapshot(name: "wash-\(preset.kind)", arguments: [preset.kind, preset.title, "--detail", preset.detail,
-                                                                 "--style", "wash"])
-            }
-            + ["ok", "fail"].map { kind in
-                Snapshot(name: "terminal-\(kind)", arguments: [kind, "Build finished", "--style", "terminal"] + two)
-            })
-    }
-
-    @Test func notch() throws {
-        let card = ["ok", "Build finished", "--detail", "drip: 42 tests passed in 3.1s", "--position", "notch"]
+    @Test func motion() throws {
+        let card = ["ok", "Build finished", "--detail", "drip: 42 tests passed in 3.1s"]
         try assertSnapshots([
-            Snapshot(name: "notch", arguments: card),
             // Mid-entrance: the drop hanging on its neck; mid-exit: the drop merging back into the notch.
-            Snapshot(name: "notch-falling", arguments: card + ["--at", "0.2"]),
-            Snapshot(name: "notch-merging", arguments: card + ["--at", "0.34", "--leaving"]),
+            Snapshot(name: "falling", arguments: card + ["--at", "0.2"]),
+            Snapshot(name: "merging", arguments: card + ["--at", "0.34", "--leaving"]),
         ])
     }
 
     /// An agent's card: its app's own icon, never tinted, or its bundled mark, with the state in the
-    /// ring at the notch. Terminal is on every Mac.
+    /// ring. Terminal is on every Mac.
     @Test func agentIcons() throws {
         let asking = ["ask", "my-app needs you", "--detail", "Claude needs your permission to use Bash"]
         let done = ["ok", "my-app is done", "--detail", "All 246 tests pass. Pushed fix/notch."]
-        let app = ["--icon", "app:com.apple.Terminal"], notch = ["--position", "notch"]
+        let app = ["--icon", "app:com.apple.Terminal"]
         try assertSnapshots([
-            Snapshot(name: "notch-ask", arguments: asking + notch),
-            Snapshot(name: "notch-ask-app", arguments: asking + app + notch),
-            Snapshot(name: "notch-ok-app", arguments: done + app + notch),
-            Snapshot(name: "notch-ask-no-app", arguments: asking + ["--icon", "terminal.fill"] + notch),
-            Snapshot(name: "notch-ask-mark-claude", arguments: asking + ["--icon", "mark:claude"] + notch),
-            Snapshot(name: "notch-ask-mark-codex", arguments: asking + ["--icon", "mark:codex"] + notch),
-            Snapshot(name: "notch-ask-mark-gemini", arguments: asking + ["--icon", "mark:gemini"] + notch),
-            Snapshot(name: "notch-ok-mark-claude", arguments: done + ["--icon", "mark:claude"] + notch),
-            Snapshot(name: "notch-ask-image", arguments: asking + notch + [
+            Snapshot(name: "ask", arguments: asking),
+            Snapshot(name: "ask-app", arguments: asking + app),
+            Snapshot(name: "ok-app", arguments: done + app),
+            Snapshot(name: "ask-no-app", arguments: asking + ["--icon", "terminal.fill"]),
+            Snapshot(name: "ask-mark-claude", arguments: asking + ["--icon", "mark:claude"]),
+            Snapshot(name: "ask-mark-codex", arguments: asking + ["--icon", "mark:codex"]),
+            Snapshot(name: "ask-mark-gemini", arguments: asking + ["--icon", "mark:gemini"]),
+            Snapshot(name: "ok-mark-claude", arguments: done + ["--icon", "mark:claude"]),
+            Snapshot(name: "ask-image", arguments: asking + [
                 "--icon", "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns",
             ]),
-        ] + appearances("ask-app-hud", asking + app + ["--style", "hud"])
-            + appearances("ask-mark-hud", asking + ["--icon", "mark:codex", "--style", "hud"]))
-    }
-
-    @Test func buttons() throws {
-        let card = ["ok", "Deploy finished", "--detail", "api · 2m 14s", "--open", "https://example.com",
-                    "--button", "View run"]
-        try assertSnapshots(appearances("button-hud", card + ["--style", "hud"]) + [
-            Snapshot(name: "button-wash-fail", arguments: ["fail", "Tests failed", "--detail", "3 of 142 · auth",
-                                                           "--open", "/tmp/test.log", "--button", "Open log",
-                                                           "--style", "wash"]),
-            Snapshot(name: "button-terminal", arguments: card + ["--style", "terminal"]),
-            Snapshot(name: "button-default-label-light", arguments: ["ok", "Build passed", "--open", "https://example.com"]),
-            Snapshot(name: "notch-button", arguments: card + ["--position", "notch"]),
         ])
     }
 
-    /// A question with a no button left of its yes button; at the notch, with no icon or mark.
+    @Test func buttons() throws {
+        try assertSnapshots([
+            Snapshot(name: "button", arguments: ["ok", "Deploy finished", "--detail", "api · 2m 14s",
+                                                 "--open", "https://example.com", "--button", "View run"]),
+            Snapshot(name: "button-default-label", arguments: ["ok", "Build passed", "--open", "https://example.com"]),
+        ])
+    }
+
+    /// A question with a no button left of its yes button, with no icon or mark.
     @Test func yesAndNo() throws {
-        let question = ["ask", "Merge drip #23?", "--detail", "my-app · checks green, 1 approval",
-                        "--yes", "Merge", "--no", "Later"]
-        try assertSnapshots(appearances("yes-no-hud", question + ["--style", "hud"]) + [
-            Snapshot(name: "yes-no-wash", arguments: question + ["--style", "wash"]),
-            Snapshot(name: "yes-no-terminal", arguments: question + ["--style", "terminal"]),
-            Snapshot(name: "notch-yes-no", arguments: question + ["--position", "notch"]),
+        try assertSnapshots([
+            Snapshot(name: "yes-no", arguments: ["ask", "Merge drip #23?", "--detail", "my-app · checks green, 1 approval",
+                                                 "--yes", "Merge", "--no", "Later"]),
         ])
     }
 
@@ -172,8 +136,7 @@ struct SnapshotTests {
     ]
 }
 
-/// One rendering to compare: a reference name and the arguments after `drip __render`. Without
-/// `--position` it renders at the bottom, so card references do not follow the default position.
+/// One rendering to compare: a reference name and the arguments after `drip __render`.
 struct Snapshot {
     var name: String
     var arguments: [String]
@@ -256,8 +219,7 @@ private func render(
 
     let process = Process()
     process.executableURL = drip
-    let position = arguments.contains("--position") ? [] : ["--position", "bottom"]
-    process.arguments = ["__render", "--out", output.path] + position + arguments
+    process.arguments = ["__render", "--out", output.path] + arguments
     process.environment = environment
     let errors = Pipe()
     process.standardError = errors

@@ -51,7 +51,7 @@ icon  = "paperplane.fill"
 color = "#a78bfa"
 sound = "Submarine"
 TOML
-unset DRIP_SECONDS DRIP_POSITION DRIP_SIZE DRIP_SOUND DRIP_STYLE DRIP_MOTION
+unset DRIP_SECONDS DRIP_SIZE DRIP_SOUND DRIP_MOTION
 for kind in ok warn fail info deploy; do
     echo "Showing the $kind card"
     XDG_CONFIG_HOME="$config" .build/release/drip "$kind" "drip $kind" --detail "mac-check: the $kind preset"

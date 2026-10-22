@@ -25,7 +25,6 @@ drip run --open "$CI_URL" --button "View run" ./deploy.sh
 drip warn "staging is ready" --confirm "Promote" && ./promote.sh
 drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23
 drip ask "my-app needs you" --icon app:com.openai.chat
-drip ok "shipped" --position top --style glass
 drip info "deploying" --id deploy && drip ok "deployed" --id deploy
 drip setup claude             # Claude Code's hooks: which project needs you, and why
 drip demo                     # a few cards dropping from the notch, chained then pushed
@@ -120,7 +119,7 @@ you, and a check in a ring when it is done.
 
 **drip hook** is what the hooks run: `drip hook claude`, `drip hook codex` or `drip hook gemini`,
 with the hook's JSON on stdin, or as an argument, as Codex's older `notify` passes it. Card options
-such as `--icon`, `--position` or `--seconds` work as usual, as in
+such as `--icon` or `--seconds` work as usual, as in
 `drip hook claude --icon ~/.config/drip/claude.png`. A payload it does not know prints an error.
 Any failure, from a usage error to a payload it cannot read, an invalid config or no GUI session,
 exits 1: Claude Code and Codex read exit 2 as "block", and Gemini CLI reads any code but 0
@@ -243,8 +242,6 @@ exits 2, or 1 for `drip hook`.
 | `--sound NAME\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. Unknown names print a warning and play nothing. | the preset's |
 | `--icon SYMBOL\|PATH\|app:ID\|mark:NAME\|none` | An SF Symbol name; a path to an image, such as a `.png`, `.pdf` or `.icns` file, drawn as it is; `app:` and an app's bundle identifier, such as `app:com.openai.chat`, for that app's own icon; or `mark:claude`, `mark:codex` or `mark:gemini` for an agent's mark that drip bundles. An icon that cannot load falls back to the preset's with a warning. See [Icons](#icons). | the preset's |
 | `--color HEX\|NAME` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
-| `--position bottom\|center\|top\|notch` | Where the card sits. `notch` grows it out of the camera notch, or out of the middle of the top edge on a screen without one. | `notch` |
-| `--style hud\|glass\|wash\|terminal` | How the card is drawn away from the notch; a notch card is always black. See [Styles](#styles). | `glass` on macOS 26, `hud` before |
 | `--open URL\|PATH` | Adds a button that opens a URL or a file, a relative path from the directory drip runs in; see [Buttons](#buttons). Empty, as `--open "$CI_URL"` without a URL, it adds no button and warns. | none |
 | `--button LABEL` | The `--open` button's label, up to 24 characters. | `Open` |
 | `--yes LABEL` | Asks a question with a yes button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if no button was. See [Buttons](#buttons). | none |
@@ -256,8 +253,8 @@ exits 2, or 1 for `drip hook`.
 | `--quiet` | Never print warnings. | off |
 
 The size and the motion are settings rather than flags: `size` (`compact`, `regular` or `large`,
-scaling fonts, icon and padding by 0.85, 1.0 or 1.25) and `motion` (`full` plays each style's
-entrance and exit, `subtle` only fades, `none` neither; Reduce Motion in System Settings caps it at
+scaling fonts, icon and padding by 0.85, 1.0 or 1.25) and `motion` (`full` drops the card out of
+the notch on its springs and takes it back in, `subtle` only fades, `none` neither; Reduce Motion in System Settings caps it at
 `subtle`) in the [config](#config), or `DRIP_SIZE` and `DRIP_MOTION`.
 
 | Preset | Icon | Color | Sound |
@@ -306,8 +303,7 @@ A relative image path is taken from the directory drip runs in, or, in the confi
 config file's directory. An app's icon comes from the app installed on your Mac.
 
 **Agent marks.** For a coding agent with no app installed, drip bundles three marks, drawn as
-vectors in their own colours, so they are sharp at every size: bare on the island's black at the
-notch, and on a neutral disc on a card elsewhere, which may be light. `mark:claude`,
+vectors in their own colours, so they are sharp at every size, bare on the island's black. `mark:claude`,
 Claude's spark from [Anthropic's press kit](https://www.anthropic.com/press-kit); `mark:codex`,
 OpenAI's Blossom from [OpenAI's brand page](https://openai.com/brand/); and `mark:gemini`, Gemini's
 spark in its colours from [LobeHub's icons](https://lobehub.com/icons/gemini) (MIT, see
@@ -324,18 +320,17 @@ a dash goes after `--`: `drip fail -- "$line"`.
 sequences, such as the colors of piped output, other control characters and the bidi controls are
 dropped. The title and the detail have no length limit, and the history keeps up to 16,384
 characters of each, ending in an ellipsis when cut. The card is never wider than 640 points. Text
-too wide for it wraps, at every position: the title to at most two lines and the detail to at most
+too wide for it wraps: the title to at most two lines and the detail to at most
 three, breaking between words, between Japanese or Chinese characters, or inside a word too long
 for a line. When text is still left over, the last line ends in an ellipsis. The card stays up for
 `--seconds` however many lines it has.
 
 **drip demo** drops four cards from the notch one after another, stacking the way queued cards do
-(see [Styles](#styles)): ok, ask, fail, then an info card with an Open
+(see [At the notch](#at-the-notch)): ok, ask, fail, then an info card with an Open
 button that opens drip's GitHub page. It plays them twice, chained and then pushed; `drip demo
 chain` or `drip demo push` plays only that one, whatever `stack` or `DRIP_STACK` says. Each stays two
 seconds unless `--seconds`, `DRIP_SECONDS` or the config's `seconds` say otherwise, and each plays
-its preset's sound, as a real card would; `--sound none` mutes them. Every card is a notch card, so `--position` and
-`--style` do not apply. `--id` is ignored, so no card replaces another. Other options apply to
+its preset's sound, as a real card would; `--sound none` mutes them. `--id` is ignored, so no card replaces another. Other options apply to
 every card, and `--open` or `--button` replace the last card's button.
 
 **Returning at once.** drip checks everything first (flags, config, stdin, sounds and icons), so a
@@ -352,8 +347,7 @@ springs to its new size, the text that changed crossfades, a new state's colour 
 old one as its icon pops in, its sound plays, and its time starts again. When the ring carries the
 state and the icon stays, such as an agent's, the icon stays still and the state pops in the ring. With reduced motion the
 size changes at once and only the crossfade remains; with motion `none` it all changes at once. A card that asks a question (`--yes`)
-never changes in place, and neither does one that would sit somewhere else
-(another `--position`); the newer card then waits its turn. A question replaced before it showed
+never changes in place; the newer card then waits its turn. A question replaced before it showed
 exits 5.
 
 ### Clicks
@@ -394,7 +388,7 @@ writes each setting the way its flag takes it, and leaves out `detail`, `button`
 `activate` when the card had none:
 
 ```json
-{"card":{"button":"View run","color":"red","detail":"api 1.4.2","icon":"xmark.circle.fill","id":"deploy","kind":"fail","motion":"full","open":"https://example.com/run/1","position":"notch","seconds":8,"size":"regular","sound":"Basso","style":"glass","title":"deploy failed"},"missed":true,"time":"2026-10-18T13:02:41Z"}
+{"card":{"button":"View run","color":"red","detail":"api 1.4.2","icon":"xmark.circle.fill","id":"deploy","kind":"fail","motion":"full","open":"https://example.com/run/1","seconds":8,"size":"regular","sound":"Basso","title":"deploy failed"},"missed":true,"time":"2026-10-18T13:02:41Z"}
 ```
 
 `--replay` shows the cards again, in order, with any button that opens something; a question's button is
@@ -404,17 +398,17 @@ locked like any other, and are not added to the history again.
 ### Buttons
 
 `--open` adds a button that opens a URL or a file, such as a CI run, a pull request or a log.
-`--button` names it. Hovering over the card holds it; moving away gives it another 1.5 seconds. At
-the notch, the button stands where the countdown ring would be. A click on the button opens the target and takes the card
+`--button` names it. Hovering over the card holds it; moving away gives it another 1.5 seconds. The
+button stands where the countdown ring would be. A click on the button opens the target and takes the card
 away; a click anywhere else on the card brings the sending app forward (see [Clicks](#clicks)) and
 takes the card away. Clicking the button never takes focus from the app you are in.
 
 `--yes` asks a question instead: the card has a button with that label and opens nothing, and drip
 waits, then exits 0 if the button was clicked. `--no` adds a quieter button to its left that
-answers no: drip exits 1 when it is clicked. At the notch, drip exits as soon as a button is
+answers no: drip exits 1 when it is clicked. drip exits as soon as a button is
 clicked, while the card is still on its way out, so the command after it starts at once; a
 background drip plays the card's exit, and any cards stacked with it, on from where they are.
-Elsewhere, or with reduced motion, the card goes at once, with no exit, and drip exits with it. With either, drip exits 5 when
+With reduced motion, the card goes at once, with no exit, and drip exits with it. With either, drip exits 5 when
 no button was clicked: the card timed out, a newer card with the same `--id` replaced it, or it was
 clicked away from its buttons. 0 and 1 read as yes and no, so the script decides what happens:
 
@@ -423,8 +417,8 @@ drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later 
 drip warn "staging is ready" -d "api 1.4.2" --confirm "Promote" --seconds 10 && ./promote.sh
 ```
 
-At the notch the buttons stand where the ring would be, the yes button in the card's colour,
-darkened as for the `wash` style, and the no button in white at 15 %. drip never takes focus, so the
+The buttons stand where the ring would be, the yes button in the card's colour, darkened just
+enough that white text on it reaches WCAG AA contrast (4.5:1), and the no button in white at 15 %. drip never takes focus, so the
 keyboard answers nothing; VoiceOver offers each button as an action of the card. `--confirm` is
 another spelling of `--yes`. Before 0.2, `--button` without `--open` still asks as `--confirm`
 does, with a warning.
@@ -441,7 +435,7 @@ Builds and tests, with how long they took:
 
 ```sh
 drip run make test
-drip run --position notch npm run build
+drip run npm run build
 ```
 
 A deploy that links to its run, and a backup:
@@ -460,24 +454,16 @@ drip info "pulled $(git log -1 --format='%h %s')"
 
 Coding agents have [a section of their own](#coding-agents).
 
-### Styles
+### At the notch
 
-| Style | Look |
-| --- | --- |
-| `hud` | The dark HUD material with a hairline in the accent color. |
-| `glass` | The system glass, faintly tinted with the accent. Needs macOS 26; earlier versions draw `hud`. |
-| `wash` | The whole card in the accent color, as a gradient, darkened just enough that the white text reaches WCAG AA contrast (4.5:1) for any color. A `fail` card shakes once. |
-| `terminal` | A solid dark card with an accent stripe, the kind in small capitals above the title, and monospaced text. No icon. |
-
-At `--position notch` the card is drawn as one black shape with the notch whatever `--style` says,
-with a countdown ring draining over `--seconds` (with motion `full`; buttons, or a card's waiting dot, take its place).
-Styles apply at the other positions. A drop forms under the notch, stretches on a neck, breaks free
+Every card is drawn as one black shape with the notch, with a countdown ring draining over
+`--seconds` (with motion `full`; buttons, or a card's waiting dot, take its place). A drop forms under the notch, stretches on a neck, breaks free
 and widens into a capsule just below the menu bar. It leaves the same way, pulled back up into the
 notch. A card whose text wraps grows into a taller capsule with rounded corners. On a screen without
 a notch the drop forms above the screen and oozes out of the middle of its top edge instead, and
 goes back into it the same way.
 
-**Several cards at once.** Notch cards that come in while one is showing stack below it, up to 3 at
+**Several cards at once.** Cards that come in while one is showing stack below it, up to 3 at
 a time (`stack_max` in the [config](#config), or `DRIP_STACK_MAX`, 1 to 6); the rest wait their
 turn. How they stack is `stack` in the config, or `DRIP_STACK`. With `chain`, the default, each new
 card drops out of the bottom of the last one and the oldest goes back into the notch first, the
@@ -512,19 +498,14 @@ optional, and a missing file is fine.
 
 ```toml
 seconds   = 4.5
-position  = "notch"           # bottom | center | top | notch
 size      = "regular"         # compact | regular | large
 sound     = true              # a sound for every preset, such as "Hero"; false or "none" mutes them
-style     = "glass"           # hud | glass | wash | terminal (default: glass on macOS 26, hud before)
 motion    = "full"            # full | subtle | none
-stack     = "chain"           # chain | push | off: how notch cards stack
-stack_max = 3                 # most notch cards on screen at once, 1 to 6
+stack     = "chain"           # chain | push | off: how cards stack
+stack_max = 3                 # most cards on screen at once, 1 to 6
 
 [preset.ok]                  # override a built-in preset, any subset of keys
 sound = "Hero"
-
-[preset.fail]
-style = "wash"               # away from the notch, a preset can have its own style: failures shout
 
 [preset.deploy]              # a custom preset: drip deploy "shipped"
 icon  = "paperplane.fill"
@@ -536,10 +517,9 @@ seconds = 6
 icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this file's directory
 ```
 
-Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_POSITION`,
-`DRIP_SIZE`, `DRIP_SOUND`, `DRIP_STYLE`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`;
-`DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
-environment exits 2. A preset's own `seconds`, `style` and `sound` beat the top-level ones, except
+Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
+`DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`; `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
+environment exits 2. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
 name kept for them: `run`, `hook`, `demo`, `history`, `show`, `help`, `version`, `setup`,
@@ -547,6 +527,13 @@ name kept for them: `run`, `hook`, `demo`, `history`, `show`, `help`, `version`,
 `listen` or `test`. A custom preset never waits,
 and its ring at the notch shows no state's mark. Unknown keys print a warning;
 wrong types exit 4.
+
+**Retired settings.** drip used to show cards at the bottom, center or top of the screen too, drawn
+as `hud`, `glass`, `wash` or `terminal`. Every card is a notch card now, but drip still takes
+`--position` and `--style`, the `position` and `style` keys and a preset's `style`, and
+`DRIP_POSITION` and `DRIP_STYLE`, whatever their value, so old scripts and configs keep working.
+They do nothing, and each prints a warning, except a position of `notch`, which is what drip does
+anyway.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
 of one or two keys such as `[preset.ok]`, and values that are single-line strings, decimal
@@ -564,8 +551,8 @@ scripts/demo-gif.sh   # redraws docs/demo.gif; needs ImageMagick
 
 `swift test` runs the DripCore unit tests anywhere Swift runs, including Linux CI. The snapshot
 tests render cards with the hidden `drip __render --out card.png` command and compare them with the
-PNGs in `Tests/Snapshots`; they run on macOS and skip cards that have no reference yet. For a notch
-card, `__render --at 0.2` draws its entrance 0.2 seconds in, to check a motion frame by frame.
+PNGs in `Tests/Snapshots`; they run on macOS and skip cards that have no reference yet.
+`__render --at 0.2` draws a card's entrance 0.2 seconds in, to check a motion frame by frame.
 `__render` also takes `--size` and `--motion`, which the other commands take only from the config
 or the environment.
 

@@ -5,9 +5,14 @@ import WASILibc
 import Foundation
 #endif
 
-// A card at `position = notch` is drawn as one black shape that grows out of the camera notch.
-// Coordinates here are in points with x = 0 at the notch's center and y growing down from the
-// top of the screen.
+// A card is drawn as one black shape that grows out of the camera notch. Coordinates here are in
+// points with x = 0 at the notch's center and y growing down from the top of the screen.
+
+/// Numbers every card shares.
+public enum CardMetrics {
+    /// The widest a card gets, in points.
+    public static let maxWidth: Double = 640
+}
 
 /// The sizes an island is built from.
 public struct IslandMetrics: Equatable, Sendable {
@@ -32,7 +37,7 @@ public struct IslandMetrics: Equatable, Sendable {
     public init(
         notchWidth: Double, notchHeight: Double, scale: Double = 1, textWidth: Double, textHeight: Double,
         titleLines: Int = 1, detailLines: Int = 1, hasIcon: Bool = true, actionWidth: Double = 0,
-        declineWidth: Double = 0, widestPill: Double = Double(CardMetrics.maxWidth)
+        declineWidth: Double = 0, widestPill: Double = CardMetrics.maxWidth
     ) {
         self.notchWidth = notchWidth
         self.notchHeight = notchHeight

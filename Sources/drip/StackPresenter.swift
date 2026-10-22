@@ -85,23 +85,18 @@ final class StackPresenter: CardPresenting {
     /// The longest `lead`, so a very slow sample never holds a change back for long.
     private static let maximumLead = 0.5
 
-    /// A stack for `card` and the notch cards that follow it in `rest`, which it takes; nil when
-    /// stacking is off, the card is not for the notch, or motion is reduced. `settings` given
-    /// replace those of `stack` and `DRIP_STACK`.
+    /// A stack for `card` and the cards that follow it in `rest`, which it takes; nil when stacking
+    /// is off or motion is reduced. `settings` given replace those of `stack` and `DRIP_STACK`.
     static func make(
         for card: Card, rest: inout ArraySlice<Card>, adopting: Bool, settings: StackSettings?,
         console: Console
     ) -> StackPresenter? {
         guard let settings = settings ?? StackSettings.current(environment: ProcessInfo.processInfo.environment),
-              card.position == .notch,
               CardPresenters.motion(for: card) == .full,
               let screen = CardPresenters.targetScreen()
         else { return nil }
-        var cards = [card]
-        while let next = rest.first, next.position == .notch {
-            cards.append(next)
-            rest.removeFirst()
-        }
+        let cards = [card] + rest
+        rest.removeAll()
         return StackPresenter(
             cards: cards, settings: settings, notch: NotchGeometry.island(on: screen), adopting: adopting,
             console: console)

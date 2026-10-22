@@ -46,10 +46,11 @@ final class HistoryTests {
         #expect(history.entries().map(\.card) == [agent])
         #expect(HistoryListing.replay(history.entries()[0]).waits)
 
-        // A line from before cards could wait or show pictures.
+        // A line from before cards could wait or show pictures, and every card showed at the notch: its
+        // position and style are left out.
         let older = #"{"kind":"warn","title":"t","icon":{"symbol":{"_0":"exclamationmark.circle.fill"}},"#
             + #""fallbackIcon":{"symbol":{"_0":"exclamationmark.circle.fill"}},"color":{"system":{"_0":"orange"}},"#
-            + #""sound":{"named":{"_0":"Purr"}},"seconds":4.5,"position":"notch","size":"regular","style":"hud","#
+            + #""sound":{"named":{"_0":"Purr"}},"seconds":4.5,"position":"bottom","size":"regular","style":"wash","#
             + #""motion":"full"}"#
         let decoded = try JSONDecoder().decode(Card.self, from: Data(older.utf8))
         #expect(decoded.waitLimit == nil && decoded.icon == .symbol("exclamationmark.circle.fill"))
@@ -77,8 +78,8 @@ final class HistoryTests {
         let entry = HistoryEntry(time: Date(timeIntervalSince1970: 1_800_000_000), missed: true, card: deploy)
         #expect(try HistoryListing.publicJSON(entry) == ##"{"card":{"button":"View run","color":"#a78bfa","##
             + ##""detail":"api 1.4.2","icon":"paperplane.fill","id":"deploy","kind":"deploy","motion":"full","##
-            + ##""open":"https://example.com/run/1","position":"notch","seconds":4.5,"size":"regular","##
-            + ##""sound":"/tmp/ding.aiff","style":"hud","title":"deployed"},"missed":true,"##
+            + ##""open":"https://example.com/run/1","seconds":4.5,"size":"regular","##
+            + ##""sound":"/tmp/ding.aiff","title":"deployed"},"missed":true,"##
             + ##""time":"2027-01-15T08:00:00Z"}"##)
         let quiet = HistoryEntry(time: entry.time, missed: false, card: card("ok", kind: "ok"))
         #expect(try HistoryListing.publicJSON(quiet).contains(#""color":"green""#))

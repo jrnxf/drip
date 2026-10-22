@@ -11,28 +11,21 @@ public struct PresetOverride: Equatable {
     public var color: CardColor?
     public var sound: Sound?
     public var seconds: Double?
-    public var style: CardStyle?
 
-    public init(
-        icon: Icon? = nil, color: CardColor? = nil, sound: Sound? = nil, seconds: Double? = nil,
-        style: CardStyle? = nil
-    ) {
+    public init(icon: Icon? = nil, color: CardColor? = nil, sound: Sound? = nil, seconds: Double? = nil) {
         self.icon = icon
         self.color = color
         self.sound = sound
         self.seconds = seconds
-        self.style = style
     }
 }
 
 /// The settings from config.toml; nil where the file does not set a key.
 public struct Config: Equatable {
     public var seconds: Double?
-    public var position: Position?
     public var size: CardSize?
     /// The sound of every preset that sets none of its own; `none` mutes every preset.
     public var sound: Sound?
-    public var style: CardStyle?
     public var motion: Motion?
     /// How notch cards stack, or off.
     public var stack: StackSettings.Choice?
@@ -42,15 +35,12 @@ public struct Config: Equatable {
     public var presets: [String: PresetOverride]
 
     public init(
-        seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Sound? = nil,
-        style: CardStyle? = nil, motion: Motion? = nil, stack: StackSettings.Choice? = nil, stackMax: Int? = nil,
-        presets: [String: PresetOverride] = [:]
+        seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
+        stack: StackSettings.Choice? = nil, stackMax: Int? = nil, presets: [String: PresetOverride] = [:]
     ) {
         self.seconds = seconds
-        self.position = position
         self.size = size
         self.sound = sound
-        self.style = style
         self.motion = motion
         self.stack = stack
         self.stackMax = stackMax
@@ -71,7 +61,6 @@ public struct Config: Equatable {
             preset.color = change.color ?? preset.color
             preset.sound = change.sound ?? preset.sound
             preset.seconds = change.seconds ?? preset.seconds
-            preset.style = change.style ?? preset.style
             return preset
         }
     }
@@ -97,7 +86,7 @@ public struct ConfigError: Error, Equatable, CustomStringConvertible {
     }
 }
 
-/// A loaded config and the warnings it produced, such as unknown keys.
+/// A loaded config and the warnings it produced, such as unknown keys and retired ones.
 public struct ConfigFile: Equatable {
     public var config: Config
     public var warnings: [String]
@@ -146,7 +135,8 @@ public enum ConfigLoader {
         return try parse(text, path: path)
     }
 
-    /// Parses config.toml. Unknown keys are warnings; wrong types and invalid values are errors.
+    /// Parses config.toml. Unknown and retired keys are warnings; wrong types and invalid values are
+    /// errors.
     public static func parse(_ text: String, path: String) throws -> ConfigFile {
         var reader = ConfigReader(path: path)
         let table: TOMLTable
@@ -174,10 +164,9 @@ private struct ConfigReader {
             guard let item = table[key] else { continue }
             switch key {
             case "seconds": config.seconds = try seconds(item, key: key)
-            case "position": config.position = try choice(item, key: key, Position.self)
+            case "position", "style": warnRetired(item, key: key)
             case "size": config.size = try choice(item, key: key, CardSize.self)
             case "sound": config.sound = try sound(item, key: key)
-            case "style": config.style = try choice(item, key: key, CardStyle.self)
             case "motion": config.motion = try choice(item, key: key, Motion.self)
             case "stack": config.stack = try choice(item, key: key, StackSettings.Choice.self)
             case "stack_max":
@@ -248,7 +237,7 @@ private struct ConfigReader {
             case "seconds":
                 preset.seconds = try seconds(item, key: key)
             case "style":
-                preset.style = try choice(item, key: key, CardStyle.self)
+                warnRetired(item, key: key)
             default:
                 warnUnknown(key, line: item.line)
             }
@@ -321,6 +310,15 @@ private struct ConfigReader {
         warnings.append("\(path):\(line): unknown key '\(key)'")
     }
 
+    /// A key drip no longer reads, whatever its value, as old configs still set it.
+    private mutating func warnRetired(_ item: TOMLItem, key: String) {
+        var value: String?
+        if case let .string(text) = item.value { value = text }
+        if let warning = RetiredSetting.warning(for: key, value: value, named: "'\(key)'") {
+            warnings.append("\(path):\(item.line): \(warning)")
+        }
+    }
+
     private static func list(_ items: [String]) -> String {
         ChoiceList.or(items)
     }
@@ -338,10 +336,8 @@ public enum ChoiceList {
 /// The DRIP_* environment variables, which override the config file.
 public struct EnvironmentSettings: Equatable {
     public var seconds: Double?
-    public var position: Position?
     public var size: CardSize?
     public var sound: Sound?
-    public var style: CardStyle?
     public var motion: Motion?
     /// How notch cards stack, or off.
     public var stack: StackSettings.Choice?
@@ -349,27 +345,26 @@ public struct EnvironmentSettings: Equatable {
     public var stackMax: Int?
     /// The bundle identifier of the app drip was run from, from `__CFBundleIdentifier`.
     public var sender: String?
+    /// What to warn about: retired variables that are set, such as DRIP_STYLE.
+    public var warnings: [String] = []
 
     public init(
-        seconds: Double? = nil, position: Position? = nil, size: CardSize? = nil, sound: Sound? = nil,
-        style: CardStyle? = nil, motion: Motion? = nil, stack: StackSettings.Choice? = nil, stackMax: Int? = nil,
-        sender: String? = nil
+        seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
+        stack: StackSettings.Choice? = nil, stackMax: Int? = nil, sender: String? = nil
     ) {
         self.sender = sender
         self.stack = stack
         self.stackMax = stackMax
         self.seconds = seconds
-        self.position = position
         self.size = size
         self.sound = sound
-        self.style = style
         self.motion = motion
     }
 
-    /// Reads DRIP_SECONDS, DRIP_POSITION, DRIP_SIZE, DRIP_SOUND, DRIP_STYLE, DRIP_MOTION, DRIP_STACK
-    /// and DRIP_STACK_MAX. Empty values are ignored; invalid ones are usage errors. Also notes the
-    /// app drip was run from, from `__CFBundleIdentifier`, ignoring a value that is not a bundle
-    /// identifier.
+    /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK and DRIP_STACK_MAX. Empty
+    /// values are ignored; invalid ones are usage errors. DRIP_POSITION and DRIP_STYLE are retired:
+    /// any value but notch for DRIP_POSITION is a warning. Also notes the app drip was run from,
+    /// from `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
         func value(_ name: String) -> String? {
             environment[name].flatMap { $0.isEmpty ? nil : $0 }
@@ -388,9 +383,7 @@ public struct EnvironmentSettings: Equatable {
             }
             return choice
         }
-        position = try choice("DRIP_POSITION", Position.self)
         size = try choice("DRIP_SIZE", CardSize.self)
-        style = try choice("DRIP_STYLE", CardStyle.self)
         motion = try choice("DRIP_MOTION", Motion.self)
         stack = try choice("DRIP_STACK", StackSettings.Choice.self)
         if let text = value("DRIP_STACK_MAX") {
@@ -401,5 +394,23 @@ public struct EnvironmentSettings: Equatable {
         }
         sound = value("DRIP_SOUND").map(Sound.init(parsing:))
         sender = CardActivation.sender(in: environment)
+        for (name, key) in [("DRIP_POSITION", "position"), ("DRIP_STYLE", "style")] {
+            guard let text = value(name) else { continue }
+            if let warning = RetiredSetting.warning(for: key, value: text, named: name) { warnings.append(warning) }
+        }
+    }
+}
+
+/// Settings from before every card was a notch card: `position`, which could put a card at the
+/// bottom, center or top of the screen, and `style`, which drew it as hud, glass, wash or terminal
+/// there. Old configs, scripts and environments still set them, so drip takes any value, warns and
+/// goes on.
+public enum RetiredSetting {
+    /// The warning for the retired setting `key`, `position` or `style`, set to `value` (nil for a
+    /// value that is not text) where it is called `name`, such as `--style` or `DRIP_POSITION`. Nil
+    /// for `position` set to `notch`, which asks for what drip does anyway.
+    public static func warning(for key: String, value: String?, named name: String) -> String? {
+        if key == "position", value == "notch" { return nil }
+        return "\(name) does nothing: every card shows at the notch"
     }
 }

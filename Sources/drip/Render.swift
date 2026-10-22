@@ -13,9 +13,7 @@ extension HUDDisplay {
         }
         var png: Data?
         nsAppearance.performAsCurrentDrawingAppearance {
-            png = card.position == .notch
-                ? IslandRenderer.png(for: card, at: time, leaving: leaving, console: console)
-                : CardRenderer.png(for: card, appearance: nsAppearance, console: console)
+            png = IslandRenderer.png(for: card, at: time, leaving: leaving, console: console)
         }
         guard let png else {
             console.error("cannot render the card")
@@ -50,79 +48,7 @@ private func bitmap(size: NSSize) -> NSBitmapImageRep? {
     return bitmap
 }
 
-/// Draws a card offscreen. The content view (icon and labels) is the one the panel shows; only the
-/// window server can draw materials and glass, so the renderer paints the card's backdrop itself
-/// from the same description: the window background in place of a material, and the gradients,
-/// fills, stripes and hairlines as they are.
-enum CardRenderer {
-    static func png(for card: Card, appearance: NSAppearance, console: Console) -> Data? {
-        let built = CardViewBuilder.make(for: card, appearance: appearance, offscreen: true, console: console)
-        // Render the content in the appearance the panel would give it.
-        built.content.appearance = built.root.appearance ?? appearance
-        let bounds = NSRect(origin: .zero, size: built.size)
-        guard let content = bitmap(size: bounds.size),
-              let output = bitmap(size: bounds.size),
-              let context = NSGraphicsContext(bitmapImageRep: output)
-        else { return nil }
-        built.content.cacheDisplay(in: bounds, to: content)
-
-        NSGraphicsContext.saveGraphicsState()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        NSGraphicsContext.current = context
-        (built.root.appearance ?? appearance).performAsCurrentDrawingAppearance {
-            let radius = built.cornerRadius
-            let shape = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
-            shape.addClip()
-            paint(built.backdrop, in: bounds, shape: shape)
-            _ = content.draw(
-                in: bounds, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
-            stroke(built.backdrop, in: bounds, radius: radius)
-        }
-        context.flushGraphics()
-        return output.representation(using: .png, properties: [:])
-    }
-
-    private static func paint(_ backdrop: CardBackdrop, in bounds: NSRect, shape: NSBezierPath) {
-        switch backdrop {
-        case .material:
-            NSColor.windowBackgroundColor.setFill()
-            shape.fill()
-        case let .glass(tint):
-            // A stand-in for the glass: the window background with the faint tint glass gives it.
-            NSColor.windowBackgroundColor.setFill()
-            shape.fill()
-            tint.withAlphaComponent(0.12).setFill()
-            shape.fill()
-        case let .gradient(top, bottom):
-            NSGradient(starting: top, ending: bottom)?.draw(in: shape, angle: -45)
-        case let .solid(fill, _, stripe, stripeWidth):
-            fill.setFill()
-            shape.fill()
-            stripe.setFill()
-            NSRect(x: 0, y: 0, width: stripeWidth, height: bounds.height).fill()
-        }
-    }
-
-    /// A layer border lies inside the bounds and follows the rounded corners.
-    private static func stroke(_ backdrop: CardBackdrop, in bounds: NSRect, radius: CGFloat) {
-        let color: NSColor
-        switch backdrop {
-        case let .material(border): color = border.withAlphaComponent(CardMetrics.borderAlpha)
-        case .glass: color = NSColor.white.withAlphaComponent(0.35)
-        case .gradient: return
-        case let .solid(_, border, _, _): color = border
-        }
-        let width = CardMetrics.borderWidth
-        let inset = width / 2
-        let border = NSBezierPath(
-            roundedRect: bounds.insetBy(dx: inset, dy: inset), xRadius: radius - inset, yRadius: radius - inset)
-        border.lineWidth = width
-        color.setStroke()
-        border.stroke()
-    }
-}
-
-/// Draws a notch card fully open, as it hangs from a 185 by 32 point notch (a 14-inch MacBook Pro),
+/// Draws a card fully open, as it hangs from a 185 by 32 point notch (a 14-inch MacBook Pro),
 /// over a strip of menu bar so the shape's edges show.
 enum IslandRenderer {
     static let notch = NotchGeometry(width: 185, height: 32)

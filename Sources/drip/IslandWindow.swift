@@ -89,7 +89,7 @@ final class IslandLayers {
         let sizeScale = CGFloat(card.size.scale)
         let accent = card.color.nsColor
         let image = card.showsIconAtNotch
-            ? CardViewBuilder.icon(for: card, pointSize: 28 * sizeScale, onBlack: true, console: console) : nil
+            ? CardIcon(card: card, pointSize: 28 * sizeScale, console: console) : nil
         func label(_ text: String) -> NSAttributedString {
             NSAttributedString(string: text, attributes: [
                 .font: NSFont.systemFont(ofSize: 12.5 * sizeScale, weight: .semibold),
@@ -184,7 +184,7 @@ final class IslandLayers {
         if let yesLabel, let buttonsWidth {
             ring.bounds = CGRect(x: 0, y: 0, width: buttonsWidth, height: 26 * sizeScale)
             let rgb = accent.rgb(in: NSAppearance(named: .aqua) ?? .currentDrawing())
-            let yes = NSColor(WashPalette(accent: rgb).top)
+            let yes = NSColor(ButtonPalette(accent: rgb).fill)
             var x: CGFloat = 0
             if let noLabel {
                 // White at 15 %: a quiet no beside the yes in the state's colour.
@@ -192,7 +192,7 @@ final class IslandLayers {
                 makeButton(.no, noLabel, x: x, width: width(noLabel), fill: no, hover: NSColor(white: 1, alpha: 0.25), scale: scale)
                 x += width(noLabel) + CGFloat(IslandMetrics.buttonGap) * sizeScale
             }
-            // Lightened on hover as much as the button on a card away from the notch.
+            // Lightened a little on hover.
             makeButton(
                 .yes, yesLabel, x: x, width: width(yesLabel), fill: yes,
                 hover: yes.blended(withFraction: 0.12, of: .white) ?? yes, scale: scale)

@@ -55,7 +55,7 @@ struct SpringTests {
     }
 }
 
-struct WashPaletteTests {
+struct ButtonPaletteTests {
     private let accents: [SRGBColor] = [
         SRGBColor(red: 0.204, green: 0.78, blue: 0.349), // systemGreen
         SRGBColor(red: 1, green: 0.584, blue: 0), // systemOrange
@@ -68,17 +68,15 @@ struct WashPaletteTests {
 
     @Test func whiteTextReadsOnEveryAccent() {
         for accent in accents {
-            let palette = WashPalette(accent: accent)
-            #expect(SRGBColor.white.contrast(with: palette.top) >= WashPalette.minimumContrast, "\(accent)")
-            #expect(WashPalette.detailColor(on: palette.top).contrast(with: palette.top) >= WashPalette.minimumContrast,
-                    "\(accent)")
-            #expect(palette.bottom.luminance < palette.top.luminance)
+            let fill = ButtonPalette(accent: accent).fill
+            #expect(SRGBColor.white.contrast(with: fill) >= ButtonPalette.minimumContrast, "\(accent)")
+            #expect(ButtonPalette.faintText(on: fill).contrast(with: fill) >= ButtonPalette.minimumContrast, "\(accent)")
         }
     }
 
     @Test func darkAccentsAreBarelyDarkened() {
         let navy = SRGBColor(red: 0.1, green: 0.1, blue: 0.3)
-        #expect(WashPalette(accent: navy).top == navy.mixed(with: .black, 0.12))
+        #expect(ButtonPalette(accent: navy).fill == navy.mixed(with: .black, 0.12))
     }
 
     @Test func contrastMatchesWCAG() {
@@ -486,29 +484,5 @@ struct DropletOutlineTests {
             }
         }
         #expect(loops.allSatisfy { area($0) < 0 })
-    }
-}
-
-struct TerminalLayoutTests {
-    @Test func theEyebrowSitsAboveTheTitleAndTheStripeInsetsTheText() throws {
-        let metrics = CardMetrics(size: .regular)
-        let plain = CardLayout(
-            metrics: metrics, titleSize: CGSize(width: 120, height: 17), detailSize: CGSize(width: 90, height: 15),
-            hasIcon: false)
-        let terminal = CardLayout(
-            metrics: metrics, titleSize: CGSize(width: 120, height: 17), detailSize: CGSize(width: 90, height: 15),
-            hasIcon: false, eyebrowSize: CGSize(width: 20, height: 13), leadingInset: 4)
-        #expect(plain.eyebrowFrame == nil)
-        let eyebrow = try #require(terminal.eyebrowFrame)
-        #expect(eyebrow.minY == terminal.titleFrame.maxY + metrics.detailSpacing)
-        #expect(terminal.titleFrame.minX == plain.titleFrame.minX + 4)
-        #expect(terminal.size.width == plain.size.width + 4)
-        #expect(terminal.size.height > plain.size.height)
-        #expect(eyebrow.maxY <= terminal.size.height - metrics.verticalPadding + 1)
-    }
-
-    @Test func everyStyleHasItsOwnCorners() {
-        #expect(CardStyle.hud.cornerRadius == CardMetrics.cornerRadius)
-        #expect(Set(CardStyle.allCases.map(\.cornerRadius)).count == CardStyle.allCases.count)
     }
 }

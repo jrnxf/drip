@@ -4,38 +4,6 @@
 #if os(WASI)
 import FoundationEssentials
 
-public typealias CGFloat = Double
-
-public struct CGPoint: Equatable, Sendable {
-    public var x: CGFloat
-    public var y: CGFloat
-    public init(x: CGFloat, y: CGFloat) { self.x = x; self.y = y }
-}
-
-public struct CGSize: Equatable, Sendable {
-    public var width: CGFloat
-    public var height: CGFloat
-    public init(width: CGFloat, height: CGFloat) { self.width = width; self.height = height }
-    public static let zero = CGSize(width: 0, height: 0)
-}
-
-public struct CGRect: Equatable, Sendable {
-    public var origin: CGPoint
-    public var size: CGSize
-    public init(origin: CGPoint, size: CGSize) { self.origin = origin; self.size = size }
-    public init(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
-        self.init(origin: CGPoint(x: x, y: y), size: CGSize(width: width, height: height))
-    }
-    public var width: CGFloat { size.width }
-    public var height: CGFloat { size.height }
-    public var minX: CGFloat { origin.x }
-    public var minY: CGFloat { origin.y }
-    public var maxX: CGFloat { origin.x + size.width }
-    public var maxY: CGFloat { origin.y + size.height }
-    public var midX: CGFloat { origin.x + size.width / 2 }
-    public var midY: CGFloat { origin.y + size.height / 2 }
-}
-
 /// Only the sets DripCore trims.
 struct CharacterSet: Sendable {
     let contains: @Sendable (Character) -> Bool

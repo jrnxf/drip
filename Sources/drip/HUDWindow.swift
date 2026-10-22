@@ -5,11 +5,6 @@ import QuartzCore
 
 /// Shows cards in borderless, non-activating panels.
 struct HUDDisplay: CardDisplay {
-    var automaticStyle: CardStyle {
-        GlassSupport.isAvailable ? .glass : .hud
-    }
-
-
     /// Shows the cards one after another and returns once the last has gone.
     func show(_ cards: [Card], locked: LockedScreen, stack settings: StackSettings?, console: Console) -> Int32 {
         // Without a GUI session, touching NSApplication can abort or hang, so check first.
@@ -54,7 +49,11 @@ struct HUDDisplay: CardDisplay {
             }
             // Shown alone, a card with more of this drip's cards after it does not keep them waiting.
             if !remaining.isEmpty { card.waitLimit = nil }
-            let presenter = CardPresenters.make(for: card, console: console)
+            guard let presenter = CardPresenters.make(for: card, console: console) else {
+                console.error("no GUI session: no screen to show the card on")
+                failed = true
+                return next()
+            }
             let watch = ReplacementWatch(presenter: presenter, card: card)
             // The presenter keeps itself alive through the timers and animations it schedules.
             presenter.start { ok in
@@ -213,40 +212,6 @@ struct HUDDisplay: CardDisplay {
     }
 }
 
-/// Covers a clickable card to hold it while hovered and to dismiss it on a click off the button.
-final class HoverView: NSView {
-    var onEnter: (() -> Void)?
-    var onExit: (() -> Void)?
-    var onClick: (() -> Void)?
-    /// Get their own clicks; everything else on the card is this view's.
-    var buttons: [NSView] = []
-
-    /// `pointerInside` is for a pointer already on the card, so its leaving still sends `onExit`.
-    init(frame: NSRect, pointerInside: Bool = false) {
-        super.init(frame: frame)
-        var options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
-        if pointerInside { options.insert(.assumeInside) }
-        addTrackingArea(NSTrackingArea(rect: .zero, options: options, owner: self))
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        if let superview, let button = buttons.first(where: { $0.convert($0.bounds, to: superview).contains(point) }) {
-            return button
-        }
-        return super.hitTest(point)
-    }
-
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseEntered(with event: NSEvent) { onEnter?() }
-    override func mouseExited(with event: NSEvent) { onExit?() }
-    override func mouseUp(with event: NSEvent) { onClick?() }
-}
-
 /// Shows one card and reports when it is gone.
 protocol CardPresenting: AnyObject {
     /// Calls `onFinish` once the card has gone, with false when there was no screen for it.
@@ -309,13 +274,11 @@ final class ReplacementWatch {
 }
 
 enum CardPresenters {
-    /// An island when the card asks for the notch: from the notch, or from the top edge of a screen
-    /// without one. A panel otherwise.
-    static func make(for card: Card, console: Console) -> CardPresenting {
-        if card.position == .notch, let screen = targetScreen() {
-            return IslandPresenter(card: card, notch: NotchGeometry.island(on: screen), console: console)
-        }
-        return CardPresenter(card: card, console: console)
+    /// The card's island, grown out of the notch of the screen with the pointer, or out of the
+    /// middle of its top edge on a screen without one. Nil when there is no screen.
+    static func make(for card: Card, console: Console) -> CardPresenting? {
+        guard let screen = targetScreen() else { return nil }
+        return IslandPresenter(card: card, notch: NotchGeometry.island(on: screen), console: console)
     }
 
     /// The screen with the pointer, falling back to the main screen.
@@ -390,228 +353,6 @@ final class CardSound {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [self] in
             waitUntilDone(then: finish)
         }
-    }
-}
-
-/// Brings one card in, holds it, takes it out, and lets its sound finish.
-///
-/// With `motion = full` the card rises 10 points into place from the edge it sits on while it fades
-/// in, and drifts back 6 points as it fades out; a `wash` card for `fail` shakes once.
-final class CardPresenter: CardPresenting {
-    private var card: Card
-    private let console: Console
-    private var panel: NSPanel?
-    private var sound: CardSound?
-    private var frame = NSRect.zero
-    private var travel: CGFloat = 0
-    private var motionAmount = Motion.full
-    private var onFinish: ((Bool) -> Void)?
-    /// The pending exit; hovering cancels it and leaving schedules a shorter one.
-    private var departure: DispatchWorkItem?
-    private var leaving = false
-    /// Set once the entrance has finished.
-    private var entered = false
-    private var hover: HoverView?
-    /// Whether the card still waits for you rather than counting down.
-    private var waiting = false
-    private var hovering = false
-
-    init(card: Card, console: Console) {
-        self.card = card
-        self.console = console
-    }
-
-    func start(onFinish: @escaping (Bool) -> Void) {
-        guard let screen = CardPresenters.targetScreen() else {
-            console.error("no GUI session: no screen to show the card on")
-            onFinish(false)
-            return
-        }
-        let built = CardViewBuilder.make(for: card, appearance: nil, console: console)
-        let origin = CardLayout.origin(for: built.size, in: screen.visibleFrame, position: card.position)
-        let frame = NSRect(origin: origin, size: built.size)
-        let panel = NSPanel(
-            contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.level = .statusBar
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.ignoresMouseEvents = !card.isClickable
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = false
-        panel.animationBehavior = .none
-        panel.contentView = built.root
-        self.panel = panel
-        self.frame = frame
-
-        let motion = CardPresenters.motion(for: card)
-        // Rise from the edge the card sits on; a centered card rises from below.
-        let travel: CGFloat = card.position == .top || card.position == .notch ? 1 : -1
-        panel.alphaValue = motion == .none ? 1 : 0
-        if motion == .full { panel.setFrameOrigin(NSPoint(x: frame.minX, y: frame.minY + travel * 10)) }
-        // Never makeKey or activate: the frontmost app keeps focus.
-        panel.orderFrontRegardless()
-        panel.invalidateShadow()
-        sound = CardSound(card.sound, console: console)
-        sound?.play()
-        CardPresenters.announce(card)
-
-        self.travel = travel
-        motionAmount = motion
-        self.onFinish = onFinish
-        handleClicks(on: built)
-        waiting = card.waits
-        enter(frame: frame, motion: motion) { [self] in
-            entered = true
-            if !hovering { schedule(after: waiting ? card.duration : card.seconds) }
-        }
-    }
-
-    var canReplace: Bool { entered && !leaving }
-
-    func replace(with card: Card) {
-        guard canReplace, let panel, let screen = panel.screen ?? CardPresenters.targetScreen() else { return }
-        self.card = card
-        let built = CardViewBuilder.make(for: card, appearance: nil, console: console)
-        let origin = CardLayout.origin(for: built.size, in: screen.visibleFrame, position: card.position)
-        frame = NSRect(origin: origin, size: built.size)
-        hover = nil
-        panel.contentView = built.root
-        panel.setFrame(frame, display: true)
-        panel.ignoresMouseEvents = !card.isClickable
-        panel.invalidateShadow()
-        let held = card.isClickable && NSMouseInRect(NSEvent.mouseLocation, frame, false)
-        handleClicks(on: built, pointerInside: held)
-        sound = CardSound(card.sound, console: console)
-        sound?.play()
-        CardPresenters.announce(card)
-        waiting = card.waits
-        hovering = held
-        if held {
-            departure?.cancel()
-        } else {
-            schedule(after: card.duration)
-        }
-    }
-
-    func stopWaiting() {
-        guard waiting, !leaving else { return }
-        waiting = false
-        if entered, !hovering { schedule(after: card.seconds) }
-    }
-
-    /// For a clickable card: hovering anywhere on it holds it, a click on a button answers with it,
-    /// and a click anywhere else brings the sending app forward and dismisses the card.
-    private func handleClicks(on built: CardContent, pointerInside: Bool = false) {
-        guard card.isClickable else { return }
-        if let action = card.action {
-            for (button, answer) in [(built.button, CardAnswer.yes), (built.decline, .no)] {
-                button?.onClick = { [self] in
-                    guard !leaving else { return }
-                    CardActions.answer(answer, to: action, console: console)
-                    if card.asksQuestion { answered() } else { leave(clicked: true) }
-                }
-            }
-        }
-        let hover = HoverView(frame: NSRect(origin: .zero, size: frame.size), pointerInside: pointerInside)
-        hover.onEnter = { [self] in
-            hovering = true
-            departure?.cancel()
-        }
-        hover.onExit = { [self] in
-            hovering = false
-            // A card that waits for you goes on waiting; any other gets a moment more.
-            schedule(after: waiting ? card.duration : 1.5)
-        }
-        hover.onClick = { [self] in
-            if let target = card.activate { CardActions.activate(target, console: console) }
-            leave(clicked: false)
-        }
-        hover.buttons = built.buttons
-        built.root.addSubview(hover, positioned: .above, relativeTo: nil)
-        self.hover = hover
-    }
-
-    private func schedule(after seconds: Double) {
-        departure?.cancel()
-        let work = DispatchWorkItem { [self] in leave(clicked: false) }
-        departure = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
-    }
-
-    /// Takes an answered question's card away at once, with no exit and without waiting for its
-    /// sound, so drip exits with the answer in the moment it is given.
-    private func answered() {
-        guard !leaving else { return }
-        leaving = true
-        departure?.cancel()
-        panel?.orderOut(nil)
-        let done = onFinish
-        onFinish = nil
-        done?(true)
-    }
-
-    private func leave(clicked: Bool) {
-        guard !leaving else { return }
-        leaving = true
-        departure?.cancel()
-        if card.action != nil, !clicked { CardActions.missed = true }
-        panel?.ignoresMouseEvents = true
-        exit(frame: frame, travel: travel, motion: motionAmount) { [self] in
-            panel?.orderOut(nil)
-            sound?.waitUntilDone { [self] in onFinish?(true) }
-        }
-    }
-
-    private func enter(frame: NSRect, motion: Motion, completion: @escaping () -> Void) {
-        guard let panel else { return }
-        switch motion {
-        case .none:
-            completion()
-        case .subtle:
-            animate(duration: 0.15, { panel.animator().alphaValue = 1 }, completion: completion)
-        case .full:
-            animate(duration: 0.35, {
-                panel.animator().alphaValue = 1
-                panel.animator().setFrame(frame, display: true)
-            }) { [self] in
-                if card.style == .wash, card.kind == Preset.fail.name {
-                    shake(frame: frame, offsets: [-8, 7, -5, 3, 0], completion: completion)
-                } else {
-                    completion()
-                }
-            }
-        }
-    }
-
-    private func exit(frame: NSRect, travel: CGFloat, motion: Motion, completion: @escaping () -> Void) {
-        guard let panel else { return }
-        switch motion {
-        case .none:
-            completion()
-        case .subtle:
-            animate(duration: 0.25, { panel.animator().alphaValue = 0 }, completion: completion)
-        case .full:
-            let away = frame.offsetBy(dx: 0, dy: travel * 6)
-            animate(duration: 0.2, {
-                panel.animator().alphaValue = 0
-                panel.animator().setFrame(away, display: true)
-            }, completion: completion)
-        }
-    }
-
-    /// The wrong-password shake: quick steps through `offsets`, in points from the resting frame.
-    private func shake(frame: NSRect, offsets: [CGFloat], completion: @escaping () -> Void) {
-        guard let panel, let offset = offsets.first else { return completion() }
-        animate(duration: 0.07, { panel.animator().setFrame(frame.offsetBy(dx: offset, dy: 0), display: true) }) {
-            [self] in
-            shake(frame: frame, offsets: Array(offsets.dropFirst()), completion: completion)
-        }
-    }
-
-    private func animate(duration: TimeInterval, _ changes: () -> Void, completion: (() -> Void)? = nil) {
-        CardPresenters.animate(duration: duration, changes, then: completion)
     }
 }
 #endif

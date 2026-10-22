@@ -59,14 +59,13 @@ struct ResolveTests {
         #expect(card.sound == .named("Purr"))
         #expect(card.icon == .symbol("exclamationmark.circle.fill"))
         #expect(card.color == .system(.orange))
-        #expect(card.position == .notch)
         #expect(card.size == .regular)
     }
 
     @Test func flagsOverrideThePreset() throws {
         let flags = CardFlags(
             detail: "d", seconds: 8, sound: .named("Hero"), icon: .symbol("paperplane.fill"),
-            color: .rgb(red: 1, green: 2, blue: 3), position: .top, size: .large)
+            color: .rgb(red: 1, green: 2, blue: 3), size: .large)
         let card = try resolver.resolve(kind: "fail", title: "hi", flags: flags)
         #expect(card.detail == "d")
         #expect(card.seconds == 8)
@@ -74,7 +73,6 @@ struct ResolveTests {
         #expect(card.icon == .symbol("paperplane.fill"))
         #expect(card.fallbackIcon == .symbol("xmark.circle.fill"))
         #expect(card.color == .rgb(red: 1, green: 2, blue: 3))
-        #expect(card.position == .top)
         #expect(card.size == .large)
     }
 

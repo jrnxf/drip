@@ -14,7 +14,6 @@ struct ConfigTests {
         let file = try ConfigLoader.parse("""
             # every key optional
             seconds  = 4.5
-            position = "bottom"          # bottom | center | top
             size     = "regular"         # compact | regular | large
             sound    = true              # false mutes every preset
 
@@ -29,7 +28,7 @@ struct ConfigTests {
             """, path: path)
         #expect(file.warnings == [])
         #expect(file.config == Config(
-            seconds: 4.5, position: .bottom, size: .regular,
+            seconds: 4.5, size: .regular,
             presets: [
                 "ok": PresetOverride(sound: .named("Hero")),
                 "deploy": PresetOverride(
@@ -113,7 +112,7 @@ struct ConfigTests {
 
     @Test func wrongTypesNameTheKeyAndLine() {
         assertError("seconds = \"4\"", line: 1, key: "seconds", message: "expected a number, got a string")
-        assertError("\nposition = 1", line: 2, key: "position", message: "expected a string, got an integer")
+        assertError("\nmotion = 1", line: 2, key: "motion", message: "expected a string, got an integer")
         assertError("size = true", line: 1, key: "size", message: "expected a string, got a boolean")
         assertError("sound = 1", line: 1, key: "sound", message: "expected a sound name, a path, \"none\" or false, got an integer")
         assertError("preset = 1", line: 1, key: "preset", message: "expected a table, got an integer")
@@ -128,13 +127,8 @@ struct ConfigTests {
     @Test func invalidValuesNameTheKeyAndLine() {
         assertError("seconds = 0.4", line: 1, key: "seconds", message: "must be between 0.5 and 60")
         assertError("seconds = 61", line: 1, key: "seconds", message: "must be between 0.5 and 60")
-        assertError("position = \"left\"", line: 1, key: "position",
-                    message: "expected bottom, center, top or notch, got 'left'")
         assertError("size = \"huge\"", line: 1, key: "size", message: "expected compact, regular or large, got 'huge'")
-        assertError("style = \"neon\"", line: 1, key: "style", message: "expected hud, glass, wash or terminal, got 'neon'")
         assertError("motion = \"lots\"", line: 1, key: "motion", message: "expected full, subtle or none, got 'lots'")
-        assertError("[preset.fail]\nstyle = \"neon\"", line: 2, key: "preset.fail.style",
-                    message: "expected hud, glass, wash or terminal, got 'neon'")
         assertError("[preset.demo]\nicon = \"x\"", line: 1, key: "preset.demo",
                     message: "'demo' is kept for drip's own commands; give the preset another name")
         assertError("stack = \"stacked\"", line: 1, key: "stack", message: "expected chain, push or off, got 'stacked'")
@@ -172,7 +166,7 @@ struct ConfigTests {
     }
 
     @Test func syntaxErrorsNameTheLine() {
-        assertError("seconds = 4.5\nposition = ", line: 2, key: nil, message: "expected a value")
+        assertError("seconds = 4.5\nsize = ", line: 2, key: nil, message: "expected a value")
         assertError("[preset.ok]\nsound = \"Hero\"\n[[preset]]", line: 3, key: nil,
                     message: "arrays of tables are not supported")
         assertError("seconds = 3\npreset.ok.icon = \"star\"", line: 2, key: nil,
@@ -232,12 +226,12 @@ struct PrecedenceTests {
     @Test func environmentSettings() throws {
         #expect(try EnvironmentSettings(environment: [:]) == EnvironmentSettings())
         #expect(try EnvironmentSettings(environment: [
-                "DRIP_SECONDS": "2", "DRIP_POSITION": "top", "DRIP_SIZE": "compact", "DRIP_SOUND": "none",
-            ]) == EnvironmentSettings(seconds: 2, position: .top, size: .compact, sound: Sound.none))
+                "DRIP_SECONDS": "2", "DRIP_SIZE": "compact", "DRIP_SOUND": "none",
+            ]) == EnvironmentSettings(seconds: 2, size: .compact, sound: Sound.none))
         #expect(try EnvironmentSettings(environment: ["DRIP_SECONDS": ""]) == EnvironmentSettings())
         #expect(try EnvironmentSettings(environment: ["DRIP_STACK": "off", "DRIP_STACK_MAX": "6"])
             == EnvironmentSettings(stack: .off, stackMax: 6))
-        for (name, value) in [("DRIP_SECONDS", "abc"), ("DRIP_SECONDS", "99"), ("DRIP_POSITION", "left"),
+        for (name, value) in [("DRIP_SECONDS", "abc"), ("DRIP_SECONDS", "99"), ("DRIP_MOTION", "lots"),
                               ("DRIP_SIZE", "huge"), ("DRIP_STACK", "psuh"), ("DRIP_STACK", "Push"),
                               ("DRIP_STACK_MAX", "0"), ("DRIP_STACK_MAX", "7"), ("DRIP_STACK_MAX", "2.5"),
                               ("DRIP_STACK_MAX", "many")] {
@@ -249,16 +243,14 @@ struct PrecedenceTests {
     @Test func defaultsWhenNothingIsSet() throws {
         let card = try CardResolver().resolve(kind: "ok", title: "t", flags: CardFlags())
         #expect(card.seconds == 4.5)
-        #expect(card.position == .notch)
         #expect(card.size == .regular)
         #expect(card.sound == .named("Glass"))
     }
 
     @Test func configBeatsDefaults() throws {
-        let config = Config(seconds: 3, position: .center, size: .large)
+        let config = Config(seconds: 3, size: .large)
         let card = try CardResolver(config: config).resolve(kind: "ok", title: "t", flags: CardFlags())
         #expect(card.seconds == 3)
-        #expect(card.position == .center)
         #expect(card.size == .large)
     }
 
@@ -270,23 +262,21 @@ struct PrecedenceTests {
     }
 
     @Test func environmentBeatsConfig() throws {
-        let config = Config(seconds: 3, position: .center, size: .large, presets: ["ok": PresetOverride(seconds: 9)])
-        let environment = EnvironmentSettings(seconds: 2, position: .top, size: .compact, sound: .named("Ping"))
+        let config = Config(seconds: 3, size: .large, presets: ["ok": PresetOverride(seconds: 9)])
+        let environment = EnvironmentSettings(seconds: 2, size: .compact, sound: .named("Ping"))
         let card = try CardResolver(config: config, environment: environment)
             .resolve(kind: "ok", title: "t", flags: CardFlags())
         #expect(card.seconds == 2)
-        #expect(card.position == .top)
         #expect(card.size == .compact)
         #expect(card.sound == .named("Ping"))
     }
 
     @Test func flagsBeatEnvironment() throws {
-        let environment = EnvironmentSettings(seconds: 2, position: .top, size: .compact, sound: Sound.none)
-        let flags = CardFlags(seconds: 7, sound: .named("Hero"), position: .bottom, size: .regular)
+        let environment = EnvironmentSettings(seconds: 2, size: .compact, sound: Sound.none)
+        let flags = CardFlags(seconds: 7, sound: .named("Hero"), size: .regular)
         let card = try CardResolver(config: Config(seconds: 3), environment: environment)
             .resolve(kind: "ok", title: "t", flags: flags)
         #expect(card.seconds == 7)
-        #expect(card.position == .bottom)
         #expect(card.size == .regular)
         #expect(card.sound == .named("Hero"))
     }

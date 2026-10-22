@@ -112,27 +112,9 @@ public enum Sound: Equatable, Sendable, Codable {
     }
 }
 
-/// Where the card sits on the screen. `notch` grows the card out of the camera notch, or out of the
-/// middle of the top edge on a screen without one.
-public enum Position: String, CaseIterable, Sendable, Codable {
-    case bottom, center, top, notch
-}
-
-/// How the card is drawn.
-public enum CardStyle: String, CaseIterable, Sendable, Codable {
-    /// The dark HUD material with an accent hairline.
-    case hud
-    /// The system glass on macOS 26; `hud` on earlier versions.
-    case glass
-    /// The whole card in the accent color, darkened until white text is readable on it.
-    case wash
-    /// A solid dark card with an accent stripe and monospaced text.
-    case terminal
-}
-
 /// How much a card moves. Reduce Motion in System Settings caps this at `subtle`.
 public enum Motion: String, CaseIterable, Sendable, Codable {
-    /// Each style's own entrance and exit.
+    /// The drop out of the notch, on its springs.
     case full
     /// Fades only.
     case subtle
@@ -158,14 +140,13 @@ public enum CardSize: String, CaseIterable, Sendable, Codable {
     }
 }
 
-/// A named bundle of icon, color, sound and optionally a visible time and a style.
+/// A named bundle of icon, color, sound and optionally a visible time.
 public struct Preset: Equatable, Sendable {
     public var name: String
     public var icon: Icon
     public var color: CardColor
     public var sound: Sound
     public var seconds: Double?
-    public var style: CardStyle?
     /// Whether its cards wait for you instead of counting down, unless a time is set for them.
     public var waits: Bool
     /// The SF Symbol of the state's mark alone, without its disc, which the ring at the notch shows
@@ -173,15 +154,14 @@ public struct Preset: Equatable, Sendable {
     public var glyph: String?
 
     public init(
-        name: String, icon: Icon, color: CardColor, sound: Sound, seconds: Double? = nil, style: CardStyle? = nil,
-        waits: Bool = false, glyph: String? = nil
+        name: String, icon: Icon, color: CardColor, sound: Sound, seconds: Double? = nil, waits: Bool = false,
+        glyph: String? = nil
     ) {
         self.name = name
         self.icon = icon
         self.color = color
         self.sound = sound
         self.seconds = seconds
-        self.style = style
         self.waits = waits
         self.glyph = glyph
     }
@@ -220,10 +200,7 @@ public enum Defaults {
     /// The most notch cards on screen at once.
     public static let stackMax = 3
     public static let stackMaxRange: ClosedRange<Int> = 1...6
-    public static let position = Position.notch
     public static let size = CardSize.regular
-    /// The style when nothing sets one and the display has no better default.
-    public static let style = CardStyle.hud
     public static let motion = Motion.full
     /// The longest `drip run` title, in characters: only the command is cut, so the outcome after
     /// it always shows inside the title's lines.
@@ -274,9 +251,7 @@ public struct Card: Equatable, Sendable, Codable {
     public var color: CardColor
     public var sound: Sound
     public var seconds: Double
-    public var position: Position
     public var size: CardSize
-    public var style: CardStyle
     public var motion: Motion
     /// A button on the card; nil for none.
     public var action: CardAction?
@@ -299,9 +274,7 @@ public struct Card: Equatable, Sendable, Codable {
         color: CardColor,
         sound: Sound,
         seconds: Double = Defaults.seconds,
-        position: Position = Defaults.position,
         size: CardSize = Defaults.size,
-        style: CardStyle = Defaults.style,
         motion: Motion = Defaults.motion
     ) {
         self.kind = kind
@@ -312,9 +285,7 @@ public struct Card: Equatable, Sendable, Codable {
         self.color = color
         self.sound = sound
         self.seconds = seconds
-        self.position = position
         self.size = size
-        self.style = style
         self.motion = motion
     }
 
@@ -384,8 +355,7 @@ public struct Card: Equatable, Sendable, Codable {
             icon: preset.icon,
             color: preset.color,
             sound: preset.sound,
-            seconds: preset.seconds ?? Defaults.seconds,
-            style: preset.style ?? Defaults.style
+            seconds: preset.seconds ?? Defaults.seconds
         )
         if preset.waits, preset.seconds == nil { waitLimit = Defaults.waitLimit }
     }
