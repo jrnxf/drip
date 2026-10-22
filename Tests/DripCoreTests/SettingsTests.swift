@@ -52,8 +52,9 @@ struct RemovedSettingTests {
             (["run", "--style", "wash", "ls"], "drip run --help", ExitStatus.usage),
             (["hook", "claude", "--position", "top"], "drip hook --help", ExitStatus.hookFailed),
             (["hook", "claude", "--style", "hud"], "drip hook --help", ExitStatus.hookFailed),
-            (["demo", "--position", "bottom"], "drip demo --help", ExitStatus.usage),
-            (["demo", "--style", "glass"], "drip demo --help", ExitStatus.usage),
+            // With no stack given, demo would take the value as its stack and name that instead.
+            (["demo", "chain", "--position", "bottom"], "drip demo --help", ExitStatus.usage),
+            (["demo", "push", "--style", "glass"], "drip demo --help", ExitStatus.usage),
         ]
         for (arguments, help, expected) in commands {
             guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
