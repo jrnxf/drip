@@ -433,7 +433,7 @@ final class StackPresenter: CardPresenting {
                 return
             }
         }
-        guard let card = stack.nextOwn(at: time) else { return }
+        guard let card = stack.nextOwn() else { return }
         if CardQueue.isReplaced(card) { return }
         enter(card, own: true)
     }

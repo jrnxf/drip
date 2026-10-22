@@ -137,7 +137,7 @@ struct Island {
 /// The cards come in `deliveries`, shown one after another as the app shows them: each with its
 /// `stack` settings, or none when the cards show one at a time. `adopting` says whether the stack
 /// takes in later commands' cards while it shows, as the background drip does, and as a drip that
-/// waits for its question's answer does while the question shows; `drip demo` does not.
+/// waits for its question's answer does while the question shows.
 /// `adoptable` says whether a stack showing may take these cards in: not a question's, nor those of
 /// a drip that waits for them.
 @_expose(wasm, "drip_command")
@@ -189,7 +189,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         ]
         // As the app: a stack only for cards with full motion.
         if let stack, let first = cards.first, first.motion == .full {
-            delivery["stack"] = ["mode": stack.mode.rawValue, "max": stack.max, "pauses": stack.pauses] as [String: Any]
+            delivery["stack"] = ["mode": stack.mode.rawValue, "max": stack.max] as [String: Any]
         }
         return delivery
     }
@@ -233,21 +233,6 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
                 command: command.command, status: Int32(run["status"] ?? 0), seconds: run["seconds"] ?? 0,
                 flags: command.options.flags)
             return cards([card], wait: command.options.flags.wait, extra: ["status": Int32(run["status"] ?? 0)])
-        } catch { return failure(error) }
-    case let .invocation(.demo(command)):
-        warnings += command.options.warnings
-        var flags = command.options.flags
-        // Short, unless a flag or the config says otherwise.
-        if flags.seconds == nil, resolver.config.seconds == nil { flags.seconds = 2 }
-        do {
-            let cards = try DemoCommand.cards(resolver, flags: flags)
-            // Chained, then pushed, unless the command names one; each a stack of its own cards.
-            let deliveries = command.stacks.map { mode in
-                delivery(
-                    cards, stack: DemoCommand.stack(mode, environment: environment, config: resolver.config),
-                    adopting: false, adoptable: false)
-            }
-            return send(["warnings": warnings, "deliveries": deliveries])
         } catch { return failure(error) }
     case let .invocation(.hook(command)):
         warnings += command.options.warnings
@@ -527,7 +512,7 @@ nonisolated(unsafe) var stacks: [Int32: StackSession] = [:]
 nonisolated(unsafe) var nextStack: Int32 = 1
 
 /// Starts a stack of the islands `handles`, from a delivery's settings: `{"mode": "chain", "max": 3,
-/// "pauses": [...], "adopting": true, "handles": [...]}`. Its clock starts at 0. Returns its handle.
+/// "adopting": true, "handles": [...]}`. Its clock starts at 0. Returns its handle.
 @_expose(wasm, "drip_stack_start")
 @_cdecl("drip_stack_start")
 public func dripStackStart(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Int32 {
@@ -535,8 +520,7 @@ public func dripStackStart(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> 
     let handles = (input["handles"] as? [Double] ?? []).map { Int32($0) }.filter { islands[$0] != nil }
     let settings = StackSettings(
         mode: StackSettings.Mode(rawValue: input["mode"] as? String ?? "") ?? .chain,
-        max: Int(input["max"] as? Double ?? Double(Defaults.stackMax)),
-        pauses: input["pauses"] as? [Double] ?? [])
+        max: Int(input["max"] as? Double ?? Double(Defaults.stackMax)))
     let handle = nextStack
     nextStack += 1
     stacks[handle] = StackSession(
@@ -623,7 +607,7 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer
             enter(handle, own: false)
             break admit
         }
-        if stack.nextOwn(at: time) != nil { enter(session.own.removeFirst(), own: true) }
+        if stack.nextOwn() != nil { enter(session.own.removeFirst(), own: true) }
     }
     // Later commands' cards still offered want room; cards that wait for you give way to them.
     let changes = stack.advance(to: time, elapsed: elapsed, lead: 0, needsRoom: !session.adoptable.isEmpty)

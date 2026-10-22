@@ -52,9 +52,6 @@ struct RemovedSettingTests {
             (["run", "--style", "wash", "ls"], "drip run --help", ExitStatus.usage),
             (["hook", "claude", "--position", "top"], "drip hook --help", ExitStatus.hookFailed),
             (["hook", "claude", "--style", "hud"], "drip hook --help", ExitStatus.hookFailed),
-            // With no stack given, demo would take the value as its stack and name that instead.
-            (["demo", "chain", "--position", "bottom"], "drip demo --help", ExitStatus.usage),
-            (["demo", "push", "--style", "glass"], "drip demo --help", ExitStatus.usage),
         ]
         for (arguments, help, expected) in commands {
             guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
@@ -109,64 +106,6 @@ struct CommandFlagTests {
         }
         #expect(status == ExitStatus.usage)
         #expect(message.contains("--notch"))
-    }
-
-    @Test func demoIsASubcommand() throws {
-        guard case .invocation(.demo) = CommandLineParser.parse(["demo"]) else {
-            Issue.record("demo did not parse"); return
-        }
-        guard case .exit(0, _) = CommandLineParser.parse(["demo", "--help"]) else {
-            Issue.record("demo --help did not print help"); return
-        }
-    }
-
-    @Test func demoPlaysChainThenPushUnlessOneIsNamed() throws {
-        let both = { (arguments: [String]) -> [StackSettings.Mode]? in
-            guard case let .invocation(.demo(command)) = CommandLineParser.parse(arguments) else { return nil }
-            return command.stacks
-        }
-        #expect(both(["demo"]) == [.chain, .push])
-        #expect(both(["demo", "push"]) == [.push])
-        #expect(both(["demo", "--seconds", "3", "chain"]) == [.chain])
-        guard case .exit(ExitStatus.usage, _) = CommandLineParser.parse(["demo", "off"]) else {
-            Issue.record("demo off parsed"); return
-        }
-    }
-
-    @Test func demoHoldsTheReportBackWhateverDripStackSays() {
-        let stack = DemoCommand.stack(.push, environment: ["DRIP_STACK": "off"], config: Config())
-        #expect(stack.mode == .push)
-        #expect(stack.max == 3)
-        #expect(stack.pauses == [0, 0, 0, 3])
-    }
-
-    @Test func demoDropsSeveralCards() throws {
-        let cards = try DemoCommand.cards(
-            CardResolver(), flags: CardFlags(id: "shared"))
-        #expect(cards.map(\.kind) == ["ok", "ask", "fail", "info"])
-        #expect(Set(cards.map(\.title)).count == cards.count)
-        for card in cards {
-            #expect(card.id == nil)
-            #expect(card.detail != nil)
-        }
-    }
-
-    @Test func demoEndsWithACardWithAButton() throws {
-        let cards = try DemoCommand.cards(CardResolver(), flags: CardFlags())
-        #expect(cards.dropLast().allSatisfy { $0.action == nil })
-        #expect(cards.last?.action?.label == "Open")
-        #expect(cards.last?.action?.open == "https://github.com/jrnxf/drip")
-        #expect(cards.last?.asksQuestion == false)
-    }
-
-    @Test func demoButtonFlagsApplyToEveryCard() throws {
-        let cards = try DemoCommand.cards(CardResolver(), flags: CardFlags(open: "https://example.com"))
-        #expect(cards.allSatisfy { $0.action?.open == "https://example.com" })
-    }
-
-    @Test func demoDetailReplacesEverySample() throws {
-        let cards = try DemoCommand.cards(CardResolver(), flags: CardFlags(detail: "mine"))
-        #expect(cards.allSatisfy { $0.detail == "mine" })
     }
 
     @Test func renderTakesATime() throws {

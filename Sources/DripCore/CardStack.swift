@@ -83,8 +83,6 @@ public final class CardStack {
     public private(set) var entries: [Entry] = []
     /// This drip's own cards still to drop in.
     public private(set) var waiting: [Card]
-    /// How many of this drip's own cards have dropped in, for `settings.pauses`.
-    private var admitted = 0
     private var lastEntrance = -Double.infinity
     /// While the pointer is on any card nothing moves: every countdown stops, gaps stay open and new
     /// cards wait, so a card never slides out from under a click.
@@ -160,12 +158,10 @@ public final class CardStack {
         return (entry, exit)
     }
 
-    /// This drip's next own card, taken off `waiting`, when there is room and its pause is over.
-    public func nextOwn(at time: Double) -> Card? {
-        let pause = admitted < settings.pauses.count ? settings.pauses[admitted] : 0
-        guard hasRoom, let card = waiting.first, time - lastEntrance >= pause else { return nil }
+    /// This drip's next own card, taken off `waiting`, when there is room.
+    public func nextOwn() -> Card? {
+        guard hasRoom, let card = waiting.first else { return nil }
         waiting.removeFirst()
-        admitted += 1
         return card
     }
 

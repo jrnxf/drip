@@ -129,8 +129,8 @@ struct ConfigTests {
         assertError("seconds = 61", line: 1, key: "seconds", message: "must be between 0.5 and 60")
         assertError("size = \"huge\"", line: 1, key: "size", message: "expected compact, regular or large, got 'huge'")
         assertError("motion = \"lots\"", line: 1, key: "motion", message: "expected full, subtle or none, got 'lots'")
-        assertError("[preset.demo]\nicon = \"x\"", line: 1, key: "preset.demo",
-                    message: "'demo' is kept for drip's own commands; give the preset another name")
+        assertError("[preset.history]\nicon = \"x\"", line: 1, key: "preset.history",
+                    message: "'history' is kept for drip's own commands; give the preset another name")
         assertError("stack = \"stacked\"", line: 1, key: "stack", message: "expected chain, push or off, got 'stacked'")
         assertError("[preset.ok]\nicon = \"app:\"", line: 2, key: "preset.ok.icon",
                     message: "'app:' does not name an app by its bundle identifier, such as app:com.apple.Terminal")
@@ -150,7 +150,7 @@ struct ConfigTests {
     /// `drip <name>` runs a subcommand by that name instead, so a preset cannot take the names of
     /// drip's subcommands, or of those it may have later.
     @Test func subcommandNamesAreReserved() {
-        for name in ["run", "hook", "demo", "history", "show", "help", "version", "setup", "config", "init", "install",
+        for name in ["run", "hook", "history", "show", "help", "version", "setup", "config", "init", "install",
                      "uninstall", "completion", "completions", "doctor", "mute", "pause", "resume", "listen", "test"] {
             assertError("\n[preset.\(name)]", line: 2, key: "preset.\(name)", message: "'\(name)' is kept for drip's own commands")
         }
@@ -390,11 +390,5 @@ struct StackSettingsTests {
     @Test func invalidStackSettingsAreLeftOut() {
         #expect(StackSettings.current(environment: ["DRIP_STACK": "psuh"], config: Config()) == StackSettings(mode: .chain, max: 3))
         #expect(StackSettings.current(environment: ["DRIP_STACK_MAX": "40"], config: Config(stackMax: 5))?.max == 5)
-    }
-
-    @Test func aModeGivenOverridesTheEnvironment() {
-        #expect(StackSettings.current(environment: ["DRIP_STACK": "off"], config: Config(), mode: .push)
-            == StackSettings(mode: .push, max: 3))
-        #expect(StackSettings.current(environment: ["DRIP_STACK": "push"], config: Config(), mode: .chain)?.mode == .chain)
     }
 }
