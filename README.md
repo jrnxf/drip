@@ -414,13 +414,15 @@ drip pause 30m        # minutes or hours: 30m, 2h, 1h30m, up to 24h
 drip resume           # end the pause now, and show what it held
 ```
 
-`drip pause` with a duration sets a new end, sooner or later, in place of the old one. A pause
-always ends on its own; there is no pause without an end. It is kept as its end time in
-`$XDG_STATE_HOME/drip/pause`, or `~/.local/state/drip/pause`, so it holds across drips and restarts,
-and no drip keeps running for it but the one holding the cards. While drip is paused, every drip run
-in a terminal prints a reminder to stderr, such as `drip is paused, 23m left (drip resume to
-unpause)`. A drip whose stderr is not a terminal, such as one in a script's log, and `drip hook`,
-print nothing about it, and `--quiet` keeps it quiet too. `drip demo` still plays.
+`drip pause` alone does not change a running pause: it says how long is left. To extend or shorten
+a running pause, pass a duration, such as `drip pause 1h`: it sets a new end from now, sooner or
+later, in place of the old one. A pause always ends on its own; there is no pause without an end.
+It is kept as its end time in `$XDG_STATE_HOME/drip/pause`, or `~/.local/state/drip/pause`, so it
+holds across drips and restarts, and no drip keeps running for it but the one holding the cards.
+While drip is paused, every drip run in a terminal prints a reminder to stderr, such as `drip is
+paused, 23m left (drip resume to unpause)`. A drip whose stderr is not a terminal, such as one in a
+script's log, and `drip hook`, print nothing about it, and `--quiet` keeps it quiet too. `drip demo`
+still plays.
 
 ### Buttons
 
