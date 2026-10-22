@@ -1077,7 +1077,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // The config.toml drip reads here: a deploy preset, for the PRESET key and its feature module.
 const CONFIG = `[preset.deploy]\nicon  = "paperplane.fill"\ncolor = "#a78bfa"\nseconds = 6`;
 
-// Runs one typed line in a terminal against a stage. Resolves with the last command's status. Once
+// Runs one command line in a terminal against a stage. Resolves with the last command's status. Once
 // `alive` says no, as when PLAY starts the scene over, it stops and prints and shows nothing more.
 async function exec(line, term, stage, { config = CONFIG, echo = true, shown = line, alive = () => true } = {}) {
   if (echo) term.echo(shown);
