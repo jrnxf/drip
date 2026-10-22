@@ -142,14 +142,6 @@ struct CommandTests {
         assertUsageError(["hi", "--color", "#abc"])
     }
 
-    @Test func position() throws {
-        for position in Position.allCases {
-            #expect(try flags(["hi", "--position", position.rawValue]).position == position)
-        }
-        #expect(try flags(["hi"]).position == nil)
-        assertUsageError(["hi", "--position", "left"])
-    }
-
     /// The size is a viewing preference, set in the config or DRIP_SIZE; only the snapshot tests'
     /// `__render` takes it per card.
     @Test func sizeIsASettingNotAFlag() throws {
@@ -228,9 +220,9 @@ struct CommandTests {
     /// or `nice`.
     @Test func runTakesTheCommandWithoutTheTerminator() throws {
         #expect(try run(["make", "test"]).command == ["make", "test"])
-        let withOptions = try run(["-s", "3", "--detail", "x", "--quiet", "--position", "top", "ls", "--color", "-la"])
+        let withOptions = try run(["-s", "3", "--detail", "x", "--quiet", "--sound", "Ping", "ls", "--color", "-la"])
         #expect(withOptions.command == ["ls", "--color", "-la"])
-        #expect(withOptions.options.flags == CardFlags(detail: "x", seconds: 3, position: .top, quiet: true))
+        #expect(withOptions.options.flags == CardFlags(detail: "x", seconds: 3, sound: .named("Ping"), quiet: true))
         // An option's value is never the command, and the command's own options are never drip's,
         // nor joined to a value.
         let wrapped = try run(["-d", "--- x", "--id", "build", "grep", "-d", "skip", "--id", "y", "--", "z"])
@@ -301,11 +293,11 @@ struct CommandTests {
     }
 
     @Test func hookTakesTheAgentAndAnOptionalPayload() throws {
-        guard case let .invocation(.hook(claude)) = CommandLineParser.parse(["hook", "claude", "--position", "top"])
+        guard case let .invocation(.hook(claude)) = CommandLineParser.parse(["hook", "claude", "--seconds", "3"])
         else { Issue.record(); return }
         #expect(claude.agent == .claude)
         #expect(claude.payload == nil)
-        #expect(claude.options.flags == CardFlags(position: .top))
+        #expect(claude.options.flags == CardFlags(seconds: 3))
         guard case let .invocation(.hook(codex)) = CommandLineParser.parse(["hook", "codex", #"{"type":"x"}"#])
         else { Issue.record(); return }
         #expect(codex.agent == .codex)
@@ -411,10 +403,9 @@ struct CommandTests {
         // Preferences are settings, not flags.
         #expect(!help.contains("--size"), "\(help)")
         #expect(!help.contains("--motion"), "\(help)")
-        // ArgumentParser lists the values; the help text does not list them again.
-        #expect(!help.contains("bottom, center, top or notch"), "\(help)")
-        #expect(!help.contains("hud, glass, wash or terminal"), "\(help)")
-        #expect(help.contains("(values: bottom, center, top, notch)") || help.contains("(values: bottom,"), "\(help)")
+        // Retired: drip still takes them from old scripts, but no longer offers them.
+        #expect(!help.contains("--position"), "\(help)")
+        #expect(!help.contains("--style"), "\(help)")
     }
 
     /// The completion scripts know the subcommands, and only those shown.
@@ -430,6 +421,8 @@ struct CommandTests {
             #expect(!script.contains("__render"), "\(shell)")
             #expect(!script.contains("__background"), "\(shell)")
             #expect(!script.contains("drip run_complete"), "\(shell)")
+            #expect(!script.contains("--position"), "\(shell)")
+            #expect(!script.contains("--style"), "\(shell)")
         }
         guard case let .exit(_, zsh) = CommandLineParser.parse(["--generate-completion-script", "zsh"]) else {
             Issue.record(); return

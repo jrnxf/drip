@@ -32,9 +32,7 @@ public enum ExitStatus {
     }
 }
 
-extension Position: ExpressibleByArgument {}
 extension CardSize: ExpressibleByArgument {}
-extension CardStyle: ExpressibleByArgument {}
 extension Motion: ExpressibleByArgument {}
 extension StackSettings.Mode: ExpressibleByArgument {}
 
@@ -82,16 +80,6 @@ public struct CardOptions: ParsableArguments {
         "#rrggbb, or green, orange, red, blue, purple, pink, yellow or gray. (default: the preset's)",
         valueName: "hex|name"))
     var color: CardColor?
-
-    @Option(help: ArgumentHelp(
-        "Where the card shows. Without a notch, notch grows from the top edge. (default: notch)",
-        valueName: "position"))
-    var position: Position?
-
-    @Option(help: ArgumentHelp(
-        "How the card is drawn; a notch card is always black. (default: glass on macOS 26, hud before)",
-        valueName: "style"))
-    var style: CardStyle?
 
     @Option(help: ArgumentHelp(
         "Add a button that opens this URL or path. Hovering holds the card.", valueName: "url|path"))
@@ -197,12 +185,11 @@ public struct CardOptions: ParsableArguments {
         }
         return CardFlags(
             detail: detail, seconds: seconds, sound: sound,
-            icon: icon.map { $0.resolved(from: directory) }, color: color, position: position,
-            style: style, wait: wait, quiet: quiet, open: target, button: label, decline: open == nil ? no : nil, id: id,
-            activate: activate)
+            icon: icon.map { $0.resolved(from: directory) }, color: color, wait: wait, quiet: quiet, open: target,
+            button: label, decline: open == nil ? no : nil, id: id, activate: activate)
     }
 
-    /// What drip warns about before it shows the card: options that do nothing, and the old
+    /// What drip warns about before it shows the card: options that do nothing and the old
     /// spelling of --confirm.
     public var warnings: [String] {
         var warnings: [String] = []
@@ -233,10 +220,8 @@ public struct CardFlags: Equatable {
     public var sound: Sound?
     public var icon: Icon?
     public var color: CardColor?
-    public var position: Position?
     /// Set only by `drip __render`: everywhere else the size comes from the config or `DRIP_SIZE`.
     public var size: CardSize?
-    public var style: CardStyle?
     /// Set only by `drip __render`: everywhere else the motion comes from the config or `DRIP_MOTION`.
     public var motion: Motion?
     public var wait: Bool
@@ -252,8 +237,8 @@ public struct CardFlags: Equatable {
 
     public init(
         detail: String? = nil, seconds: Double? = nil, sound: Sound? = nil, icon: Icon? = nil,
-        color: CardColor? = nil, position: Position? = nil, size: CardSize? = nil, style: CardStyle? = nil,
-        motion: Motion? = nil, wait: Bool = false, quiet: Bool = false,
+        color: CardColor? = nil, size: CardSize? = nil, motion: Motion? = nil, wait: Bool = false,
+        quiet: Bool = false,
         open: String? = nil, button: String? = nil, decline: String? = nil, id: String? = nil, activate: String? = nil
     ) {
         self.open = open
@@ -266,9 +251,7 @@ public struct CardFlags: Equatable {
         self.sound = sound
         self.icon = icon
         self.color = color
-        self.position = position
         self.size = size
-        self.style = style
         self.motion = motion
         self.wait = wait
         self.quiet = quiet
@@ -478,7 +461,7 @@ public struct DemoCommand: ParsableCommand {
         discussion: """
             Plays the cards chained, each new card dropping out of the one above, then pushed, each \
             new card dropping out of the notch as the others move down; chain or push plays only that \
-            one. Every card is a notch card and plays its preset's sound; --id is ignored.
+            one. Every card plays its preset's sound; --id is ignored.
             """
     )
 
@@ -500,18 +483,9 @@ public struct DemoCommand: ParsableCommand {
         return settings
     }
 
-    /// The warnings to print before the demo: which flags do nothing.
-    public static func warnings(flags: CardFlags) -> [String] {
-        var warnings: [String] = []
-        if flags.position != nil { warnings.append("drip demo shows only notch cards, so --position does nothing") }
-        if flags.style != nil { warnings.append("drip demo shows only notch cards, so --style does nothing") }
-        return warnings
-    }
-
-    /// The demo's cards, all at the notch. --detail replaces every sample's detail.
+    /// The demo's cards. --detail replaces every sample's detail.
     public static func cards(_ resolver: CardResolver, flags: CardFlags) throws -> [Card] {
         var flags = flags
-        flags.position = .notch
         // Every demo card would share one id and replace the one before.
         flags.id = nil
         return try samples.map { sample in
@@ -598,10 +572,10 @@ public struct RenderCommand: ParsableCommand {
     @Option(help: "How the card's surroundings look.")
     public var appearance: Appearance = .light
 
-    @Option(help: "For a notch card: draw its entrance this many seconds in, instead of fully open.")
+    @Option(help: "Draw the card's entrance this many seconds in, instead of fully open.")
     public var at: Double?
 
-    @Flag(help: "With --at, draw the notch card's exit instead of its entrance.")
+    @Flag(help: "With --at, draw the card's exit instead of its entrance.")
     public var leaving = false
 
     /// The card options, with the size and motion.
@@ -774,8 +748,8 @@ extension CommandLineParser {
     /// Every card option that takes a value, so that `drip run` can tell an option's value from the
     /// command: in `drip run -s 3 make`, 3 is the value and make the command.
     static let valueOptions: Set<String> = [
-        "-d", "--detail", "-s", "--seconds", "--sound", "--icon", "--color", "--position", "--style", "--open",
-        "--button", "--confirm", "--yes", "--no", "--id", "--activate",
+        "-d", "--detail", "-s", "--seconds", "--sound", "--icon", "--color", "--open", "--button",
+        "--confirm", "--yes", "--no", "--id", "--activate",
     ]
 
     /// The first argument before `--` that starts with a dash but is text, not an option: it holds

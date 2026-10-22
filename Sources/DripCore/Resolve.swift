@@ -18,17 +18,11 @@ public struct CardResolver {
     public var presets: [String: Preset]
     public var config: Config
     public var environment: EnvironmentSettings
-    /// The style when nothing else sets one: the display picks it, `glass` where the system has it.
-    public var automaticStyle: CardStyle
 
-    public init(
-        config: Config = Config(), environment: EnvironmentSettings = EnvironmentSettings(),
-        automaticStyle: CardStyle = Defaults.style
-    ) {
+    public init(config: Config = Config(), environment: EnvironmentSettings = EnvironmentSettings()) {
         presets = Dictionary(config.allPresets.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
         self.config = config
         self.environment = environment
-        self.automaticStyle = automaticStyle
     }
 
     /// Resolves `drip [KIND] [TITLE] [options]` into a card.
@@ -80,9 +74,7 @@ public struct CardResolver {
             color: flags.color ?? preset.color,
             sound: flags.sound ?? environment.sound ?? presetSound,
             seconds: flags.seconds ?? environment.seconds ?? preset.seconds ?? config.seconds ?? Defaults.seconds,
-            position: flags.position ?? environment.position ?? config.position ?? Defaults.position,
             size: flags.size ?? environment.size ?? config.size ?? Defaults.size,
-            style: flags.style ?? environment.style ?? preset.style ?? config.style ?? automaticStyle,
             motion: flags.motion ?? environment.motion ?? config.motion ?? Defaults.motion
         )
         if flags.open != nil || flags.button != nil {

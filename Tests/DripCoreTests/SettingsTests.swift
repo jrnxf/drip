@@ -1,62 +1,73 @@
 import DripCore
 import Testing
 
-struct StyleSettingsTests {
+/// Every card shows at the notch, drawn one way, so drip has no `position` or `style` setting: in a
+/// config they are unknown keys, as flags they are unknown options, and DRIP_POSITION and
+/// DRIP_STYLE are not read.
+struct RemovedSettingTests {
     private let path = "/home/me/.config/drip/config.toml"
 
-    @Test func configReadsStyleMotionAndPresetStyles() throws {
+    @Test func theConfigWarnsAboutEachStaleKeyAsUnknownAndReadsTheRest() throws {
         let file = try ConfigLoader.parse("""
             style    = "glass"
-            position = "notch"
+            position = 3
             motion   = "subtle"
 
             [preset.fail]
             style = "wash"
+            color = "red"
             """, path: path)
-        #expect(file.warnings == [])
-        #expect(file.config == Config(
-            position: .notch, style: .glass, motion: .subtle, presets: ["fail": PresetOverride(style: .wash)]))
-        #expect(file.config.allPresets.first { $0.name == "fail" }?.style == .wash)
-        #expect(file.config.allPresets.first { $0.name == "ok" }?.style == nil)
+        #expect(file.warnings == [
+            "\(path):1: unknown key 'style'",
+            "\(path):2: unknown key 'position'",
+            "\(path):6: unknown key 'preset.fail.style'",
+        ])
+        #expect(file.config == Config(motion: .subtle, presets: ["fail": PresetOverride(color: .system(.red))]))
     }
 
     /// No released drip had a `notch` key: it is unknown, as any other, and DRIP_NOTCH is not read.
     @Test func notchIsNoSetting() throws {
         let file = try ConfigLoader.parse("""
-            position = "notch"
             notch    = "ears"
             motion   = "subtle"
             """, path: path)
-        #expect(file.warnings == ["\(path):2: unknown key 'notch'"])
-        #expect(file.config == Config(position: .notch, motion: .subtle))
+        #expect(file.warnings == ["\(path):1: unknown key 'notch'"])
+        #expect(file.config == Config(motion: .subtle))
         #expect(try ConfigLoader.parse("notch = 3", path: path).config == Config())
         #expect(try EnvironmentSettings(environment: ["DRIP_NOTCH": "drip"]) == EnvironmentSettings())
     }
 
-    @Test func environmentReadsStyleAndMotion() throws {
+    @Test func theEnvironmentIgnoresStaleVariables() throws {
         let settings = try EnvironmentSettings(environment: [
-            "DRIP_STYLE": "terminal", "DRIP_MOTION": "none", "DRIP_POSITION": "notch",
+            "DRIP_STYLE": "neon", "DRIP_POSITION": "top", "DRIP_MOTION": "none",
         ])
-        #expect(settings == EnvironmentSettings(position: .notch, style: .terminal, motion: Motion.none))
-        let error = #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_STYLE": "neon"]) }
-        #expect(error?.message == "DRIP_STYLE must be hud, glass, wash or terminal, not 'neon'")
+        #expect(settings == EnvironmentSettings(motion: Motion.none))
     }
 
-    @Test func styleComesFromFlagsThenEnvironmentThenPresetThenConfigThenTheDisplay() throws {
-        let config = Config(style: .terminal, presets: ["fail": PresetOverride(style: .wash)])
-        func style(flags: CardFlags = CardFlags(), environment: EnvironmentSettings = EnvironmentSettings(),
-                   config: Config = Config(), kind: String = "ok") throws -> CardStyle {
-            try CardResolver(config: config, environment: environment, automaticStyle: .glass)
-                .resolve(kind: kind, title: "t", flags: flags).style
+    @Test func theFlagsAreUnknownOptionsForEveryCommandThatShowsACard() {
+        let commands: [([String], String, Int32)] = [
+            (["ok", "t", "--position", "notch"], "drip --help", ExitStatus.usage),
+            (["ok", "t", "--style", "terminal"], "drip --help", ExitStatus.usage),
+            (["run", "--position", "top", "ls"], "drip run --help", ExitStatus.usage),
+            (["run", "--style", "wash", "ls"], "drip run --help", ExitStatus.usage),
+            (["hook", "claude", "--position", "top"], "drip hook --help", ExitStatus.hookFailed),
+            (["hook", "claude", "--style", "hud"], "drip hook --help", ExitStatus.hookFailed),
+            // With no stack given, demo would take the value as its stack and name that instead.
+            (["demo", "chain", "--position", "bottom"], "drip demo --help", ExitStatus.usage),
+            (["demo", "push", "--style", "glass"], "drip demo --help", ExitStatus.usage),
+        ]
+        for (arguments, help, expected) in commands {
+            guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
+                Issue.record("\(arguments) parsed"); continue
+            }
+            let flag = arguments.first { $0 == "--position" || $0 == "--style" } ?? ""
+            #expect(status == expected, "\(arguments)")
+            #expect(message == "drip: unknown option '\(flag)'\nSee '\(help)'.", "\(arguments)")
         }
-        #expect(try style() == .glass)
-        #expect(try style(config: config) == .terminal)
-        #expect(try style(config: config, kind: "fail") == .wash)
-        #expect(try style(environment: EnvironmentSettings(style: .hud), config: config, kind: "fail") == .hud)
-        #expect(try style(flags: CardFlags(style: .glass), environment: EnvironmentSettings(style: .hud)) == .glass)
-        #expect(try CardResolver().resolve(kind: "ok", title: "t", flags: CardFlags()).style == Defaults.style)
     }
+}
 
+struct MotionSettingsTests {
     @Test func motionComesFromFlagsThenEnvironmentThenConfig() throws {
         let resolver = CardResolver(config: Config(motion: .subtle))
         let card = try resolver.resolve(kind: "ok", title: "t", flags: CardFlags())
@@ -69,14 +80,6 @@ struct StyleSettingsTests {
         #expect(defaults.motion == .full)
     }
 
-    @Test func dripRunCardsTakeTheirPresetStyle() throws {
-        let resolver = CardResolver(config: Config(presets: ["fail": PresetOverride(style: .wash)]))
-        let failed = try resolver.resolveRun(command: ["make"], status: 2, seconds: 1, flags: CardFlags())
-        #expect(failed.style == .wash)
-        let passed = try resolver.resolveRun(command: ["make"], status: 0, seconds: 1, flags: CardFlags())
-        #expect(passed.style == Defaults.style)
-    }
-
     @Test func reduceMotionCapsFullAtSubtle() {
         #expect(Motion.full.capped(reduceMotion: true) == .subtle)
         #expect(Motion.full.capped(reduceMotion: false) == .full)
@@ -85,16 +88,7 @@ struct StyleSettingsTests {
     }
 }
 
-struct StyleCommandTests {
-    @Test func flagsParse() throws {
-        guard case let .invocation(.show(command)) = CommandLineParser.parse(
-            ["ok", "t", "--style", "wash", "--position", "notch"])
-        else { Issue.record("did not parse"); return }
-        let flags = command.options.flags
-        #expect(flags.style == .wash)
-        #expect(flags.position == .notch)
-    }
-
+struct CommandFlagTests {
     /// The motion is a viewing preference, set in the config or DRIP_MOTION; only the snapshot
     /// tests' `__render` takes it per card.
     @Test func motionIsASettingNotAFlag() throws {
@@ -102,7 +96,7 @@ struct StyleCommandTests {
             Issue.record("--motion parsed"); return
         }
         #expect(status == ExitStatus.usage)
-        #expect(message == "drip: unknown option '--motion'. Did you mean '--position'?\nSee 'drip --help'.")
+        #expect(message.hasPrefix("drip: unknown option '--motion'."), "\(message)")
         guard case let .invocation(.render(command)) = CommandLineParser.parse(
             ["__render", "--out", "x.png", "ok", "t", "--motion", "none"])
         else { Issue.record("__render --motion did not parse"); return }
@@ -117,19 +111,10 @@ struct StyleCommandTests {
         #expect(message.contains("--notch"))
     }
 
-    @Test func invalidStyleIsAUsageError() {
-        guard case let .exit(status, message) = CommandLineParser.parse(["ok", "t", "--style", "neon"]) else {
-            Issue.record("parsed"); return
-        }
-        #expect(status == ExitStatus.usage)
-        #expect(!message.isEmpty)
-    }
-
     @Test func demoIsASubcommand() throws {
-        guard case let .invocation(.demo(command)) = CommandLineParser.parse(["demo", "--style", "glass"]) else {
+        guard case .invocation(.demo) = CommandLineParser.parse(["demo"]) else {
             Issue.record("demo did not parse"); return
         }
-        #expect(command.options.flags.style == .glass)
         guard case .exit(0, _) = CommandLineParser.parse(["demo", "--help"]) else {
             Issue.record("demo --help did not print help"); return
         }
@@ -155,13 +140,12 @@ struct StyleCommandTests {
         #expect(stack.pauses == [0, 0, 0, 3])
     }
 
-    @Test func demoDropsSeveralNotchCards() throws {
+    @Test func demoDropsSeveralCards() throws {
         let cards = try DemoCommand.cards(
-            CardResolver(), flags: CardFlags(position: .bottom, id: "shared"))
+            CardResolver(), flags: CardFlags(id: "shared"))
         #expect(cards.map(\.kind) == ["ok", "ask", "fail", "info"])
         #expect(Set(cards.map(\.title)).count == cards.count)
         for card in cards {
-            #expect(card.position == .notch)
             #expect(card.id == nil)
             #expect(card.detail != nil)
         }
@@ -185,18 +169,9 @@ struct StyleCommandTests {
         #expect(cards.allSatisfy { $0.detail == "mine" })
     }
 
-    @Test func demoWarnsAboutFlagsThatDoNothingAtTheNotch() {
-        let flags = CardFlags(position: .top, style: .glass)
-        #expect(DemoCommand.warnings(flags: flags) == [
-            "drip demo shows only notch cards, so --position does nothing",
-            "drip demo shows only notch cards, so --style does nothing",
-        ])
-        #expect(DemoCommand.warnings(flags: CardFlags()).isEmpty)
-    }
-
     @Test func renderTakesATime() throws {
         guard case let .invocation(.render(command)) = CommandLineParser.parse(
-            ["__render", "--out", "x.png", "ok", "t", "--position", "notch", "--at", "0.3"])
+            ["__render", "--out", "x.png", "ok", "t", "--at", "0.3"])
         else { Issue.record("did not parse"); return }
         #expect(command.at == 0.3)
     }

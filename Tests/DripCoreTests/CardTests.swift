@@ -188,7 +188,6 @@ struct CardTests {
         #expect(card.icon == .symbol("xmark.circle.fill"))
         #expect(card.fallbackIcon == card.icon)
         #expect(card.seconds == 4.5)
-        #expect(card.position == .notch)
         #expect(card.size == .regular)
     }
 }

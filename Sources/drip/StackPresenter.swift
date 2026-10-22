@@ -4,7 +4,7 @@ import DripCore
 import QuartzCore
 
 /// Shows several cards at the notch at once, one below another, each grown out of the notch or out
-/// of the card above it, and adopts newer drips' notch cards from the queue while it shows: a
+/// of the card above it, and adopts newer drips' cards from the queue while it shows: a
 /// background drip's stack always, and a stack that waits for its question's answer while that
 /// shows, so other cards stack around the question instead of waiting for it.
 ///
@@ -85,23 +85,18 @@ final class StackPresenter: CardPresenting {
     /// The longest `lead`, so a very slow sample never holds a change back for long.
     private static let maximumLead = 0.5
 
-    /// A stack for `card` and the notch cards that follow it in `rest`, which it takes; nil when
-    /// stacking is off, the card is not for the notch, or motion is reduced. `settings` given
-    /// replace those of `stack` and `DRIP_STACK`.
+    /// A stack for `card` and the cards that follow it in `rest`, which it takes; nil when stacking
+    /// is off or motion is reduced. `settings` given replace those of `stack` and `DRIP_STACK`.
     static func make(
         for card: Card, rest: inout ArraySlice<Card>, adopting: Bool, settings: StackSettings?,
         console: Console
     ) -> StackPresenter? {
         guard let settings = settings ?? StackSettings.current(environment: ProcessInfo.processInfo.environment),
-              card.position == .notch,
               CardPresenters.motion(for: card) == .full,
               let screen = CardPresenters.targetScreen()
         else { return nil }
-        var cards = [card]
-        while let next = rest.first, next.position == .notch {
-            cards.append(next)
-            rest.removeFirst()
-        }
+        let cards = [card] + rest
+        rest.removeAll()
         return StackPresenter(
             cards: cards, settings: settings, notch: NotchGeometry.island(on: screen), adopting: adopting,
             console: console)

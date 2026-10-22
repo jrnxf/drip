@@ -43,34 +43,30 @@ public struct SRGBColor: Equatable, Sendable {
     }
 }
 
-/// The gradient behind a `wash` card: the accent, darkened just enough for its white text.
-public struct WashPalette: Equatable, Sendable {
-    /// The lighter, top-leading stop.
-    public var top: SRGBColor
-    /// The darker, bottom-trailing stop.
-    public var bottom: SRGBColor
+/// The fill of a card's yes button: the accent, darkened just enough for white text on it.
+public struct ButtonPalette: Equatable, Sendable {
+    public var fill: SRGBColor
 
-    /// The detail line's white, as an opacity over the card.
-    public static let detailOpacity = 0.85
+    /// The faintest white checked against the fill, as an opacity over it, so even dimmed text
+    /// stays readable.
+    public static let faintTextOpacity = 0.85
     /// WCAG AA for normal-size text.
     public static let minimumContrast = 4.5
 
-    /// Darkens `accent` in small steps until both the title (white) and the detail line (white at
-    /// `detailOpacity`) reach `minimumContrast` on the lighter stop. Dark accents keep a little
-    /// darkening for depth.
+    /// Darkens `accent` in small steps until both white and white at `faintTextOpacity` reach
+    /// `minimumContrast` on it. Dark accents keep a little darkening for depth.
     public init(accent: SRGBColor) {
         var fraction = 0.12
-        var top = accent.mixed(with: .black, fraction)
-        while fraction < 1, Self.detailColor(on: top).contrast(with: top) < Self.minimumContrast {
+        var fill = accent.mixed(with: .black, fraction)
+        while fraction < 1, Self.faintText(on: fill).contrast(with: fill) < Self.minimumContrast {
             fraction += 0.02
-            top = accent.mixed(with: .black, fraction)
+            fill = accent.mixed(with: .black, fraction)
         }
-        self.top = top
-        bottom = top.mixed(with: .black, 0.22)
+        self.fill = fill
     }
 
-    /// The detail line's color as it looks over `background`.
-    public static func detailColor(on background: SRGBColor) -> SRGBColor {
-        background.mixed(with: .white, detailOpacity)
+    /// White at `faintTextOpacity` as it looks over `background`.
+    public static func faintText(on background: SRGBColor) -> SRGBColor {
+        background.mixed(with: .white, faintTextOpacity)
     }
 }

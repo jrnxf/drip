@@ -3,12 +3,9 @@ import Foundation
 
 /// Shows and renders cards. The macOS implementation is in HUDWindow.swift and Render.swift.
 protocol CardDisplay {
-    /// The style for cards that set none: `glass` where the system has it.
-    var automaticStyle: CardStyle { get }
-
     /// Shows the cards one after another, after any other drip's, and returns once the last has
     /// gone, or as soon as a question is answered, with the exit status to report. `locked` says what happens while the screen is locked;
-    /// a `stack` given stacks notch cards that way instead of as `stack` or `DRIP_STACK` says.
+    /// a `stack` given stacks cards that way instead of as `stack` or `DRIP_STACK` says.
     func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32
 
     /// Hands the cards to a background drip and returns at once, or shows them here when it cannot.
@@ -20,8 +17,8 @@ protocol CardDisplay {
     /// Whether an app with the bundle identifier is installed.
     func isInstalled(_ bundleIdentifier: String) -> Bool
 
-    /// Draws the card offscreen into a PNG file; a notch card `at` seconds into its entrance, or
-    /// its exit when `leaving`.
+    /// Draws the card offscreen into a PNG file; `at` seconds into its entrance, or its exit when
+    /// `leaving`.
     func render(
         _ card: Card, appearance: RenderCommand.Appearance, at time: Double?, leaving: Bool, to path: String,
         console: Console
@@ -29,7 +26,7 @@ protocol CardDisplay {
 }
 
 extension CardDisplay {
-    /// Shows the cards, stacking notch cards as `stack` or `DRIP_STACK` says.
+    /// Shows the cards, stacking them as `stack` or `DRIP_STACK` says.
     func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
         show(cards, locked: locked, stack: nil, console: console)
     }
@@ -216,13 +213,12 @@ struct DripCLI {
         return outcome.status
     }
 
-    /// A few notch cards, stacking the way queued cards do: chained, then pushed, unless the command
+    /// A few cards, stacking the way queued cards do: chained, then pushed, unless the command
     /// names one. Each card plays its preset's sound, as a real card would.
     private func demo(_ command: DemoCommand) -> Int32 {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
-        DemoCommand.warnings(flags: flags).forEach(console.warn)
         do {
             let resolver = try makeResolver(console)
             // Short, unless a flag, the environment or the config says otherwise.
@@ -267,23 +263,20 @@ struct DripCLI {
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         do {
-            // Renderings must not depend on the machine, so the automatic style is always hud here.
-            let card = try makeResolver(console, automaticStyle: .hud)
-                .resolve(kind: command.kind, title: command.title, flags: flags)
+            let card = try makeResolver(console).resolve(kind: command.kind, title: command.title, flags: flags)
             return display.render(card, appearance: command.appearance, at: command.at, leaving: command.leaving, to: command.out, console: console)
         } catch {
             return report(error, console)
         }
     }
 
-    /// Reads the config file and environment, printing the config's warnings.
-    private func makeResolver(_ console: Console, automaticStyle: CardStyle? = nil) throws -> CardResolver {
+    /// Reads the config file and environment, printing the config file's warnings.
+    private func makeResolver(_ console: Console) throws -> CardResolver {
         let environment = ProcessInfo.processInfo.environment
         let file = try ConfigLoader.load(environment: environment)
         file.warnings.forEach(console.warn)
-        return CardResolver(
-            config: file.config, environment: try EnvironmentSettings(environment: environment),
-            automaticStyle: automaticStyle ?? display.automaticStyle)
+        let settings = try EnvironmentSettings(environment: environment)
+        return CardResolver(config: file.config, environment: settings)
     }
 
     /// Prints an error and returns its exit status. A usage mistake also says where the help is.
@@ -305,8 +298,6 @@ struct DripCLI {
 #if !canImport(AppKit)
 /// Used where AppKit is missing: every card fails as if there were no GUI session.
 struct UnavailableDisplay: CardDisplay {
-    var automaticStyle: CardStyle { Defaults.style }
-
     func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32 {
         console.error("no GUI session: drip shows cards only on macOS")
         return ExitStatus.noGUISession

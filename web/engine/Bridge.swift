@@ -147,7 +147,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
     let args = input["args"] as? [String] ?? []
     let notch = input["notch"] as? [String: Double] ?? [:]
     let notchWidth = notch["width"] ?? 185, notchHeight = notch["height"] ?? 32
-    let widest = min(input["widest"] as? Double ?? .infinity, Double(CardMetrics.maxWidth))
+    let widest = min(input["widest"] as? Double ?? .infinity, CardMetrics.maxWidth)
     let environment = input["env"] as? [String: String] ?? [:]
 
     var warnings: [String] = []
@@ -187,8 +187,8 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             "adopting": adopting,
             "adoptable": adoptable,
         ]
-        // As the app: a stack only for notch cards with full motion.
-        if let stack, let first = cards.first, first.position == .notch, first.motion == .full {
+        // As the app: a stack only for cards with full motion.
+        if let stack, let first = cards.first, first.motion == .full {
             delivery["stack"] = ["mode": stack.mode.rawValue, "max": stack.max, "pauses": stack.pauses] as [String: Any]
         }
         return delivery
@@ -239,7 +239,6 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         var flags = command.options.flags
         // Short, unless a flag or the config says otherwise.
         if flags.seconds == nil, resolver.config.seconds == nil { flags.seconds = 2 }
-        warnings += DemoCommand.warnings(flags: flags)
         do {
             let cards = try DemoCommand.cards(resolver, flags: flags)
             // Chained, then pushed, unless the command names one; each a stack of its own cards.
@@ -353,8 +352,8 @@ func island(for card: Card, notchWidth: Double, notchHeight: Double, widest: Dou
     }
     if card.action != nil {
         let (red, green, blue) = lightRGB(card.color)
-        let palette = WashPalette(accent: SRGBColor(red: red, green: green, blue: blue))
-        reply["buttonColor"] = [palette.top.red, palette.top.green, palette.top.blue]
+        let palette = ButtonPalette(accent: SRGBColor(red: red, green: green, blue: blue))
+        reply["buttonColor"] = [palette.fill.red, palette.fill.green, palette.fill.blue]
     }
     return reply
 }
