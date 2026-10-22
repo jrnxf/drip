@@ -134,9 +134,9 @@
   .specs dd code { font-size: inherit; }
 
   /* ---------- the device ---------- */
-  /* Room under the device for the paper hanging out of it, at its starting length (--paper-h).
-     Paper that printing feeds out further hangs over what is below it, so nothing on the page moves
-     as it grows; cut it shorter to see what it covers. */
+  /* Room under the device for the paper hanging out of it (--paper-h). Paper that printing feeds
+     out further hangs over what is below it, so nothing on the page moves as it grows; cut it
+     shorter to see what it covers. */
   .devwrap { --paper-h: 220px; --pad: 22px; position: relative; padding: 26px 0 calc(var(--paper-h) - 5px - var(--pad) + 30px); }
   .device, .module {
     position: relative; border-radius: 26px; padding: var(--pad, 22px); background: linear-gradient(180deg, var(--body), var(--body-2));
@@ -157,21 +157,27 @@
   /* The display's own print, scaled with the notch so it keeps clear of it. */
   .display .glyphs { position: absolute; inset: 0 0 auto 0; height: 32px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px; font: 500 10px/1 var(--mono); letter-spacing: .08em; color: var(--lcd-ink); opacity: .7; width: calc(100% / var(--fit, 1)); transform: scale(var(--fit, 1)); transform-origin: 0 0; }
   .loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 16px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--lcd-ink); }
-  /* Paper: the install receipt, and what each printer prints. A head over a bold rule, entries
+  /* Paper: the install receipt, and what each printer prints. A head and a bold rule, entries
      between dashed rules, and an end torn off along its perforation or cut with scissors (tear()
      and cutEnd() in the script draw it). */
   .paper { position: relative; filter: drop-shadow(0 1px 1px rgba(0,0,0,.18)) drop-shadow(0 8px 12px var(--shade)); }
   .slip { position: relative; background: var(--paper); color: var(--paper-ink); }
   .slip .head { flex: none; display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--paper-ink); font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
-  /* A printer: a slot in the device, and the paper it feeds out over the device's edge. The newest
-     entry is printed at the slot and older ones move down, feeding the paper further out. Drag the
-     scissors across the paper to cut it shorter. --paper-grow is what printing has added to its
-     starting length (the script sets it, and stacks the printers so higher paper hangs in front). */
+  /* A printer: a slot in the device, and the paper it feeds out over the device's edge. Each entry
+     is printed at the slot and the whole paper steps out a line at a time, so the newest entry is
+     nearest the slot and the paper's head, printed first, is at its far end. The paper is clipped
+     at the slot, so print still inside the printer is out of sight. Drag the scissors across the
+     paper to cut it shorter. --paper-len is its length (the script sets it, and stacks the
+     printers so higher paper hangs in front). */
   .printer { position: relative; z-index: 2; height: 10px; }
   .device > .printer { max-width: 620px; margin: 20px auto 0; }
   .slot { position: relative; z-index: 1; height: 10px; border-radius: 5px; background: #0d0d0d; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--lip); }
-  .printer .paper { position: absolute; top: 5px; left: 10px; right: 10px; height: calc(var(--paper-h) + var(--paper-grow, 0px)); transform-origin: 50% 0; }
-  .printer .slip { height: 100%; display: flex; flex-direction: column; padding: 16px 18px 10px; background: linear-gradient(rgba(0,0,0,.16), transparent 12px), var(--paper); }
+  .printer .paper { position: absolute; top: 5px; left: 10px; right: 10px; height: var(--paper-len, var(--paper-h)); transform-origin: 50% 0; clip-path: polygon(-80px 0, calc(100% + 80px) 0, calc(100% + 80px) calc(100% + 80px), -80px calc(100% + 80px)); }
+  /* The slot's shadow on the paper stays at the slot as the paper feeds through it. */
+  .printer .paper::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 12px; z-index: 1; background: linear-gradient(rgba(0,0,0,.16), transparent); pointer-events: none; }
+  .printer .slip { height: 100%; display: flex; flex-direction: column; padding: 16px 18px 10px; }
+  .printer .head { padding: 10px 0 4px; border-bottom: 0; border-top: 2px solid var(--paper-ink); }
+  .printer .stamp { font: 400 10px/1.5 var(--mono); opacity: .6; }
   /* The paper is as long as what is printed on it, so print stops only where the paper was cut. */
   .log { flex: 1; min-height: 0; overflow: hidden; }
   /* The scissors work over the paper and a little past its sides, so a cut can start in the air and
@@ -189,6 +195,8 @@
   .touch-scissors { position: fixed; z-index: 31; width: 44px; height: 44px; pointer-events: none; opacity: 0; transition: opacity .15s; }
   .touch-scissors.on { opacity: 1; }
   .entry { padding: 10px 0; font: 400 11.5px/1.6 var(--mono); }
+  /* Thermal ink sits a little into the paper. */
+  .printer .entry, .printer .end { text-shadow: 0 0 .5px currentColor; }
   .entry + .entry { border-top: 1px dashed rgba(0,0,0,.22); }
   .entry > div { white-space: pre-wrap; overflow-wrap: break-word; }
   /* A command wraps under itself, clear of its prompt. */
@@ -223,18 +231,29 @@
   .block .sub { margin: 0; color: var(--ink-2); max-width: 52ch; }
   .block .sub a { color: var(--ink); }
 
-  /* What it does: six small modules, each on its own display. */
+  /* What it does: six small modules, each on its own display. A module, its title and its text
+     sit on rows shared across the grid's row, so the modules in a row are as tall as the tallest
+     and their titles line up. */
   .features { margin-top: 36px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 28px; }
-  /* The paper hangs from a slot level with the middle of PLAY, 25 px down a 50 px row over a 16 px
-     padding, and clears the title under it by 18 px. */
-  .feature { --paper-h: 184px; }
-  .feature .module { border-radius: 20px; padding: 16px; margin-bottom: calc(var(--paper-h) - 23px); }
-  .feature .display { height: 190px; }
-  .feature .row { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
-  .feature .printer { flex: 1; min-width: 0; }
-  .feature .printer .slip { padding: 14px 16px 10px; }
-  /* PLAY sits 24 px past the paper's right side, so the scissors reach only a little way out there. */
-  .feature .cutter { right: -8px; }
+  .feature { display: grid; grid-row: span 3; grid-template-rows: subgrid; row-gap: 0; }
+  .feature .module { display: flex; flex-direction: column; border-radius: 20px; padding: 16px; margin-bottom: 18px; }
+  .feature .display { flex: none; height: 190px; }
+  .feature .row { flex: 1; display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+  /* The module's LCD line, as the hero's: the command running, typed, and under it the step and
+     what came back. Every command it runs is laid out unseen behind it (.ghost), so it keeps the
+     height of the longest as it plays. */
+  .readout { flex: 1; min-width: 0; align-self: stretch; display: grid; padding: 8px 11px 7px; border-radius: 7px; background: var(--lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); color: var(--lcd-ink); }
+  .readout > *, .readout .ghost > * { grid-area: 1 / 1; min-width: 0; }
+  .readout .ghost { display: grid; visibility: hidden; }
+  .readout .live { display: flex; flex-direction: column; }
+  .readout .cmd { font: 500 11.5px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: break-word; padding-left: 2ch; text-indent: -2ch; }
+  .readout .p, .readout .c { opacity: .62; }
+  .readout .flag, .readout .note { white-space: nowrap; }
+  .readout .stat { margin-top: 3px; font: 500 9.5px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .readout .live .stat { margin-top: auto; padding-top: 3px; }
+  .caret { display: inline-block; width: .55em; height: 1.05em; margin-left: 1px; vertical-align: -.18em; background: currentColor; animation: blink 1.06s steps(1, end) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
   .feature h3 { margin: 0 0 6px; font: 600 19px/1.25 var(--sans); font-stretch: 112%; letter-spacing: -.01em; display: flex; gap: 12px; align-items: baseline; }
   .feature h3 .n { font: 500 10.5px/1 var(--mono); letter-spacing: .1em; color: var(--ink-3); }
   .feature p { margin: 0; font-size: 15px; color: var(--ink-2); }
@@ -1009,27 +1028,31 @@ const announcer = document.getElementById("announce");
 function announce(card) { announcer.textContent = `drip card: ${card.card.title}${card.card.detail ? ". " + card.card.detail : ""}`; }
 
 // ===== Printers =====
-// Each prints on its paper: an entry per command, with what it printed under it. A new entry
-// comes out of the slot and feeds the older ones down, and the paper out with them; past `max`
-// they go.
+// Each prints on its paper: an entry per command, with what it printed under it. Like a receipt,
+// an entry is printed once its command is done (exec() says so with done()): it is inked at the
+// slot, and the paper steps out a line at a time, as a thermal printer's motor feeds it, so the
+// entry comes out of the slot and the older ones go down with the paper. Past `max` entries the
+// oldest go. The paper's head and the time it was put in are at its far end, printed first.
+const LINE = 18.4; // an entry's line on the paper, in CSS pixels
 class Term {
   constructor(log, { max = 40 } = {}) {
-    this.log = log; this.max = max; this.entry = null;
+    this.log = log; this.max = max; this.entry = null; this.held = false;
     this.feed = document.createElement("div"); log.append(this.feed);
+    this.end = document.createElement("div"); this.end.className = "end";
+    this.stamp = document.createElement("div"); this.stamp.className = "stamp";
+    this.end.append(log.parentElement.querySelector(".head"), this.stamp);
+    this.printing = Promise.resolve(); this.sheet = 0;
+    this.fresh();
     this.paper = new Paper(log, this.feed);
   }
-  open() {
-    const entry = document.createElement("div"); entry.className = "entry";
-    this.feed.prepend(entry); this.entry = entry;
-    while (this.feed.childElementCount > this.max) this.feed.lastElementChild.remove();
-    // Fed by the height of what this turn prints into it.
-    if (!reduceMotion.matches && this.feed.childElementCount > 1) queueMicrotask(() => {
-      if (entry.isConnected) this.feed.animate([{ transform: `translateY(${-entry.offsetHeight}px)` }, { transform: "none" }], { duration: 320, easing: "cubic-bezier(.23, 1, .32, 1)" });
-    });
-    return entry;
-  }
+  open() { this.flush(); const entry = document.createElement("div"); entry.className = "entry"; this.entry = entry; return entry; }
   line(entry, cls, text) { const div = document.createElement("div"); div.className = cls; div.append(text); entry.append(div); return div; }
-  print(text, cls = "") { const entry = this.entry ?? this.open(); for (const part of String(text).split("\n")) this.line(entry, `out ${cls}`, part); }
+  // Output that comes while a command runs waits for the command; any other is printed at once.
+  print(text, cls = "") {
+    const entry = this.entry ?? this.open();
+    for (const part of String(text).split("\n")) this.line(entry, `out ${cls}`, part);
+    if (!this.held) this.flush();
+  }
   // A flag such as --confirm stays whole, rather than breaking after its dashes.
   echo(command) {
     const p = document.createElement("span"); p.className = "c"; p.textContent = "$ ";
@@ -1038,16 +1061,107 @@ class Term {
       if (!/^--?\w/.test(part)) { div.append(part); continue; }
       const flag = document.createElement("span"); flag.className = "flag"; flag.textContent = part; div.append(flag);
     }
+    this.held = true;
     return div;
   }
-  clear() { this.feed.textContent = ""; this.entry = null; this.paper.reset(); }
+  done() { this.flush(); }
+  // Entries print one after another, each once the paper has finished feeding out the one before.
+  flush() {
+    const entry = this.entry, sheet = this.sheet;
+    this.entry = null; this.held = false;
+    if (entry) this.printing = this.printing.then(() => sheet === this.sheet && this.feedOut(entry));
+  }
+  async feedOut(entry) {
+    const before = this.feed.offsetHeight;
+    this.feed.prepend(entry);
+    const fed = this.feed.offsetHeight - before;
+    const entries = this.feed.querySelectorAll(":scope > .entry");
+    for (let i = this.max; i < entries.length; i++) entries[i].remove();
+    if (reduceMotion.matches || fed <= 0) return;
+    // The whole paper starts back in the slot by what was printed, and steps out a line at a time.
+    const lines = Math.min(12, Math.max(1, Math.round(fed / LINE))), frames = [];
+    for (let i = 0; i <= lines; i++) frames.push({ offset: i / lines, transform: `translateY(${(-fed + (fed * i) / lines).toFixed(2)}px)`, easing: "cubic-bezier(.3, .7, .3, 1)" });
+    this.feeding = this.paper.slip.animate(frames, { duration: 60 + lines * 75 });
+    await this.feeding.finished.catch(() => {});
+    this.feeding = null;
+  }
+  // A new scene starts on fresh paper: nothing on it yet but its head, and when it was put in.
+  clear() {
+    this.sheet++; this.feeding?.cancel(); this.printing = Promise.resolve(); this.entry = null; this.held = false;
+    this.fresh();
+    this.paper.reset();
+  }
+  fresh() {
+    const now = new Date();
+    this.stamp.textContent = `${now.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" })} · ${now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    this.feed.replaceChildren(this.end);
+  }
+}
+
+// ===== Readouts =====
+// A feature module's LCD line types the command it runs, and the row under it counts the steps and
+// shows what came back: the latest output, then the exit status. It shows one command at a time, so
+// a module's commands read in the order they run.
+class Readout {
+  constructor(box, steps) {
+    this.steps = steps; this.at = -1;
+    const ghost = document.createElement("div"); ghost.className = "ghost"; ghost.setAttribute("aria-hidden", "true");
+    for (const step of steps) {
+      const block = document.createElement("div"), cmd = this.line();
+      for (const [text, cls] of this.parts(step)) cmd.append(this.span(text, cls));
+      block.append(cmd, this.stat("x")); ghost.append(block);
+    }
+    this.live = document.createElement("div"); this.live.className = "live";
+    box.append(ghost, this.live);
+    this.clear();
+  }
+  line() { const div = document.createElement("div"); div.className = "cmd"; return div; }
+  span(text, cls) { const span = document.createElement("span"); if (cls) span.className = cls; span.textContent = text; return span; }
+  stat(text) { const div = document.createElement("div"); div.className = "stat"; div.textContent = text; return div; }
+  // The prompt, the command with each flag kept whole, and what the step is, in plain words.
+  parts(step) {
+    const parts = [["› ", "p"]];
+    for (const part of (step.shown ?? step.line).split(/(\s+)/)) if (part) parts.push([part, /^--?\w/.test(part) ? "flag" : ""]);
+    // The label wraps whole, under the command.
+    if (step.note) parts.push(["  ", ""], [`# ${step.note}`, "c note"]);
+    return parts;
+  }
+  get step() { return this.steps.length > 1 ? `step ${this.at + 1} of ${this.steps.length}` : ""; }
+  show(...parts) {
+    this.status.textContent = [this.step, ...parts].filter(Boolean).join(" · ");
+    if (!reduceMotion.matches) this.status.animate([{ opacity: 0.15 }, { opacity: 0.7 }], { duration: 150, easing: "steps(2, end)" });
+  }
+  clear() {
+    this.at = -1;
+    this.cmd = this.line(); this.cmd.append(this.span("› ", "p"), this.span("", "caret"));
+    this.status = this.stat("ready · press play");
+    this.live.replaceChildren(this.cmd, this.status);
+  }
+  // Types the step's command a character at a time; false once `alive` says the play has stopped.
+  async type(step, alive) {
+    this.at = this.steps.indexOf(step);
+    const caret = this.span("", "caret");
+    this.cmd.replaceChildren(caret);
+    this.show(this.step ? "" : "typing");
+    for (const [text, cls] of this.parts(step)) {
+      const span = this.span(reduceMotion.matches ? text : "", cls); caret.before(span);
+      if (reduceMotion.matches) continue;
+      for (const ch of text) { span.textContent += ch; await sleep(ch === " " ? 39 : 26); if (!alive()) return false; }
+    }
+    this.show("running");
+    return true;
+  }
+  print(text) { const last = String(text).split("\n").at(-1); if (last.trim()) this.show(last.trim()); }
+  waiting() { this.show("waiting for an answer"); }
+  echo() {}
+  done() {}
+  result(status, seconds) { this.show(`exit ${status}`, seconds >= 0.5 ? `${seconds.toFixed(1)} s` : ""); }
 }
 
 // ===== Paper =====
-// A printer's paper is as long as its print, and at least its starting length (--paper-h): once
-// the print reaches the end, each line feeds the paper further out, over whatever is below it,
-// and nothing on the page moves. Drag the scissors across it and it is cut there; what was under
-// the cut falls away, and later print feeds the cut end out from where it was.
+// A printer's paper is as long as its print: each entry feeds it further out, over whatever is
+// below it, and nothing on the page moves. Drag the scissors across it and it is cut there; what
+// was under the cut falls away, and later print feeds the cut end out from where it was.
 const PAPER_TAIL = 20; // blank paper between the last line and the end, in CSS pixels
 const CUT_STEP = 2; // a cut's edge is sampled every 2 px across the paper
 const scissors = scissorCursors();
@@ -1076,21 +1190,13 @@ class Paper {
       this.measure(fed);
     }).observe(this.feed);
   }
-  get base() { return parseFloat(getComputedStyle(this.paper).getPropertyValue("--paper-h")) || 0; }
   // Sets the paper's length from what is printed on it; `fed` is how much more print there is.
   measure(fed) {
-    const base = this.base;
     if (this.cut !== null && fed > 0) this.cut += fed;
-    const length = this.cut ?? Math.max(base, Math.ceil(this.log.offsetTop + this.feed.offsetHeight + PAPER_TAIL));
-    const grown = length - this.length;
-    this.length = length;
-    this.paper.style.setProperty("--paper-grow", `${length - base}px`);
-    // The end feeds out with the print, at the pace Term moves the entries down.
-    if (grown > 0 && fed > 0 && !reduceMotion.matches) {
-      this.paper.animate([{ height: `${-grown}px` }, { height: "0px" }], { duration: 320, easing: "cubic-bezier(.23, 1, .32, 1)", composite: "add" });
-    }
+    this.length = this.cut ?? Math.ceil(this.log.offsetTop + this.feed.offsetHeight + PAPER_TAIL);
+    this.paper.style.setProperty("--paper-len", `${this.length}px`);
   }
-  // A new scene starts on fresh paper, at its starting length, torn as it was.
+  // A new scene starts on fresh paper, torn as it was.
   reset() {
     this.cut = null; this.fed = 0;
     uncut(this.slip);
@@ -1101,7 +1207,7 @@ class Paper {
     const cutter = this.cutter;
     let drag = null;
     const local = (e) => { const r = this.slip.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    // The cut stays clear of the head, so the printer's name is never cut off.
+    // The cut stays clear of the slot, so there is always paper out of it to print on.
     const top = () => this.log.offsetTop + 6;
     const finish = (complete) => {
       if (!drag) return;
@@ -1142,7 +1248,8 @@ class Paper {
   }
   tip(y) {
     if (!this.tipEl) { this.tipEl = document.createElement("div"); this.tipEl.className = "cut-tip"; this.tipEl.textContent = "drag across to cut"; this.cutter.append(this.tipEl); }
-    this.tipEl.style.top = `${y}px`; this.tipEl.classList.add("on");
+    // Clear of the slot, where the paper is clipped.
+    this.tipEl.style.top = `${Math.max(y, 40)}px`; this.tipEl.classList.add("on");
     clearTimeout(this.tipTimer); this.tipTimer = setTimeout(() => this.tipEl.classList.remove("on"), 1400);
   }
   // The stroke becomes the edge: its height at each column across the paper, the latest pass
@@ -1311,15 +1418,17 @@ const CONFIG = `[preset.deploy]\nicon  = "paperplane.fill"\ncolor = "#a78bfa"\ns
 // `alive` says no, as when PLAY starts the scene over, it stops and prints and shows nothing more.
 async function exec(line, term, stage, { config = CONFIG, echo = true, shown = line, alive = () => true } = {}) {
   if (echo) term.echo(shown);
-  let commands;
-  try { commands = parseLine(line); } catch (error) { term.print(`zsh: ${error.message}`, "err"); return 1; }
-  let status = 0;
-  for (const { op, stages: allStages } of commands) {
-    if (!alive()) break;
-    if (op === "&&" && status !== 0) continue;
-    status = await execOne(allStages, term, stage, config, alive);
-  }
-  return status;
+  try {
+    let commands;
+    try { commands = parseLine(line); } catch (error) { term.print(`zsh: ${error.message}`, "err"); return 1; }
+    let status = 0;
+    for (const { op, stages: allStages } of commands) {
+      if (!alive()) break;
+      if (op === "&&" && status !== 0) continue;
+      status = await execOne(allStages, term, stage, config, alive);
+    }
+    return status;
+  } finally { term.done(); }
 }
 async function execOne(stages, term, stage, config, alive) {
   let stdin;
@@ -1363,6 +1472,7 @@ async function execOne(stages, term, stage, config, alive) {
   if (question) {
     let answer = null;
     question.onClick = (clicked) => { answer = clicked; };
+    term.waiting?.();
     while (!answer && stage.keeps(question)) await sleep(100);
     if (!alive()) return 5;
     if (!answer) { term.print("zsh: exit 5", "dim"); return 5; }
@@ -1439,9 +1549,10 @@ const FEATURES = [
   {
     label: "HOOK", title: "Hear from coding agents", body: "<code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> points the agent's hooks at drip. A card names the project and what the agent needs, then says when it has finished.",
     steps: [
-      { shown: "drip hook claude   #\u00a0Notification", line: `drip hook claude '${CLAUDE("Notification", { notification_type: "permission_prompt", message: "Claude needs your permission to use Bash" })}'` },
+      // The two hooks drip setup claude adds, in the order they fire: Notification, then Stop.
+      { shown: "drip hook claude", note: "Claude needs you", line: `drip hook claude '${CLAUDE("Notification", { notification_type: "permission_prompt", message: "Claude needs your permission to use Bash" })}'` },
       { sleep: 2.6 },
-      { shown: "drip hook claude   #\u00a0Stop", line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'` },
+      { shown: "drip hook claude", note: "Claude is done", line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'` },
     ],
   },
   {
@@ -1469,7 +1580,7 @@ FEATURES.forEach((feature, i) => {
     <div class="module">
       <div class="display" role="img"><div class="glyphs" aria-hidden="true"><span></span><span class="clock"></span></div><canvas class="stage-canvas"></canvas></div>
       <div class="row">
-        <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span class="what"></span></div><div class="log"></div></div></div></div>
+        <div class="readout"></div>
         <button type="button" class="bigbtn">PLAY</button>
       </div>
     </div>
@@ -1482,11 +1593,11 @@ FEATURES.forEach((feature, i) => {
   card.querySelector(".bigbtn").setAttribute("aria-label", `Play: ${feature.title}`);
   grid.append(card);
   const screen = card.querySelector(".display");
-  card.querySelector(".head .what").textContent = feature.label;
-  const term = new Term(card.querySelector(".log"), { max: 6 });
+  const commands = feature.steps.filter((step) => step.line);
+  const term = new Readout(card.querySelector(".readout"), commands);
   const stage = new Stage(screen, { term, zoom: () => 1, holds: 1 });
   stages.push(stage);
-  // Each press starts the scene over: the screen and the paper clear, and the play before it stops.
+  // Each press starts the scene over: the screen and the readout clear, and the play before it stops.
   let run = 0, played = false;
   const play = async () => {
     if (!drip) return;
@@ -1494,8 +1605,11 @@ FEATURES.forEach((feature, i) => {
     played = true; stage.reset(); term.clear();
     for (const step of feature.steps) {
       if (step.sleep) { await sleep(step.sleep * 1000); if (!alive()) return; continue; }
-      await exec(step.line, term, stage, { config: feature.config ?? "", shown: step.shown ?? step.line, alive });
+      if (!(await term.type(step, alive))) return;
+      const started = performance.now();
+      const status = await exec(step.line, term, stage, { config: feature.config ?? "", echo: false, alive });
       if (!alive()) return;
+      term.result(status, (performance.now() - started) / 1000);
     }
   };
   card.querySelector(".bigbtn").addEventListener("click", play);
