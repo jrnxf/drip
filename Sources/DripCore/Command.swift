@@ -24,6 +24,8 @@ public enum ExitStatus {
     public static let hookFailed: Int32 = 1
     /// `drip setup` left the agent's settings alone: a symlink, read-only or not plain JSON.
     public static let setupFailed: Int32 = 1
+    /// `drip pause` or `drip resume` could not write the pause to the state directory.
+    public static let pauseFailed: Int32 = 1
 
     /// What a drip that waited for its cards exits with: 5 when a card with a button went without a
     /// click on one, else 1 when a question was answered no, else 0.
@@ -270,11 +272,13 @@ public struct DripCommand: ParsableCommand {
             drip setup claude|codex|gemini [--print]
             drip demo [chain|push] [options]
             drip history [--missed] [--json | --replay]
+            drip pause [DURATION]
+            drip resume
             """,
         version: dripVersion,
         subcommands: [
             ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, DemoCommand.self,
-            HistoryCommand.self, RenderCommand.self, BackgroundCommand.self,
+            HistoryCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self, BackgroundCommand.self,
         ],
         defaultSubcommand: ShowCommand.self
     )
@@ -292,6 +296,7 @@ public struct DripCommand: ParsableCommand {
           drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23
           drip ask "my-app needs you" --icon app:com.openai.chat
           drip setup claude
+          drip pause 30m
         """
 
     /// What `drip --help` ends with.
@@ -520,12 +525,12 @@ public struct HistoryCommand: ParsableCommand {
         usage: "drip history [--missed] [--json | --replay]",
         discussion: """
             Lists every card in the history, oldest first, marking those that came up while the screen was \
-            locked as missed. The history is $XDG_STATE_HOME/drip/history.jsonl, or \
+            locked or drip was paused as missed. The history is $XDG_STATE_HOME/drip/history.jsonl, or \
             ~/.local/state/drip/history.jsonl, and keeps the last \(CardHistory.limit) cards.
             """
     )
 
-    @Flag(help: "Only cards that came up while the screen was locked.")
+    @Flag(help: "Only cards that came up while the screen was locked or drip was paused.")
     public var missed = false
 
     @Flag(help: "Print each card as one flat line of JSON, for scripts.")
@@ -539,6 +544,57 @@ public struct HistoryCommand: ParsableCommand {
     public func validate() throws {
         if json, replay { throw ValidationError("--json and --replay cannot be used together") }
     }
+}
+
+/// `drip pause [DURATION]`: holds cards for a while, as while the screen is locked.
+public struct PauseCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "pause",
+        abstract: "Hold cards for a while, then show what came up.",
+        usage: "drip pause [DURATION]",
+        discussion: """
+            Until the pause ends, cards are held as they are while the screen is locked: then one or \
+            two show as they are, and three or more as one card, and drip history --missed lists them. \
+            A drip that waits for its card, with --wait or a --yes question, waits for the end. drip \
+            pause alone pauses for 1h, or says how long is left when drip is paused already; a \
+            duration sets a new end. The pause holds for every drip, ends on its own, and lasts at \
+            most 24h. drip resume ends it now.
+            """
+    )
+
+    /// How long to pause for, in seconds, from now, replacing any pause; nil to say how long is left
+    /// of the pause, or to pause for `DripPause.defaultDuration` when there is none.
+    public var seconds: Double? {
+        argument.flatMap(DripPause.duration)
+    }
+
+    @Argument(help: ArgumentHelp(
+        "How long to pause: minutes or hours, such as 30m, 2h or 1h30m. (default: 1h, or the time left when paused)",
+        valueName: "duration"))
+    var argument: String?
+
+    public init() {}
+
+    public func validate() throws {
+        guard let argument else { return }
+        guard let seconds = DripPause.duration(argument) else {
+            throw ValidationError("'\(argument)' is not a duration: give minutes or hours, as in 30m, 2h or 1h30m")
+        }
+        if seconds > DripPause.longest {
+            throw ValidationError("a pause lasts at most 24h")
+        }
+    }
+}
+
+/// `drip resume`: ends a pause now.
+public struct ResumeCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "resume",
+        abstract: "End a pause now, and show the cards it held.",
+        usage: "drip resume"
+    )
+
+    public init() {}
 }
 
 /// `drip __render --out card.png [KIND] [TITLE] [options]`: draws a card offscreen into a PNG.
@@ -608,6 +664,9 @@ public enum Invocation {
     case hook(HookCommand)
     case setup(SetupCommand)
     case history(HistoryCommand)
+    case pause(PauseCommand)
+    /// `drip resume`: ends a pause now.
+    case resume
     case render(RenderCommand)
     /// The background drip: shows the cards it reads from standard input.
     case background
@@ -639,6 +698,8 @@ public enum CommandLineParser {
             case let command as SetupCommand: return .invocation(.setup(command))
             case let command as DemoCommand: return .invocation(.demo(command))
             case let command as HistoryCommand: return .invocation(.history(command))
+            case let command as PauseCommand: return .invocation(.pause(command))
+            case is ResumeCommand: return .invocation(.resume)
             case let command as RenderCommand: return .invocation(.render(command))
             case is BackgroundCommand: return .invocation(.background)
             default:

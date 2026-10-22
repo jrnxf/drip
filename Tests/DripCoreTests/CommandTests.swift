@@ -44,7 +44,7 @@ struct CommandTests {
 
     /// `drip help run` shows run's help, as `drip run --help` does.
     @Test func helpForASubcommand() {
-        for name in ["run", "hook", "setup", "demo", "history", "show"] {
+        for name in ["run", "hook", "setup", "demo", "history", "pause", "resume", "show"] {
             guard case let .exit(status, help) = CommandLineParser.parse(["help", name]),
                   case let .exit(_, flag) = CommandLineParser.parse([name, "--help"]),
                   case let .exit(_, short) = CommandLineParser.parse([name, "-h"])
@@ -353,9 +353,35 @@ struct CommandTests {
         assertUsageError(["history", "extra"])
     }
 
+    @Test func pauseCommand() throws {
+        #expect(try pause([]).seconds == nil)
+        #expect(try pause(["30m"]).seconds == 1800)
+        #expect(try pause(["2h"]).seconds == 7200)
+        #expect(try pause(["1h30m"]).seconds == 5400)
+        #expect(try pause(["24h"]).seconds == 86400)
+        for arguments in [["30"], ["soon"], ["0m"], ["25h"], ["off"], ["status"], ["forever"], ["30m", "extra"], ["--for", "30m"]] {
+            assertUsageError(["pause"] + arguments)
+        }
+        guard case let .exit(status, message) = CommandLineParser.parse(["pause", "30"]) else {
+            Issue.record(); return
+        }
+        #expect(status == ExitStatus.usage)
+        #expect(message == "drip: '30' is not a duration: give minutes or hours, as in 30m, 2h or 1h30m\n"
+            + "See 'drip pause --help'.")
+        guard case let .exit(_, tooLong) = CommandLineParser.parse(["pause", "25h"]) else { Issue.record(); return }
+        #expect(tooLong == "drip: a pause lasts at most 24h\nSee 'drip pause --help'.")
+    }
+
+    @Test func resumeCommand() {
+        guard case .invocation(.resume) = CommandLineParser.parse(["resume"]) else {
+            Issue.record("drip resume did not parse"); return
+        }
+        assertUsageError(["resume", "now"])
+    }
+
     @Test func helpAndVersionExitZero() {
         for arguments in [["--help"], ["-h"], ["help"], ["--version"], ["run", "--help"], ["run", "-s", "3", "--help"],
-                          ["history", "--help"], ["help", "hook"], ["ok", "--help"]] {
+                          ["history", "--help"], ["pause", "--help"], ["help", "hook"], ["ok", "--help"]] {
             guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
                 Issue.record("\(arguments) did not exit"); return
             }
@@ -388,12 +414,14 @@ struct CommandTests {
         #expect(help.contains("drip hook claude|codex|gemini [options]"), "\(help)")
         #expect(help.contains("drip setup claude|codex|gemini [--print]"), "\(help)")
         #expect(help.contains("drip history [--missed] [--json | --replay]"), "\(help)")
+        #expect(help.contains("drip pause [DURATION]"), "\(help)")
+        #expect(help.contains("drip resume"), "\(help)")
         let order = ["USAGE:", "EXAMPLES:", "ARGUMENTS:", "OPTIONS:", "SUBCOMMANDS:", "EXIT CODES:"].map {
             help.firstRange(of: "\n\($0)")?.lowerBound
         }
         #expect(order.allSatisfy { $0 != nil }, "\(help)")
         #expect(order.compactMap { $0 } == order.compactMap { $0 }.sorted(), "\(help)")
-        for subcommand in ["run", "hook", "setup", "demo", "history"] {
+        for subcommand in ["run", "hook", "setup", "demo", "history", "pause", "resume"] {
             #expect(help.contains("\n  \(subcommand) "), "\(subcommand)")
         }
         #expect(help.contains("--seconds"), "\(help)")
@@ -415,7 +443,7 @@ struct CommandTests {
                 Issue.record("\(shell) did not exit"); continue
             }
             #expect(status == 0, "\(shell)")
-            for subcommand in ["run", "hook", "demo", "history"] {
+            for subcommand in ["run", "hook", "demo", "history", "pause", "resume"] {
                 #expect(script.contains(subcommand), "\(shell): \(subcommand)")
             }
             #expect(!script.contains("__render"), "\(shell)")
@@ -460,6 +488,13 @@ struct CommandTests {
     private func run(_ arguments: [String]) throws -> RunCommand {
         guard case let .invocation(.run(command)) = CommandLineParser.parse(["run"] + arguments) else {
             throw UsageError("\(arguments) did not parse as drip run")
+        }
+        return command
+    }
+
+    private func pause(_ arguments: [String]) throws -> PauseCommand {
+        guard case let .invocation(.pause(command)) = CommandLineParser.parse(["pause"] + arguments) else {
+            throw UsageError("\(arguments) did not parse as drip pause")
         }
         return command
     }

@@ -246,7 +246,8 @@ private struct ConfigReader {
     /// since `drip <name>` would run the subcommand instead.
     static let reservedNames: Set<String> = [
         "run", "hook", "demo", "history", "show", "help", "version", "setup", "config", "init", "install",
-        "uninstall", "completion", "completions", "doctor", "mute", "pause", "listen", "test",
+        "uninstall", "completion", "completions", "doctor", "mute", "pause", "resume", "listen",
+        "test",
     ]
 
     static func isValidPresetName(_ name: String) -> Bool {

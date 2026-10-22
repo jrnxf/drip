@@ -29,6 +29,7 @@ drip info "deploying" --id deploy && drip ok "deployed" --id deploy
 drip setup claude             # Claude Code's hooks: which project needs you, and why
 drip demo                     # a few cards dropping from the notch, chained then pushed
 drip history --missed         # what came up while you were away
+drip pause 30m                # hold cards for half an hour; drip resume ends it early
 ```
 
 Requires macOS 13 or newer.
@@ -69,10 +70,11 @@ drip that is showing queued cards.
 **Which screen.** A card shows on the screen the pointer is on, with or without a notch, and falls
 back to the main screen. It also shows over full-screen apps and on every Space.
 
-**No card?** A card that comes up while the screen is locked waits for the unlock (see
-[Missed cards](#missed-cards-and-history)), and `drip history --missed` lists them. Over ssh there is
-no GUI session, so drip exits 3. drip does not follow Focus: cards show during Do Not Disturb, and in
-screen shares and recordings.
+**No card?** A card that comes up while the screen is locked, or while drip is paused, waits for the
+unlock or the end of the pause (see [Missed cards](#missed-cards-and-history)), and `drip history
+--missed` lists them. Over ssh there is no GUI session, so drip exits 3. drip does not follow Focus,
+since reading it would take a permission: cards show during Do Not Disturb, and in screen shares and
+recordings. Run `drip pause` for those instead (see [Pausing](#pausing)).
 
 ## Coding agents
 
@@ -224,6 +226,8 @@ drip hook claude|codex|gemini [options] [payload]
 drip setup claude|codex|gemini [--print]
 drip demo [chain|push] [options]
 drip history [--missed] [--json | --replay]
+drip pause [DURATION]
+drip resume
 drip --version | --help
 drip help <subcommand>
 ```
@@ -364,7 +368,8 @@ with `--activate none`. The card itself never takes focus.
 
 A card that comes up while the screen is locked would play to nobody, so drip holds it until the
 screen unlocks. Then one or two held cards show as they are, and three or more show as one card,
-`5 cards while you were away`, with their titles newest first. It takes the look and sound of the
+`5 cards while you were away`, with their titles newest first. Cards held while drip is paused
+(see [Pausing](#pausing)) show the same way when the pause ends. It takes the look and sound of the
 newest `fail` card among them, else the newest `ask` card, else the newest `warn` card, else the
 newest card, so a failure still reads as one. The summary counts down, even when it looks like an
 `ask` card. Of held cards with the same `--id`, only the newest shows. A click on the
@@ -378,7 +383,7 @@ the last 1000 cards. `drip demo` cards are not kept.
 
 ```sh
 drip history                  # every kept card, oldest first
-drip history --missed         # only those that came up while the screen was locked
+drip history --missed         # only those that came up while the screen was locked or drip was paused
 drip history --json           # one JSON object per line, for scripts
 drip history --missed --replay   # show the missed cards again
 ```
@@ -393,7 +398,29 @@ writes each setting the way its flag takes it, and leaves out `detail`, `button`
 
 `--replay` shows the cards again, in order, with any button that opens something; a question's button is
 dropped, since nothing waits for its answer anymore. Replayed cards are held while the screen is
-locked like any other, and are not added to the history again.
+locked or drip is paused like any other, and are not added to the history again.
+
+### Pausing
+
+`drip pause` holds every card for an hour, from every drip, as if the screen were locked: for a
+meeting, a screen share or a call. When the pause ends, the held cards show as missed cards do: one
+or two as they are, three or more as one `N cards while you were away` card, and `drip history
+--missed` lists them. A drip that waits for its card, with `--wait` or a `--yes` question, waits for
+the end of the pause, and says so.
+
+```sh
+drip pause            # an hour; when drip is paused already, how long is left
+drip pause 30m        # minutes or hours: 30m, 2h, 1h30m, up to 24h
+drip resume           # end the pause now, and show what it held
+```
+
+`drip pause` with a duration sets a new end, sooner or later, in place of the old one. A pause
+always ends on its own; there is no pause without an end. It is kept as its end time in
+`$XDG_STATE_HOME/drip/pause`, or `~/.local/state/drip/pause`, so it holds across drips and restarts,
+and no drip keeps running for it but the one holding the cards. While drip is paused, every drip run
+in a terminal prints a reminder to stderr, such as `drip is paused, 23m left (drip resume to
+unpause)`. A drip whose stderr is not a terminal, such as one in a script's log, and `drip hook`,
+print nothing about it, and `--quiet` keeps it quiet too. `drip demo` still plays.
 
 ### Buttons
 
@@ -480,7 +507,7 @@ runs at once, and the cards still in the stack play out without it.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown; a question was answered yes, the moment it was clicked. |
-| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason; or `drip setup` left the agent's settings alone, or could not write them. |
+| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason; `drip setup` left the agent's settings alone, or could not write them; or `drip pause` or `drip resume` could not write the pause. |
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh. |
 | 4 | The config file is invalid; the message names the key and line. |
@@ -524,7 +551,7 @@ that a top-level `sound = false` mutes every preset. A custom preset starts from
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
 name kept for them: `run`, `hook`, `demo`, `history`, `show`, `help`, `version`, `setup`,
 `config`, `init`, `install`, `uninstall`, `completion`, `completions`, `doctor`, `mute`, `pause`,
-`listen` or `test`. A custom preset never waits,
+`resume`, `listen` or `test`. A custom preset never waits,
 and its ring shows no state's mark. Unknown keys print a warning;
 wrong types exit 4.
 
