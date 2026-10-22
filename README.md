@@ -560,6 +560,7 @@ swift build
 swift test            # on Linux, or on a Mac with Xcode
 scripts/mac-check.sh  # on any Mac
 scripts/demo-gif.sh   # redraws docs/demo.gif; needs ImageMagick
+scripts/demo-tour.sh  # plays a 20-second tour of drip on a Mac, to screen-record
 ```
 
 `swift test` runs the DripCore unit tests anywhere Swift runs, including Linux CI. The snapshot
@@ -578,6 +579,14 @@ never overwrites a reference: to regenerate one on purpose, delete its PNG and r
 
 `scripts/demo-gif.sh` draws the animation at the top of this file frame by frame with
 `__render --at`, from the same layers the notch card shows, so it needs no screen recording.
+
+`scripts/demo-tour.sh` is for recording a demo video of drip: run it on a Mac with drip installed and it plays
+a paced tour of about 20 seconds, a `drip run` card, a chained stack, a yes/no question from Claude
+with a Merge button to click, and a deploy card that `--id` updates in place. Start a screen
+recording with Cmd+Shift+5 first, or run `scripts/demo-tour.sh --record tour.mov` to record the
+screen with `screencapture`, which needs Screen Recording permission for the terminal. The tour
+uses drip's built-in defaults in a temporary config and state directory, so it leaves your config
+and history alone.
 
 ### The web page
 
