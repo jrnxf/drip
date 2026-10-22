@@ -86,7 +86,7 @@ public struct ConfigError: Error, Equatable, CustomStringConvertible {
     }
 }
 
-/// A loaded config and the warnings it produced, such as unknown keys and retired ones.
+/// A loaded config and the warnings it produced, such as unknown keys.
 public struct ConfigFile: Equatable {
     public var config: Config
     public var warnings: [String]
@@ -135,7 +135,7 @@ public enum ConfigLoader {
         return try parse(text, path: path)
     }
 
-    /// Parses config.toml. Unknown and retired keys are warnings; wrong types and invalid values are
+    /// Parses config.toml. Unknown keys are warnings; wrong types and invalid values are
     /// errors.
     public static func parse(_ text: String, path: String) throws -> ConfigFile {
         var reader = ConfigReader(path: path)
@@ -164,7 +164,6 @@ private struct ConfigReader {
             guard let item = table[key] else { continue }
             switch key {
             case "seconds": config.seconds = try seconds(item, key: key)
-            case "position", "style": warnRetired(item, key: key)
             case "size": config.size = try choice(item, key: key, CardSize.self)
             case "sound": config.sound = try sound(item, key: key)
             case "motion": config.motion = try choice(item, key: key, Motion.self)
@@ -236,8 +235,6 @@ private struct ConfigReader {
                 preset.sound = try sound(item, key: key)
             case "seconds":
                 preset.seconds = try seconds(item, key: key)
-            case "style":
-                warnRetired(item, key: key)
             default:
                 warnUnknown(key, line: item.line)
             }
@@ -310,15 +307,6 @@ private struct ConfigReader {
         warnings.append("\(path):\(line): unknown key '\(key)'")
     }
 
-    /// A key drip no longer reads, whatever its value, as old configs still set it.
-    private mutating func warnRetired(_ item: TOMLItem, key: String) {
-        var value: String?
-        if case let .string(text) = item.value { value = text }
-        if let warning = RetiredSetting.warning(for: key, value: value, named: "'\(key)'") {
-            warnings.append("\(path):\(item.line): \(warning)")
-        }
-    }
-
     private static func list(_ items: [String]) -> String {
         ChoiceList.or(items)
     }
@@ -345,8 +333,6 @@ public struct EnvironmentSettings: Equatable {
     public var stackMax: Int?
     /// The bundle identifier of the app drip was run from, from `__CFBundleIdentifier`.
     public var sender: String?
-    /// What to warn about: retired variables that are set, such as DRIP_STYLE.
-    public var warnings: [String] = []
 
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
@@ -362,9 +348,8 @@ public struct EnvironmentSettings: Equatable {
     }
 
     /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK and DRIP_STACK_MAX. Empty
-    /// values are ignored; invalid ones are usage errors. DRIP_POSITION and DRIP_STYLE are retired:
-    /// any value but notch for DRIP_POSITION is a warning. Also notes the app drip was run from,
-    /// from `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
+    /// values are ignored; invalid ones are usage errors. Also notes the app drip was run from, from
+    /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
         func value(_ name: String) -> String? {
             environment[name].flatMap { $0.isEmpty ? nil : $0 }
@@ -394,23 +379,5 @@ public struct EnvironmentSettings: Equatable {
         }
         sound = value("DRIP_SOUND").map(Sound.init(parsing:))
         sender = CardActivation.sender(in: environment)
-        for (name, key) in [("DRIP_POSITION", "position"), ("DRIP_STYLE", "style")] {
-            guard let text = value(name) else { continue }
-            if let warning = RetiredSetting.warning(for: key, value: text, named: name) { warnings.append(warning) }
-        }
-    }
-}
-
-/// Settings from before every card was a notch card: `position`, which could put a card at the
-/// bottom, center or top of the screen, and `style`, which drew it as hud, glass, wash or terminal
-/// there. Old configs, scripts and environments still set them, so drip takes any value, warns and
-/// goes on.
-public enum RetiredSetting {
-    /// The warning for the retired setting `key`, `position` or `style`, set to `value` (nil for a
-    /// value that is not text) where it is called `name`, such as `--style` or `DRIP_POSITION`. Nil
-    /// for `position` set to `notch`, which asks for what drip does anyway.
-    public static func warning(for key: String, value: String?, named name: String) -> String? {
-        if key == "position", value == "notch" { return nil }
-        return "\(name) does nothing: every card shows at the notch"
     }
 }

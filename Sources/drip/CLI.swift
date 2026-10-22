@@ -270,13 +270,12 @@ struct DripCLI {
         }
     }
 
-    /// Reads the config file and environment, printing their warnings.
+    /// Reads the config file and environment, printing the config file's warnings.
     private func makeResolver(_ console: Console) throws -> CardResolver {
         let environment = ProcessInfo.processInfo.environment
         let file = try ConfigLoader.load(environment: environment)
         file.warnings.forEach(console.warn)
         let settings = try EnvironmentSettings(environment: environment)
-        settings.warnings.forEach(console.warn)
         return CardResolver(config: file.config, environment: settings)
     }
 

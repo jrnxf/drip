@@ -1,17 +1,16 @@
 import DripCore
 import Testing
 
-/// `position` and `style` are retired: every card shows at the notch, drawn one way. Old configs,
-/// scripts and environments still set them, so drip takes any value, warns once for each and goes on;
-/// `position` set to `notch` asks for what drip does anyway, so it is no warning.
-struct RetiredSettingTests {
+/// Every card shows at the notch, drawn one way, so drip has no `position` or `style` setting: in a
+/// config they are unknown keys, as flags they are unknown options, and DRIP_POSITION and
+/// DRIP_STYLE are not read.
+struct RemovedSettingTests {
     private let path = "/home/me/.config/drip/config.toml"
-    private let doesNothing = "does nothing: every card shows at the notch"
 
-    @Test func theConfigWarnsAboutEachRetiredKeyAndReadsTheRest() throws {
+    @Test func theConfigWarnsAboutEachStaleKeyAsUnknownAndReadsTheRest() throws {
         let file = try ConfigLoader.parse("""
             style    = "glass"
-            position = "bottom"
+            position = 3
             motion   = "subtle"
 
             [preset.fail]
@@ -19,79 +18,51 @@ struct RetiredSettingTests {
             color = "red"
             """, path: path)
         #expect(file.warnings == [
-            "\(path):1: 'style' \(doesNothing)",
-            "\(path):2: 'position' \(doesNothing)",
-            "\(path):6: 'preset.fail.style' \(doesNothing)",
+            "\(path):1: unknown key 'style'",
+            "\(path):2: unknown key 'position'",
+            "\(path):6: unknown key 'preset.fail.style'",
         ])
         #expect(file.config == Config(motion: .subtle, presets: ["fail": PresetOverride(color: .system(.red))]))
-    }
-
-    @Test func theConfigTakesAnyValueForARetiredKey() throws {
-        let file = try ConfigLoader.parse("""
-            style    = "neon"
-            position = 3
-            """, path: path)
-        #expect(file.warnings == ["\(path):1: 'style' \(doesNothing)", "\(path):2: 'position' \(doesNothing)"])
-        #expect(file.config == Config())
-    }
-
-    @Test func positionNotchIsNoWarning() throws {
-        let file = try ConfigLoader.parse("position = \"notch\"", path: path)
-        #expect(file.warnings == [])
-        #expect(file.config == Config())
-        #expect(try EnvironmentSettings(environment: ["DRIP_POSITION": "notch"]).warnings == [])
-        #expect(try options(["ok", "t", "--position", "notch"]).warnings == [])
     }
 
     /// No released drip had a `notch` key: it is unknown, as any other, and DRIP_NOTCH is not read.
     @Test func notchIsNoSetting() throws {
         let file = try ConfigLoader.parse("""
-            position = "notch"
             notch    = "ears"
             motion   = "subtle"
             """, path: path)
-        #expect(file.warnings == ["\(path):2: unknown key 'notch'"])
+        #expect(file.warnings == ["\(path):1: unknown key 'notch'"])
         #expect(file.config == Config(motion: .subtle))
         #expect(try ConfigLoader.parse("notch = 3", path: path).config == Config())
         #expect(try EnvironmentSettings(environment: ["DRIP_NOTCH": "drip"]) == EnvironmentSettings())
     }
 
-    @Test func theEnvironmentWarnsAboutEachRetiredVariableAndReadsTheRest() throws {
+    @Test func theEnvironmentIgnoresStaleVariables() throws {
         let settings = try EnvironmentSettings(environment: [
             "DRIP_STYLE": "neon", "DRIP_POSITION": "top", "DRIP_MOTION": "none",
         ])
-        var expected = EnvironmentSettings(motion: Motion.none)
-        expected.warnings = ["DRIP_POSITION \(doesNothing)", "DRIP_STYLE \(doesNothing)"]
-        #expect(settings == expected)
-        #expect(try EnvironmentSettings(environment: ["DRIP_STYLE": "", "DRIP_POSITION": ""]).warnings == [])
+        #expect(settings == EnvironmentSettings(motion: Motion.none))
     }
 
-    @Test func theFlagsAreTakenWithAnyValueAndWarnedAbout() throws {
-        let given = try options(["ok", "t", "--style", "terminal", "--position", "bottom"])
-        #expect(given.flags == CardFlags())
-        #expect(given.warnings == ["--position \(doesNothing)", "--style \(doesNothing)"])
-        #expect(try options(["ok", "t", "--style", "neon"]).warnings == ["--style \(doesNothing)"])
-        #expect(try options(["ok", "t"]).warnings == [])
-    }
-
-    @Test func everyCommandThatShowsACardTakesThem() throws {
-        guard case let .invocation(.run(run)) = CommandLineParser.parse(["run", "--position", "top", "--style", "wash", "ls"])
-        else { Issue.record("run did not parse"); return }
-        #expect(run.command == ["ls"])
-        #expect(run.options.warnings == ["--position \(doesNothing)", "--style \(doesNothing)"])
-        guard case let .invocation(.hook(hook)) = CommandLineParser.parse(["hook", "claude", "--style", "hud"])
-        else { Issue.record("hook did not parse"); return }
-        #expect(hook.options.warnings == ["--style \(doesNothing)"])
-        guard case let .invocation(.demo(demo)) = CommandLineParser.parse(["demo", "--style", "glass"])
-        else { Issue.record("demo did not parse"); return }
-        #expect(demo.options.warnings == ["--style \(doesNothing)"])
-    }
-
-    private func options(_ arguments: [String]) throws -> CardOptions {
-        guard case let .invocation(.show(command)) = CommandLineParser.parse(arguments) else {
-            throw UsageError("\(arguments) did not parse")
+    @Test func theFlagsAreUnknownOptionsForEveryCommandThatShowsACard() {
+        let commands: [([String], String, Int32)] = [
+            (["ok", "t", "--position", "notch"], "drip --help", ExitStatus.usage),
+            (["ok", "t", "--style", "terminal"], "drip --help", ExitStatus.usage),
+            (["run", "--position", "top", "ls"], "drip run --help", ExitStatus.usage),
+            (["run", "--style", "wash", "ls"], "drip run --help", ExitStatus.usage),
+            (["hook", "claude", "--position", "top"], "drip hook --help", ExitStatus.hookFailed),
+            (["hook", "claude", "--style", "hud"], "drip hook --help", ExitStatus.hookFailed),
+            (["demo", "--position", "bottom"], "drip demo --help", ExitStatus.usage),
+            (["demo", "--style", "glass"], "drip demo --help", ExitStatus.usage),
+        ]
+        for (arguments, help, expected) in commands {
+            guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
+                Issue.record("\(arguments) parsed"); continue
+            }
+            let flag = arguments.first { $0 == "--position" || $0 == "--style" } ?? ""
+            #expect(status == expected, "\(arguments)")
+            #expect(message == "drip: unknown option '\(flag)'\nSee '\(help)'.", "\(arguments)")
         }
-        return command.options
     }
 }
 

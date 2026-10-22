@@ -81,14 +81,6 @@ public struct CardOptions: ParsableArguments {
         valueName: "hex|name"))
     var color: CardColor?
 
-    /// Retired: every card shows at the notch. Taken, whatever its value, for old scripts.
-    @Option(help: .hidden)
-    var position: String?
-
-    /// Retired: every card is drawn the one way. Taken, whatever its value, for old scripts.
-    @Option(help: .hidden)
-    var style: String?
-
     @Option(help: ArgumentHelp(
         "Add a button that opens this URL or path. Hovering holds the card.", valueName: "url|path"))
     var open: String?
@@ -197,16 +189,10 @@ public struct CardOptions: ParsableArguments {
             button: label, decline: open == nil ? no : nil, id: id, activate: activate)
     }
 
-    /// What drip warns about before it shows the card: options that do nothing, retired ones
-    /// included, and the old spelling of --confirm.
+    /// What drip warns about before it shows the card: options that do nothing and the old
+    /// spelling of --confirm.
     public var warnings: [String] {
         var warnings: [String] = []
-        for (key, value) in [("position", position), ("style", style)] {
-            guard let value, let warning = RetiredSetting.warning(for: key, value: value, named: "--\(key)") else {
-                continue
-            }
-            warnings.append(warning)
-        }
         if open?.trimmingCharacters(in: .whitespaces).isEmpty == true {
             warnings.append("--open is empty, so the card has no button")
         }
@@ -762,8 +748,8 @@ extension CommandLineParser {
     /// Every card option that takes a value, so that `drip run` can tell an option's value from the
     /// command: in `drip run -s 3 make`, 3 is the value and make the command.
     static let valueOptions: Set<String> = [
-        "-d", "--detail", "-s", "--seconds", "--sound", "--icon", "--color", "--position", "--style", "--open",
-        "--button", "--confirm", "--yes", "--no", "--id", "--activate",
+        "-d", "--detail", "-s", "--seconds", "--sound", "--icon", "--color", "--open", "--button",
+        "--confirm", "--yes", "--no", "--id", "--activate",
     ]
 
     /// The first argument before `--` that starts with a dash but is text, not an option: it holds

@@ -528,13 +528,6 @@ name kept for them: `run`, `hook`, `demo`, `history`, `show`, `help`, `version`,
 and its ring at the notch shows no state's mark. Unknown keys print a warning;
 wrong types exit 4.
 
-**Retired settings.** drip used to show cards at the bottom, center or top of the screen too, drawn
-as `hud`, `glass`, `wash` or `terminal`. Every card is a notch card now, but drip still takes
-`--position` and `--style`, the `position` and `style` keys and a preset's `style`, and
-`DRIP_POSITION` and `DRIP_STYLE`, whatever their value, so old scripts and configs keep working.
-They do nothing, and each prints a warning, except a position of `notch`, which is what drip does
-anyway.
-
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
 of one or two keys such as `[preset.ok]`, and values that are single-line strings, decimal
 integers, floats or booleans. Any other TOML syntax, such as arrays, inline tables, dotted keys or
