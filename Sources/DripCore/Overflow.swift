@@ -173,7 +173,9 @@ extension CardStack {
         guard let overflow, !overflow.isLeaving else { return nil }
         let count = overflow.count
         let last = settings.mode == .chain && queued.count <= 1 && overflow.inFlight == 0
-        tick(overflow, to: max(count - 1, 0), at: time)
+        // From the cards still waiting rather than the count shown, which a card that came while no
+        // seed could drip in may not have caught up with yet.
+        tick(overflow, to: max(queued.count - 1 - overflow.inFlight, 0), at: time)
         if settings.mode == .push {
             return Release(entry: enter(card, metrics: metrics, own: own, decided: time, at: time), count: count, last: false)
         }
@@ -285,6 +287,11 @@ extension CardStack {
                 into: overflow.animator.targetTop,
                 middle: overflow.animator.targetTop + overflow.animator.metrics.pillHeight / 2,
                 metrics: overflow.metrics, at: start))
+            changed = true
+        } else if case .releasing = overflow.phase, overflow.count + inFlight < target {
+            // Joined to the card growing out of it, it has no last card to drip from: a card that
+            // comes meanwhile counts at once.
+            tick(overflow, to: target - inFlight, at: start)
             changed = true
         }
         if overflow.phase == .shown, overflow.count <= 0, target == 0, overflow.seeds.isEmpty,

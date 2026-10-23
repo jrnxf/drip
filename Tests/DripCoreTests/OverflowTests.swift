@@ -299,6 +299,33 @@ struct OverflowTests {
         #expect(fillingKept)
     }
 
+    /// A card that comes while a card grows out of the drop counts at once, so the count stays true
+    /// through releases back to back and never runs out while a card still waits.
+    @Test func aCardThatComesWhileOneGrowsOutCounts() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 3)
+        var sent = false
+        var releasing = false
+        var trailed = false
+        var blank = false
+        driver.run(for: 14) { time, _ in
+            if !sent, driver.releases.count == 1 {
+                sent = true
+                driver.others = [self.card("late", seconds: 3)]
+            }
+            guard let overflow = driver.stack.overflow, !overflow.isLeaving else { return }
+            let inFlight = overflow.seeds.filter { time < $0.merge }.count
+            if case .releasing = overflow.phase, sent {
+                releasing = true
+                if overflow.count + inFlight != driver.stack.queued.count { trailed = true }
+            }
+            if overflow.count == 0, !driver.stack.queued.isEmpty { blank = true }
+        }
+        #expect(releasing)
+        #expect(!trailed)
+        #expect(!blank)
+        #expect(driver.releases.map(\.release.entry.card.title) == ["d", "e", "late"])
+    }
+
     /// While the pointer is on the stack, cards keep dripping in so the count stays true, but none
     /// grows out.
     @Test func hoveringHoldsTheReleaseButNotTheCount() throws {
