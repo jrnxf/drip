@@ -606,7 +606,7 @@ multi-line strings, exits 4 with the line, and so does a file larger than 1 MB.
 swift build
 swift test            # on Linux, or on a Mac with Xcode
 scripts/mac-check.sh  # on any Mac
-scripts/demo-gif.sh   # redraws docs/demo.gif; needs ImageMagick
+scripts/record-demo.sh  # films docs/demo.mp4 and docs/demo.gif on a Mac; needs ffmpeg
 ```
 
 `swift test` runs the DripCore unit tests anywhere Swift runs, including Linux CI. The snapshot
@@ -623,8 +623,11 @@ under one another, a Claude hook card that a newer card from the same session re
 then lists the last cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
 never overwrites a reference: to regenerate one on purpose, delete its PNG and run the script again.
 
-`scripts/demo-gif.sh` draws the animation at the top of this file frame by frame with
-`__render --at`, from the same layers the notch card shows, so it needs no screen recording.
+`scripts/record-demo.sh` makes the animation at the top of this file by filming real cards: it plays
+a fixed sequence at the notch of the screen under the pointer, records that strip with `screencapture`
+at the screen's native pixels, and encodes `docs/demo.mp4` and `docs/demo.gif` with ffmpeg. Set a clean
+wallpaper first, and allow your terminal under System Settings > Privacy & Security > Screen & System
+Audio Recording the first time. Run it again for a new take.
 
 ### Releases
 
