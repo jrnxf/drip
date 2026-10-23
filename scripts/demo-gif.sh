@@ -30,7 +30,7 @@ card() {
     for _ in $(seq 12); do next; cp "$closed" "$out"; done
 }
 card ok "Build finished" --detail "make test: 246 passed in 3.2s"
-card info "Claude needs you" --detail "Claude needs your permission to use Bash" --stay
+card info "Claude needs you" --detail "Claude needs your permission to use Bash" --icon mark:claude --stay
 card fail "Deploy failed" --detail "staging: health check timed out after 30s"
 
 # Every frame on one canvas, wide enough for the widest card: the renderer's menu bar and desktop.
