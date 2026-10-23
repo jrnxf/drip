@@ -86,9 +86,10 @@
       </dl>
 
       <div class="devwrap">
+        <span class="callout tl" data-n="1" aria-hidden="true">display: DripCore, as WebAssembly<i style="--w:60px"></i></span>
+        <span class="callout tr" data-n="2" aria-hidden="true"><i style="--w:40px"></i>printer: each command as it runs</span>
         <div class="device">
           <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
-          <div class="printer up"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>what ran</span></div><div class="log" id="hero-tape" aria-live="polite"></div></div></div></div>
           <div class="devgrid">
             <div class="display" id="hero-screen" role="img" aria-label="A display where drip's cards drop out of the notch">
               <div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="run" id="run-stat"><span class="dot"></span><span class="w"></span><span class="t"></span></span><span class="clock"></span></div>
@@ -99,9 +100,8 @@
             </div>
           </div>
           <div class="keys" id="keys" role="group" aria-label="Examples"></div>
+          <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>what ran</span></div><div class="log" id="hero-tape" aria-live="polite"></div></div></div></div>
         </div>
-        <span class="callout bl" data-n="1" aria-hidden="true">display: DripCore, as WebAssembly<i style="--w:60px"></i></span>
-        <span class="callout br" data-n="2" aria-hidden="true"><i style="--w:40px"></i>printer: each command as it runs</span>
       </div>
     </section>
 
@@ -893,7 +893,7 @@ function announce(card) { announcer.textContent = `drip card: ${card.card.title}
 // entry comes out of the slot and the older ones go down with the paper. Past `max` entries the
 // oldest go. The paper's head and the time it was put in are at its far end, printed first.
 // A `live` printer (the hero's) prints at once instead: the command the moment it runs, and each
-// line it prints as it comes.
+// line it prints as it comes, under it.
 const LINE = 18.4; // an entry's line on the paper, in CSS pixels
 class Term {
   constructor(log, { max = 40, live = false } = {}) {
@@ -952,8 +952,8 @@ class Term {
     for (let i = this.max; i < entries.length; i++) entries[i].remove();
     await this.step(fed);
   }
-  // One more line of an entry already on the paper: it is printed at the slot and the paper steps
-  // out by it.
+  // One more line of an entry already on the paper, printed under the lines before it; the paper
+  // steps out by it.
   async grow(entry, cls, text) {
     if (!entry.isConnected) return;
     const before = this.feed.offsetHeight;
@@ -962,13 +962,10 @@ class Term {
   }
   // The whole paper starts back in the slot by what was printed, and steps out a line at a time.
   async step(fed) {
-    this.paper.sync(fed);
     if (reduceMotion.matches || fed <= 0) return;
     const lines = Math.min(12, Math.max(1, Math.round(fed / LINE))), frames = [];
     for (let i = 0; i <= lines; i++) frames.push({ offset: i / lines, transform: `translateY(${(-fed + (fed * i) / lines).toFixed(2)}px)`, easing: "cubic-bezier(.3, .7, .3, 1)" });
-    const options = { duration: 60 + lines * 75 };
-    this.feeding = this.paper.slip.animate(frames, options);
-    this.paper.mirror(frames, options);
+    this.feeding = this.paper.slip.animate(frames, { duration: 60 + lines * 75 });
     await this.feeding.finished.catch(() => {});
     this.feeding = null;
   }
@@ -1058,13 +1055,8 @@ class Paper {
     this.printer = log.closest(".printer"); this.paper = log.closest(".paper"); this.slip = log.closest(".slip");
     // Paper hangs over what is below it, a printer's displays and slot included, so a printer
     // higher on the page is in front of one further down. All stay under the falling pieces.
-    // A printer out the top is in its device's 3D scene, where a z-index would win over depth in
-    // WebKit and draw the paper's back over its face, so it has none.
-    const printers = document.querySelectorAll(".printer:not(.fallen):not(.up)");
+    const printers = document.querySelectorAll(".printer:not(.fallen)");
     printers.forEach((printer, i) => { printer.style.zIndex = 5 + printers.length - i; });
-    // Out the top, the printer is drawn upside down, so the paper's own terms still hold, mirrored.
-    this.up = this.printer.classList.contains("up");
-    if (this.up) { this.curl = document.createElement("div"); this.curl.className = "curl"; this.curl.setAttribute("aria-hidden", "true"); this.printer.append(this.curl); }
     this.cut = null; // the paper's length once it has been cut; null while it has its starting end
     this.length = 0; this.fed = 0; this.width = 0;
     this.slit = document.createElementNS("http://www.w3.org/2000/svg", "svg"); this.slit.classList.add("slit");
@@ -1080,7 +1072,6 @@ class Paper {
       const fed = width === this.width ? height - this.fed : 0;
       this.fed = height; this.width = width;
       this.measure(fed);
-      if (!this.slip.getAnimations().length) this.buildCurl();
     }).observe(this.feed);
   }
   // Sets the paper's length from what is printed on it; `fed` is how much more print there is.
@@ -1093,13 +1084,13 @@ class Paper {
   reset() {
     this.cut = null; this.fed = 0;
     uncut(this.slip);
-    this.measure(0); this.buildCurl();
+    this.measure(0);
   }
 
   bindScissors() {
     const cutter = this.cutter;
     let drag = null;
-    const local = (e) => { const r = this.slip.getBoundingClientRect(); return [e.clientX - r.left, this.up ? r.bottom - e.clientY : e.clientY - r.top]; };
+    const local = (e) => { const r = this.slip.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
     // The cut stays clear of the slot, so there is always paper out of it to print on.
     const top = () => this.log.offsetTop + 6;
     const finish = (complete) => {
@@ -1179,85 +1170,18 @@ class Paper {
     paper.querySelector(".slip").style.padding = getComputedStyle(this.slip).padding;
     piece.append(paper);
     const edge = ys.map((y, i) => `${Math.min(i * CUT_STEP, w).toFixed(1)}px ${y.toFixed(1)}px`).join(", ");
-    // Out the top, only the paper in sight falls: what bent behind the device goes with it unseen.
-    const far = this.up ? Math.min(length, this.flat()) : length + 80;
-    const clip = `polygon(-60px ${ys[0].toFixed(1)}px, ${edge}, ${w + 60}px ${ys.at(-1).toFixed(1)}px, ${w + 60}px ${far}px, -60px ${far}px)`;
-    if (this.up) {
-      // Upside down: the piece is turned the same way, and cut in the paper's own terms.
-      const flipper = document.createElement("div"); flipper.className = "flipper";
-      paper.style.clipPath = clip; flipper.append(paper); piece.append(flipper);
-    } else piece.style.clipPath = clip;
+    piece.style.clipPath = `polygon(-60px ${ys[0].toFixed(1)}px, ${edge}, ${w + 60}px ${ys.at(-1).toFixed(1)}px, ${w + 60}px ${length + 80}px, -60px ${length + 80}px)`;
     document.body.append(piece);
     // The paper left in the printer ends at the cut, and what was printed wholly below it is gone.
     this.cut = Math.ceil(bottom);
     for (const entry of [...this.feed.children]) if (entry.offsetTop >= bottom) entry.remove();
     cutEnd(this.slip, { ys, width: w, top: top - 1 });
     this.slit.firstChild.setAttribute("d", "");
-    this.measure(0); this.buildCurl();
+    this.measure(0);
     if (reduceMotion.matches) { piece.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).finished.then(() => piece.remove()); return; }
     // Let go of, the paper in the printer swings a little.
     this.paper.animate([{ transform: "none" }, { transform: `rotate(${-dir * 0.8}deg)` }, { transform: `rotate(${dir * 0.45}deg)` }, { transform: `rotate(${-dir * 0.2}deg)` }, { transform: "none" }], { duration: 900, easing: "ease-out" });
-    const hingeY = dir < 0 ? ys[0] : ys.at(-1);
-    fall(piece, { width: w, height: length - top, hingeX: dir < 0 ? 0 : w, hingeY: this.up ? length - hingeY : hingeY, dir });
-  }
-  // How far the paper stands up from the slot before it bends (--flat).
-  flat() { return parseFloat(getComputedStyle(this.printer).getPropertyValue("--flat")) || Infinity; }
-  // The bend, rebuilt from the strip as it is now. It flops over as thin paper does: over --bend
-  // of paper its angle eases from 0 to just past half a turn (smoothstep), so the curvature builds
-  // up and relaxes again, and each slice is placed by walking along the paper. Slice i shows the
-  // band of the strip `i * S` past the flat part, from a copy of only the entries in that band.
-  // Past the bend the strip goes down the back of the box, out of sight, so nothing draws it: in
-  // WebKit a plane there is drawn over the paper's face.
-  buildCurl() {
-    if (!this.up) return;
-    this.curl.replaceChildren(); this.bands = [];
-    const F = this.flat(), L = parseFloat(getComputedStyle(this.printer).getPropertyValue("--bend")) || 120, S = 2, len = this.length;
-    const end = Math.PI * 1.04, angle = (u) => end * u * u * (3 - 2 * u);
-    // Light from above and in front: a face is as bright as it turns toward it. The printed face
-    // catches most light as it tips back and dims past the crest; the paper's back is lit where it
-    // hangs toward you but sits in the bend's shadow.
-    const lit = (theta, side) => Math.min(1, Math.max(0.35, 0.55 + 0.45 * side * (0.6 * Math.sin(theta) + 0.8 * Math.cos(theta))));
-    const back = (b) => `color-mix(in srgb, var(--color-paper) ${Math.round(b * 100)}%, #000)`;
-    const parts = [...this.feed.children].map((el) => ({ el, top: el.offsetTop, height: el.offsetHeight }));
-    let y = 0, z = 0;
-    for (let i = 0; i * S <= L && F + i * S < len; i++) {
-      const theta = angle(Math.min(1, (i * S) / L)), h = S + 1.4, top = F - 1 + i * S;
-      const jitter = i ? Math.sin(i * 2.3) * 0.012 : 0;
-      const slice = document.createElement("div"); slice.className = "slice";
-      slice.style.top = `${F - 1}px`; slice.style.height = `${h}px`;
-      slice.style.transform = `translateY(${y.toFixed(2)}px) translateZ(${z.toFixed(2)}px) rotateX(${(-theta).toFixed(4)}rad)`;
-      const band = this.band(parts, top, h);
-      band.style.top = `${-top}px`; band.style.height = `${len}px`;
-      band.style.clipPath = `inset(${top}px 0 ${Math.max(0, len - top - h)}px 0)`;
-      band.style.filter = `brightness(${(lit(theta, 1) / 0.91 + jitter).toFixed(3)})`;
-      const b = document.createElement("div"); b.className = "back"; b.style.background = back(0.84 * lit(theta, -1));
-      slice.append(band, b); this.curl.append(slice); this.bands.push(band);
-      y += S * Math.cos(theta); z -= S * Math.sin(theta);
-    }
-  }
-  // A copy of the strip that holds only what is printed in the band from `top`, `h` tall, so each
-  // slice copies an entry or two rather than the whole strip. What comes before the band is one
-  // empty box as tall, so the band's entries sit where they do on the strip.
-  band(parts, top, h) {
-    const slip = this.slip.cloneNode(false), log = this.log.cloneNode(false), feed = this.feed.cloneNode(false);
-    log.removeAttribute("id"); log.removeAttribute("aria-live");
-    const seen = parts.filter((part) => part.top < top + h && part.top + part.height > top);
-    const first = parts.indexOf(seen[0]);
-    if (first > 0) {
-      const before = parts[first - 1].el.cloneNode(false);
-      before.style.cssText = `box-sizing: border-box; height: ${seen[0].top - parts[0].top}px`;
-      feed.append(before);
-    }
-    for (const part of seen) feed.append(part.el.cloneNode(true));
-    log.append(feed); slip.append(log);
-    return slip;
-  }
-  // Prints into the bend too: what the slot feeds out moves over it with the same steps.
-  mirror(frames, options) { for (const band of this.bands ?? []) band.animate(frames, options); }
-  // The strip changed under the feed: measure it now rather than on the next resize.
-  sync(fed) {
-    this.fed = this.feed.offsetHeight; this.width = this.feed.offsetWidth;
-    this.measure(fed); this.buildCurl();
+    fall(piece, { width: w, height: length - top, hingeX: dir < 0 ? 0 : w, hingeY: dir < 0 ? ys[0] : ys.at(-1), dir });
   }
 }
 
@@ -1448,44 +1372,6 @@ const narrow = matchMedia("(width <= 760px)");
 // The notch and the cards at their real size, smaller only when the display is too narrow for them.
 const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 600)) });
 const stages = [hero];
-
-// The device is a box: walls extruded `--depth` back from its rounded outline, one per straight
-// edge and eight per corner, each shaded by which way it faces (light from the upper right), and a
-// back plate. The top wall has the printer's slot in it.
-const heroDevice = document.querySelector(".devwrap .device");
-const body3d = document.createElement("div"); body3d.className = "body3d"; body3d.setAttribute("aria-hidden", "true");
-heroDevice.prepend(body3d);
-function buildBody() {
-  const W = heroDevice.offsetWidth, H = heroDevice.offsetHeight, r = parseFloat(getComputedStyle(heroDevice).borderTopLeftRadius) || 26, steps = 8;
-  const D = parseFloat(getComputedStyle(heroDevice).getPropertyValue("--depth")) || 64;
-  const back = document.createElement("div"); back.className = "back"; back.style.transform = `translateZ(${-D}px)`; back.style.borderRadius = `${r}px`;
-  const walls = [back];
-  // The outline, clockwise from the top left: corner arcs as short chords, edges as long ones.
-  const pts = [];
-  const arc = (cx, cy, from) => { for (let k = 0; k <= steps; k++) { const a = from + (k / steps) * (Math.PI / 2); pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
-  arc(r, r, Math.PI); arc(W - r, r, -Math.PI / 2); arc(W - r, H - r, 0); arc(r, H - r, Math.PI / 2);
-  const light = [0.55, -0.83];
-  for (let k = 0; k < pts.length; k++) {
-    const [x0, y0] = pts[k], [x1, y1] = pts[(k + 1) % pts.length];
-    const L = Math.hypot(x1 - x0, y1 - y0); if (L < 0.01) continue;
-    const phi = Math.atan2(y1 - y0, x1 - x0), n = [Math.sin(phi), -Math.cos(phi)];
-    const facing = n[0] * light[0] + n[1] * light[1];
-    const wall = document.createElement("div"); wall.className = "wall";
-    wall.style.width = `${L + 0.6}px`; wall.style.height = `${D}px`;
-    wall.style.transform = `translate3d(${x0}px, ${y0}px, 0) rotateZ(${phi}rad) rotateX(-90deg)`;
-    if (facing > 0.2) { wall.classList.add("lit"); wall.style.setProperty("--lift", (0.03 + 0.13 * facing).toFixed(3)); }
-    else wall.style.setProperty("--dark", (0.25 + 0.35 * (0.2 - facing) / 1.2).toFixed(3));
-    // The slot, in the middle of the long top wall, as wide as the printer.
-    if (Math.abs(phi) < 0.01 && y0 < 1 && L > W / 2) {
-      const slit = document.createElement("div"); slit.className = "slit";
-      const pw = Math.min(620, W) - 8; slit.style.left = `${(W - pw) / 2 - x0}px`; slit.style.width = `${pw}px`;
-      wall.append(slit);
-    }
-    walls.push(wall);
-  }
-  body3d.replaceChildren(...walls);
-}
-new ResizeObserver(buildBody).observe(heroDevice);
 
 // Five drips at once: three stack, and a drop under the last one counts the two waiting for room.
 const STACK_LINES = (mode) => [

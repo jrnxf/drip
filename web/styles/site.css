@@ -33,23 +33,10 @@
   .specs dd code { font-size: inherit; }
 
   /* ---------- the device ---------- */
-  /* The instrument is a box turned toward the text: the front is the device itself, and walls
-     extruded --depth back from its rounded outline (the script's buildBody) give it a top and a
-     side. Its printer is in the top wall, so the room above the device (--paper-h) is for the
-     paper standing up out of it. The callouts sit under the device. */
-  .devwrap { --paper-h: 126px; --pad: 22px; --depth: 64px; position: relative; padding: calc(var(--paper-h) + 24px) 0 34px; perspective: 1700px; perspective-origin: 35% 20%; }
-  .devwrap .device { transform-style: preserve-3d; transform: translateX(-1%) scale(.95) rotateX(-7deg) rotateY(-10deg); transform-origin: 50% 55%; }
-  .device > .devgrid { position: relative; }
-  /* The keys get a plane of their own just in front of the panel: WebKit otherwise loses their
-     group labels behind it. */
-  .device > .keys { transform: translateZ(.5px); }
-  .body3d { position: absolute; inset: -1px; transform-style: preserve-3d; pointer-events: none; }
-  .body3d .wall { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: color-mix(in srgb, var(--color-body-2) calc(100% - var(--dark) * 100%), #000); }
-  :root[data-theme="light"] .body3d .wall { background: color-mix(in srgb, #d9d9d4 calc(100% - var(--dark) * 100%), #6f6f69); }
-  .body3d .wall.lit { background: color-mix(in srgb, var(--color-body) calc(100% - var(--lift) * 100%), #fff); }
-  :root[data-theme="light"] .body3d .wall.lit { background: color-mix(in srgb, #ececE8 calc(100% - var(--lift) * 100%), #fff); }
-  .body3d .slit { position: absolute; top: calc(50% - 4px); height: 8px; border-radius: 4px; background: #070707; box-shadow: inset 0 2px 3px #000, 0 1px 0 rgba(255,255,255,.08); }
-  .body3d .back { position: absolute; inset: 0; border-radius: 26px; background: #050505; }
+  /* Room under the device for the paper hanging out of it (--paper-h). Paper that printing feeds
+     out further hangs over what is below it, so nothing on the page moves as it grows; cut it
+     shorter to see what it covers. */
+  .devwrap { --paper-h: 220px; --pad: 22px; position: relative; padding: 26px 0 calc(var(--paper-h) - 5px - var(--pad) + 30px); }
   .device, .module {
     position: relative; border-radius: 26px; padding: var(--pad, 22px); background: linear-gradient(180deg, var(--color-body), var(--color-body-2));
     border: 1px solid var(--color-edge); box-shadow: inset 0 1px 0 var(--color-lip), 0 1px 0 var(--color-edge), 0 30px 60px -30px var(--color-shade), 0 12px 24px -16px var(--color-shade);
@@ -99,6 +86,7 @@
      paper to cut it shorter. --paper-len is its length (the script sets it, and stacks the
      printers so higher paper hangs in front). */
   .printer { position: relative; z-index: 2; height: 10px; }
+  .device > .printer { max-width: 620px; margin: 20px auto 0; }
   .slot { position: relative; z-index: 1; height: 10px; border-radius: 5px; background: #0d0d0d; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--color-lip); }
   .printer .paper { position: absolute; top: 5px; left: 10px; right: 10px; height: var(--paper-len, var(--paper-h)); transform-origin: 50% 0; clip-path: polygon(-80px 0, calc(100% + 80px) 0, calc(100% + 80px) calc(100% + 80px), -80px calc(100% + 80px)); }
   /* The slot's shadow on the paper stays at the slot as the paper feeds through it. */
@@ -106,35 +94,6 @@
   .printer .slip { height: 100%; display: flex; flex-direction: column; padding: 16px 18px 10px; }
   .printer .head { padding: 10px 0 4px; border-bottom: 0; border-top: 2px solid var(--color-paper-ink); }
   .printer .stamp { font: 400 10px/1.5 var(--font-mono); opacity: .6; }
-  /* A printer out the top (the hero's) is drawn upside down in the box's top wall, so the paper
-     rises from it, and every line is turned back up: the newest line is at the slot and the paper
-     reads top to bottom, oldest first. It stands up --flat, leaning back as thin paper does, then
-     bends back over --bend of paper (the script's buildCurl: thin slices, each showing its band of
-     the strip) and goes down the back of the box. Only the scissors make it shorter. */
-  .printer.up { --flat: 68px; --bend: 84px; z-index: auto; transform-style: preserve-3d; }
-  .device > .printer.up { position: absolute; top: -2px; left: 0; right: 0; max-width: 620px; margin: 0 auto; transform: translateZ(calc(var(--depth) / -2)) rotateX(9deg) scaleY(-1); }
-  .printer.up .slot { visibility: hidden; }
-  .printer.up .entry, .printer.up .end { transform: scaleY(-1); color: color-mix(in srgb, var(--color-paper-ink) 82%, var(--color-paper)); }
-  .printer.up .paper { filter: drop-shadow(0 -1px 1px rgba(0,0,0,.18)) drop-shadow(0 -6px 10px var(--color-shade)); clip-path: polygon(-80px 0, calc(100% + 80px) 0, calc(100% + 80px) var(--flat), -80px var(--flat)); }
-  .printer.up .end { border-bottom: 2px solid var(--color-paper-ink); padding-bottom: 8px; margin-bottom: 2px; }
-  .printer.up .head { border-top: 0; padding-top: 4px; }
-  /* Paper that reads as paper: fibres, a slight bow across its width (darker at both edges), light
-     falling off toward the slot, and ink a little faded. */
-  .printer.up .slip {
-    padding-bottom: 14px; background-color: var(--color-paper);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .25 0 0 0 0 .22 0 0 0 0 .18 0 0 0 .11 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-      linear-gradient(100deg, transparent 38%, rgba(255,255,255,.10) 47%, transparent 58%),
-      linear-gradient(90deg, rgba(0,0,0,.07), transparent 9%, transparent 91%, rgba(0,0,0,.08)),
-      linear-gradient(to bottom, rgba(0,0,0,.10), transparent 30%);
-    box-shadow: inset 1px 0 0 rgba(0,0,0,.07), inset -1px 0 0 rgba(0,0,0,.09); }
-  .printer.up .cutter { bottom: auto; height: var(--flat); }
-  .printer.up .cut-tip { transform: translate(-50%, 150%) scaleY(-1); }
-  /* The bend lives in the box's 3D scene: each slice shows print on its face and blank paper on its
-     back. */
-  .printer.up .curl { position: absolute; top: 5px; left: 10px; right: 10px; height: 0; transform-style: preserve-3d; pointer-events: none; }
-  .curl .slice { position: absolute; left: 0; right: 0; transform-origin: 50% 0; transform-style: preserve-3d; }
-  .curl .slice > .slip { position: absolute; left: 0; width: 100%; backface-visibility: hidden; }
-  .curl .slice > .back { position: absolute; inset: 0; transform: rotateX(180deg); backface-visibility: hidden; }
   /* The paper is as long as what is printed on it, so print stops only where the paper was cut. */
   .log { flex: 1; min-height: 0; overflow: hidden; }
   /* The scissors work over the paper and a little past its sides, so a cut can start in the air and
@@ -149,8 +108,6 @@
      there too, above the finger, since there is no cursor. */
   .fallen { position: fixed; z-index: 30; pointer-events: none; transform-origin: 0 0; will-change: transform, opacity; }
   .fallen .paper { inset: 0; }
-  .fallen .flipper { position: absolute; inset: 0; transform: scaleY(-1); }
-  .fallen .flipper .entry, .fallen .flipper .end { transform: scaleY(-1); }
   .touch-scissors { position: fixed; z-index: 31; width: 44px; height: 44px; pointer-events: none; opacity: 0; transition: opacity .15s; }
   .touch-scissors.on { opacity: 1; }
   .entry { padding: 10px 0; font: 400 11.5px/1.6 var(--font-mono); }
@@ -191,7 +148,7 @@
   .callout { position: absolute; display: flex; align-items: center; gap: 8px; font: 500 10px/1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); white-space: nowrap; }
   .callout::before { content: attr(data-n); display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid currentColor; font-size: 9px; letter-spacing: 0; }
   .callout i { display: block; height: 1px; background: currentColor; width: var(--w, 40px); }
-  .callout.bl { bottom: 0; left: 0; } .callout.br { bottom: 0; right: 0; }
+  .callout.tl { top: 0; left: 0; } .callout.tr { top: 0; right: 0; }
 
   /* What it does: the module's LCD line: the command running, typed, and under it
      the step and what came back. Every command it runs is laid out unseen behind it (.ghost), so
@@ -245,21 +202,20 @@
 
   @media (width <= 1100px) {
     .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "device" "specs"; grid-template-rows: auto; row-gap: 8px; min-height: 0; padding-top: 24px; }
+    .devwrap { padding-top: 12px; padding-bottom: calc(var(--paper-h) - 5px - var(--pad) + 8px); }
     .callout { display: none; }
   }
   @media (width <= 760px) {
-    .devwrap { --pad: 14px; --paper-h: 140px; --depth: 40px; padding-top: calc(var(--paper-h) + 12px); perspective: 1200px; }
-    .devwrap .device { transform: scale(.96) rotateX(-6deg) rotateY(-7deg); }
-    .device > .printer.up { left: 14px; right: 14px; }
-    /* Beside a phone's notch there is only room for the status's dot and time. */
-    .glyphs:has(.run.on) > :first-child, .glyphs .run .w { display: none; }
-    .glyphs .run { margin-left: 0; }
+    .devwrap { --pad: 14px; --paper-h: 200px; }
     .device { border-radius: 20px; }
     .device > .screw { display: none; }
     .devgrid { --disp: 220px; gap: 14px; }
     .keys .kgroup { flex-basis: 100%; min-width: 0; }
     .keys .kgroup.pair { flex-basis: calc(50% - 8px); }
     .keys .kkeys { flex-wrap: wrap; }
+    /* Beside a phone's notch there is only room for the status's dot and time. */
+    .glyphs:has(.run.on) > :first-child, .glyphs .run .w { display: none; }
+    .glyphs .run { margin-left: 0; }
     .stackmod .display { height: 216px; }
     .module { padding: 16px; border-radius: 20px; }
   }
