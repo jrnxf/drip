@@ -83,7 +83,8 @@ recordings. Run `drip pause` for those instead (see [Pausing](#pausing)).
 ## Coding agents
 
 drip shows a card when a coding agent needs you, when it is done, and when its turn dies on an
-error. One command adds drip's hooks to the agent's own settings:
+error: Claude Code, Codex and Gemini CLI notifications on a Mac, from the notch, with no
+Notifications permission. One command adds drip's hooks to the agent's own settings:
 
 ```sh
 drip setup claude   # Claude Code, in ~/.claude/settings.json
@@ -197,6 +198,40 @@ export const Drip = async ({ $, directory }) => {
 ```
 
 Any other agent or tool: wrap what it runs in `drip run`, or call drip from its hooks.
+
+The site has the same as a guide: [Claude Code notifications on Mac, from the
+notch](https://drip.jrnxf.co/claude-code-notifications).
+
+## Alert when a command finishes
+
+Put `drip run` in front of any command: it runs it, times it, and shows a green card on exit 0, or
+a red one with the exit code otherwise. drip then exits with the command's own status, so scripts
+and `&&` chains work as before.
+
+```sh
+drip run make test
+drip run --open "$CI_URL" --button "View run" ./deploy.sh
+```
+
+[drip run](#buttons) has the details, and the site a guide: [Get an alert on Mac when a terminal
+command finishes](https://drip.jrnxf.co/notify-when-command-finishes).
+
+## Compared with terminal-notifier, osascript and alerter
+
+All four show something on a Mac from the shell. terminal-notifier, osascript and alerter post to
+Notification Center, so they follow Focus and stay in its list; drip draws its own card from the
+notch, needs no permission, times commands and comes with hooks for coding agents. None of them runs
+on Linux.
+
+| | drip | terminal-notifier | osascript | alerter |
+| --- | --- | --- | --- | --- |
+| Shows | its own card, from the notch or the top edge of the screen | a Notification Center banner | a Notification Center banner | a Notification Center alert that stays until dismissed |
+| Permission | none | Notifications, asked once | Notifications, for Script Editor | Notifications |
+| Focus and Do Not Disturb | shows anyway; `drip pause` holds cards | follows Focus | follows Focus | follows Focus |
+| Kept afterwards | `drip history` | Notification Center's list | Notification Center's list | Notification Center's list |
+| Buttons and answers | `--yes`, `--no`: exits 0, 1 or 5 | `-action`, `-reply` (version 3): prints the answer | none in a notification | actions, a dropdown or a reply: prints the answer |
+| Wraps a command | `drip run`: status, exit code and time | no | no | no |
+| Coding agents | `drip setup claude`, `codex`, `gemini` | a hook you write | a hook you write | a hook you write |
 
 ## Uninstall
 
@@ -609,14 +644,19 @@ web/test.sh   # the DripCore tests, compiled to WebAssembly, under wasmtime
 ```
 
 Both need Swift 6.4.1 with its matching Wasm SDK; `web/tools.sh` pins them and, on x86_64 Linux,
-downloads what is missing. The downloads are shared by every checkout, checked against their
-pinned checksums: they live once in `~/.cache/drip/web-tools` (under `$XDG_CACHE_HOME` when it is
-set, or in `$DRIP_WEB_TOOLS`), while each checkout's builds stay in its own `.build`. The page's
-styles are Tailwind CSS v4, in `web/styles/site.css`: `web/build.sh` compiles them with Tailwind's
-standalone CLI, pinned the same way, and inlines them into the page. Under WASI, DripCore builds
-against FoundationEssentials, and `Sources/DripCore/WASICompat.swift` fills in the little it lacks.
-CI runs `web/test.sh`, and Cloudflare's Workers Builds runs `web/build.sh` and deploys the
-`drip-web` Worker on every push to main that touches `web`, `Sources/DripCore` or the package.
+downloads what is missing. The downloads are shared by every checkout, checked against their pinned
+checksums: they live once in `~/.cache/drip/web-tools` (under `$XDG_CACHE_HOME` when it is set, or
+in `$DRIP_WEB_TOOLS`), while each checkout's builds stay in its own `.build`. The page's styles are
+Tailwind CSS v4, in `web/styles/site.css`, on top of `web/styles/base.css`, which every page shares:
+`web/build.sh` compiles them with Tailwind's standalone CLI, pinned the same way, and inlines them
+into the page. Under WASI, DripCore builds against FoundationEssentials, and
+`Sources/DripCore/WASICompat.swift` fills in the little it lacks. CI runs `web/test.sh`, and
+Cloudflare's Workers Builds runs `web/build.sh` and deploys the `drip-web` Worker on every push to
+main that touches `web`, `Sources/DripCore` or the package.
+
+Next to the page, `web/public` holds three guides: one question each, answered in the first
+paragraph, and listed in `sitemap.xml` and `llms.txt`. Their styles are `web/styles/guide.css`,
+inlined by `web/build.sh` as the page's are. A guide at `web/public/vs.html` is served at `/vs`.
 
 ## License
 

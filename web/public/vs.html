@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>drip vs terminal-notifier vs osascript vs alerter</title>
+<meta name="description" content="How drip, terminal-notifier, osascript and alerter differ: Notification Center or the notch, permissions, Focus, buttons, timing commands and coding agent hooks.">
+<link rel="canonical" href="https://drip.jrnxf.co/vs">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="drip">
+<meta property="og:url" content="https://drip.jrnxf.co/vs">
+<meta property="og:title" content="drip vs terminal-notifier vs osascript vs alerter">
+<meta property="og:description" content="How drip, terminal-notifier, osascript and alerter differ: Notification Center or the notch, permissions, Focus, buttons, timing commands and coding agent hooks.">
+<meta property="og:image" content="https://drip.jrnxf.co/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#d9d9d5" media="(prefers-color-scheme: light)">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="/archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/martian-mono.woff2" as="font" type="font/woff2" crossorigin>
+<!-- guide.css: build.sh puts the compiled styles here. -->
+<script>
+  // The home page's theme: ?theme=, then the visitor's last choice there, then the system's.
+  (() => {
+    const ok = (v) => (v === "dark" || v === "light" ? v : null);
+    let saved = null;
+    try { saved = localStorage.getItem("drip-theme"); } catch {}
+    document.documentElement.dataset.theme = ok(new URLSearchParams(location.search).get("theme")) ?? ok(saved)
+      ?? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  })();
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "drip vs terminal-notifier vs osascript vs alerter.",
+      "description": "How drip, terminal-notifier, osascript and alerter differ: Notification Center or the notch, permissions, Focus, buttons, timing commands and coding agent hooks.",
+      "url": "https://drip.jrnxf.co/vs",
+      "about": {
+        "@type": "SoftwareApplication",
+        "name": "drip",
+        "url": "https://drip.jrnxf.co/",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS 13 or later"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "jrnxf",
+        "url": "https://github.com/jrnxf"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is drip a replacement for terminal-notifier?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "For alerts about builds, deploys, tests and coding agents, yes. If you want notifications to wait in Notification Center's list and follow Focus, terminal-notifier does that and drip does not."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why is drip not in Notification Center?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "So it needs no permission and can show at the notch, where a glance finds it. The cost is that it does not follow Focus; drip pause holds cards for a while instead."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I use drip and terminal-notifier together?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. They do not touch each other's settings, so a script can call either."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body class="leading-[1.6]">
+<div class="mx-auto max-w-[860px] px-24 narrow:px-16">
+  <header class="flex h-58 items-center gap-22 narrow:gap-16">
+    <a class="block text-ink" href="/" aria-label="drip, home"><svg class="block h-24 w-auto" viewBox="12 60 520 136" aria-hidden="true"><g><path d="M12 71H244V93A12 12 0 0 1 232 105H157.71A12 12 0 0 0 147.32 123A20 20 0 1 1 112.68 123A12 12 0 0 0 102.29 105H96.98A9 9 0 0 0 87.99 113.69A20 20 0 1 1 48.01 113.69A9 9 0 0 0 39.02 105H24A12 12 0 0 1 12 93Z" fill="currentColor"/><path d="M170 165A20 20 0 1 1 210 165A20 20 0 1 1 170 165Z" fill="#ff4f00"/></g><g transform="translate(296 48.64) scale(0.62)"><path d="M0 128A58 58 0 1 1 116 128A58 58 0 1 1 0 128ZM26 128A32 32 0 1 0 90 128A32 32 0 1 0 26 128ZM90 24H116V184H90Z" fill="currentColor"/><path d="M138 72H164V184H138ZM138 128A52 58 0 0 1 190 70V96A26 32 0 0 0 164 128Z" fill="currentColor"/><path d="M212 72H238V184H212Z" fill="currentColor"/><path d="M210 38A15 15 0 1 1 240 38A15 15 0 1 1 210 38Z" fill="currentColor"/><path d="M264 72H290V232H264ZM264 128A58 58 0 1 1 380 128A58 58 0 1 1 264 128ZM290 128A32 32 0 1 0 354 128A32 32 0 1 0 290 128Z" fill="currentColor"/></g></svg></a><span class="flex-1"></span><a class="lbl no-underline hover:text-ink" href="/#install">install</a><a class="lbl no-underline hover:text-ink" href="https://github.com/jrnxf/drip">source</a>
+  </header>
+  <main class="pt-48 pb-64 narrow:pt-28">
+    <article class="guide">
+      <div class="lbl">guide / compared</div>
+      <h1>drip vs terminal-notifier vs osascript <b>vs alerter.</b></h1>
+      <p class="answer">All four show something on a Mac from the shell. terminal-notifier, osascript and alerter post to Notification Center, so they follow Focus and stay in its list; drip draws its own card from the notch, needs no permission, times commands and comes with hooks for coding agents.</p>
+      <pre><code>drip ok "build finished"                                        # drip
+terminal-notifier -title build -message finished                # terminal-notifier
+osascript -e 'display notification "finished" with title "build"'  # osascript
+alerter --title build --message finished                        # alerter</code></pre>
+      <h2>Compared</h2>
+      <div class="wide"><table>
+        <thead><tr><th scope="col"></th><th scope="col">drip</th><th scope="col">terminal-notifier</th><th scope="col">osascript</th><th scope="col">alerter</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Shows</th><td>its own card, from the notch or the top edge of the screen</td><td>a Notification Center banner</td><td>a Notification Center banner</td><td>a Notification Center alert that stays until dismissed</td></tr>
+          <tr><th scope="row">Permission</th><td>none</td><td>Notifications, asked once</td><td>Notifications, for Script Editor</td><td>Notifications</td></tr>
+          <tr><th scope="row">Focus and Do Not Disturb</th><td>shows anyway; <code>drip pause</code> holds cards</td><td>follows Focus</td><td>follows Focus</td><td>follows Focus</td></tr>
+          <tr><th scope="row">Kept afterwards</th><td><code>drip history</code></td><td>Notification Center's list</td><td>Notification Center's list</td><td>Notification Center's list</td></tr>
+          <tr><th scope="row">Buttons and answers</th><td><code>--yes</code>, <code>--no</code>: exits 0, 1 or 5</td><td><code>-action</code>, <code>-reply</code> (version 3): prints the answer</td><td>none in a notification</td><td>actions, a dropdown or a reply: prints the answer</td></tr>
+          <tr><th scope="row">Wraps a command</th><td><code>drip run</code>: status, exit code and time</td><td>no</td><td>no</td><td>no</td></tr>
+          <tr><th scope="row">Coding agents</th><td><code>drip setup claude</code>, <code>codex</code>, <code>gemini</code></td><td>a hook you write</td><td>a hook you write</td><td>a hook you write</td></tr>
+          <tr><th scope="row">Install</th><td><code>brew install jrnxf/tap/drip</code></td><td><code>brew install terminal-notifier</code></td><td>built into macOS</td><td><code>brew install vjeantet/tap/alerter</code></td></tr>
+          <tr><th scope="row">Runs on</th><td>macOS 13+</td><td>macOS 10.14+</td><td>macOS</td><td>macOS 13+</td></tr>
+        </tbody>
+      </table></div>
+      <p>None of the four runs on Linux.</p>
+      <h2>Which to pick</h2>
+      <ul>
+        <li><b>drip</b> when you want to see at a glance how a build, deploy or agent turn went, without granting a permission or digging in Notification Center.</li>
+        <li><b>terminal-notifier</b> when you want notifications that follow Focus and stay in Notification Center's list.</li>
+        <li><b>osascript</b> when you can install nothing: it is already on every Mac.</li>
+        <li><b>alerter</b> when a script needs a typed reply or a choice from a dropdown.</li>
+      </ul>
+      <h2>FAQ</h2>
+      <h3>Is drip a replacement for terminal-notifier?</h3>
+      <p>For alerts about builds, deploys, tests and coding agents, yes. If you want notifications to wait in Notification Center's list and follow Focus, terminal-notifier does that and drip does not.</p>
+      <h3>Why is drip not in Notification Center?</h3>
+      <p>So it needs no permission and can show at the notch, where a glance finds it. The cost is that it does not follow Focus; <code>drip pause</code> holds cards for a while instead.</p>
+      <h3>Can I use drip and terminal-notifier together?</h3>
+      <p>Yes. They do not touch each other's settings, so a script can call either.</p>
+    </article>
+  </main>
+  <footer class="flex flex-wrap justify-between gap-x-24 gap-y-10 border-t border-t-rule pt-22 pb-50">
+    <span class="lbl">drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you · MIT</span>
+    <nav class="lbl flex flex-wrap gap-x-18 gap-y-10" aria-label="Guides"><a class="text-ink" href="/">home</a><a class="text-ink" href="/claude-code-notifications">Claude Code notifications</a><a class="text-ink" href="/notify-when-command-finishes">Alert when a command finishes</a></nav>
+  </footer>
+</div>
+</body>
+</html>

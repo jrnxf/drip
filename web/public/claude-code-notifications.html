@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Claude Code notifications on Mac, from the notch - drip</title>
+<meta name="description" content="Run drip setup claude and Claude Code&#x27;s hooks show a card from your MacBook&#x27;s notch when it needs permission or finishes. Also for Codex and Gemini CLI.">
+<link rel="canonical" href="https://drip.jrnxf.co/claude-code-notifications">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="drip">
+<meta property="og:url" content="https://drip.jrnxf.co/claude-code-notifications">
+<meta property="og:title" content="Claude Code notifications on Mac, from the notch - drip">
+<meta property="og:description" content="Run drip setup claude and Claude Code&#x27;s hooks show a card from your MacBook&#x27;s notch when it needs permission or finishes. Also for Codex and Gemini CLI.">
+<meta property="og:image" content="https://drip.jrnxf.co/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#d9d9d5" media="(prefers-color-scheme: light)">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="/archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/martian-mono.woff2" as="font" type="font/woff2" crossorigin>
+<!-- guide.css: build.sh puts the compiled styles here. -->
+<script>
+  // The home page's theme: ?theme=, then the visitor's last choice there, then the system's.
+  (() => {
+    const ok = (v) => (v === "dark" || v === "light" ? v : null);
+    let saved = null;
+    try { saved = localStorage.getItem("drip-theme"); } catch {}
+    document.documentElement.dataset.theme = ok(new URLSearchParams(location.search).get("theme")) ?? ok(saved)
+      ?? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  })();
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Claude Code notifications on Mac, from the notch.",
+      "description": "Run drip setup claude and Claude Code's hooks show a card from your MacBook's notch when it needs permission or finishes. Also for Codex and Gemini CLI.",
+      "url": "https://drip.jrnxf.co/claude-code-notifications",
+      "about": {
+        "@type": "SoftwareApplication",
+        "name": "drip",
+        "url": "https://drip.jrnxf.co/",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS 13 or later"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "jrnxf",
+        "url": "https://github.com/jrnxf"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Does drip use macOS Notification Center?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. drip draws its own card out of the camera notch, or out of the top edge of a screen without one, so it needs no Notifications permission. Cards also show during Do Not Disturb; run drip pause 30m to hold them for a while."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I have to change Claude Code's own notification setting?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Hooks run alongside it: drip setup claude only adds hooks, and whatever Claude Code did before on a prompt, it still does."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "My settings.json is managed by home-manager or a dotfile manager. What then?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "drip never writes a settings file that is a symlink, read-only, or not plain JSON. It says why, prints the hooks to add where the file comes from, and exits 1. drip setup claude --print prints them without trying."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What if I am away when Claude Code needs me?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A card that comes up while the screen is locked waits for the unlock, and drip history --missed lists what came up while you were away."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I remove the hooks?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Delete the entries whose command is drip hook claude from ~/.claude/settings.json, or restore the backup drip setup left next to it."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body class="leading-[1.6]">
+<div class="mx-auto max-w-[860px] px-24 narrow:px-16">
+  <header class="flex h-58 items-center gap-22 narrow:gap-16">
+    <a class="block text-ink" href="/" aria-label="drip, home"><svg class="block h-24 w-auto" viewBox="12 60 520 136" aria-hidden="true"><g><path d="M12 71H244V93A12 12 0 0 1 232 105H157.71A12 12 0 0 0 147.32 123A20 20 0 1 1 112.68 123A12 12 0 0 0 102.29 105H96.98A9 9 0 0 0 87.99 113.69A20 20 0 1 1 48.01 113.69A9 9 0 0 0 39.02 105H24A12 12 0 0 1 12 93Z" fill="currentColor"/><path d="M170 165A20 20 0 1 1 210 165A20 20 0 1 1 170 165Z" fill="#ff4f00"/></g><g transform="translate(296 48.64) scale(0.62)"><path d="M0 128A58 58 0 1 1 116 128A58 58 0 1 1 0 128ZM26 128A32 32 0 1 0 90 128A32 32 0 1 0 26 128ZM90 24H116V184H90Z" fill="currentColor"/><path d="M138 72H164V184H138ZM138 128A52 58 0 0 1 190 70V96A26 32 0 0 0 164 128Z" fill="currentColor"/><path d="M212 72H238V184H212Z" fill="currentColor"/><path d="M210 38A15 15 0 1 1 240 38A15 15 0 1 1 210 38Z" fill="currentColor"/><path d="M264 72H290V232H264ZM264 128A58 58 0 1 1 380 128A58 58 0 1 1 264 128ZM290 128A32 32 0 1 0 354 128A32 32 0 1 0 290 128Z" fill="currentColor"/></g></svg></a><span class="flex-1"></span><a class="lbl no-underline hover:text-ink" href="/#install">install</a><a class="lbl no-underline hover:text-ink" href="https://github.com/jrnxf/drip">source</a>
+  </header>
+  <main class="pt-48 pb-64 narrow:pt-28">
+    <article class="guide">
+      <div class="lbl">guide / coding agents</div>
+      <h1>Claude Code notifications on Mac, <b>from the notch.</b></h1>
+      <p class="answer">Run <code>drip setup claude</code> and Claude Code's hooks show a card from your Mac's notch naming the project and what it needs, whenever it wants permission or finishes. Same for Codex and Gemini CLI: <code>drip setup codex</code>, <code>drip setup gemini</code>.</p>
+      <pre><code>brew install jrnxf/tap/drip
+drip setup claude   # Claude Code, in ~/.claude/settings.json
+drip setup codex    # Codex, in ~/.codex/hooks.json
+drip setup gemini   # Gemini CLI, in ~/.gemini/settings.json</code></pre>
+      <p>drip is a free, open-source command-line tool for macOS 13 or newer. It is not Notification Center: it draws its own card, so it needs no Notifications, Accessibility or Automation permission.</p>
+      <h2>How it works</h2>
+      <ol>
+        <li><b>Hooks, not polling.</b> <code>drip setup claude</code> adds hooks for Claude Code's <code>Notification</code> (a permission prompt or a question), <code>Stop</code> (the turn is done) and <code>StopFailure</code> (a rate limit, an outage or another API error) events. It keeps the rest of the file, backs the old one up next to it, and changes nothing when run again.</li>
+        <li><b>One card per event.</b> Each hook runs <code>drip hook claude</code>, which reads the hook's JSON and shows <code>my-app needs you</code> with Claude's message, <code>my-app is done</code> with the last thing Claude wrote, or <code>my-app stopped</code> with the error.</li>
+        <li><b>Named by project.</b> The title is the project, from the session's working directory, so several sessions at once stay apart.</li>
+        <li><b>Replaced in place.</b> Each session's cards share an id, so the waiting card turns into the done card instead of queueing behind it.</li>
+        <li><b>Back to the terminal.</b> A click on the card brings forward the terminal the agent runs in.</li>
+      </ol>
+      <p>Codex runs a new hook only once you trust it: run <code>/hooks</code> in Codex after <code>drip setup codex</code>. To see the hooks without changing anything, run <code>drip setup claude --print</code>.</p>
+      <h2>FAQ</h2>
+      <h3>Does drip use macOS Notification Center?</h3>
+      <p>No. drip draws its own card out of the camera notch, or out of the top edge of a screen without one, so it needs no Notifications permission. Cards also show during Do Not Disturb; run <code>drip pause 30m</code> to hold them for a while.</p>
+      <h3>Do I have to change Claude Code's own notification setting?</h3>
+      <p>No. Hooks run alongside it: <code>drip setup claude</code> only adds hooks, and whatever Claude Code did before on a prompt, it still does.</p>
+      <h3>My settings.json is managed by home-manager or a dotfile manager. What then?</h3>
+      <p>drip never writes a settings file that is a symlink, read-only, or not plain JSON. It says why, prints the hooks to add where the file comes from, and exits 1. <code>drip setup claude --print</code> prints them without trying.</p>
+      <h3>What if I am away when Claude Code needs me?</h3>
+      <p>A card that comes up while the screen is locked waits for the unlock, and <code>drip history --missed</code> lists what came up while you were away.</p>
+      <h3>How do I remove the hooks?</h3>
+      <p>Delete the entries whose command is <code>drip hook claude</code> from <code>~/.claude/settings.json</code>, or restore the backup <code>drip setup</code> left next to it.</p>
+    </article>
+  </main>
+  <footer class="flex flex-wrap justify-between gap-x-24 gap-y-10 border-t border-t-rule pt-22 pb-50">
+    <span class="lbl">drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you · MIT</span>
+    <nav class="lbl flex flex-wrap gap-x-18 gap-y-10" aria-label="Guides"><a class="text-ink" href="/">home</a><a class="text-ink" href="/notify-when-command-finishes">Alert when a command finishes</a><a class="text-ink" href="/vs">drip vs terminal-notifier</a></nav>
+  </footer>
+</div>
+</body>
+</html>
