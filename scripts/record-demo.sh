@@ -40,8 +40,10 @@ SWIFT
     swift -e 'import AppKit; _ = CGRequestScreenCaptureAccess()' >/dev/null 2>&1 || true
     die "Screen Recording is not allowed for this terminal. Fix: System Settings > Privacy & Security > Screen & System Audio Recording, turn on your terminal, quit and reopen it, then run this again"
 }
-set -- $region
-crop="$1,$2,$3,$4"
+read -r x y w h <<EOF2
+$region
+EOF2
+crop="$x,$y,$w,$h"
 
 swift build -c release
 drip=$(swift build -c release --show-bin-path)/drip
