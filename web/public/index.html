@@ -86,24 +86,22 @@
       </dl>
 
       <div class="devwrap">
-        <span class="callout tl" data-n="1" aria-hidden="true">display: DripCore, as WebAssembly<i style="--w:60px"></i></span>
-        <span class="callout tr" data-n="2" aria-hidden="true"><i style="--w:40px"></i>line: the command a key runs</span>
         <div class="device">
           <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
+          <div class="printer up"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>what ran</span></div><div class="log" id="hero-tape" aria-live="polite"></div></div></div></div>
           <div class="devgrid">
             <div class="display" id="hero-screen" role="img" aria-label="A display where drip's cards drop out of the notch">
-              <div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="clock"></span></div>
+              <div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="run" id="run-stat"><span class="dot"></span><span class="w"></span><span class="t"></span></span><span class="clock"></span></div>
               <canvas class="stage-canvas"></canvas>
               <p class="still"><code>$ drip ok &quot;Build finished&quot; -d &quot;make test: 246 passed in 3.2s&quot;</code>a green card from the notch: Build finished</p>
               <div class="loading" id="loading">loading drip's engine</div>
+              <div class="dispnote" id="dispnote" aria-hidden="true"><span class="t"></span><span class="hint">press to run</span></div>
             </div>
-            <div class="lcdline"><span class="p" aria-hidden="true">›</span><code id="line" aria-live="polite"></code></div>
           </div>
           <div class="keys" id="keys" role="group" aria-label="Examples"></div>
-          <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>what ran</span></div><div class="log" id="hero-tape" aria-live="polite"></div></div></div></div>
         </div>
-        <span class="callout bl" data-n="3" aria-hidden="true">keys: one example each<i style="--w:50px"></i></span>
-        <span class="callout br" data-n="4" aria-hidden="true"><i style="--w:30px"></i>printer: what ran</span>
+        <span class="callout bl" data-n="1" aria-hidden="true">display: DripCore, as WebAssembly<i style="--w:60px"></i></span>
+        <span class="callout br" data-n="2" aria-hidden="true"><i style="--w:40px"></i>printer: each command as it runs</span>
       </div>
     </section>
 
@@ -894,10 +892,12 @@ function announce(card) { announcer.textContent = `drip card: ${card.card.title}
 // slot, and the paper steps out a line at a time, as a thermal printer's motor feeds it, so the
 // entry comes out of the slot and the older ones go down with the paper. Past `max` entries the
 // oldest go. The paper's head and the time it was put in are at its far end, printed first.
+// A `live` printer (the hero's) prints at once instead: the command the moment it runs, and each
+// line it prints as it comes.
 const LINE = 18.4; // an entry's line on the paper, in CSS pixels
 class Term {
-  constructor(log, { max = 40 } = {}) {
-    this.log = log; this.max = max; this.entry = null; this.held = false;
+  constructor(log, { max = 40, live = false } = {}) {
+    this.log = log; this.max = max; this.entry = null; this.held = false; this.live = live;
     this.feed = document.createElement("div"); log.append(this.feed);
     this.end = document.createElement("div"); this.end.className = "end";
     this.stamp = document.createElement("div"); this.stamp.className = "stamp";
@@ -911,6 +911,12 @@ class Term {
   // Output that comes while a command runs waits for the command; any other is printed at once.
   print(text, cls = "") {
     const entry = this.entry ?? this.open();
+    // Printing at once: the entry is already on the paper, so each line feeds out as it comes.
+    if (entry.live) {
+      const sheet = this.sheet;
+      for (const part of String(text).split("\n")) this.printing = this.printing.then(() => sheet === this.sheet && this.grow(entry, `out ${cls}`, part));
+      return;
+    }
     for (const part of String(text).split("\n")) this.line(entry, `out ${cls}`, part);
     if (!this.held) this.flush();
   }
@@ -923,6 +929,12 @@ class Term {
       const flag = document.createElement("span"); flag.className = "flag"; flag.textContent = part; div.append(flag);
     }
     this.held = true;
+    if (this.live) {
+      // The command goes on the paper at once; what it prints follows it there.
+      const entry = this.entry, sheet = this.sheet;
+      entry.live = true;
+      this.printing = this.printing.then(() => sheet === this.sheet && this.feedOut(entry));
+    }
     return div;
   }
   done() { this.flush(); }
@@ -930,7 +942,7 @@ class Term {
   flush() {
     const entry = this.entry, sheet = this.sheet;
     this.entry = null; this.held = false;
-    if (entry) this.printing = this.printing.then(() => sheet === this.sheet && this.feedOut(entry));
+    if (entry && !entry.live) this.printing = this.printing.then(() => sheet === this.sheet && this.feedOut(entry));
   }
   async feedOut(entry) {
     const before = this.feed.offsetHeight;
@@ -938,11 +950,25 @@ class Term {
     const fed = this.feed.offsetHeight - before;
     const entries = this.feed.querySelectorAll(":scope > .entry");
     for (let i = this.max; i < entries.length; i++) entries[i].remove();
+    await this.step(fed);
+  }
+  // One more line of an entry already on the paper: it is printed at the slot and the paper steps
+  // out by it.
+  async grow(entry, cls, text) {
+    if (!entry.isConnected) return;
+    const before = this.feed.offsetHeight;
+    this.line(entry, cls, text);
+    await this.step(this.feed.offsetHeight - before);
+  }
+  // The whole paper starts back in the slot by what was printed, and steps out a line at a time.
+  async step(fed) {
+    this.paper.sync(fed);
     if (reduceMotion.matches || fed <= 0) return;
-    // The whole paper starts back in the slot by what was printed, and steps out a line at a time.
     const lines = Math.min(12, Math.max(1, Math.round(fed / LINE))), frames = [];
     for (let i = 0; i <= lines; i++) frames.push({ offset: i / lines, transform: `translateY(${(-fed + (fed * i) / lines).toFixed(2)}px)`, easing: "cubic-bezier(.3, .7, .3, 1)" });
-    this.feeding = this.paper.slip.animate(frames, { duration: 60 + lines * 75 });
+    const options = { duration: 60 + lines * 75 };
+    this.feeding = this.paper.slip.animate(frames, options);
+    this.paper.mirror(frames, options);
     await this.feeding.finished.catch(() => {});
     this.feeding = null;
   }
@@ -1032,8 +1058,13 @@ class Paper {
     this.printer = log.closest(".printer"); this.paper = log.closest(".paper"); this.slip = log.closest(".slip");
     // Paper hangs over what is below it, a printer's displays and slot included, so a printer
     // higher on the page is in front of one further down. All stay under the falling pieces.
-    const printers = document.querySelectorAll(".printer:not(.fallen)");
+    // A printer out the top is in its device's 3D scene, where a z-index would win over depth in
+    // WebKit and draw the paper's back over its face, so it has none.
+    const printers = document.querySelectorAll(".printer:not(.fallen):not(.up)");
     printers.forEach((printer, i) => { printer.style.zIndex = 5 + printers.length - i; });
+    // Out the top, the printer is drawn upside down, so the paper's own terms still hold, mirrored.
+    this.up = this.printer.classList.contains("up");
+    if (this.up) { this.curl = document.createElement("div"); this.curl.className = "curl"; this.curl.setAttribute("aria-hidden", "true"); this.printer.append(this.curl); }
     this.cut = null; // the paper's length once it has been cut; null while it has its starting end
     this.length = 0; this.fed = 0; this.width = 0;
     this.slit = document.createElementNS("http://www.w3.org/2000/svg", "svg"); this.slit.classList.add("slit");
@@ -1049,6 +1080,7 @@ class Paper {
       const fed = width === this.width ? height - this.fed : 0;
       this.fed = height; this.width = width;
       this.measure(fed);
+      if (!this.slip.getAnimations().length) this.buildCurl();
     }).observe(this.feed);
   }
   // Sets the paper's length from what is printed on it; `fed` is how much more print there is.
@@ -1061,13 +1093,13 @@ class Paper {
   reset() {
     this.cut = null; this.fed = 0;
     uncut(this.slip);
-    this.measure(0);
+    this.measure(0); this.buildCurl();
   }
 
   bindScissors() {
     const cutter = this.cutter;
     let drag = null;
-    const local = (e) => { const r = this.slip.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    const local = (e) => { const r = this.slip.getBoundingClientRect(); return [e.clientX - r.left, this.up ? r.bottom - e.clientY : e.clientY - r.top]; };
     // The cut stays clear of the slot, so there is always paper out of it to print on.
     const top = () => this.log.offsetTop + 6;
     const finish = (complete) => {
@@ -1147,18 +1179,85 @@ class Paper {
     paper.querySelector(".slip").style.padding = getComputedStyle(this.slip).padding;
     piece.append(paper);
     const edge = ys.map((y, i) => `${Math.min(i * CUT_STEP, w).toFixed(1)}px ${y.toFixed(1)}px`).join(", ");
-    piece.style.clipPath = `polygon(-60px ${ys[0].toFixed(1)}px, ${edge}, ${w + 60}px ${ys.at(-1).toFixed(1)}px, ${w + 60}px ${length + 80}px, -60px ${length + 80}px)`;
+    // Out the top, only the paper in sight falls: what bent behind the device goes with it unseen.
+    const far = this.up ? Math.min(length, this.flat()) : length + 80;
+    const clip = `polygon(-60px ${ys[0].toFixed(1)}px, ${edge}, ${w + 60}px ${ys.at(-1).toFixed(1)}px, ${w + 60}px ${far}px, -60px ${far}px)`;
+    if (this.up) {
+      // Upside down: the piece is turned the same way, and cut in the paper's own terms.
+      const flipper = document.createElement("div"); flipper.className = "flipper";
+      paper.style.clipPath = clip; flipper.append(paper); piece.append(flipper);
+    } else piece.style.clipPath = clip;
     document.body.append(piece);
     // The paper left in the printer ends at the cut, and what was printed wholly below it is gone.
     this.cut = Math.ceil(bottom);
     for (const entry of [...this.feed.children]) if (entry.offsetTop >= bottom) entry.remove();
     cutEnd(this.slip, { ys, width: w, top: top - 1 });
     this.slit.firstChild.setAttribute("d", "");
-    this.measure(0);
+    this.measure(0); this.buildCurl();
     if (reduceMotion.matches) { piece.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).finished.then(() => piece.remove()); return; }
     // Let go of, the paper in the printer swings a little.
     this.paper.animate([{ transform: "none" }, { transform: `rotate(${-dir * 0.8}deg)` }, { transform: `rotate(${dir * 0.45}deg)` }, { transform: `rotate(${-dir * 0.2}deg)` }, { transform: "none" }], { duration: 900, easing: "ease-out" });
-    fall(piece, { width: w, height: length - top, hingeX: dir < 0 ? 0 : w, hingeY: dir < 0 ? ys[0] : ys.at(-1), dir });
+    const hingeY = dir < 0 ? ys[0] : ys.at(-1);
+    fall(piece, { width: w, height: length - top, hingeX: dir < 0 ? 0 : w, hingeY: this.up ? length - hingeY : hingeY, dir });
+  }
+  // How far the paper stands up from the slot before it bends (--flat).
+  flat() { return parseFloat(getComputedStyle(this.printer).getPropertyValue("--flat")) || Infinity; }
+  // The bend, rebuilt from the strip as it is now. It flops over as thin paper does: over --bend
+  // of paper its angle eases from 0 to just past half a turn (smoothstep), so the curvature builds
+  // up and relaxes again, and each slice is placed by walking along the paper. Slice i shows the
+  // band of the strip `i * S` past the flat part, from a copy of only the entries in that band.
+  // Past the bend the strip goes down the back of the box, out of sight, so nothing draws it: in
+  // WebKit a plane there is drawn over the paper's face.
+  buildCurl() {
+    if (!this.up) return;
+    this.curl.replaceChildren(); this.bands = [];
+    const F = this.flat(), L = parseFloat(getComputedStyle(this.printer).getPropertyValue("--bend")) || 120, S = 2, len = this.length;
+    const end = Math.PI * 1.04, angle = (u) => end * u * u * (3 - 2 * u);
+    // Light from above and in front: a face is as bright as it turns toward it. The printed face
+    // catches most light as it tips back and dims past the crest; the paper's back is lit where it
+    // hangs toward you but sits in the bend's shadow.
+    const lit = (theta, side) => Math.min(1, Math.max(0.35, 0.55 + 0.45 * side * (0.6 * Math.sin(theta) + 0.8 * Math.cos(theta))));
+    const back = (b) => `color-mix(in srgb, var(--color-paper) ${Math.round(b * 100)}%, #000)`;
+    const parts = [...this.feed.children].map((el) => ({ el, top: el.offsetTop, height: el.offsetHeight }));
+    let y = 0, z = 0;
+    for (let i = 0; i * S <= L && F + i * S < len; i++) {
+      const theta = angle(Math.min(1, (i * S) / L)), h = S + 1.4, top = F - 1 + i * S;
+      const jitter = i ? Math.sin(i * 2.3) * 0.012 : 0;
+      const slice = document.createElement("div"); slice.className = "slice";
+      slice.style.top = `${F - 1}px`; slice.style.height = `${h}px`;
+      slice.style.transform = `translateY(${y.toFixed(2)}px) translateZ(${z.toFixed(2)}px) rotateX(${(-theta).toFixed(4)}rad)`;
+      const band = this.band(parts, top, h);
+      band.style.top = `${-top}px`; band.style.height = `${len}px`;
+      band.style.clipPath = `inset(${top}px 0 ${Math.max(0, len - top - h)}px 0)`;
+      band.style.filter = `brightness(${(lit(theta, 1) / 0.91 + jitter).toFixed(3)})`;
+      const b = document.createElement("div"); b.className = "back"; b.style.background = back(0.84 * lit(theta, -1));
+      slice.append(band, b); this.curl.append(slice); this.bands.push(band);
+      y += S * Math.cos(theta); z -= S * Math.sin(theta);
+    }
+  }
+  // A copy of the strip that holds only what is printed in the band from `top`, `h` tall, so each
+  // slice copies an entry or two rather than the whole strip. What comes before the band is one
+  // empty box as tall, so the band's entries sit where they do on the strip.
+  band(parts, top, h) {
+    const slip = this.slip.cloneNode(false), log = this.log.cloneNode(false), feed = this.feed.cloneNode(false);
+    log.removeAttribute("id"); log.removeAttribute("aria-live");
+    const seen = parts.filter((part) => part.top < top + h && part.top + part.height > top);
+    const first = parts.indexOf(seen[0]);
+    if (first > 0) {
+      const before = parts[first - 1].el.cloneNode(false);
+      before.style.cssText = `box-sizing: border-box; height: ${seen[0].top - parts[0].top}px`;
+      feed.append(before);
+    }
+    for (const part of seen) feed.append(part.el.cloneNode(true));
+    log.append(feed); slip.append(log);
+    return slip;
+  }
+  // Prints into the bend too: what the slot feeds out moves over it with the same steps.
+  mirror(frames, options) { for (const band of this.bands ?? []) band.animate(frames, options); }
+  // The strip changed under the feed: measure it now rather than on the next resize.
+  sync(fed) {
+    this.fed = this.feed.offsetHeight; this.width = this.feed.offsetWidth;
+    this.measure(fed); this.buildCurl();
   }
 }
 
@@ -1342,14 +1441,51 @@ async function execOne(stages, term, stage, config, alive) {
   return reply.status ?? 0;
 }
 
-// ===== The hero: the device's display, printer, command line and keys =====
+// ===== The hero: the device's display, printer and keys =====
 const heroScreen = document.getElementById("hero-screen");
-const heroTerm = new Term(document.getElementById("hero-tape"), { max: 80 });
+const heroTerm = new Term(document.getElementById("hero-tape"), { max: 80, live: true });
 const narrow = matchMedia("(width <= 760px)");
 // The notch and the cards at their real size, smaller only when the display is too narrow for them.
 const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 600)) });
 const stages = [hero];
-const lineShown = document.getElementById("line");
+
+// The device is a box: walls extruded `--depth` back from its rounded outline, one per straight
+// edge and eight per corner, each shaded by which way it faces (light from the upper right), and a
+// back plate. The top wall has the printer's slot in it.
+const heroDevice = document.querySelector(".devwrap .device");
+const body3d = document.createElement("div"); body3d.className = "body3d"; body3d.setAttribute("aria-hidden", "true");
+heroDevice.prepend(body3d);
+function buildBody() {
+  const W = heroDevice.offsetWidth, H = heroDevice.offsetHeight, r = parseFloat(getComputedStyle(heroDevice).borderTopLeftRadius) || 26, steps = 8;
+  const D = parseFloat(getComputedStyle(heroDevice).getPropertyValue("--depth")) || 64;
+  const back = document.createElement("div"); back.className = "back"; back.style.transform = `translateZ(${-D}px)`; back.style.borderRadius = `${r}px`;
+  const walls = [back];
+  // The outline, clockwise from the top left: corner arcs as short chords, edges as long ones.
+  const pts = [];
+  const arc = (cx, cy, from) => { for (let k = 0; k <= steps; k++) { const a = from + (k / steps) * (Math.PI / 2); pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
+  arc(r, r, Math.PI); arc(W - r, r, -Math.PI / 2); arc(W - r, H - r, 0); arc(r, H - r, Math.PI / 2);
+  const light = [0.55, -0.83];
+  for (let k = 0; k < pts.length; k++) {
+    const [x0, y0] = pts[k], [x1, y1] = pts[(k + 1) % pts.length];
+    const L = Math.hypot(x1 - x0, y1 - y0); if (L < 0.01) continue;
+    const phi = Math.atan2(y1 - y0, x1 - x0), n = [Math.sin(phi), -Math.cos(phi)];
+    const facing = n[0] * light[0] + n[1] * light[1];
+    const wall = document.createElement("div"); wall.className = "wall";
+    wall.style.width = `${L + 0.6}px`; wall.style.height = `${D}px`;
+    wall.style.transform = `translate3d(${x0}px, ${y0}px, 0) rotateZ(${phi}rad) rotateX(-90deg)`;
+    if (facing > 0.2) { wall.classList.add("lit"); wall.style.setProperty("--lift", (0.03 + 0.13 * facing).toFixed(3)); }
+    else wall.style.setProperty("--dark", (0.25 + 0.35 * (0.2 - facing) / 1.2).toFixed(3));
+    // The slot, in the middle of the long top wall, as wide as the printer.
+    if (Math.abs(phi) < 0.01 && y0 < 1 && L > W / 2) {
+      const slit = document.createElement("div"); slit.className = "slit";
+      const pw = Math.min(620, W) - 8; slit.style.left = `${(W - pw) / 2 - x0}px`; slit.style.width = `${pw}px`;
+      wall.append(slit);
+    }
+    walls.push(wall);
+  }
+  body3d.replaceChildren(...walls);
+}
+new ResizeObserver(buildBody).observe(heroDevice);
 
 // Five drips at once: three stack, and a drop under the last one counts the two waiting for room.
 const STACK_LINES = (mode) => [
@@ -1370,35 +1506,93 @@ const CHIPS = [
   { key: "--open", name: "a card with a button", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip` },
   { key: "preset", name: "your own preset", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` },
   { key: "stack", name: "five cards at once", color: "#d0d0cc", line: STACK_LINES("chain").join("; ") },
+  { key: "ask", name: "a question with yes and no buttons", color: "#64d2ff", line: `drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23` },
 ];
+// What each key says: its group, the hint printed under its name, and what the display says when
+// the key is hovered or focused before a press.
+const KEYFACE = {
+  ok: { group: "cards", hint: "success", says: "a green card: Build finished" },
+  fail: { group: "cards", hint: "failure", says: "a red card: Deploy failed" },
+  warn: { group: "cards", hint: "warning", says: "an orange card: Disk almost full" },
+  run: { group: "watch", hint: "wraps a command", says: "runs npm test, then a card with how it went" },
+  agent: { group: "watch", hint: "agent hook", says: "Claude Code asks for permission, then says it is done" },
+  "--open": { group: "buttons", hint: "adds a button", says: "--open: a card with a View button that opens a link" },
+  ask: { group: "buttons", hint: "yes / no buttons", says: "--yes / --no: asks Merge or Later, and waits for your click" },
+  "--id": { group: "more", hint: "updates in place", says: "--id: Deploying turns into Deployed in the same card" },
+  preset: { group: "more", hint: "your own look", says: "a deploy preset from config.toml: its own icon and color" },
+  stack: { group: "more", hint: "3 at once", says: "five drips at once: three stack, a drop counts the two waiting for room" },
+};
+// The keys' groups, in two rows.
+const KEYROWS = [["cards", "watch"], ["buttons", "more"]];
 
 
 let busy = false;
-// Runs a key's line, and shows it on the command line until the next one runs.
+// A question holds the command until it is answered, and the display says so.
+let heroWaiting = false;
+heroTerm.waiting = () => { heroWaiting = true; };
+const runStat = document.getElementById("run-stat"), runWord = runStat.querySelector(".w"), runTime = runStat.querySelector(".t");
+// Runs a key's line. The paper prints it at once; the display counts its time, then says how it
+// ended, and the key's LED blinks until it returns.
 async function runHero(line, { fromUser = true } = {}) {
   if (fromUser) stopAttract();
   if (busy) return;
   busy = true;
-  lineShown.textContent = line; lineShown.title = line;
+  unpreview();
   // The key whose example this is lights until its cards have gone, whoever pressed it.
   const key = keyFor.get(line);
-  for (const k of keysBox.querySelectorAll(".running")) k.classList.remove("running");
-  key?.classList.add("running");
-  try { await exec(line, heroTerm, hero); } finally {
+  for (const k of keysBox.querySelectorAll(".running")) k.classList.remove("running", "exec");
+  key?.classList.add("running", "exec");
+  const started = performance.now(), seconds = () => (performance.now() - started) / 1000;
+  runStat.className = "run on going"; clearTimeout(runStat.fade); heroWaiting = false;
+  const show = () => { runWord.textContent = heroWaiting ? "waiting for you" : "running"; runTime.textContent = `${seconds().toFixed(1)}s`; };
+  show();
+  const tick = setInterval(show, 100);
+  let status = 0;
+  try { status = await exec(line, heroTerm, hero); } finally {
+    clearInterval(tick); key?.classList.remove("exec");
+    runStat.className = `run on ${status ? "bad" : "ok"}`;
+    runWord.textContent = `exit ${status} ·`; runTime.textContent = `${seconds().toFixed(1)}s`;
+    runStat.fade = setTimeout(() => { runStat.className = "run"; }, 2600);
     busy = false;
     if (key) (async () => { while (hero.busy && !busy) await sleep(150); if (!busy) key.classList.remove("running"); })();
   }
 }
 
+// Hovering or focusing a key says on the display what it would run.
+const dispNote = document.getElementById("dispnote"), dispText = dispNote.querySelector(".t");
+function preview(chip) {
+  if (busy || !drip) return;
+  dispText.textContent = KEYFACE[chip.key].says; dispNote.classList.add("on");
+}
+function unpreview() { dispNote.classList.remove("on"); }
+
 const keyFor = new Map();
 const keysBox = document.getElementById("keys");
+const groupBox = new Map();
+for (const row of KEYROWS) {
+  const r = document.createElement("div"); r.className = "krow";
+  for (const name of row) {
+    const n = CHIPS.filter((chip) => KEYFACE[chip.key].group === name).length;
+    const g = document.createElement("div"); g.className = `kgroup${n === 2 ? " pair" : ""}`; g.style.setProperty("--n", n);
+    g.innerHTML = `<span class="grp" aria-hidden="true"></span><div class="kkeys"></div>`;
+    g.querySelector(".grp").textContent = name;
+    r.append(g); groupBox.set(name, g.querySelector(".kkeys"));
+  }
+  keysBox.append(r);
+}
 for (const chip of CHIPS) {
+  const face = KEYFACE[chip.key];
   const b = document.createElement("button");
   b.type = "button"; b.className = "key"; b.title = chip.line; b.style.setProperty("--c", chip.color);
   b.setAttribute("aria-label", `${chip.key}: ${chip.name}`);
-  b.innerHTML = `<span class="led"></span><b></b>`; b.querySelector("b").textContent = chip.key;
+  b.innerHTML = `<span class="led"></span><span class="face"><b></b><small></small></span>`;
+  b.querySelector("b").textContent = chip.key; b.querySelector("small").textContent = face.hint;
+  b.addEventListener("pointerenter", () => preview(chip));
+  b.addEventListener("focus", () => preview(chip));
+  b.addEventListener("pointerleave", unpreview);
+  b.addEventListener("blur", unpreview);
   b.addEventListener("click", () => { if (drip && !busy) runHero(chip.line); });
-  keysBox.append(b); keyFor.set(chip.line, b);
+  groupBox.get(face.group).append(b); keyFor.set(chip.line, b);
 }
 
 // ===== What it does: six modules, each its own display on the same engine =====
