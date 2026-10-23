@@ -20,6 +20,21 @@ struct ResolveTests {
         #expect(card == Card(preset: .info, title: "build finished"))
     }
 
+    /// `ask` is no kind: `--stay` keeps a card on screen, and `--yes` and `--no` ask. The error says
+    /// so, with or without a title, unless a custom preset takes the name.
+    @Test func askIsNoKind() throws {
+        for title in ["my-app needs you", nil] {
+            let error = #expect(throws: UsageError.self) {
+                try resolver.resolve(kind: "ask", title: title, flags: CardFlags(), standardInput: { "from stdin" })
+            }
+            #expect(error?.message.hasPrefix("'ask' is not a kind") == true)
+            #expect(error?.message.contains("--stay") == true)
+            #expect(error?.message.contains("--yes") == true)
+        }
+        let custom = CardResolver(config: Config(presets: ["ask": PresetOverride(stay: true)]))
+        #expect(try custom.resolve(kind: "ask", title: "t", flags: CardFlags()).waits)
+    }
+
     @Test func unknownPresetWithATitleIsAUsageError() {
         let error = #expect(throws: UsageError.self) {
             try resolver.resolve(kind: "okay", title: "hi", flags: CardFlags())
@@ -33,7 +48,7 @@ struct ResolveTests {
             #expect(throws: UsageError.self) { try resolver.resolve(kind: kind, title: title, rest: rest, flags: CardFlags()) }?.message
         }
         #expect(message("build", "finished") == """
-            unknown preset 'build' (known: ask, fail, info, ok, warn)
+            unknown preset 'build' (known: fail, info, ok, warn)
             To show "build finished" as the title, quote it: drip "build finished"
             """)
         #expect(message("build", "is", ["done"])?.hasSuffix(#"quote it: drip "build is done""#) == true)

@@ -25,9 +25,9 @@ drip fail "deploy failed" -d "$err" --seconds 8
 git log -1 --format='%s%n%an' | drip ok
 drip run make test
 drip run --open "$CI_URL" --button "View run" ./deploy.sh
-drip warn "staging is ready" --confirm "Promote" && ./promote.sh
-drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23
-drip ask "my-app needs you" --icon app:com.openai.chat
+drip warn "Deploy to prod?" --yes Deploy --no Cancel && ./deploy.sh
+drip fail "deploy failed" --stay  # stays until you click it
+drip info "my-app needs you" --stay --icon app:com.openai.chat
 drip info "deploying" --id deploy && drip ok "deployed" --id deploy
 drip setup claude             # Claude Code's hooks: which project needs you, and why
 drip history --missed         # what came up while you were away
@@ -103,15 +103,17 @@ Codex after `drip setup codex`.
 
 | Agent | Event | Card |
 | --- | --- | --- |
-| Claude Code | `Notification`: a permission prompt or a question | `ask`: `my-app needs you`, with Claude's message |
+| Claude Code | `Notification`: a permission prompt or a question | `info --stay`: `my-app needs you`, with Claude's message |
 | | `Stop`: the turn is done | `ok`: `my-app is done`, with the last thing Claude wrote |
 | | `StopFailure`: a rate limit, an outage or another API error ended the turn | `fail`: `my-app stopped`, with the error, such as `API Error: Rate limit reached` |
-| Codex | `PermissionRequest` | `ask`, such as `Codex wants to run npm install` |
+| Codex | `PermissionRequest` | `info --stay`, such as `Codex wants to run npm install` |
 | | `Stop` | `ok`, with Codex's last message |
-| Gemini CLI | `Notification`: a tool permission | `ask`, with Gemini's message |
+| Gemini CLI | `Notification`: a tool permission | `info --stay`, with Gemini's message |
 | | `AfterAgent` | `ok`, with Gemini's last response |
 
-The title is the project, from the session's working directory. An `ask` card waits for you. Each
+The title is the project, from the session's working directory. A card that needs you stays, as with
+`--stay`, until you click it or the session's next card replaces it, and the agent's hook still
+returns at once. Each
 session's card has the id `<agent>:<session>`, so a session's new card replaces its last one
 instead of queuing behind it: the waiting card turns into the done card in place, and a click on
 the card brings back the terminal the agent runs in. drip keeps the agent's Markdown out of the
@@ -188,7 +190,7 @@ export const Drip = async ({ $, directory }) => {
       const id = `opencode:${event.properties?.sessionID}`
       if (event.type === "permission.asked") {
         const detail = `opencode wants to use ${event.properties.permission}`
-        await $`drip ask ${`${project} needs you`} -d ${detail} --id ${id}`.quiet().nothrow()
+        await $`drip info ${`${project} needs you`} -d ${detail} --id ${id} --stay`.quiet().nothrow()
       } else if (event.type === "session.idle") {
         await $`drip ok ${`${project} is done`} --id ${id}`.quiet().nothrow()
       }
@@ -276,20 +278,20 @@ exits 2, or 1 for `drip hook`.
 
 | Part | Behavior | Default |
 | --- | --- | --- |
-| `KIND` | A preset: `ok`, `warn`, `fail`, `info`, `ask`, or a custom preset from the config file. When the first argument is not a preset and no title follows it, it is the title; followed by a title, it is an unknown preset and exits 2, saying how to quote a title of several words. | `info` |
+| `KIND` | A preset, which sets only the card's look, its icon, color and sound: `ok`, `warn`, `fail`, `info`, or a custom preset from the config file. When the first argument is not a preset and no title follows it, it is the title; followed by a title, it is an unknown preset and exits 2, saying how to quote a title of several words. | `info` |
 | `TITLE` | The bold text, up to 2 lines. Required unless stdin provides it. | none |
 | `-d`, `--detail TEXT` | The gray text under the title, up to 3 lines. | none |
-| `-s`, `--seconds N` | Time fully visible, excluding fades: 0.5 to 60. An `ask` card or a question given a time counts it down instead of waiting. | 4.5 |
+| `-s`, `--seconds N` | Time fully visible, excluding fades: 0.5 to 60. A card that stays or a question given a time counts it down instead of waiting. | 4.5 |
 | `--sound NAME\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. Unknown names print a warning and play nothing. | the preset's |
 | `--icon SYMBOL\|PATH\|app:ID\|mark:NAME\|none` | An SF Symbol name; a path to an image, such as a `.png`, `.pdf` or `.icns` file, drawn as it is; `app:` and an app's bundle identifier, such as `app:com.openai.chat`, for that app's own icon; or `mark:claude`, `mark:codex` or `mark:gemini` for an agent's mark that drip bundles. An icon that cannot load falls back to the preset's with a warning. See [Icons](#icons). | the preset's |
 | `--color HEX\|NAME` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
 | `--open URL\|PATH` | Adds a button that opens a URL or a file, a relative path from the directory drip runs in; see [Buttons](#buttons). Empty, as `--open "$CI_URL"` without a URL, it adds no button and warns. | none |
-| `--button LABEL` | The `--open` button's label, up to 24 characters. | `Open` |
-| `--yes LABEL` | Asks a question with a yes button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if no button was. The card waits for its answer, whatever its kind, unless it is given a time. See [Buttons](#buttons). | none |
+| `--button LABEL` | The `--open` button's label, up to 24 characters. Without `--open` it is a usage error. | `Open` |
+| `--yes LABEL` | Asks a question with a yes button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if no button was. The card waits for its answer, whatever its look, unless it is given a time. Not for `drip run` or `drip hook`, which exit 2 or 1 instead, as nothing reads their answer. See [Buttons](#buttons). | none |
 | `--no LABEL` | With `--yes`, a no button of this label to its left: drip exits 1 if it was clicked. | none |
-| `--confirm LABEL` | The same as `--yes`. | none |
 | `--id ID` | Names what the card is about, up to 200 characters; see [Replacing cards](#replacing-cards). | none |
 | `--activate BUNDLE-ID\|none` | The app a click on the card brings forward, such as `com.apple.Terminal`; see [Clicks](#clicks). | the app drip was run from |
+| `--stay` | Keeps the card on screen until it is clicked, a newer card with the same `--id` replaces it, or 10 minutes pass, without holding the script: drip still returns at once. Works with any look; see Cards that wait below. | off |
 | `--wait` | Wait until the card has gone before exiting. | off |
 | `--quiet` | Never print warnings. | off |
 
@@ -304,18 +306,23 @@ the notch on its springs and takes it back in, `subtle` only fades, `none` neith
 | `warn` | `exclamationmark.circle.fill` | orange | Purr |
 | `fail` | `xmark.circle.fill` | red | Basso |
 | `info` | `info.circle.fill` | blue | Tink |
-| `ask` | `questionmark.circle.fill` | purple | Ping |
 
-**Cards that wait.** `ask` is for something waiting on you, such as an agent asking for
-permission. Its card has no countdown: a white dot stands where the ring would be, and
-every 2.4 seconds a soft halo grows out of it to about twice its size and fades (with Reduce Motion,
-the dot alone). The card stays until you click it or a newer card with the same `--id` replaces it.
-It gives way to other cards: when another card waits for its place, the card counts down its
-`--seconds` from then like any other card, and it never stays longer than 10 minutes. A question
-(`--yes`), of any kind, waits too and never gives way: it stays until it is answered, replaced or its
-10 minutes are up, other cards stack around it, and a card with no room in the stack, or another
-question, waits its turn. `--seconds`, `DRIP_SECONDS` or the preset's `seconds` in the config give an
-`ask` card or a question a countdown instead.
+The kind is the look; flags are the behavior. `--stay` keeps a card on screen, `--yes` and `--no`
+wait for an answer, and `--open` adds a link button. Every card keeps its icon, a question too.
+
+**Cards that wait.** `--stay` is for something waiting on you, such as an agent asking for
+permission, on any look: `drip fail "deploy failed" --stay`. The card has no countdown: a white dot
+stands where the ring would be, and every 2.4 seconds a soft halo grows out of it to about twice its
+size and fades (with Reduce Motion, the dot alone). The card stays until you click it or a newer
+card with the same `--id` replaces it, and drip returns at once, so the script goes on. It gives way
+to other cards: when another card waits for its place, the card counts down its `--seconds` from
+then like any other card, and it never stays longer than 10 minutes. A question (`--yes`), of any
+look, waits too and never gives way: it stays until it is answered, replaced or its 10 minutes are
+up, other cards stack around it, and a card with no room in the stack, or another question, waits
+its turn. `--seconds`, `DRIP_SECONDS` or the preset's `seconds` in the config give a card that stays
+or a question a countdown instead. A preset can stay by default, with `stay = true` in the
+[config](#config). drip has no `ask` kind: unless the config has a preset of that name, `drip ask`
+exits 2 and says to use `--stay`, or `--yes` and `--no`.
 
 **stdin.** When no title is given and stdin is not a terminal, drip reads stdin to the end, keeping
 the first 64 KB, so the command writing it is never cut short: the first non-empty line is the title
@@ -329,14 +336,12 @@ left alone.
 as it is, never tinted, at the size of the preset's icon; an app's icon loses the margin around its
 rounded square, so its mark fills the same place. When the icon is not the preset's own, the
 card shows the state in its ring instead, around the state's mark: a check for `ok`, a cross for
-`fail`, and so on. The icon then says who, and the ring what. An `ask` card that waits shows its
-waiting dot there instead, and such a card with the preset's own icon shows no icon,
-nor does a question with `--yes` and `--no` buttons: the text starts at the left, and the right end
-says it waits for you. A card with one button shows the button in place of the ring, so it keeps its
-icon:
+`fail`, and so on. The icon then says who, and the ring what. A card that stays shows its waiting
+dot there instead, and a card with buttons shows the buttons in place of the ring. Every card keeps
+its icon, a question with `--yes` and `--no` buttons too:
 
 ```sh
-drip ask "my-app needs you" -d "Codex wants to run npm install" --icon app:com.openai.codex
+drip info "my-app needs you" -d "Codex wants to run npm install" --icon app:com.openai.codex --stay
 drip ok "backup done" --icon ~/Pictures/nas.png
 ```
 
@@ -352,7 +357,7 @@ spark in its colours from [LobeHub's icons](https://lobehub.com/icons/gemini) (M
 The marks are their owners' trademarks, used unaltered to name the agent a card is about. drip is
 not affiliated with Anthropic, OpenAI or Google, and none of them endorses it.
 
-**Text that starts with a dash.** `-d`, `--button`, `--confirm`, `--yes`, `--no` and `--id` take their next argument whatever it
+**Text that starts with a dash.** `-d`, `--button`, `--yes`, `--no` and `--id` take their next argument whatever it
 starts with, so `-d "$err"` works when the error reads `--- FAIL: TestFoo`, and `--id --wait` is an
 id, not a missing value. A title that starts with
 a dash goes after `--`: `drip fail -- "$line"`.
@@ -399,9 +404,9 @@ A card that comes up while the screen is locked would play to nobody, so drip ho
 screen unlocks. Then one or two held cards show as they are, and three or more show as one card,
 `5 cards while you were away`, with their titles newest first. Cards held while drip is paused
 (see [Pausing](#pausing)) show the same way when the pause ends. It takes the look and sound of the
-newest `fail` card among them, else the newest `ask` card, else the newest `warn` card, else the
-newest card, so a failure still reads as one. The summary counts down, even when it looks like an
-`ask` card. Of held cards with the same `--id`, only the newest shows. A click on the
+newest `fail` card among them, else the newest card that stays, else the newest `warn` card, else
+the newest card, so a failure still reads as one. The summary counts down, even when it takes the
+look of a card that stays. Of held cards with the same `--id`, only the newest shows. A click on the
 summary brings forward the app the held cards came from, or nothing when they came from different
 apps. A drip that waits for its card, with `--wait` or a `--yes` question, warns that the
 screen is locked, keeps waiting until the unlock and then shows its card on its own.
@@ -468,19 +473,20 @@ background drip plays the card's exit, and any cards stacked with it, on from wh
 With reduced motion, the card goes at once, with no exit, and drip exits with it. With either, drip exits 5 when
 no button was clicked: the card timed out, a newer card with the same `--id` replaced it, or it was
 clicked away from its buttons. A question waits for its answer for up to 10 minutes, whatever its
-kind; `--seconds` gives it a deadline instead. 0 and 1 read as yes and no, so the script decides what
+look; `--seconds` gives it a deadline instead. 0 and 1 read as yes and no, so the script decides what
 happens:
 
 ```sh
-drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23
-drip warn "staging is ready" -d "api 1.4.2" --confirm "Promote" --seconds 10 && ./promote.sh
+drip warn "Deploy to prod?" -d "v1.4.0" --yes Deploy --no Cancel && ./deploy.sh
+drip info "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --seconds 10 && gh pr merge 23
 ```
 
 The buttons stand where the ring would be, the yes button in the card's colour, darkened just
 enough that white text on it reaches WCAG AA contrast (4.5:1), and the no button in white at 15 %. drip never takes focus, so the
-keyboard answers nothing; VoiceOver offers each button as an action of the card. `--confirm` is
-another spelling of `--yes`. Before 0.2, `--button` without `--open` still asks as `--confirm`
-does, with a warning.
+keyboard answers nothing; VoiceOver offers each button as an action of the card, and reads a
+question out before what it is reading. A card holds one link button or one question, never both:
+`--yes` with `--open`, or `--button` without `--open`, exits 2. `drip run` and `drip hook` take no
+`--yes` or `--no`, as nothing reads their answer.
 
 **drip run** runs the command with drip's stdin, stdout and stderr, then shows `ok` with the title
 `<command> finished` on exit 0, or `fail` with `<command> failed (exit N)` otherwise. The detail is
@@ -548,7 +554,7 @@ runs at once, and the cards still in the stack play out without it.
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh. |
 | 4 | The config file is invalid; the message names the key and line. |
-| 5 | drip asked with `--yes` or `--confirm` and waited, but no button was clicked. |
+| 5 | drip asked with `--yes` and waited, but no button was clicked. |
 
 Without `--wait`, 0 means the card was handed off to be shown. `drip run` exits with the wrapped
 command's exit code (127 when it is not found) as soon as the command ends, once its card has
@@ -577,8 +583,10 @@ color = "#a78bfa"
 sound = "Submarine"
 seconds = 6
 
-[preset.ask]
-icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this file's directory
+[preset.ask]                  # a look of your own that stays, as --stay does: drip ask "my-app needs you"
+icon  = "app:com.apple.Terminal"  # an app's icon, or an image path from this file's directory
+color = "purple"
+stay  = true
 ```
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
@@ -588,8 +596,9 @@ that a top-level `sound = false` mutes every preset. A custom preset starts from
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
 name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `setup`,
 `config`, `init`, `install`, `uninstall`, `completion`, `completions`, `doctor`, `mute`, `pause`,
-`resume`, `listen` or `test`. A custom preset never waits,
-and its ring shows no state's mark. Unknown keys print a warning;
+`resume`, `listen` or `test`. `stay = true` makes a preset's cards stay, as `--stay` does, built-in
+or custom; its `seconds`, or `--seconds`, counts them down instead. A custom preset's ring shows no
+state's mark. Unknown keys print a warning;
 wrong types exit 4.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
@@ -614,8 +623,8 @@ PNGs in `Tests/Snapshots`; they run on macOS and skip cards that have no referen
 or the environment.
 
 On a Mac, `scripts/mac-check.sh` builds, runs every test, records any missing snapshot references
-into `Tests/Snapshots`, shows each preset and a custom `deploy` preset on screen once, an `ask`
-card with Terminal's icon that waits until the next card needs the notch, a few cards that stack
+into `Tests/Snapshots`, shows each preset and a custom `deploy` preset on screen once, a card
+with Terminal's icon that stays until the next card needs the notch, a few cards that stack
 under one another, a Claude hook card that a newer card from the same session replaces in place,
 then lists the last cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
 never overwrites a reference: to regenerate one on purpose, delete its PNG and run the script again.

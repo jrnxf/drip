@@ -89,7 +89,7 @@ export async function loadDrip(source, measure) {
     stack: {
       start: (settings, handles) => pass(e.drip_stack_start, { ...settings, handles }),
       offer: (id, handle) => readReply(e.drip_stack_offer(id, handle)),
-      step: (id, time) => readReply(e.drip_stack_step(id, time)),
+      step: (id, time, othersWaiting) => readReply(e.drip_stack_step(id, time, othersWaiting ? 1 : 0)),
       end: (id) => readReply(e.drip_stack_end(id)).handles,
       pointer: (id, x, y, inside, time) => readReply(e.drip_stack_pointer(id, x, y, inside ? 1 : 0, time)),
       click: (id, x, y, time) => readReply(e.drip_stack_click(id, x, y, time)),

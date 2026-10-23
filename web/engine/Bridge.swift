@@ -242,8 +242,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
             }
             let event = try AgentHook.event(agent: command.agent, payload: payload)
-            flags.id = flags.id ?? event.id
-            flags.detail = flags.detail ?? event.detail
+            flags = event.filling(flags)
             // No app is installed in a web page.
             flags.icon = flags.icon ?? command.agent.icon { _ in false }
             return cards([try resolver.resolve(kind: event.kind, title: event.title, flags: flags)], wait: flags.wait)
@@ -558,7 +557,9 @@ public func dripStackOffer(_ stackHandle: Int32, _ handle: Int32) -> UnsafePoint
 
 /// Moves the stack's clock to `time`, as the app's stack does every tick. When the stack is at rest
 /// it takes in a later command's card, first one that shows in place of a card with the same id,
-/// then its own next card. Then it counts down, sends cards off and closes the gaps. Replies
+/// then its own next card. Then it counts down, sends cards off and closes the gaps. `othersWaiting`
+/// is 1 while a later command's cards wait for the stack to finish, such as a question: cards that
+/// wait for you give way to them, as they do to a newer drip waiting for its turn. Replies
 /// `{"entered": [{handle, start, cues, countdownFrom, waits}], "swapped": [{handle, old, time, kept,
 /// newState, inRing, waits}], "stoppedWaiting": [handle], "left": [{handle, cues, time, clicked}],
 /// "gone": [handle], "done": bool}`. `kept` says which of the new card's lines, title then detail,
@@ -567,7 +568,7 @@ public func dripStackOffer(_ stackHandle: Int32, _ handle: Int32) -> UnsafePoint
 /// until it is in `stoppedWaiting`. `done` once nothing is left to show.
 @_expose(wasm, "drip_stack_step")
 @_cdecl("drip_stack_step")
-public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer<UInt8> {
+public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting: Int32) -> UnsafePointer<UInt8> {
     guard let session = stacks[stackHandle] else { return send(["done": true]) }
     let stack = session.stack
     let elapsed = max(time - session.clock, 0)
@@ -637,9 +638,11 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer
             }
         }
     }
-    // Later commands' cards still offered want room; cards that wait for you give way to them.
+    // Later commands' cards still offered want room, and those the stack did not take want it to
+    // finish; cards that wait for you give way to them.
     let changes = stack.advance(
-        to: time, elapsed: elapsed, lead: 0, needsRoom: !session.adoptable.isEmpty, queued: session.offered)
+        to: time, elapsed: elapsed, lead: 0, needsRoom: !session.adoptable.isEmpty, othersWaiting: othersWaiting != 0,
+        queued: session.offered)
     peek(stack, at: session.pointer, time: time)
     let stoppedWaiting = changes.stoppedWaiting.compactMap { session.islandOf[$0.id] }
     let left: [[String: Any]] = changes.left.compactMap { left in

@@ -425,7 +425,9 @@ struct CommandTests {
             #expect(help.contains("\n  \(subcommand) "), "\(subcommand)")
         }
         #expect(help.contains("--seconds"), "\(help)")
-        #expect(help.contains("--confirm"), "\(help)")
+        #expect(help.contains("--stay"), "\(help)")
+        #expect(!help.contains("--confirm"), "\(help)")
+        #expect(!help.contains("drip ask "), "\(help)")
         #expect(!help.contains("__render"), "\(help)")
         #expect(!help.contains("__background"), "\(help)")
         // Preferences are settings, not flags.

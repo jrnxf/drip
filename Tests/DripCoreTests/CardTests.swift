@@ -1,9 +1,18 @@
 import DripCore
 import Testing
 
+extension Card {
+    /// A card of `preset` that stays, as `--stay` makes it, such as an agent's that needs you.
+    static func staying(_ preset: Preset = .info, title: String) -> Card {
+        var card = Card(preset: preset, title: title)
+        card.waitLimit = Defaults.waitLimit
+        return card
+    }
+}
+
 struct CardTests {
     @Test func builtInPresetsMatchTheSpec() {
-        #expect(Preset.builtIn.map(\.name) == ["ok", "warn", "fail", "info", "ask"])
+        #expect(Preset.builtIn.map(\.name) == ["ok", "warn", "fail", "info"])
         #expect(Preset.ok.icon == .symbol("checkmark.circle.fill"))
         #expect(Preset.ok.color == .system(.green))
         #expect(Preset.ok.sound == .named("Glass"))
@@ -16,22 +25,26 @@ struct CardTests {
         #expect(Preset.info.icon == .symbol("info.circle.fill"))
         #expect(Preset.info.color == .system(.blue))
         #expect(Preset.info.sound == .named("Tink"))
-        #expect(Preset.ask.icon == .symbol("questionmark.circle.fill"))
-        #expect(Preset.ask.color == .system(.purple))
-        #expect(Preset.ask.sound == .named("Ping"))
         #expect(Preset.builtIn.allSatisfy { $0.seconds == nil })
-        #expect(Preset.builtIn.filter(\.waits).map(\.name) == ["ask"])
-        #expect(Preset.builtIn.map(\.glyph) == ["checkmark", "exclamationmark", "xmark", "info", "questionmark"])
+        // A look sets only the icon, color and sound: no built-in stays.
+        #expect(Preset.builtIn.allSatisfy { !$0.stays })
+        #expect(Preset.builtIn.map(\.glyph) == ["checkmark", "exclamationmark", "xmark", "info"])
     }
 
-    @Test func anAskCardWaitsForYou() {
-        let ask = Card(preset: .ask, title: "my-app needs you")
-        #expect(ask.waits)
-        #expect(ask.waitLimit == Defaults.waitLimit)
-        #expect(ask.duration == Defaults.waitLimit)
-        #expect(ask.seconds == Defaults.seconds)
+    @Test func aCardThatStaysWaitsForYou() {
+        let staying = Card.staying(title: "my-app needs you")
+        #expect(staying.waits)
+        #expect(staying.duration == Defaults.waitLimit)
+        #expect(staying.seconds == Defaults.seconds)
         // A click takes it away, even with nothing to bring forward.
-        #expect(ask.activate == nil && ask.action == nil && ask.isClickable)
+        #expect(staying.activate == nil && staying.action == nil && staying.isClickable)
+
+        // A preset that stays, from a config's stay = true, makes its cards stay.
+        let preset = Preset(name: "agent", icon: .none, color: .system(.purple), sound: .none, stays: true)
+        #expect(Card(preset: preset, title: "t").waitLimit == Defaults.waitLimit)
+        var timed = preset
+        timed.seconds = 8
+        #expect(!Card(preset: timed, title: "t").waits)
 
         let ok = Card(preset: .ok, title: "done")
         #expect(!ok.waits)
@@ -54,48 +67,30 @@ struct CardTests {
         card.icon = .none
         #expect(card.ringGlyph == nil)
 
-        // A card that waits has no countdown in its ring, so the ring always carries the state,
-        // even beside the preset's own icon or none.
-        var asking = Card(preset: .ask, title: "my-app needs you")
-        #expect(asking.ringGlyph == "questionmark")
-        asking.icon = .none
-        #expect(asking.ringGlyph == "questionmark")
-        // Given a time, it counts down like any other card, and reads as one.
-        asking = Card(preset: .ask, title: "my-app needs you")
-        asking.waitLimit = nil
-        #expect(asking.ringGlyph == nil)
-        asking.icon = .app("com.anthropic.claudefordesktop")
-        #expect(asking.ringGlyph == "questionmark")
+        // A card that stays shows its own icon, which says the state already.
+        var staying = Card.staying(title: "my-app needs you")
+        #expect(staying.ringGlyph == nil)
+        staying.icon = .app("com.anthropic.claudefordesktop")
+        #expect(staying.ringGlyph == "info")
     }
 
-    @Test func theNotchShowsTheStateOnce() {
-        // A plain ask card's question is in its ring, so its own question icon is not shown too.
-        var asking = Card(preset: .ask, title: "my-app needs you")
-        #expect(!asking.showsIconAtNotch)
-        // Its one button takes the ring's place, so its icon shows the question.
-        asking.action = CardAction(label: "Approve", open: nil)
-        #expect(asking.ringGlyph == "questionmark")
-        #expect(asking.showsIconAtNotch)
-        // Its yes and no buttons say what it asks: no icon.
-        asking.action?.decline = "Deny"
-        #expect(!asking.showsIconAtNotch)
-        // A question of another kind keeps its state's icon, waiting or not, with one button or two.
-        var promote = Card(preset: .warn, title: "staging is ready")
-        promote.action = CardAction(label: "Promote", open: nil)
-        #expect(promote.showsIconAtNotch)
-        promote.waitLimit = Defaults.waitLimit
-        #expect(promote.showsIconAtNotch)
-        promote.action?.decline = "Not yet"
-        #expect(promote.showsIconAtNotch)
-        asking.action = nil
-        asking.icon = .mark("claude")
-        #expect(asking.showsIconAtNotch)
-        asking.icon = .symbol("bell.fill")
-        #expect(asking.showsIconAtNotch)
-        // Counting down, its ring shows the time, and the icon the state.
-        asking = Card(preset: .ask, title: "my-app needs you")
-        asking.waitLimit = nil
-        #expect(asking.showsIconAtNotch)
+    @Test func everyCardKeepsItsIcon() {
+        var staying = Card.staying(title: "my-app needs you")
+        #expect(staying.showsIconAtNotch)
+        // A question keeps its icon, with one button or two, waiting or not.
+        staying.action = CardAction(label: "Approve", open: nil)
+        #expect(staying.showsIconAtNotch)
+        staying.action?.decline = "Deny"
+        #expect(staying.showsIconAtNotch)
+        for preset in Preset.builtIn {
+            var question = Card(preset: preset, title: "Deploy to prod?")
+            question.action = CardAction(label: "Deploy", open: nil, decline: "Cancel")
+            question.waitLimit = Defaults.waitLimit
+            #expect(question.showsIconAtNotch)
+        }
+        staying.action = nil
+        staying.icon = .mark("claude")
+        #expect(staying.showsIconAtNotch)
         #expect(Card(preset: .ok, title: "done").showsIconAtNotch)
         var plain = Card(preset: .ok, title: "done")
         plain.icon = .none
@@ -108,27 +103,33 @@ struct CardTests {
     }
 
     @Test func aCardThatWaitsShowsTheWaitingMark() {
-        var asking = Card(preset: .ask, title: "my-app needs you")
-        #expect(asking.showsWaitingMark)
-        asking.icon = .mark("claude")
-        #expect(asking.showsWaitingMark)
+        var staying = Card.staying(title: "my-app needs you")
+        #expect(staying.showsWaitingMark)
+        staying.icon = .mark("claude")
+        #expect(staying.showsWaitingMark)
         // Its buttons stand there instead.
-        asking.action = CardAction(label: "Approve", open: nil, decline: "Deny")
-        #expect(!asking.showsWaitingMark)
+        staying.action = CardAction(label: "Approve", open: nil, decline: "Deny")
+        #expect(!staying.showsWaitingMark)
         // Counting down, it shows its ring.
-        asking = Card(preset: .ask, title: "my-app needs you")
-        asking.waitLimit = nil
-        #expect(!asking.showsWaitingMark)
+        staying = Card(preset: .info, title: "my-app needs you")
+        #expect(!staying.showsWaitingMark)
         #expect(!Card(preset: .ok, title: "done").showsWaitingMark)
     }
 
-    @Test func aFailureOrAnAskIsReadOutFirst() {
-        #expect(Preset.builtIn.filter { Card(preset: $0, title: "t").isUrgent }.map(\.name) == ["fail", "ask"])
-        // An ask card that counts down or has a button still waits on you.
-        var asking = Card(preset: .ask, title: "my-app needs you")
-        asking.waitLimit = nil
-        asking.action = CardAction(label: "Approve", open: nil)
-        #expect(asking.isUrgent)
+    @Test func aFailureAQuestionOrACardThatStaysIsReadOutFirst() {
+        #expect(Preset.builtIn.filter { Card(preset: $0, title: "t").isUrgent }.map(\.name) == ["fail"])
+        // Any look that stays waits on you.
+        #expect(Preset.builtIn.allSatisfy { Card.staying($0, title: "t").isUrgent })
+        // So does a question of any look, counting down or not.
+        for preset in Preset.builtIn {
+            var question = Card(preset: preset, title: "Deploy to prod?")
+            question.action = CardAction(label: "Deploy", open: nil)
+            #expect(question.isUrgent)
+        }
+        // A link button asks nothing.
+        var link = Card(preset: .ok, title: "Release 1.4 is out")
+        link.action = CardAction(label: "View", open: "https://example.com")
+        #expect(!link.isUrgent)
         #expect(!Card(preset: Preset(name: "deploy", icon: .none, color: .system(.purple), sound: .none), title: "t").isUrgent)
     }
 

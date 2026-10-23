@@ -93,19 +93,19 @@ struct SnapshotTests {
     /// An agent's card: its app's own icon, never tinted, or its bundled mark, with the state in the
     /// ring. Terminal is on every Mac.
     @Test func agentIcons() throws {
-        let asking = ["ask", "my-app needs you", "--detail", "Claude needs your permission to use Bash"]
+        let asking = ["info", "my-app needs you", "--detail", "Claude needs your permission to use Bash", "--stay"]
         let done = ["ok", "my-app is done", "--detail", "All 246 tests pass. Pushed fix/notch."]
         let app = ["--icon", "app:com.apple.Terminal"]
         try assertSnapshots([
-            Snapshot(name: "ask", arguments: asking),
-            Snapshot(name: "ask-app", arguments: asking + app),
+            Snapshot(name: "stay", arguments: asking),
+            Snapshot(name: "stay-app", arguments: asking + app),
             Snapshot(name: "ok-app", arguments: done + app),
-            Snapshot(name: "ask-no-app", arguments: asking + ["--icon", "terminal.fill"]),
-            Snapshot(name: "ask-mark-claude", arguments: asking + ["--icon", "mark:claude"]),
-            Snapshot(name: "ask-mark-codex", arguments: asking + ["--icon", "mark:codex"]),
-            Snapshot(name: "ask-mark-gemini", arguments: asking + ["--icon", "mark:gemini"]),
+            Snapshot(name: "stay-no-app", arguments: asking + ["--icon", "terminal.fill"]),
+            Snapshot(name: "stay-mark-claude", arguments: asking + ["--icon", "mark:claude"]),
+            Snapshot(name: "stay-mark-codex", arguments: asking + ["--icon", "mark:codex"]),
+            Snapshot(name: "stay-mark-gemini", arguments: asking + ["--icon", "mark:gemini"]),
             Snapshot(name: "ok-mark-claude", arguments: done + ["--icon", "mark:claude"]),
-            Snapshot(name: "ask-image", arguments: asking + [
+            Snapshot(name: "stay-image", arguments: asking + [
                 "--icon", "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns",
             ]),
         ])
@@ -119,11 +119,18 @@ struct SnapshotTests {
         ])
     }
 
-    /// A question with a no button left of its yes button, with no icon or mark.
+    /// A question with a no button left of its yes button, beside its look's icon.
     @Test func yesAndNo() throws {
         try assertSnapshots([
-            Snapshot(name: "yes-no", arguments: ["ask", "Merge drip #23?", "--detail", "my-app · checks green, 1 approval",
-                                                 "--yes", "Merge", "--no", "Later"]),
+            Snapshot(name: "yes-no", arguments: ["warn", "Deploy to prod?", "--detail", "my-app · v1.4.0",
+                                                 "--yes", "Deploy", "--no", "Cancel"]),
+        ])
+    }
+
+    /// A card that stays: its look's icon, and the waiting mark where the ring would be.
+    @Test func stay() throws {
+        try assertSnapshots([
+            Snapshot(name: "fail-stay", arguments: ["fail", "Deploy failed", "--detail", "rolled back to v1.3.9", "--stay"]),
         ])
     }
 
@@ -132,7 +139,6 @@ struct SnapshotTests {
         ("warn", "Claude needs you", "drip"),
         ("fail", "Deploy failed", "exit 1 after 2m 14s"),
         ("info", "Dotfiles up to date", "pulled 1 commit: feat(nvim): show hidden files"),
-        ("ask", "my-app needs you", "Claude needs your permission to use Bash"),
     ]
 }
 

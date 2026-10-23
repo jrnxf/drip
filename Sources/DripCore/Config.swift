@@ -11,12 +11,17 @@ public struct PresetOverride: Equatable {
     public var color: CardColor?
     public var sound: Sound?
     public var seconds: Double?
+    /// `stay = true`: the preset's cards stay, as with `--stay`.
+    public var stay: Bool?
 
-    public init(icon: Icon? = nil, color: CardColor? = nil, sound: Sound? = nil, seconds: Double? = nil) {
+    public init(
+        icon: Icon? = nil, color: CardColor? = nil, sound: Sound? = nil, seconds: Double? = nil, stay: Bool? = nil
+    ) {
         self.icon = icon
         self.color = color
         self.sound = sound
         self.seconds = seconds
+        self.stay = stay
     }
 }
 
@@ -61,6 +66,7 @@ public struct Config: Equatable {
             preset.color = change.color ?? preset.color
             preset.sound = change.sound ?? preset.sound
             preset.seconds = change.seconds ?? preset.seconds
+            preset.stays = change.stay ?? preset.stays
             return preset
         }
     }
@@ -235,6 +241,9 @@ private struct ConfigReader {
                 preset.sound = try sound(item, key: key)
             case "seconds":
                 preset.seconds = try seconds(item, key: key)
+            case "stay":
+                guard case let .boolean(stay) = item.value else { throw wrongType(item, key: key, expected: "true or false") }
+                preset.stay = stay
             default:
                 warnUnknown(key, line: item.line)
             }

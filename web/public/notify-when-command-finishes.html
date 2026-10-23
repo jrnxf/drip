@@ -87,7 +87,7 @@
           "name": "Can it ask before the next step runs?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. drip warn \"staging is ready\" --confirm Promote && ./promote.sh waits for a click: drip exits 0 on yes, 1 on no and 5 when nobody answers."
+            "text": "Yes. drip warn \"Deploy to prod?\" --yes Deploy --no Cancel && ./deploy.sh waits for a click: drip exits 0 on yes, 1 on no and 5 when nobody answers."
           }
         },
         {
@@ -135,7 +135,7 @@ drip run --open "$CI_URL" --button "View run" ./deploy.sh</code></pre>
       <h3>Can the card link to the CI run or the log?</h3>
       <p>Yes: <code>--open</code> adds a button that opens a URL or a file, and <code>--button</code> names it, as in <code>drip run --open "$CI_URL" --button "View run" ./deploy.sh</code>.</p>
       <h3>Can it ask before the next step runs?</h3>
-      <p>Yes. <code>drip warn "staging is ready" --confirm Promote &amp;&amp; ./promote.sh</code> waits for a click: drip exits 0 on yes, 1 on no and 5 when nobody answers.</p>
+      <p>Yes. <code>drip warn "Deploy to prod?" --yes Deploy --no Cancel &amp;&amp; ./deploy.sh</code> waits for a click: drip exits 0 on yes, 1 on no and 5 when nobody answers.</p>
       <h3>Does it work over ssh or on Linux?</h3>
       <p>No. drip needs a Mac running macOS 13 or newer with someone logged in to the screen; over ssh there is no GUI session, so drip exits 3.</p>
     </article>

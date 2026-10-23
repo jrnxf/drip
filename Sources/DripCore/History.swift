@@ -301,14 +301,12 @@ public enum MissedSummary {
         return [card]
     }
 
-    /// The newest fail card, else the newest ask card, else the newest warn card, else the newest
-    /// card: the summary takes its look and sound, so a failure among the held cards still reads as
-    /// one, and something waiting on you next.
+    /// The newest fail card, else the newest card that stays, else the newest warn card, else the
+    /// newest card: the summary takes its look and sound, so a failure among the held cards still
+    /// reads as one, and something waiting on you next.
     private static func mostSevere(_ cards: [Card]) -> Card? {
-        for kind in [Preset.fail.name, Preset.ask.name, Preset.warn.name] {
-            if let card = cards.last(where: { $0.kind == kind }) { return card }
-        }
-        return cards.last
+        cards.last { $0.kind == Preset.fail.name } ?? cards.last(where: \.waits)
+            ?? cards.last { $0.kind == Preset.warn.name } ?? cards.last
     }
 }
 

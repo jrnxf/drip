@@ -140,21 +140,22 @@ public enum CardSize: String, CaseIterable, Sendable, Codable {
     }
 }
 
-/// A named bundle of icon, color, sound and optionally a visible time.
+/// A named look, its icon, color and sound, and optionally a visible time.
 public struct Preset: Equatable, Sendable {
     public var name: String
     public var icon: Icon
     public var color: CardColor
     public var sound: Sound
     public var seconds: Double?
-    /// Whether its cards wait for you instead of counting down, unless a time is set for them.
-    public var waits: Bool
+    /// Whether its cards stay, as with `--stay`, instead of counting down, unless a time is set for
+    /// them. No built-in look stays; only `stay = true` in the config sets it.
+    public var stays: Bool
     /// The SF Symbol of the state's mark alone, without its disc, which the ring at the notch shows
     /// when a card's icon is not the preset's own. Nil for a custom preset.
     public var glyph: String?
 
     public init(
-        name: String, icon: Icon, color: CardColor, sound: Sound, seconds: Double? = nil, waits: Bool = false,
+        name: String, icon: Icon, color: CardColor, sound: Sound, seconds: Double? = nil, stays: Bool = false,
         glyph: String? = nil
     ) {
         self.name = name
@@ -162,7 +163,7 @@ public struct Preset: Equatable, Sendable {
         self.color = color
         self.sound = sound
         self.seconds = seconds
-        self.waits = waits
+        self.stays = stays
         self.glyph = glyph
     }
 
@@ -178,14 +179,9 @@ public struct Preset: Equatable, Sendable {
     public static let info = Preset(
         name: "info", icon: .symbol("info.circle.fill"), color: .system(.blue), sound: .named("Tink"),
         glyph: "info")
-    /// Something, such as an agent, waits on you: its card waits too, until you click it or a newer
-    /// card replaces it.
-    public static let ask = Preset(
-        name: "ask", icon: .symbol("questionmark.circle.fill"), color: .system(.purple), sound: .named("Ping"),
-        waits: true, glyph: "questionmark")
 
     /// The built-in presets, in the order help text lists them.
-    public static let builtIn: [Preset] = [.ok, .warn, .fail, .info, .ask]
+    public static let builtIn: [Preset] = [.ok, .warn, .fail, .info]
 
     /// The preset used when no kind is given.
     public static let defaultName = "info"
@@ -325,27 +321,23 @@ public struct Card: Equatable, Sendable, Codable {
     }
 
     /// The state's mark the ring at the notch shows when the icon is not the state's own, such as an
-    /// agent's app icon: the icon then says who, and the ring what. A card that waits always has
-    /// one, since it has no countdown to show; the notch shows it as the waiting mark. Nil otherwise
-    /// when the icon is the preset's or there is no icon, and for a custom preset.
+    /// agent's app icon: the icon then says who, and the ring what. Nil when the icon is the preset's
+    /// or there is no icon, and for a custom preset.
     public var ringGlyph: String? {
-        guard waits || (icon != fallbackIcon && icon != .none) else { return nil }
+        guard icon != fallbackIcon && icon != .none else { return nil }
         return Preset.builtIn.first { $0.name == kind }?.glyph
     }
 
-    /// Whether the notch shows the card's icon: not when it is the preset's own and the right end
-    /// says what the card waits for, its waiting mark on a plain `ask` card or an `ask` question's
-    /// yes and no buttons, so the text starts where the icon would be. A card with one button keeps
-    /// its icon, and so does a question of another kind, whose icon says more than that it asks.
+    /// Whether the notch shows the card's icon: every card keeps its icon, a card that stays and a
+    /// question too, unless it has none.
     public var showsIconAtNotch: Bool {
-        let saidAtTheEnd = action == nil || (kind == Preset.ask.name && action?.decline != nil)
-        return icon != .none && !(icon == fallbackIcon && ringGlyph != nil && saidAtTheEnd)
+        icon != .none
     }
 
-    /// Whether VoiceOver reads the card out before whatever it is reading: a failure, or something
-    /// that waits on you.
+    /// Whether VoiceOver reads the card out before whatever it is reading: a failure, a question, or
+    /// a card that stays for you.
     public var isUrgent: Bool {
-        kind == Preset.fail.name || kind == Preset.ask.name
+        kind == Preset.fail.name || asksQuestion || waits
     }
 
     /// A card that uses every value of `preset`.
@@ -359,6 +351,6 @@ public struct Card: Equatable, Sendable, Codable {
             sound: preset.sound,
             seconds: preset.seconds ?? Defaults.seconds
         )
-        if preset.waits, preset.seconds == nil { waitLimit = Defaults.waitLimit }
+        if preset.stays, preset.seconds == nil { waitLimit = Defaults.waitLimit }
     }
 }
