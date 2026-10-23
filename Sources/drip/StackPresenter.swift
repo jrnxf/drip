@@ -73,6 +73,16 @@ final class StackPresenter: CardPresenting {
     private var needsRoom = false
     /// Whether the last look at the queue found a newer drip waiting that the stack cannot adopt.
     private var othersWaiting = false
+    /// Newer drips' cards the stack can take in, oldest first, as the last look at the queue found
+    /// them, less those taken in since.
+    private var others: [(ticket: String, index: Int, card: Card)] = []
+    /// The overflow drop's count and titles, while it shows, and for a moment after the drop itself
+    /// spread into the last card waiting.
+    private var overflowLayers: OverflowLayers?
+    /// The overflow drop `overflowLayers` draws.
+    private var drawnOverflow: CardStack.Overflow?
+    /// The card the drop spread into, which the count's last number rolls out over, until when.
+    private var spreadInto: (entry: Int, until: Double)?
     private var onFinish: ((Bool) -> Void)?
 
     /// Keyframes per second when sampling the springs, as for a single card.
@@ -109,6 +119,7 @@ final class StackPresenter: CardPresenting {
         asks = cards.contains(where: \.waitsForAnswer)
         questions = cards.contains(where: \.asksQuestion)
         self.console = console
+        stack.measureCount = OverflowLayers.countWidth
     }
 
     /// A background drip's stack for the cards another drip's stack handed on; nil without a screen.
@@ -129,9 +140,10 @@ final class StackPresenter: CardPresenting {
     func start(onFinish: @escaping (Bool) -> Void) {
         self.onFinish = onFinish
         scale = CardPresenters.targetScreen()?.backingScaleFactor ?? 2
+        // Room for the overflow drop under the last card, and its overshoot.
         size = CGSize(
             width: CGFloat(CardMetrics.maxWidth) + 40,
-            height: notch.height + CGFloat(stack.settings.max) * 170 + 40)
+            height: notch.height + CGFloat(stack.settings.max) * 170 + 100)
         let frame = NSRect(
             x: (notch.midX - size.width / 2).rounded(), y: notch.top - size.height, width: size.width,
             height: size.height)
@@ -186,7 +198,7 @@ final class StackPresenter: CardPresenting {
     private func replan(from start: Double) {
         let sampling = CACurrentMediaTime()
         let entries = stack.entries
-        let end = max(entries.map(\.animator.end).max() ?? start, start + 0.05)
+        let end = max(stack.end, start + 0.05)
         let count = Int(((end - start) * Self.framesPerSecond).rounded(.up)) + 1
         let outline = stack.outline
         let cards = entries.map(\.animator)
@@ -222,6 +234,18 @@ final class StackPresenter: CardPresenting {
                 return old.frame(shape, layout: cards[card].content(for: shape, metrics: old.metrics), withPath: false)
             }
         }
+        // The overflow drop's count rides the drop, or the card the drop spread into.
+        var overflowFrames: [OverflowLayers.Frame] = []
+        if let layers = overflowLayers {
+            let spread = spreadInto.flatMap { spread in entries.first { $0.id == spread.entry } }
+            if let animator = stack.overflow?.animator ?? spread?.animator {
+                let metrics = stack.overflow?.animator.metrics ?? spread?.metrics ?? animator.metrics
+                overflowFrames = (0..<count).map { index in
+                    let time = start + (end - start) * Double(index) / Double(count - 1)
+                    return layers.frame(animator.shape(at: time), metrics: metrics)
+                }
+            }
+        }
         let cost = CACurrentMediaTime() - sampling
         lead = min(max(Self.minimumLead, cost * 1.5), Self.maximumLead)
         if !playing {
@@ -249,6 +273,7 @@ final class StackPresenter: CardPresenting {
                 layer.apply(layer.frame(shape, layout: cards[card].content(for: shape), withPath: false))
             }
         }
+        overflowLayers?.play(overflowFrames, duration: end - start, begin: begin)
         CATransaction.commit()
     }
 
@@ -259,7 +284,7 @@ final class StackPresenter: CardPresenting {
         if let metrics = outline.notch {
             IslandPath.addNotch(to: path, metrics: metrics, centerX: centerX)
         }
-        for piece in outline.pieces(at: time) {
+        for piece in outline.pieces(at: time) + outline.overflowPieces(at: time) {
             switch piece {
             case let .traced(field):
                 IslandPath.addTraced(field, to: path, centerX: centerX)
@@ -290,6 +315,44 @@ final class StackPresenter: CardPresenting {
         let decided = now
         let layers = makeLayers(for: card)
         let entry = stack.enter(card, metrics: layers.metrics, own: own, decided: decided, at: decided + lead)
+        show(entry, layers: layers, decided: decided)
+    }
+
+    /// Grows the next card waiting out of the overflow drop: this drip's own first, then the oldest
+    /// newer drip's that does not show in place of a card on screen.
+    private func release() {
+        let card: Card
+        let own: Bool
+        if let next = stack.nextOwn() {
+            // Replaced since it was queued: the drop's count goes down instead.
+            if CardQueue.isReplaced(next) { return }
+            card = next
+            own = true
+        } else if let index = others.firstIndex(where: { !stack.swapsInPlace($0.card) }) {
+            let found = others.remove(at: index)
+            CardQueue.adopt(index: found.index, in: found.ticket)
+            if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
+            card = found.card
+            own = false
+        } else {
+            return
+        }
+        let decided = now
+        let layers = makeLayers(for: card)
+        guard let release = stack.release(card, metrics: layers.metrics, own: own, at: decided + lead) else { return }
+        if release.last, let overflowLayers {
+            // The drop itself spreads into the card, and its last number rolls out over it.
+            spreadInto = (release.entry.id, decided + lead + 0.3)
+            overflowLayers.rollOut(from: release.count, at: started + decided + lead)
+        }
+        show(release.entry, layers: layers, decided: decided)
+    }
+
+    /// Draws `entry`, which `layers` lay out, as it drops in or grows out of the overflow drop,
+    /// decided at `decided`: its content fades in on its cues, its countdown starts, and its sound
+    /// plays as it first shows.
+    private func show(_ entry: CardStack.Entry, layers: IslandLayers, decided: Double) {
+        let card = entry.card
         let drawing = Drawing(layers: layers)
         drawings[entry.id] = drawing
         guard case let .entering(start, cues) = entry.phase else { return }
@@ -393,49 +456,59 @@ final class StackPresenter: CardPresenting {
     /// its own cards have gone, it hands the rest on and exits.
     private var adoptsNow: Bool { adopting || (asks && stack.holdsOwn) }
 
-    /// Brings in this drip's next card, or a newer drip's, when there is room and the pointer is away.
+    /// Brings in this drip's next card, or a newer drip's, when there is room and the pointer is away:
+    /// dropped in while no card waits past a full stack, else grown out of the overflow drop.
     private func admit() {
         let time = now
-        guard stack.isReady(at: time) else { return }
         if !adoptsNow {
             foundAdoptable = false
             othersWaiting = false
             needsRoom = false
+            others = []
         } else if time - lastAdoptionCheck >= 0.25, !Away.isAway {
+            // The queue is looked at whatever the stack is doing, so the overflow drop's count stays
+            // true and the next card can grow out of it the moment room opens.
             lastAdoptionCheck = time
-            let candidates = CardQueue.adoptable().filter { adopting || !$0.card.waits }
-            foundAdoptable = !candidates.isEmpty
+            others = CardQueue.adoptable().filter { adopting || !$0.card.waits }
+            foundAdoptable = !others.isEmpty
             // Cards that wait for you give way to newer drips' cards.
             if stack.live.contains(where: \.isWaiting) {
                 let shown = Set(stack.live.compactMap(\.card.id))
                 othersWaiting = CardQueue.waiting(except: shown).contains { !$0.adoptable }
-                needsRoom = !stack.hasRoom && candidates.contains { found in
+                needsRoom = !stack.hasRoom && others.contains { found in
                     !(found.card.id.map(shown.contains) ?? false)
                 }
             } else {
                 othersWaiting = false
                 needsRoom = false
             }
-            for found in candidates {
+        }
+        if stack.isReady(at: time) {
+            for found in others {
                 // A newer card with the same id as one on screen takes its place there.
                 if let id = found.card.id,
                    let shown = stack.live.first(where: { $0.card.id == id && $0.isShown }),
                    CardReplacement.canSwap(shown.card, for: found.card)
                 {
                     CardQueue.adopt(index: found.index, in: found.ticket)
+                    others.removeAll { $0.ticket == found.ticket && $0.index == found.index }
                     swap(shown, for: found.card)
                     continue
                 }
-                guard stack.waiting.isEmpty, stack.hasRoom else { break }
+                guard stack.overflow == nil, stack.waiting.isEmpty, stack.hasRoom else { break }
                 CardQueue.adopt(index: found.index, in: found.ticket)
+                others.removeAll { $0.ticket == found.ticket && $0.index == found.index }
                 if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
                 enter(found.card, own: false)
                 return
             }
+            if stack.overflow == nil, let card = stack.nextOwn() {
+                if CardQueue.isReplaced(card) { return }
+                enter(card, own: true)
+                return
+            }
         }
-        guard let card = stack.nextOwn() else { return }
-        if CardQueue.isReplaced(card) { return }
-        enter(card, own: true)
+        if stack.canRelease(at: time) { release() }
     }
 
     // MARK: Every tick
@@ -448,7 +521,8 @@ final class StackPresenter: CardPresenting {
         admit()
 
         let changes = stack.advance(
-            to: time, elapsed: elapsed, lead: lead, needsRoom: needsRoom, othersWaiting: othersWaiting)
+            to: time, elapsed: elapsed, lead: lead, needsRoom: needsRoom, othersWaiting: othersWaiting,
+            queued: others.map(\.card))
         for entry in changes.stoppedWaiting {
             guard let layers = drawings[entry.id]?.layers else { continue }
             layers.drain(over: entry.card.seconds, at: started + entry.countdownFrom)
@@ -471,12 +545,14 @@ final class StackPresenter: CardPresenting {
             drawings.removeValue(forKey: entry.id)?.layers.root.removeFromSuperlayer()
         }
         CATransaction.commit()
-        if !changes.isEmpty { replan(from: time) }
-        if !changes.left.isEmpty || !changes.gone.isEmpty { updateAccessibility() }
+        let drop = updateOverflow(at: time)
+        if !changes.isEmpty || drop { replan(from: time) }
+        if let overflow = stack.overflow { overflowLayers?.update(overflow, started: started) }
+        if !changes.left.isEmpty || !changes.gone.isEmpty || changes.overflowChanged { updateAccessibility() }
 
         // Done once nothing is on screen, nothing of its own is left, and the queue had nothing new.
         if adopting || handOffFailed {
-            if stack.entries.isEmpty, stack.waiting.isEmpty, !foundAdoptable { finish() }
+            if stack.entries.isEmpty, stack.waiting.isEmpty, !foundAdoptable, stack.overflow == nil { finish() }
         } else if questions || stack.ownCardsGone, let cards = stack.handOff(at: time) {
             // A question's answer never waits for its card to go, nor for the cards it took in: a
             // background drip shows them on, where they are, or this stack does when none can.
@@ -489,6 +565,31 @@ final class StackPresenter: CardPresenting {
                 handOffFailed = true
             }
         }
+    }
+
+    /// Puts the overflow drop's count on screen as the drop forms, and takes it away once the drop
+    /// has gone and its last number has rolled out. Returns whether the drawing changed.
+    private func updateOverflow(at time: Double) -> Bool {
+        if let spread = spreadInto, time >= spread.until { spreadInto = nil }
+        let overflow = stack.overflow
+        guard overflow !== drawnOverflow || (overflow == nil && spreadInto == nil && overflowLayers != nil) else {
+            return false
+        }
+        // A drop that spread into the last card waiting keeps its count until it has rolled out.
+        if overflow == nil, spreadInto != nil { return false }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        overflowLayers?.root.removeFromSuperlayer()
+        overflowLayers = nil
+        spreadInto = nil
+        if let overflow {
+            let layers = OverflowLayers(size: size, sizeScale: CGFloat(overflow.metrics.scale), scale: scale)
+            container.addSublayer(layers.root)
+            overflowLayers = layers
+        }
+        drawnOverflow = overflow
+        CATransaction.commit()
+        return true
     }
 
     // MARK: The pointer
@@ -516,7 +617,15 @@ final class StackPresenter: CardPresenting {
         for entry in stack.live {
             drawings[entry.id]?.layers.setButtonHovered(entry === under ? pointer.flatMap { button(of: entry, at: $0) } : nil)
         }
-        let inside = under != nil
+        // On the overflow drop, the drop springs wide to list the titles waiting, newest first. A
+        // click on it does nothing.
+        let onDrop = pointer.map { stack.isOnOverflow(IslandPoint(Double($0.x), Double($0.y)), time: now) } ?? false
+        let titles = onDrop ? stack.overflow.map { OverflowLayers.titlesWidth($0.peekText) } : nil
+        if stack.peek(width: titles, at: now + lead) {
+            replan(from: now)
+            if let overflow = stack.overflow { overflowLayers?.update(overflow, started: started) }
+        }
+        let inside = under != nil || onDrop
         guard stack.hover(inside) else { return }
         if inside {
             for entry in stack.live where !entry.isWaiting {
@@ -561,8 +670,10 @@ final class StackPresenter: CardPresenting {
     /// Reads the cards out whole, and offers each card's buttons as the stack's actions, named with
     /// the card's title: the stack never takes focus.
     private func updateAccessibility() {
+        let waiting = stack.overflow.map { ["\($0.count) more waiting: \($0.peekText)"] } ?? []
         view?.setAccessibilityLabel(
-            stack.live.map { CardText.spoken(title: $0.card.title, detail: $0.card.detail) }.joined(separator: "; "))
+            (stack.live.map { CardText.spoken(title: $0.card.title, detail: $0.card.detail) } + waiting)
+                .joined(separator: "; "))
         var actions: [NSAccessibilityCustomAction] = []
         for entry in stack.live {
             guard let action = entry.card.action else { continue }

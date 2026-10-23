@@ -487,7 +487,11 @@ goes back into it the same way.
 
 **Several cards at once.** Cards that come in while one is showing stack below it, up to 3 at
 a time (`stack_max` in the [config](#config), or `DRIP_STACK_MAX`, 1 to 6); the rest wait their
-turn. How they stack is `stack` in the config, or `DRIP_STACK`. With `chain`, the default, each new
+turn in a small drop under the last card, which counts them. A card that comes later drips into the
+drop and the count goes up. When a card leaves, the count goes down and the next card grows out of
+the drop into its place, as the other cards move up. Once none waits, the drop goes back into the
+last card. With the pointer on the drop, it widens to list the waiting cards' titles, newest first.
+A click on the drop does nothing. How they stack is `stack` in the config, or `DRIP_STACK`. With `chain`, the default, each new
 card drops out of the bottom of the last one and the oldest goes back into the notch first, the
 others moving up behind it. With `push` a new card drops out of the notch once the others have
 moved down out of its way. `off` shows one card at a time. While the pointer is on any card in the stack, nothing moves: every countdown
