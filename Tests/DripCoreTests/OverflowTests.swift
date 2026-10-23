@@ -410,6 +410,28 @@ struct OverflowTests {
         #expect(tops.last.map { abs($0 - (slot(2) + tall.pillHeight + CardStack.gap)) < 0.01 } == true)
     }
 
+    /// A taller card in the bottom place pushes the drop down; once it leaves and a shorter card
+    /// takes its place, the drop goes back up to where it first was.
+    @Test func theDropFollowsTheBottomPlace() throws {
+        let tall = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 80, titleLines: 2, detailLines: 2)
+        let cards = [card("a", seconds: 12), card("b", seconds: 12), card("c", seconds: 2), card("tall", seconds: 2)]
+            + ["e", "f", "g"].map { card($0, seconds: 12) }
+        let driver = Driver(CardStack(settings: StackSettings(mode: .chain, max: 3), cards: cards), metrics: metrics)
+        while driver.stack.overflow == nil, driver.time < 4 { driver.run(for: 1.0 / 60) }
+        let drop = try #require(driver.stack.overflow)
+        #expect(driver.releases.isEmpty)
+        let top = drop.animator.targetTop
+        var tops: [Double] = [top]
+        driver.run(for: 8, metrics: { $0.title == "tall" ? tall : self.metrics }) { _, _ in
+            guard driver.stack.overflow === drop, !drop.isLeaving else { return }
+            if tops.last != drop.animator.targetTop { tops.append(drop.animator.targetTop) }
+        }
+        #expect(driver.releases.map(\.release.entry.card.title).prefix(2) == ["tall", "e"])
+        #expect(tops.count == 3)
+        #expect(tops.dropFirst().first.map { abs($0 - (slot(2) + tall.pillHeight + CardStack.gap)) < 0.01 } == true)
+        #expect(tops.last.map { abs($0 - top) < 0.01 } == true)
+    }
+
     // MARK: Motion
 
     @Test func aCardSpreadsOutOfTheDropWhereTheDropIs() {

@@ -293,10 +293,11 @@ extension CardStack {
             absorbOverflow(at: start)
             return true
         }
-        // The drop never moves once it has formed, unless a taller card would run into it.
-        if let bottom = live.map({ $0.animator.targetTop + $0.metrics.pillHeight }).max(),
-           bottom + Self.gap > overflow.animator.targetTop + 0.25
-        {
+        // The drop sits just below the bottom of the cards' places, and moves only when that does: a
+        // taller card in the bottom place pushes it down, and a shorter one that takes over lets it up.
+        let bottom = entries.filter { !$0.isLeaving || $0.holdsPlaceUntil.isFinite }
+            .map { ($0.exit?.top ?? $0.animator.targetTop) + $0.metrics.pillHeight }.max()
+        if let bottom, abs(bottom + Self.gap - overflow.animator.targetTop) > 0.25 {
             overflow.animator.move(to: bottom + Self.gap, at: start)
             changed = true
         }

@@ -76,7 +76,6 @@ final class StackPresenter: CardPresenting {
     /// This drip's own cards still to come that the last look at the queue found a newer card with
     /// the same id replaced, which the overflow drop leaves out of its count.
     private var replacedOwn: [Card] = []
-    private var lastReplacedCheck = -Double.infinity
     /// Newer drips' cards the stack can take in, oldest first, as the last look at the queue found
     /// them, less those taken in since.
     private var others: [(ticket: String, index: Int, card: Card)] = []
@@ -464,20 +463,21 @@ final class StackPresenter: CardPresenting {
     /// dropped in while no card waits past a full stack, else grown out of the overflow drop.
     private func admit() {
         let time = now
-        if time - lastReplacedCheck >= 0.25 {
-            lastReplacedCheck = time
-            replacedOwn = stack.waiting.filter(CardQueue.isReplaced)
-        }
         if !adoptsNow {
             foundAdoptable = false
             othersWaiting = false
             needsRoom = false
             others = []
+            if time - lastAdoptionCheck >= 0.25 {
+                lastAdoptionCheck = time
+                replacedOwn = stack.waiting.filter(CardQueue.isReplaced)
+            }
         } else if time - lastAdoptionCheck >= 0.25, !Away.isAway {
             // The queue is looked at whatever the stack is doing, so the overflow drop's count stays
             // true and the next card can grow out of it the moment room opens.
             lastAdoptionCheck = time
             others = CardQueue.adoptable().filter { adopting || !$0.card.waits }
+            replacedOwn = stack.waiting.filter(CardQueue.isReplaced)
             foundAdoptable = !others.isEmpty
             // Cards that wait for you give way to newer drips' cards.
             if stack.live.contains(where: \.isWaiting) {
