@@ -26,8 +26,6 @@ struct CardTests {
         #expect(Preset.info.color == .system(.blue))
         #expect(Preset.info.sound == .named("Tink"))
         #expect(Preset.builtIn.allSatisfy { $0.seconds == nil })
-        // A look sets only the icon, color and sound: no built-in stays.
-        #expect(Preset.builtIn.allSatisfy { !$0.stays })
         #expect(Preset.builtIn.map(\.glyph) == ["checkmark", "exclamationmark", "xmark", "info"])
     }
 
@@ -38,13 +36,6 @@ struct CardTests {
         #expect(staying.seconds == Defaults.seconds)
         // A click takes it away, even with nothing to bring forward.
         #expect(staying.activate == nil && staying.action == nil && staying.isClickable)
-
-        // A preset that stays, from a config's stay = true, makes its cards stay.
-        let preset = Preset(name: "agent", icon: .none, color: .system(.purple), sound: .none, stays: true)
-        #expect(Card(preset: preset, title: "t").waitLimit == Defaults.waitLimit)
-        var timed = preset
-        timed.seconds = 8
-        #expect(!Card(preset: timed, title: "t").waits)
 
         let ok = Card(preset: .ok, title: "done")
         #expect(!ok.waits)

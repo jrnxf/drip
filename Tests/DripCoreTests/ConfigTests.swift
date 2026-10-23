@@ -347,33 +347,6 @@ struct PrecedenceTests {
         }
     }
 
-    /// `stay = true` in a preset makes its cards stay, as --stay does: an ask-like look of your own.
-    @Test func aPresetCanStay() throws {
-        let file = try ConfigLoader.parse("""
-            [preset.ask]
-            icon = "questionmark.circle.fill"
-            color = "purple"
-            sound = "Ping"
-            stay = true
-            [preset.ok]
-            stay = true
-            [preset.deploy]
-            stay = false
-            """, path: "config.toml")
-        #expect(file.warnings.isEmpty)
-        #expect(file.config.presets["ask"]?.stay == true)
-        let resolver = CardResolver(config: file.config)
-        let asking = try resolver.resolve(kind: "ask", title: "my-app needs you", flags: CardFlags())
-        #expect(asking.kind == "ask" && asking.waitLimit == Defaults.waitLimit && asking.color == .system(.purple))
-        #expect(!asking.waitsForAnswer)
-        #expect(try resolver.resolve(kind: "ok", title: "t", flags: CardFlags()).waitLimit == Defaults.waitLimit)
-        #expect(try resolver.resolve(kind: "deploy", title: "t", flags: CardFlags()).waitLimit == nil)
-        #expect(try resolver.resolve(kind: "warn", title: "t", flags: CardFlags()).waitLimit == nil)
-        // --seconds still counts it down.
-        #expect(try resolver.resolve(kind: "ask", title: "t", flags: CardFlags(seconds: 4)).waitLimit == nil)
-        #expect(throws: ConfigError.self) { try ConfigLoader.parse("[preset.ask]\nstay = \"yes\"", path: "config.toml") }
-    }
-
     @Test func aQuestionOfAnyKindWaitsUnlessATimeIsSet() throws {
         let asked = CardFlags(button: "Deploy", decline: "Cancel")
         for kind in ["ok", "warn", "fail", "info"] {

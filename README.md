@@ -320,9 +320,7 @@ then like any other card, and it never stays longer than 10 minutes. A question 
 look, waits too and never gives way: it stays until it is answered, replaced or its 10 minutes are
 up, other cards stack around it, and a card with no room in the stack, or another question, waits
 its turn. `--seconds`, `DRIP_SECONDS` or the preset's `seconds` in the config give a card that stays
-or a question a countdown instead. A preset can stay by default, with `stay = true` in the
-[config](#config). drip has no `ask` kind: unless the config has a preset of that name, `drip ask`
-exits 2 and says to use `--stay`, or `--yes` and `--no`.
+or a question a countdown instead.
 
 **stdin.** When no title is given and stdin is not a terminal, drip reads stdin to the end, keeping
 the first 64 KB, so the command writing it is never cut short: the first non-empty line is the title
@@ -583,10 +581,8 @@ color = "#a78bfa"
 sound = "Submarine"
 seconds = 6
 
-[preset.ask]                  # a look of your own that stays, as --stay does: drip ask "my-app needs you"
-icon  = "app:com.apple.Terminal"  # an app's icon, or an image path from this file's directory
-color = "purple"
-stay  = true
+[preset.agent]               # a look of your own: drip agent "my-app needs you" --stay
+icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this file's directory
 ```
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
@@ -596,9 +592,7 @@ that a top-level `sound = false` mutes every preset. A custom preset starts from
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
 name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `setup`,
 `config`, `init`, `install`, `uninstall`, `completion`, `completions`, `doctor`, `mute`, `pause`,
-`resume`, `listen` or `test`. `stay = true` makes a preset's cards stay, as `--stay` does, built-in
-or custom; its `seconds`, or `--seconds`, counts them down instead. A custom preset's ring shows no
-state's mark. Unknown keys print a warning;
+`resume`, `listen` or `test`. A custom preset's ring shows no state's mark. Unknown keys print a warning;
 wrong types exit 4.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers

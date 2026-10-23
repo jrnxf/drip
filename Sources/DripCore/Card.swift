@@ -147,23 +147,18 @@ public struct Preset: Equatable, Sendable {
     public var color: CardColor
     public var sound: Sound
     public var seconds: Double?
-    /// Whether its cards stay, as with `--stay`, instead of counting down, unless a time is set for
-    /// them. No built-in look stays; only `stay = true` in the config sets it.
-    public var stays: Bool
     /// The SF Symbol of the state's mark alone, without its disc, which the ring at the notch shows
     /// when a card's icon is not the preset's own. Nil for a custom preset.
     public var glyph: String?
 
     public init(
-        name: String, icon: Icon, color: CardColor, sound: Sound, seconds: Double? = nil, stays: Bool = false,
-        glyph: String? = nil
+        name: String, icon: Icon, color: CardColor, sound: Sound, seconds: Double? = nil, glyph: String? = nil
     ) {
         self.name = name
         self.icon = icon
         self.color = color
         self.sound = sound
         self.seconds = seconds
-        self.stays = stays
         self.glyph = glyph
     }
 
@@ -351,6 +346,5 @@ public struct Card: Equatable, Sendable, Codable {
             sound: preset.sound,
             seconds: preset.seconds ?? Defaults.seconds
         )
-        if preset.stays, preset.seconds == nil { waitLimit = Defaults.waitLimit }
     }
 }

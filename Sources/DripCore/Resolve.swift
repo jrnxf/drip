@@ -84,9 +84,9 @@ public struct CardResolver {
         }
         card.id = flags.id
         card.activate = CardActivation.target(flag: flags.activate, sender: environment.sender)
-        // A card that stays, from --stay or its preset, and a question of any kind wait for you. A
-        // time from the command line, the environment or the preset makes them count down instead.
-        if flags.stay || preset.stays || card.asksQuestion, flags.seconds == nil, environment.seconds == nil,
+        // A card that stays and a question of any kind wait for you. A time from the command line,
+        // the environment or the preset makes them count down instead.
+        if flags.stay || card.asksQuestion, flags.seconds == nil, environment.seconds == nil,
            preset.seconds == nil {
             card.waitLimit = Defaults.waitLimit
         }
@@ -98,13 +98,6 @@ public struct CardResolver {
             return (try preset(named: Preset.defaultName), title)
         }
         let known = presets[kind]
-        if kind == Self.removedAsk, known == nil {
-            throw UsageError("""
-                'ask' is not a kind: a kind sets only the look, ok, warn, fail or info
-                To keep a card on screen until it is clicked, add --stay: drip info "my-app needs you" --stay
-                To ask a question and wait for the answer, add --yes and --no: drip warn "Deploy?" --yes Deploy --no Cancel
-                """)
-        }
         if let title, known == nil || !rest.isEmpty {
             // Most likely a title of several words, unquoted: `drip build finished`.
             let words = ([title] + rest).joined(separator: " ")
@@ -125,10 +118,6 @@ public struct CardResolver {
         }
         return (try preset(named: Preset.defaultName), kind)
     }
-
-    /// The kind drip had before `--stay` and `--yes` did what it did. Only a custom preset can take
-    /// the name now.
-    static let removedAsk = "ask"
 
     private func preset(named name: String) throws -> Preset {
         guard let preset = presets[name] else {
