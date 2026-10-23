@@ -1,0 +1,260 @@
+/* The page's styles, compiled by Tailwind CSS (build.sh) and inlined into index.html.
+   Preflight is left out: the page sets its own base styles below, so nothing resets what the
+   browser already draws. Spacing is in pixels (p-22 is 22px), as the design is. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@source "../public/index.html";
+
+/* The page's two breakpoints, inclusive, as its script's matchMedia("(width <= 760px)"). */
+@custom-variant compact (@media (width <= 1100px));
+@custom-variant narrow (@media (width <= 760px));
+/* Hover on any pointer, not only where the primary one can hover. */
+@custom-variant hover (&:hover);
+
+/* Archivo and Martian Mono, latin subsets, self-hosted (licences in web/THIRD_PARTY.md). */
+@font-face {
+  font-family: "Archivo"; font-style: normal; font-weight: 100 900; font-stretch: 62% 125%; font-display: swap;
+  src: url(archivo.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Martian Mono"; font-style: normal; font-weight: 100 800; font-stretch: 75% 112.5%; font-display: swap;
+  src: url(martian-mono.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* drip drawn as a small piece of hardware: a display that runs the engine, keys you press and
+   a printer that prints what ran. One orange. Only these tokens exist: Tailwind's defaults are
+   cleared. The colors are the dark theme's; the light theme sets them again below. */
+@theme static {
+  --*: initial;
+  --spacing: 1px;
+  --font-sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Martian Mono", ui-monospace, Menlo, monospace;
+  /* The cards are macOS UI: their text is measured and painted in the system font. */
+  --font-sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --ease-out: cubic-bezier(.23, 1, .32, 1);
+  --color-orange: #ff4f00; --color-orange-hi: #ff7a3d; --color-orange-lo: #a83300;
+  --color-bg: #111111; --color-ink: #ecece8; --color-ink-2: #b0b0aa; --color-ink-3: #8a8a84; --color-rule: #2a2a28; --color-focus: var(--color-orange);
+  --color-body: #222221; --color-body-2: #1b1b1a; --color-edge: #333331; --color-shade: rgba(0,0,0,.6); --color-lip: rgba(255,255,255,.06);
+  --color-lcd: #2b2f2a; --color-lcd-ink: #d9e3d2; --color-lcd-grid: rgba(255,255,255,.025);
+  --color-key: #343432; --color-key-2: #252524; --color-key-ink: #e6e6e2; --color-key-floor: #0b0b0b;
+  --color-paper: #e9e7df; --color-paper-ink: #1d1d1b;
+}
+
+/* Type styles that set the whole font, so nothing is inherited from around them. */
+@utility lbl { font: 500 10.5px/1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); }
+@utility type-tag { font: 600 10.5px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+@utility type-hero { font: 200 clamp(46px, 5vw, 84px)/.98 var(--font-sans); font-stretch: 125%; letter-spacing: -.035em; }
+@utility type-title { font: 200 clamp(36px, 3.6vw, 58px)/1 var(--font-sans); font-stretch: 125%; letter-spacing: -.03em; }
+@utility type-feature { font: 600 19px/1.25 var(--font-sans); font-stretch: 112%; letter-spacing: -.01em; }
+@utility type-num { font: 500 10.5px/1 var(--font-mono); letter-spacing: .1em; }
+
+@layer base {
+  :root, :root[data-theme="dark"] { color-scheme: dark; }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --color-bg: #d9d9d5; --color-ink: #151515; --color-ink-2: #42423f; --color-ink-3: #5c5c57; --color-rule: #b9b9b3; --color-focus: #c43a00;
+    --color-body: #eeeeeb; --color-body-2: #e2e2de; --color-edge: #b5b5af; --color-shade: rgba(0,0,0,.18); --color-lip: rgba(255,255,255,.55);
+    --color-lcd: #c3c8bd; --color-lcd-ink: #1d211b; --color-lcd-grid: rgba(0,0,0,.04);
+    --color-key: #f7f7f5; --color-key-2: #d8d8d3; --color-key-ink: #222; --color-key-floor: var(--color-edge);
+    --color-paper: #fbfbf8; --color-paper-ink: #222;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 16px; }
+  body { margin: 0; background: var(--color-bg); color: var(--color-ink); font: 300 17px/1.5 var(--font-sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  a { color: inherit; text-underline-offset: 3px; }
+  button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+  :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+  code { font-family: var(--font-mono); font-size: .82em; }
+  b { font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { *, *::after { transition-duration: .001ms !important; } }
+}
+
+/* The hardware: parts with their own light and shadow, and the parts the script builds. */
+@layer components {
+  /* The theme's two-position slide switch. */
+  .slide { display: flex; align-items: center; gap: 9px; border: 0; background: none; padding: 0; cursor: pointer; }
+  .slide .track { position: relative; flex: none; width: 44px; height: 20px; border-radius: 5px; background: var(--color-body-2); box-shadow: inset 0 1px 3px var(--color-shade); border: 1px solid var(--color-edge); }
+  .slide .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 14px; border-radius: 3px; background: var(--color-key); box-shadow: 0 1px 0 var(--color-edge), 0 2px 4px var(--color-shade); transition: transform .25s var(--ease-out), background .2s; }
+  .slide[aria-checked="true"] .track::after { transform: translateX(20px); }
+
+  /* ---------- hero ---------- */
+  .hero {
+    display: grid; grid-template-columns: minmax(300px, .7fr) minmax(0, 1.38fr); grid-template-areas: "intro device" "specs device";
+    grid-template-rows: auto auto; column-gap: 56px; align-items: start; align-content: center; padding: 8px 0 40px; min-height: calc(100svh - 58px);
+  }
+  .intro { grid-area: intro; align-self: end; }
+  .hero .specs { grid-area: specs; }
+  .devwrap { grid-area: device; align-self: center; }
+  .plate { margin-top: 26px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; background: var(--color-body); border: 1px solid var(--color-edge); box-shadow: inset 0 1px 0 var(--color-lip); }
+  .plate code { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .copy-btn { flex: none; border: 0; padding: 6px 10px; border-radius: 5px; background: var(--color-orange); color: #111; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; box-shadow: 0 2px 0 var(--color-orange-lo); }
+  .copy-btn:active { transform: translateY(2px); box-shadow: none; }
+  .specs { margin: 26px 0 0; padding: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 18px; }
+  .specs dt { font: 500 10.5px/1.6 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); }
+  .specs dd { margin: 0; font: 400 12px/1.6 var(--font-mono); }
+  .specs dd code { font-size: inherit; }
+
+  /* ---------- the device ---------- */
+  /* Room under the device for the paper hanging out of it (--paper-h). Paper that printing feeds
+     out further hangs over what is below it, so nothing on the page moves as it grows; cut it
+     shorter to see what it covers. */
+  .devwrap { --paper-h: 220px; --pad: 22px; position: relative; padding: 26px 0 calc(var(--paper-h) - 5px - var(--pad) + 30px); }
+  .device, .module {
+    position: relative; border-radius: 26px; padding: var(--pad, 22px); background: linear-gradient(180deg, var(--color-body), var(--color-body-2));
+    border: 1px solid var(--color-edge); box-shadow: inset 0 1px 0 var(--color-lip), 0 1px 0 var(--color-edge), 0 30px 60px -30px var(--color-shade), 0 12px 24px -16px var(--color-shade);
+  }
+  :root[data-theme="dark"] .device, :root[data-theme="dark"] .module { box-shadow: inset 0 1px 0 var(--color-lip), 0 30px 60px -30px #000, 0 12px 24px -16px #000; }
+  .screw { position: absolute; width: 11px; height: 11px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, var(--color-key), var(--color-key-2)); box-shadow: inset 0 0 0 1px var(--color-edge); }
+  .screw::after { content: ""; position: absolute; left: 2px; right: 2px; top: 5px; height: 1px; background: var(--color-ink-3); transform: rotate(var(--r, 30deg)); }
+  .screw.a { top: 9px; left: 9px; } .screw.b { top: 9px; right: 9px; --r: -20deg; } .screw.c { bottom: 9px; left: 9px; --r: 70deg; } .screw.d { bottom: 9px; right: 9px; --r: 10deg; }
+  .devgrid { --disp: 300px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .display {
+    position: relative; height: 300px; border-radius: 10px; overflow: hidden;
+    background: linear-gradient(var(--color-lcd-grid) 1px, transparent 1px) 0 0 / 3px 3px, linear-gradient(90deg, var(--color-lcd-grid) 1px, transparent 1px) 0 0 / 3px 3px, var(--color-lcd);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,.35), 0 0 0 4px var(--color-body-2), 0 0 0 5px var(--color-edge);
+  }
+  .devgrid .display { height: var(--disp); }
+  .display .stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
+  /* The display's own print, scaled with the notch so it keeps clear of it. */
+  .display .glyphs { position: absolute; inset: 0 0 auto 0; height: 32px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px; font: 500 10px/1 var(--font-mono); letter-spacing: .08em; color: var(--color-lcd-ink); opacity: .7; width: calc(100% / var(--fit, 1)); transform: scale(var(--fit, 1)); transform-origin: 0 0; }
+  /* What a display shows until drip's engine draws in it, and all a reader without JavaScript gets. */
+  .still { position: absolute; inset: 32px 0 0; margin: 0; display: grid; place-content: center; gap: 8px; padding: 0 16px; text-align: center; font: 500 10.5px/1.5 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-lcd-ink); opacity: .7; }
+  .still code { text-transform: none; letter-spacing: 0; font-size: 11.5px; overflow-wrap: anywhere; }
+  .loading { position: absolute; inset: auto 0 0; padding: 0 16px 14px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-lcd-ink); }
+  /* Paper: the install receipt, and what each printer prints. A head and a bold rule, entries
+     between dashed rules, and an end torn off along its perforation or cut with scissors (tear()
+     and cutEnd() in the script draw it). */
+  .paper { position: relative; filter: drop-shadow(0 1px 1px rgba(0,0,0,.18)) drop-shadow(0 8px 12px var(--color-shade)); }
+  .slip { position: relative; background: var(--color-paper); color: var(--color-paper-ink); }
+  .slip .head { flex: none; display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--color-paper-ink); font: 600 10.5px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+  /* A printer: a slot in the device, and the paper it feeds out over the device's edge. Each entry
+     is printed at the slot and the whole paper steps out a line at a time, so the newest entry is
+     nearest the slot and the paper's head, printed first, is at its far end. The paper is clipped
+     at the slot, so print still inside the printer is out of sight. Drag the scissors across the
+     paper to cut it shorter. --paper-len is its length (the script sets it, and stacks the
+     printers so higher paper hangs in front). */
+  .printer { position: relative; z-index: 2; height: 10px; }
+  .device > .printer { max-width: 620px; margin: 20px auto 0; }
+  .slot { position: relative; z-index: 1; height: 10px; border-radius: 5px; background: #0d0d0d; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--color-lip); }
+  .printer .paper { position: absolute; top: 5px; left: 10px; right: 10px; height: var(--paper-len, var(--paper-h)); transform-origin: 50% 0; clip-path: polygon(-80px 0, calc(100% + 80px) 0, calc(100% + 80px) calc(100% + 80px), -80px calc(100% + 80px)); }
+  /* The slot's shadow on the paper stays at the slot as the paper feeds through it. */
+  .printer .paper::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 12px; z-index: 1; background: linear-gradient(rgba(0,0,0,.16), transparent); pointer-events: none; }
+  .printer .slip { height: 100%; display: flex; flex-direction: column; padding: 16px 18px 10px; }
+  .printer .head { padding: 10px 0 4px; border-bottom: 0; border-top: 2px solid var(--color-paper-ink); }
+  .printer .stamp { font: 400 10px/1.5 var(--font-mono); opacity: .6; }
+  /* The paper is as long as what is printed on it, so print stops only where the paper was cut. */
+  .log { flex: 1; min-height: 0; overflow: hidden; }
+  /* The scissors work over the paper and a little past its sides, so a cut can start in the air and
+     come in across an edge. A sideways drag cuts; a vertical one still scrolls the page. */
+  .cutter { position: absolute; top: 0; bottom: 0; left: -30px; right: -30px; z-index: 1; touch-action: pan-y; }
+  .slit { position: absolute; top: 0; left: 0; z-index: 1; overflow: visible; pointer-events: none; }
+  .slit path { fill: none; stroke: rgba(0,0,0,.62); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+  .slit.fade { transition: opacity .35s; opacity: 0; }
+  .cut-tip { position: absolute; left: 50%; z-index: 2; transform: translate(-50%, -150%); padding: 6px 9px; border-radius: 5px; background: var(--color-ink); color: var(--color-bg); font: 500 10px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .2s; }
+  .cut-tip.on { opacity: 1; }
+  /* What is cut off falls in a layer of its own over the page; on a touch, the scissors are drawn
+     there too, above the finger, since there is no cursor. */
+  .fallen { position: fixed; z-index: 30; pointer-events: none; transform-origin: 0 0; will-change: transform, opacity; }
+  .fallen .paper { inset: 0; }
+  .touch-scissors { position: fixed; z-index: 31; width: 44px; height: 44px; pointer-events: none; opacity: 0; transition: opacity .15s; }
+  .touch-scissors.on { opacity: 1; }
+  .entry { padding: 10px 0; font: 400 11.5px/1.6 var(--font-mono); }
+  /* Thermal ink sits a little into the paper. */
+  .printer .entry, .printer .end { text-shadow: 0 0 .5px currentColor; }
+  .entry + .entry { border-top: 1px dashed rgba(0,0,0,.22); }
+  .entry > div { white-space: pre-wrap; overflow-wrap: break-word; }
+  /* A command wraps under itself, clear of its prompt. */
+  .entry .cmd { padding-left: 2ch; text-indent: -2ch; }
+  .entry .c { opacity: .55; }
+  .entry .flag { white-space: nowrap; }
+  .entry .out { font-size: 10.5px; opacity: .62; }
+  .entry .out.err { opacity: 1; text-decoration: underline wavy; text-underline-offset: 2px; }
+  .lcdline { flex: none; display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 38px; border-radius: 7px; background: var(--color-lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--color-body-2), 0 0 0 4px var(--color-edge); color: var(--color-lcd-ink); font: 500 11.5px/1 var(--font-mono); }
+  .lcdline .p { opacity: .7; }
+  .lcdline code { flex: 1; min-width: 0; font: inherit; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .keys { margin-top: 18px; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 10px; }
+  .key {
+    position: relative; aspect-ratio: 1 / .9; border-radius: 10px; border: 1px solid var(--color-edge); cursor: pointer; padding: 9px 8px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start;
+    background: linear-gradient(180deg, var(--color-key), var(--color-key-2)); color: var(--color-key-ink); box-shadow: 0 3px 0 var(--color-key-floor), 0 6px 10px -4px var(--color-shade), inset 0 1px 0 var(--color-lip);
+    transition: transform .08s, box-shadow .08s; text-align: left; min-width: 0;
+  }
+  .key:active { transform: translateY(3px); box-shadow: 0 0 0 var(--color-key-floor), 0 2px 4px -2px var(--color-shade), inset 0 1px 0 var(--color-lip); }
+  .key .led { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--c) 30%, var(--color-key-2)); box-shadow: inset 0 1px 1px rgba(0,0,0,.3); transition: background .15s, box-shadow .15s; }
+  .key.running .led { background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px var(--c); }
+  .key b { font: 600 10.5px/1.1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  /* Callouts, as on an exploded drawing. */
+  .callout { position: absolute; display: flex; align-items: center; gap: 8px; font: 500 10px/1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); white-space: nowrap; }
+  .callout::before { content: attr(data-n); display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid currentColor; font-size: 9px; letter-spacing: 0; }
+  .callout i { display: block; height: 1px; background: currentColor; width: var(--w, 40px); }
+  .callout.tl { top: 0; left: 0; } .callout.tr { top: 0; right: 0; } .callout.bl { bottom: 0; left: 0; } .callout.br { bottom: 0; right: 0; }
+
+  /* What it does: the module's LCD line, as the hero's: the command running, typed, and under it
+     the step and what came back. Every command it runs is laid out unseen behind it (.ghost), so
+     it keeps the height of the longest as it plays. */
+  .readout { flex: 1; min-width: 0; align-self: stretch; display: grid; padding: 8px 11px 7px; border-radius: 7px; background: var(--color-lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--color-body-2), 0 0 0 4px var(--color-edge); color: var(--color-lcd-ink); }
+  .readout > *, .readout .ghost > * { grid-area: 1 / 1; min-width: 0; }
+  .readout .ghost { display: grid; visibility: hidden; }
+  .readout .live { display: flex; flex-direction: column; }
+  .readout .cmd { font: 500 11.5px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: break-word; padding-left: 2ch; text-indent: -2ch; }
+  .readout .p, .readout .c { opacity: .62; }
+  .readout .flag, .readout .note { white-space: nowrap; }
+  .readout .stat { margin-top: 3px; font: 500 9.5px/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .readout .live .stat { margin-top: auto; padding-top: 3px; }
+  .caret { display: inline-block; width: .55em; height: 1.05em; margin-left: 1px; vertical-align: -.18em; background: currentColor; animation: blink 1.06s steps(1, end) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
+  .bigbtn { flex: none; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--color-orange-lo); background: radial-gradient(circle at 40% 35%, var(--color-orange-hi), var(--color-orange)); box-shadow: 0 4px 0 var(--color-orange-lo), 0 8px 14px -6px var(--color-shade); cursor: pointer; display: grid; place-items: center; color: #111; font: 700 10px/1 var(--font-mono); letter-spacing: .08em; transition: transform .08s, box-shadow .08s; }
+  .bigbtn:active { transform: translateY(4px); box-shadow: 0 0 0 var(--color-orange-lo); }
+
+  /* Spec sheet: the stack module and the table. */
+  table.spec { width: 100%; border-collapse: collapse; margin-top: 26px; }
+  table.spec th, table.spec td { text-align: left; padding: 9px 0; border-top: 1px solid var(--color-rule); vertical-align: top; }
+  table.spec th { width: 30%; padding-right: 16px; font: 500 10.5px/1.6 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); }
+  table.spec td { font: 400 12px/1.6 var(--font-mono); }
+  table.spec td code { font-size: inherit; }
+  .module.stackmod { --paper-h: 224px; padding-bottom: 22px; margin-bottom: calc(var(--paper-h) - 27px); }
+  /* Tall enough for three cards at the notch's own size, so its fixed scale stays at 1. */
+  .stackmod .display { height: 272px; }
+  .stackmod .row { display: flex; align-items: center; gap: 18px; margin-top: 18px; }
+  .stackmod .printer { margin-top: 20px; }
+  .switch3 { display: flex; align-items: center; gap: 10px; }
+  .switch3 .track { position: relative; display: flex; border-radius: 6px; background: var(--color-body-2); box-shadow: inset 0 1px 3px var(--color-shade); border: 1px solid var(--color-edge); padding: 2px; }
+  .switch3 button { border: 0; background: none; padding: 7px 12px; border-radius: 4px; cursor: pointer; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-ink-3); }
+  .switch3 button[aria-pressed="true"] { background: var(--color-key); color: var(--color-ink); box-shadow: 0 1px 0 var(--color-edge), 0 2px 4px var(--color-shade); }
+
+  /* How this page works: three columns of a parts list. */
+  .parts h3 { margin: 0; padding-bottom: 10px; border-bottom: 2px solid var(--color-ink); display: flex; align-items: center; gap: 10px; font: 600 11px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+  .parts h3 i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+  .parts ul { list-style: none; margin: 0; padding: 0; }
+  .parts li { padding: 9px 0; border-bottom: 1px solid var(--color-rule); font: 400 12px/1.6 var(--font-mono); }
+  .parts li code { font-size: inherit; }
+
+  /* Install: a receipt from the printer. */
+  .receipt .slip { padding: 22px 22px 34px; }
+  .receipt .cmd { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px dashed rgba(0,0,0,.22); }
+  .receipt .cmd code { flex: 1; min-width: 0; font-size: 12.5px; overflow-wrap: anywhere; }
+  .receipt .cmd .c { opacity: .68; }
+  .receipt .tot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-top: 14px; font: 500 10.5px/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+  .keycap { display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--color-edge); background: linear-gradient(180deg, var(--color-key), var(--color-key-2)); box-shadow: 0 3px 0 var(--color-key-floor); text-decoration: none; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-key-ink); }
+  .keycap:active { transform: translateY(3px); box-shadow: none; }
+
+  @media (width <= 1100px) {
+    .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "device" "specs"; grid-template-rows: auto; row-gap: 8px; min-height: 0; padding-top: 24px; }
+    .devwrap { padding-top: 12px; padding-bottom: calc(var(--paper-h) - 5px - var(--pad) + 8px); }
+    .callout { display: none; }
+  }
+  @media (width <= 760px) {
+    .devwrap { --pad: 14px; --paper-h: 200px; }
+    .device { border-radius: 20px; }
+    .device > .screw { display: none; }
+    .devgrid { --disp: 220px; gap: 14px; }
+    .keys { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .keys .key { aspect-ratio: auto; height: 58px; }
+    .stackmod .display { height: 216px; }
+    .module { padding: 16px; border-radius: 20px; }
+  }
+}

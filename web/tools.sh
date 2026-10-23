@@ -103,6 +103,26 @@ unpack() {
     rm -rf "$staging"
 }
 
+# Puts the program at $1, which must have sha256 $2, in place as $tools/$3/$4, unless it is there
+# already. The directory keeps the checksum in .sha256.
+provide_program() {
+    if [ "$(cat "$tools/$3/.sha256" 2>/dev/null)" != "$2" ]; then
+        locked place_program "$@"
+    fi
+}
+
+place_program() {
+    if [ "$(cat "$tools/$3/.sha256" 2>/dev/null)" = "$2" ]; then return; fi
+    staging=$tools/.staging
+    rm -rf "$staging" "${tools:?}/${3:?}"
+    mkdir -p "$staging/$3"
+    fetch "$1" "$2" "$staging/$3/$4"
+    chmod +x "$staging/$3/$4"
+    echo "$2" > "$staging/$3/.sha256"
+    mv "$staging/$3" "$tools/$3"
+    rm -rf "$staging"
+}
+
 if ! swift --version 2>/dev/null | grep -q "Swift version $SWIFT_VERSION "; then
     if [ "$(uname -s)-$(uname -m)" != Linux-x86_64 ]; then
         echo "Put Swift $SWIFT_VERSION on PATH: it is only downloaded on x86_64 Linux" >&2
