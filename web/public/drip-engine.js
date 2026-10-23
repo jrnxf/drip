@@ -106,6 +106,25 @@ export async function loadDrip(source, measure) {
         }
         return cards;
       },
+      // The overflow drop under a full stack, or null: its capsule, and the pieces of the outline it
+      // adds, each loops traced where it melts into something, or a plain capsule.
+      overflowFrame(id, time) {
+        const f = frameValues(e.drip_stack_overflow_frame(id, time));
+        if (!f[0]) return null;
+        const pieces = [];
+        let i = 6;
+        for (let n = f[5]; n > 0; n--) {
+          if (f[i++] === 1) {
+            const loops = [];
+            for (let m = f[i++]; m > 0; m--) { const count = f[i++]; loops.push(f.subarray(i, i + 2 * count)); i += 2 * count; }
+            pieces.push({ touchesNotch: true, loops });
+          } else {
+            pieces.push({ touchesNotch: false, pillTop: f[i], pillWidth: f[i + 1], pillHeight: f[i + 2], pillRadius: f[i + 3] });
+            i += 4;
+          }
+        }
+        return { pillTop: f[1], pillWidth: f[2], pillHeight: f[3], pillRadius: f[4], pieces };
+      },
     },
   };
 }

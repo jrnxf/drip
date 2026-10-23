@@ -33,11 +33,25 @@ public struct IslandMetrics: Equatable, Sendable {
     public var declineWidth: Double
     /// The widest the capsule may get: `CardMetrics.maxWidth`, or less on a screen narrower than that.
     public var widestPill: Double
+    /// The capsule's size when it holds no card, as the overflow drop's; nil for a card's, which fits
+    /// its content.
+    public var fixedPill: PillSize?
+
+    /// A capsule's width and height, in points.
+    public struct PillSize: Equatable, Sendable {
+        public var width: Double
+        public var height: Double
+
+        public init(width: Double, height: Double) {
+            self.width = width
+            self.height = height
+        }
+    }
 
     public init(
         notchWidth: Double, notchHeight: Double, scale: Double = 1, textWidth: Double, textHeight: Double,
         titleLines: Int = 1, detailLines: Int = 1, hasIcon: Bool = true, actionWidth: Double = 0,
-        declineWidth: Double = 0, widestPill: Double = CardMetrics.maxWidth
+        declineWidth: Double = 0, widestPill: Double = CardMetrics.maxWidth, fixedPill: PillSize? = nil
     ) {
         self.notchWidth = notchWidth
         self.notchHeight = notchHeight
@@ -50,6 +64,7 @@ public struct IslandMetrics: Equatable, Sendable {
         self.actionWidth = actionWidth
         self.declineWidth = declineWidth
         self.widestPill = widestPill
+        self.fixedPill = fixedPill
     }
 
     /// The notch's own bottom corners.
@@ -62,10 +77,11 @@ public struct IslandMetrics: Equatable, Sendable {
     var pillGap: Double { 10 * scale }
     var pillTextX: Double { pillPadding + (hasIcon ? pillIcon + pillGap : 0) }
     public var pillWidth: Double {
+        if let fixedPill { return fixedPill.width }
         let width = pillTextX + textWidth + pillGap + pillRing + pillPadding
         return min(max(width, 200 * scale), widestPill)
     }
-    public var pillHeight: Double { 2 * 12 * scale + max(textHeight, pillIcon) }
+    public var pillHeight: Double { fixedPill?.height ?? 2 * 12 * scale + max(textHeight, pillIcon) }
     public var pillTop: Double { notchHeight + 12 * scale }
     /// The capsule's ends are round up to this radius. A capsule of one title line and one detail
     /// line is round at the ends however tall its fonts are; one with more lines keeps corners of 30
@@ -294,18 +310,73 @@ public struct IslandAnimator: Sendable {
                 >= anchorBottom + m.blend / 3
         }
         blend.animate(to: 0, with: Spring(duration: 0.35), at: detached)
-        let grow = Spring(duration: 0.5, bounce: 0.15)
+        let grow = Self.grow
         pillWidth.animate(to: m.pillWidth, with: grow, at: detached)
         pillHeight.animate(to: m.pillHeight, with: grow, at: detached)
         progress.animate(to: 1, with: grow, at: detached)
-        // Text waits until the capsule is wide enough to hold it, then fades in line by line, the
-        // detail a little after the title.
-        let roomy = Self.firstTime(after: detached) { grow.progress(at: $0 - detached) >= 0.8 } - time
+        return cues(spreading: grow, from: detached, start: time)
+    }
+
+    /// How a drop spreads into its capsule once it has broken free.
+    public static let grow = Spring(duration: 0.5, bounce: 0.15)
+
+    /// When the content fades in, in seconds after `start`, for a capsule spreading on `grow` from
+    /// `spread`: text waits until the capsule is wide enough to hold it, then fades in line by line,
+    /// the detail a little after the title.
+    private func cues(spreading grow: Spring, from spread: Double, start: Double) -> IslandCues {
+        let m = metrics
+        let roomy = Self.firstTime(after: spread) { grow.progress(at: $0 - spread) >= 0.8 } - start
         let step = IslandCues.lineStagger
         return IslandCues(
             sides: roomy, title: IslandCues.lines(m.titleLines, from: roomy, step: step),
             detail: IslandCues.lines(
                 m.detailLines, from: roomy + 0.04 + Double(max(m.titleLines - 1, 0)) * step, step: step))
+    }
+
+    /// A drop that starts as `shape`, unopened and apart from anything: a card growing out of the
+    /// overflow drop, where the overflow drop is.
+    public init(metrics: IslandMetrics, from shape: IslandShape) {
+        self.metrics = metrics
+        anchor = nil
+        dropCenter = SpringValue(shape.pillTop + shape.pillHeight / 2)
+        pillWidth = SpringValue(shape.pillWidth)
+        pillHeight = SpringValue(shape.pillHeight)
+        progress = SpringValue(0)
+        blend = SpringValue(0)
+        contentWidth = SpringValue(metrics.pillWidth)
+    }
+
+    /// Spreads the drop, from wherever its springs are, into the open capsule of `metrics` with its
+    /// top at `top`, starting at `time`, as a card's drop spreads once it has broken free: a card
+    /// growing out of the overflow drop, or the overflow drop itself turning into the last card that
+    /// waited. Returns when the content fades in.
+    public mutating func spread(into metrics: IslandMetrics, top: Double, at time: Double) -> IslandCues {
+        self.metrics = metrics
+        contentWidth.jump(to: metrics.pillWidth)
+        let grow = Self.grow
+        dropCenter.animate(to: top + metrics.pillHeight / 2, with: grow, at: time)
+        pillWidth.animate(to: metrics.pillWidth, with: grow, at: time)
+        pillHeight.animate(to: metrics.pillHeight, with: grow, at: time)
+        progress.animate(to: 1, with: grow, at: time)
+        return cues(spreading: grow, from: time, start: time)
+    }
+
+    /// Swells the open capsule by `amount` points each way from `time`, and lets it settle back, on
+    /// `IslandUpdate.pop`: the overflow drop taking a card in, or giving a little as one leaves it
+    /// when `amount` is negative.
+    public mutating func swell(by amount: Double, at time: Double) {
+        let pop = IslandUpdate.pop
+        pillWidth.animate(to: metrics.pillWidth + amount, with: pop, at: time)
+        pillHeight.animate(to: metrics.pillHeight + amount, with: pop, at: time)
+        pillWidth.animate(to: metrics.pillWidth, with: pop, at: time + 0.06)
+        pillHeight.animate(to: metrics.pillHeight, with: pop, at: time + 0.06)
+    }
+
+    /// Melts the drop into what it touches from `time`, and lets go of it 0.12 s later: the overflow
+    /// drop stays joined to the card growing out of it until the neck between them pinches off.
+    public mutating func melt(at time: Double) {
+        blend.animate(to: metrics.blend, with: Spring(duration: 0.1), at: time)
+        blend.animate(to: 0, with: Spring(duration: 0.35), at: time + 0.12)
     }
 
     /// Starts the exit at `time`, faster than the entrance and without bounce, back into the notch,

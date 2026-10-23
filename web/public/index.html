@@ -185,7 +185,7 @@
       <div>
         <div class="lbl">02 / spec sheet</div>
         <h2 class="type-title mt-10 mx-0 mb-18">up to <b>three alerts at once.</b></h2>
-        <p class="m-0 max-w-[46ch] text-ink-2">Cards that arrive while one shows stack below it. In chain mode, the default, each new card drops out of the last one. In push mode it drops out of the notch and moves the others down. A fourth card waits for room. This module runs DripCore's <code>CardStack</code>: pick a mode, or press PLAY.</p>
+        <p class="m-0 max-w-[46ch] text-ink-2">Cards that arrive while one shows stack below it. In chain mode, the default, each new card drops out of the last one. In push mode it drops out of the notch and moves the others down. Cards past the most it shows wait in a drop under the last card, which counts them and lists them under the pointer; each grows out of it as room opens. This module runs DripCore's <code>CardStack</code>: pick a mode, or press PLAY.</p>
         <table class="spec">
           <tr><th scope="row">kinds</th><td>ok, warn, fail, info, ask, and presets from your config</td></tr>
           <tr><th scope="row">text</th><td>a title of up to 2 lines and a detail of up to 3, wrapped by the engine; a card is at most 640 pt wide</td></tr>
@@ -199,11 +199,11 @@
       </div>
       <div class="module stackmod">
         <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
-        <div class="display" id="stack-screen" role="img" aria-label="A display where drip stacks four cards"><div class="glyphs" aria-hidden="true"><span>STACK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok; drip warn; drip fail; drip info</code>three cards stack under the notch, and the fourth waits for room</p></div>
+        <div class="display" id="stack-screen" role="img" aria-label="A display where drip stacks five cards"><div class="glyphs" aria-hidden="true"><span>STACK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok; drip warn; drip fail; drip info; drip ok</code>three cards stack under the notch, and a drop under them counts the two waiting for room</p></div>
         <div class="row">
           <div class="switch3"><span class="lbl" id="mode-label">mode</span><div class="track" role="group" aria-labelledby="mode-label"><button type="button" data-stack="chain" aria-pressed="true">chain</button><button type="button" data-stack="push" aria-pressed="false">push</button></div></div>
           <span style="flex:1"></span>
-          <button type="button" class="bigbtn" id="stack-play" aria-label="Play four cards">PLAY</button>
+          <button type="button" class="bigbtn" id="stack-play" aria-label="Play five cards">PLAY</button>
         </div>
         <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>stack</span></div><div class="log" id="stack-tape"></div></div></div></div>
       </div>
@@ -273,6 +273,13 @@ const FONT = getComputedStyle(document.documentElement).getPropertyValue("--font
 const fonts = [(s) => `600 ${14 * s}px ${FONT}`, (s) => `400 ${12 * s}px ${FONT}`, (s) => `600 ${12.5 * s}px ${FONT}`];
 const measurer = document.createElement("canvas").getContext("2d");
 function measure(font, scale, text) { measurer.font = fonts[font](scale); return measurer.measureText(text).width; }
+// `text` cut with an ellipsis to fit `width` in one of the island's fonts.
+function fitted(text, font, scale, width) {
+  if (measure(font, scale, text) <= width) return text;
+  let low = 0, high = text.length;
+  while (low < high) { const mid = Math.ceil((low + high) / 2); if (measure(font, scale, text.slice(0, mid).trimEnd() + "…") <= width) low = mid; else high = mid - 1; }
+  return text.slice(0, low).trimEnd() + "…";
+}
 
 // The accents as the island shows them, on black: the dark-appearance system colors.
 const SYSTEM = { green: "#30d158", orange: "#ff9f0a", red: "#ff453a", blue: "#0a84ff", purple: "#bf5af2", pink: "#ff375f", yellow: "#ffd60a", gray: "#8e8e93" };
@@ -478,7 +485,8 @@ class Stage {
   refit() {
     const { width, height } = this.canvas.getBoundingClientRect(), m = reference?.metrics;
     const across = (width - 16) / 380;
-    const down = m ? (height - 10) / (m.pillTop + this.holds * m.pillHeight + (this.holds - 1) * STACK_GAP + 10) : Infinity;
+    // With the overflow drop, 26 points round, under the last card.
+    const down = m ? (height - 10) / (m.pillTop + this.holds * m.pillHeight + this.holds * STACK_GAP + m.dropSize + 6) : Infinity;
     this.fit = Math.min(this.zoom(width), across, down);
     this.widest = (width - 16) / this.fit - 16;
     this.screen.style.setProperty("--fit", this.fit);
@@ -779,6 +787,45 @@ class Stage {
     if (s.exitCues && t >= s.done) { drip.release(s.handle); this.current = null; this.dirty = true; this.emit("end", s); }
   }
 
+  // The overflow drop's count, white on the drop, or with the pointer on it the titles waiting,
+  // newest first; they crossfade as the drop springs wide and back (CardStack.Overflow).
+  paintDrop(o, f, t) {
+    const { ctx } = this, s = o.scale, cy = f.pillTop + f.pillHeight / 2;
+    let a = 1;
+    if (o.phase === "forming") a = easeOut(clamp01((t - o.start - o.cue) / 0.18));
+    else if (o.phase === "leaving") a = 1 - easeOut(clamp01((t - o.start) / 0.12));
+    if (a <= 0.001) return;
+    ctx.save(); roundedRect(ctx, -f.pillWidth / 2, f.pillTop, f.pillWidth, f.pillHeight, f.pillRadius); ctx.clip();
+    const since = t - (o.peekChangedAt ?? -Infinity);
+    const titles = o.peeking ? easeOut(clamp01((since - UPDATE.fadeOut) / UPDATE.fadeIn)) : 1 - easeOut(clamp01(since / UPDATE.fadeOut));
+    const count = o.peeking ? 1 - easeOut(clamp01(since / UPDATE.fadeOut)) : easeOut(clamp01(since / UPDATE.fadeIn));
+    this.paintCount(o.count, o.previous, t - (o.changedAt ?? -Infinity), cy, s, a * count);
+    if (titles > 0.001 && o.titles) {
+      ctx.globalAlpha = a * titles; ctx.fillStyle = "rgb(200,200,200)"; ctx.font = fonts[1](s); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(fitted(o.titles, 1, s, f.pillWidth - 24 * s), 0, cy + 0.5);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+  // A count on the drop `since` it changed from `from`: the old number rolls out one way and fades,
+  // the new one rolls in from the other and lands with a small pop, up as it goes up.
+  paintCount(count, from, since, cy, s, alpha) {
+    if (alpha <= 0.001) return;
+    const { ctx } = this, roll = easeOut(clamp01(since / 0.22)), dist = 11 * s, dir = count > from ? 1 : -1;
+    ctx.font = fonts[2](s); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff";
+    if (since < 0.22 && from > 0 && from !== count) {
+      ctx.globalAlpha = alpha * (1 - easeOut(clamp01(since / 0.12)));
+      ctx.fillText(String(from), 0, cy + 0.5 - dir * dist * roll);
+    }
+    if (count > 0) {
+      const pop = since < 1 ? lerp(UPDATE.popScale, 1, drip.spring(UPDATE.pop[0], UPDATE.pop[1], since)) : 1;
+      ctx.save(); ctx.globalAlpha = alpha * (since < 0.22 ? roll : 1);
+      ctx.translate(0, cy + 0.5 + (since < 0.22 ? dir * dist * (1 - roll) : 0)); ctx.scale(pop, pop);
+      ctx.fillText(String(count), 0, 0); ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.textAlign = "start";
+  }
+
   paintStack(W, H) {
     this.offerWaiting();
     const st = this.stack, t = this.clock - st.start;
@@ -791,6 +838,8 @@ class Stage {
     for (const entered of changes.entered ?? []) {
       const card = st.cards.get(entered.handle);
       Object.assign(card, { start: entered.start, cues: entered.cues, visible: entered.countdownFrom - entered.start, waiting: entered.waits });
+      // The last card waiting is the overflow drop itself, spreading into it as its number rolls out.
+      if (entered.fromDrop) card.dropGhost = { count: entered.fromDrop, at: t };
       st.newest = card; announce(card); this.emit("begin", card);
     }
     for (const swapped of changes.swapped ?? []) {
@@ -811,16 +860,26 @@ class Stage {
       card.exitCues = left.cues; card.exitAt = left.time - card.start;
     }
     for (const handle of changes.gone ?? []) { drip.release(handle); st.cards.delete(handle); }
+    st.overflow = changes.overflow?.phase ? changes.overflow : null;
 
     const frames = drip.stack.frame(st.id, t);
+    const drop = st.overflow ? drip.stack.overflowFrame(st.id, t) : null;
     for (const { frame } of frames) this.fillShape(frame);
+    for (const piece of drop?.pieces ?? []) this.fillShape(piece);
     for (const { handle, remaining, frame } of frames) {
       const card = st.cards.get(handle), ct = t - card.start;
       card.ring = card.card.action ? null : card.waiting ? 1 : clamp01(remaining / card.card.seconds);
       this.paintCard(card, frame, ct, card.ring, W, H);
       card.lastFrame = frame; card.lastT = ct;
+      const ghost = card.dropGhost;
+      if (ghost && t - ghost.at < 0.3) {
+        this.ctx.save(); roundedRect(this.ctx, -frame.pillWidth / 2, frame.pillTop, frame.pillWidth, frame.pillHeight, frame.pillRadius); this.ctx.clip();
+        this.paintCount(0, ghost.count, t - ghost.at, frame.pillTop + frame.pillHeight / 2, card.metrics.scale, 1);
+        this.ctx.restore();
+      } else card.dropGhost = null;
     }
-    st.frames = frames;
+    if (drop) this.paintDrop(st.overflow, drop, t);
+    st.frames = frames; st.drop = drop;
     if (changes.done) { this.stack = null; this.dirty = true; this.screen.style.cursor = ""; this.emit("end", null); }
   }
 }
@@ -1292,12 +1351,13 @@ const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (narrow.matche
 const stages = [hero];
 const lineShown = document.getElementById("line");
 
-// Four drips at once: three stack, and the fourth waits for room.
+// Five drips at once: three stack, and a drop under the last one counts the two waiting for room.
 const STACK_LINES = (mode) => [
   `drip ok "Build finished" -d "make test: 246 passed in 3.2s"`,
   `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"`,
   `drip fail "Deploy failed" -d "staging: health check timed out"`,
   `drip info "Backup done" -d "412 files, 3.1 GB to the NAS"`,
+  `drip ok "Release 1.4 is out" -d "14 files changed"`,
 ].map((line) => (mode === "push" ? `DRIP_STACK=push ${line}` : line));
 // The keys: one example each, with the LED in the color of the card it shows.
 const CHIPS = [
@@ -1309,7 +1369,7 @@ const CHIPS = [
   { key: "--id", name: "a card replaced in place", color: "#0a84ff", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` },
   { key: "--open", name: "a card with a button", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip` },
   { key: "preset", name: "your own preset", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` },
-  { key: "stack", name: "four cards at once", color: "#d0d0cc", line: STACK_LINES("chain").join("; ") },
+  { key: "stack", name: "five cards at once", color: "#d0d0cc", line: STACK_LINES("chain").join("; ") },
 ];
 
 
@@ -1428,7 +1488,7 @@ stackStage.autoplay = () => {
   const rect = stackScreen.getBoundingClientRect();
   if (!stackPlayed && !reduceMotion.matches && rect.top < innerHeight * 0.8 && rect.bottom > 0) playStack();
 };
-stackTerm.print("press PLAY to print four cards", "dim");
+stackTerm.print("press PLAY to print five cards", "dim");
 
 // Until the visitor does something, the hero plays a few cards by itself.
 const ATTRACT = [CHIPS[4].line, CHIPS[5].line, CHIPS[8].line, CHIPS[1].line, CHIPS[3].line, CHIPS[6].line, CHIPS[0].line];
