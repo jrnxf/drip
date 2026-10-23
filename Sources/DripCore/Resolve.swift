@@ -84,8 +84,9 @@ public struct CardResolver {
         }
         card.id = flags.id
         card.activate = CardActivation.target(flag: flags.activate, sender: environment.sender)
-        // A time from the command line, the environment or the preset makes it count down instead.
-        if preset.waits, flags.seconds == nil, environment.seconds == nil, preset.seconds == nil {
+        // An ask card and a question of any kind wait for you. A time from the command line, the
+        // environment or the preset makes them count down instead.
+        if preset.waits || card.asksQuestion, flags.seconds == nil, environment.seconds == nil, preset.seconds == nil {
             card.waitLimit = Defaults.waitLimit
         }
         return card

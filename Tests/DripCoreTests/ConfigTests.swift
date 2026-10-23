@@ -346,6 +346,31 @@ struct PrecedenceTests {
         }
     }
 
+    @Test func aQuestionOfAnyKindWaitsUnlessATimeIsSet() throws {
+        let asked = CardFlags(button: "Deploy", decline: "Cancel")
+        for kind in ["ok", "warn", "fail", "info", "ask"] {
+            let card = try CardResolver().resolve(kind: kind, title: "deploy to prod?", flags: asked)
+            #expect(card.waitLimit == Defaults.waitLimit && card.waitsForAnswer)
+        }
+        // A time from the command line, the environment or the preset gives it a deadline instead.
+        var deadline = asked
+        deadline.seconds = 10
+        let flagged = try CardResolver().resolve(kind: "warn", title: "t", flags: deadline)
+        #expect(flagged.waitLimit == nil && flagged.seconds == 10 && flagged.asksQuestion)
+        let environment = try CardResolver(environment: EnvironmentSettings(seconds: 5))
+            .resolve(kind: "warn", title: "t", flags: asked)
+        #expect(environment.waitLimit == nil && environment.seconds == 5)
+        let preset = try CardResolver(config: Config(presets: ["warn": PresetOverride(seconds: 9)]))
+            .resolve(kind: "warn", title: "t", flags: asked)
+        #expect(preset.waitLimit == nil && preset.seconds == 9)
+        let global = try CardResolver(config: Config(seconds: 3)).resolve(kind: "warn", title: "t", flags: asked)
+        #expect(global.waitLimit == Defaults.waitLimit)
+        // A button that opens something is no question, and counts down.
+        let open = try CardResolver().resolve(
+            kind: "ok", title: "t", flags: CardFlags(open: "https://example.com", button: "View"))
+        #expect(open.waitLimit == nil && !open.asksQuestion)
+    }
+
     @Test func overriddenBuiltInPresetDrivesDripRun() throws {
         let config = Config(presets: ["ok": PresetOverride(sound: .named("Hero")), "fail": PresetOverride(seconds: 10)])
         let resolver = CardResolver(config: config)

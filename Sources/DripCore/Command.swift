@@ -63,7 +63,7 @@ public struct CardOptions: ParsableArguments {
     var detail: String?
 
     @Option(name: .shortAndLong, help: ArgumentHelp(
-        "Seconds fully visible, excluding fades: 0.5 to 60. An ask card given a time counts it down instead of waiting. (default: 4.5)",
+        "Seconds fully visible, excluding fades: 0.5 to 60. An ask card or a question given a time counts it down instead of waiting. (default: 4.5)",
         valueName: "n"))
     var seconds: Double?
 
@@ -90,12 +90,12 @@ public struct CardOptions: ParsableArguments {
     var button: String?
 
     @Option(help: ArgumentHelp(
-        "Ask with a button of this label: drip waits, then exits 0 if it was clicked and 5 if not.",
+        "Ask with a button of this label: drip waits up to 10 minutes, then exits 0 if it was clicked and 5 if not.",
         valueName: "label"))
     var confirm: String?
 
     @Option(help: ArgumentHelp(
-        "Ask a question with a yes button of this label, as --confirm does: drip waits, then exits 0 if it was clicked.",
+        "Ask a question with a yes button of this label, as --confirm does: drip waits up to 10 minutes, then exits 0 if it was clicked.",
         valueName: "label"))
     var yes: String?
 
