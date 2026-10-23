@@ -6,7 +6,7 @@
 </h1>
 
 <p align="center">
-  <img src="docs/demo.gif" width="400" alt="Three drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then Claude needs you, with Claude needs your permission to use Bash, then Deploy failed, with staging: health check timed out after 30s">
+  <img src="docs/demo.gif" width="400" alt="drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then Claude needs you, with Claude needs your permission to use Bash, replaced in place by Deploy failed, with staging: health check timed out after 30s, then the question Deploy to prod?, with Deploy and Cancel buttons, until it times out">
 </p>
 
 drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you.

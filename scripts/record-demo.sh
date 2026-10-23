@@ -17,6 +17,9 @@ die() {
 [ "$(uname -s)" = Darwin ] || die "run this on a Mac: it films the real notch with screencapture"
 command -v ffmpeg >/dev/null 2>&1 || die "ffmpeg is missing. Fix: brew install ffmpeg"
 
+swift build -c release
+drip=$(swift build -c release --show-bin-path)/drip
+
 # The screen under the pointer, as "x y width height" in points, with the origin at the top left
 # of the main display (what screencapture -R takes): 800 points wide around the screen's middle
 # and 240 tall from its top edge, enough for the widest card with its shadow. Prints nothing and
@@ -45,15 +48,18 @@ $region
 EOF2
 crop="$x,$y,$w,$h"
 
-swift build -c release
-drip=$(swift build -c release --show-bin-path)/drip
-
 rec=
 work=$(mktemp -d)
 trap '[ -z "$rec" ] || kill "$rec" 2>/dev/null || true; rm -rf "$work"' EXIT
 
-# Record: -x mutes the shutter sound, -v films, -R is the region at native pixels.
-screencapture -x -v -R "$crop" "$work/take.mov" &
+# The built-in look, whatever the local config and environment say: an empty config directory.
+export XDG_CONFIG_HOME="$work"
+unset DRIP_SECONDS DRIP_SIZE DRIP_SOUND DRIP_MOTION DRIP_STACK DRIP_STACK_MAX
+
+# Record: -x mutes the shutter sound, -V films for that many seconds, -R is the region at native
+# pixels. The take is the cards below with their sleeps, plus room for each card to grow and go.
+take=20
+screencapture -x -V "$take" -R "$crop" "$work/take.mov" &
 rec=$!
 sleep 2
 
@@ -66,10 +72,10 @@ sleep 3
 sleep 0.8
 # Nobody answers, so it times out after 3 seconds (exit 5).
 "$drip" warn "Deploy to prod?" -d "v1.4.0" --yes Deploy --no Cancel --seconds 3 || true
-sleep 1.5
 
-kill -INT "$rec"
-wait "$rec" 2>/dev/null || true
+kill -0 "$rec" 2>/dev/null || die "the cards ran past the $take second take. Fix: raise take in this script"
+wait "$rec" || true
+rec=
 [ -s "$work/take.mov" ] || die "the recording is empty. Check Screen Recording permission for this terminal"
 
 # Encode. The MP4 keeps the full recording.
