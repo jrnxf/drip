@@ -233,10 +233,11 @@ extension CardStack {
     }
 
     /// Moves the overflow drop on to `time`, with `others`, other drips' cards waiting for this stack,
-    /// oldest first: it forms, takes cards in, ticks down as they go elsewhere, and goes back in once
+    /// oldest first, and without this drip's own cards in `replaced`: it forms, takes cards in, ticks down as they go elsewhere, and goes back in once
     /// none waits. Changes it starts begin at `start`. Returns whether anything changed.
-    func advanceOverflow(_ others: [Card], to time: Double, start: Double) -> Bool {
-        queued = waiting + others
+    func advanceOverflow(_ others: [Card], replaced: [Card], to time: Double, start: Double) -> Bool {
+        let own = waiting.filter { !replaced.contains($0) }
+        queued = own + others
         var changed = false
         if let overflow {
             switch overflow.phase {
@@ -252,7 +253,7 @@ extension CardStack {
             }
         }
         if overflow == nil, !hasRoom, !hovering, time - lastEntrance >= Self.entranceSpacing,
-           !waiting.isEmpty || others.contains(where: { !swapsInPlace($0) }),
+           !own.isEmpty || others.contains(where: { !swapsInPlace($0) }),
            let holder = entries.last(where: { !$0.isLeaving || $0.holdsPlaceUntil.isFinite }),
            !holder.isLeaving, holder.animator.end <= time
         {

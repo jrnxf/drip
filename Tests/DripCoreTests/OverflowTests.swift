@@ -15,11 +15,13 @@ struct OverflowTests {
     /// Runs a stack as the Mac app and the web page run one, 60 steps a second: with the stack at
     /// rest, another drip's card swaps into its card on screen, and with no overflow drop a card drops
     /// in; whenever it can, the next card grows out of the overflow drop. `others` are other drips'
-    /// cards waiting for the stack.
+    /// cards waiting for the stack, and `replaced` this drip's own a newer card with the same id
+    /// replaced, which never show.
     private final class Driver {
         let stack: CardStack
         let metrics: IslandMetrics
         var others: [Card] = []
+        var replaced: [Card] = []
         var time = 0.0
         /// Each card grown out of the drop, with when it starts to spread, where it settles, and the
         /// cards on screen right after.
@@ -54,6 +56,7 @@ struct OverflowTests {
                 if stack.canRelease(at: time) {
                     var next = stack.nextOwn()
                     var own = true
+                    if let card = next, replaced.contains(card) { next = nil }
                     if next == nil, let index = others.firstIndex(where: { !stack.swapsInPlace($0) }) {
                         next = others.remove(at: index)
                         own = false
@@ -64,7 +67,7 @@ struct OverflowTests {
                         releases.append((time, release, start, release.entry.animator.targetTop, stack.live.map(\.card.title)))
                     }
                 }
-                let changes = stack.advance(to: time, elapsed: 1.0 / 60, lead: 0, queued: others)
+                let changes = stack.advance(to: time, elapsed: 1.0 / 60, lead: 0, queued: others, replaced: replaced)
                 step(time, changes)
                 time += 1.0 / 60
             }
@@ -100,6 +103,27 @@ struct OverflowTests {
         #expect(overflow.phase == .shown)
         #expect(overflow.titles == ["e", "d"])
         #expect(overflow.peekText == "e · d")
+    }
+
+    /// One of this drip's own cards still to come, replaced by a newer drip's card with the same id,
+    /// stops counting as the newer card starts: the count stays as it was.
+    @Test func aReplacedOwnCardIsNotCounted() throws {
+        let replacedCard = card("e", id: "x")
+        let driver = Driver(
+            CardStack(
+                settings: StackSettings(mode: .chain, max: 3),
+                cards: [card("a", seconds: 6), card("b", seconds: 6), card("c", seconds: 6), card("d"), replacedCard]),
+            metrics: metrics)
+        driver.run(for: 3)
+        #expect(try #require(driver.stack.overflow).count == 2)
+        driver.others = [card("e2", id: "x")]
+        driver.replaced = [replacedCard]
+        var counts: Set<Int> = []
+        driver.run(for: 1) { _, _ in
+            if let overflow = driver.stack.overflow { counts.insert(overflow.count) }
+        }
+        #expect(counts == [2])
+        #expect(try #require(driver.stack.overflow).titles == ["e2", "d"])
     }
 
     @Test func noDropWithoutTheCardsWaitingOrWithRoom() {

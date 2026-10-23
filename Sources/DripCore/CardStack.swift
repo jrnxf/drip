@@ -325,7 +325,8 @@ public final class CardStack {
     ///
     /// Given `queued`, other drips' cards waiting for this stack, oldest first, the overflow drop
     /// counts them and this drip's own cards still to come while the stack is full; without, it never
-    /// shows.
+    /// shows. It leaves out this drip's own cards `replaced` says a newer card with the same id
+    /// replaced, as they never show.
     ///
     /// Cards that wait for you give way to other cards: the oldest when a card needs room, its own
     /// or `needsRoom` another drip's, and every card in the stack is waiting; all of them when
@@ -334,7 +335,7 @@ public final class CardStack {
     /// and a card with no room waits for it.
     public func advance(
         to time: Double, elapsed: Double, lead: Double, needsRoom: Bool = false, othersWaiting: Bool = false,
-        queued others: [Card]? = nil
+        queued others: [Card]? = nil, replaced: [Card] = []
     ) -> Changes {
         var changes = Changes()
         var released = false
@@ -378,7 +379,9 @@ public final class CardStack {
         }
         entries.removeAll { entry in changes.gone.contains { $0 === entry } }
         changes.moved = (released || needsLayout) && place(at: time + lead)
-        if let others { changes.overflowChanged = advanceOverflow(others, to: time, start: time + lead) }
+        if let others {
+            changes.overflowChanged = advanceOverflow(others, replaced: replaced, to: time, start: time + lead)
+        }
         return changes
     }
 

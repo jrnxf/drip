@@ -494,6 +494,8 @@ final class StackSession {
     /// The island each card of the stack shows, by `CardStack.Entry.id`.
     var islandOf: [Int: Int32] = [:]
     var clock = 0.0
+    /// Where the pointer last was on the stack, nil while it is off it.
+    var pointer: IslandPoint?
 
     init(stack: CardStack, adopts: Bool, own: [Int32]) {
         self.stack = stack
@@ -638,6 +640,7 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer
     // Later commands' cards still offered want room; cards that wait for you give way to them.
     let changes = stack.advance(
         to: time, elapsed: elapsed, lead: 0, needsRoom: !session.adoptable.isEmpty, queued: session.offered)
+    peek(stack, at: session.pointer, time: time)
     let stoppedWaiting = changes.stoppedWaiting.compactMap { session.islandOf[$0.id] }
     let left: [[String: Any]] = changes.left.compactMap { left in
         session.islandOf[left.entry.id].map {
@@ -699,14 +702,23 @@ public func dripStackPointer(_ stackHandle: Int32, _ x: Double, _ y: Double, _ i
     guard let session = stacks[stackHandle] else { return send(["handle": 0, "button": "", "drop": false]) }
     let point = IslandPoint(x, y)
     let stack = session.stack
+    session.pointer = inside != 0 ? point : nil
     let under = inside != 0 ? stack.entry(at: point, time: time) : nil
-    let onDrop = inside != 0 && stack.isOnOverflow(point, time: time)
-    stack.peek(width: onDrop ? stack.overflow.map { measure(1, 1, $0.peekText) } : nil, at: time)
+    let onDrop = peek(stack, at: session.pointer, time: time)
     stack.hover(under != nil || onDrop)
     return send([
         "handle": under.flatMap { session.islandOf[$0.id] } ?? 0,
         "button": named(under.flatMap { stack.button(of: $0, at: point, time: time) }), "drop": onDrop,
     ])
+}
+
+/// Springs the overflow drop wide to list the titles waiting while `point` is on it, or back to its
+/// count when it is not, at `time`. Returns whether `point` is on the drop.
+@discardableResult
+func peek(_ stack: CardStack, at point: IslandPoint?, time: Double) -> Bool {
+    let onDrop = point.map { stack.isOnOverflow($0, time: time) } ?? false
+    stack.peek(width: onDrop ? stack.overflow.map { measure(1, 1, $0.peekText) } : nil, at: time)
+    return onDrop
 }
 
 /// A button as the page names it: "yes", "no", or "" for none.
