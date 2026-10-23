@@ -74,22 +74,34 @@ public final class CardStack {
         public var moved = false
         /// Cards that stopped waiting for you to give way, and now count down from `countdownFrom`.
         public var stoppedWaiting: [Entry] = []
+        /// Whether the overflow drop formed, took a card in, ticked, moved, went back in or was gone.
+        public var overflowChanged = false
 
-        public var isEmpty: Bool { left.isEmpty && gone.isEmpty && !moved && stoppedWaiting.isEmpty }
+        public var isEmpty: Bool {
+            left.isEmpty && gone.isEmpty && !moved && stoppedWaiting.isEmpty && !overflowChanged
+        }
     }
 
     public let settings: StackSettings
     /// Top to bottom, leaving cards included.
-    public private(set) var entries: [Entry] = []
+    public internal(set) var entries: [Entry] = []
     /// This drip's own cards still to drop in.
     public private(set) var waiting: [Card]
-    private var lastEntrance = -Double.infinity
+    var lastEntrance = -Double.infinity
     /// While the pointer is on any card nothing moves: every countdown stops, gaps stay open and new
     /// cards wait, so a card never slides out from under a click.
     public private(set) var hovering = false
     /// A change to the stack waits while the pointer is on it.
     private var needsLayout = false
-    private var nextID = 1
+    var nextID = 1
+    /// The overflow drop under the last card, counting the cards waiting for room; nil while none
+    /// waits, and in a stack that is not given the cards waiting for it.
+    public internal(set) var overflow: Overflow?
+    /// Every card waiting for this stack, oldest first: this drip's own, then other drips', as the
+    /// last step was given them.
+    public internal(set) var queued: [Card] = []
+    /// The drawn width of a count on the overflow drop, at regular size, in the button's font.
+    public var measureCount: (String) -> Double = { Double($0.count) * 7.5 }
 
     /// The gap between two cards in the stack.
     public static let gap: Double = 10
@@ -105,9 +117,17 @@ public final class CardStack {
     public var live: [Entry] { entries.filter { !$0.isLeaving } }
 
     /// Whether a card may drop in at `time`: one at a time, into a stack at rest, so a new drop
-    /// never shoves cards still settling, and never while the pointer is on the stack.
+    /// never shoves cards still settling, and never while the pointer is on the stack. The overflow
+    /// drop is at rest too, with nothing dripping into it.
     public func isReady(at time: Double) -> Bool {
         !hovering && time - lastEntrance >= Self.entranceSpacing && entries.allSatisfy { $0.animator.end <= time }
+            && overflow.map { $0.end <= time && !$0.peeking } ?? true
+    }
+
+    /// When every spring in the stack has settled, the overflow drop's and what drips into it
+    /// included.
+    public var end: Double {
+        entries.map(\.animator.end).reduce(overflow?.end ?? 0, max)
     }
 
     /// Whether the stack holds fewer cards than it may show at once.
@@ -189,6 +209,8 @@ public final class CardStack {
         let tops = tops()
         var moved = false
         for entry in live where entry !== incoming {
+            // A card still to start growing out of the overflow drop is on its way to its place.
+            if case let .entering(start, _) = entry.phase, start > time { continue }
             guard let top = tops[ObjectIdentifier(entry)], abs(entry.animator.targetTop - top) > 0.25 else { continue }
             entry.animator.move(to: top, at: time, with: spring)
             moved = true
@@ -267,6 +289,7 @@ public final class CardStack {
         entry.phase = .leaving(until: entry.animator.end)
         // The cards that grew out of this one now hang from whatever is above it.
         for other in entries where other.anchor === entry { other.anchor = above }
+        if let overflow, overflow.anchor === entry { overflow.anchor = above }
         return cues
     }
 
@@ -300,13 +323,19 @@ public final class CardStack {
     /// down, leave when their time is up or they were dismissed, and are gone once their drop has
     /// merged; the cards below close the gaps. Changes it starts begin at `time + lead`.
     ///
+    /// Given `queued`, other drips' cards waiting for this stack, oldest first, the overflow drop
+    /// counts them and this drip's own cards still to come while the stack is full; without, it never
+    /// shows. It leaves out this drip's own cards `replaced` says a newer card with the same id
+    /// replaced, as they never show.
+    ///
     /// Cards that wait for you give way to other cards: the oldest when a card needs room, its own
     /// or `needsRoom` another drip's, and every card in the stack is waiting; all of them when
     /// `othersWaiting`, another drip waiting for the stack to finish. A question never gives way: it
     /// stays until it is answered, replaced or its wait limit runs out, other cards stack around it,
     /// and a card with no room waits for it.
     public func advance(
-        to time: Double, elapsed: Double, lead: Double, needsRoom: Bool = false, othersWaiting: Bool = false
+        to time: Double, elapsed: Double, lead: Double, needsRoom: Bool = false, othersWaiting: Bool = false,
+        queued others: [Card]? = nil, replaced: [Card] = []
     ) -> Changes {
         var changes = Changes()
         var released = false
@@ -350,13 +379,16 @@ public final class CardStack {
         }
         entries.removeAll { entry in changes.gone.contains { $0 === entry } }
         changes.moved = (released || needsLayout) && place(at: time + lead)
+        if let others {
+            changes.overflowChanged = advanceOverflow(others, replaced: replaced, to: time, start: time + lead)
+        }
         return changes
     }
 
-    /// Whether a leaving card's drop is still on its way into `entry`, which must then stay until it
-    /// has merged: shrinking around it would uncover it.
+    /// Whether a leaving card's drop, or the overflow drop, is still on its way into `entry`, which
+    /// must then stay until it has merged: shrinking around it would uncover it.
     func isFilling(_ entry: Entry) -> Bool {
-        entries.contains { $0.isLeaving && $0.anchor === entry }
+        entries.contains { $0.isLeaving && $0.anchor === entry } || (overflow.map { $0.isLeaving && $0.anchor === entry } ?? false)
     }
 
     /// Whether a leaving card's drop is hidden inside what it went back into, far enough in that
@@ -410,11 +442,16 @@ public final class CardStack {
 
     /// The stack's outline as values, so it can be sampled away from the stack, on other threads.
     public var outline: StackOutline {
-        StackOutline(cards: entries.map { entry in
-            StackOutline.Card(
-                animator: entry.animator, metrics: entry.metrics,
-                anchor: entry.anchor.flatMap { anchor in entries.firstIndex { $0 === anchor } })
-        })
+        let index = { (entry: Entry?) in entry.flatMap { entry in self.entries.firstIndex { $0 === entry } } }
+        return StackOutline(
+            cards: entries.map { entry in
+                StackOutline.Card(animator: entry.animator, metrics: entry.metrics, anchor: index(entry.anchor))
+            },
+            overflow: overflow.map { overflow in
+                StackOutline.Drop(
+                    animator: overflow.animator, anchor: index(overflow.anchor),
+                    seeds: overflow.seeds.map { seed in (seed, entries.firstIndex { $0.id == seed.source }) })
+            })
     }
 }
 
@@ -435,7 +472,22 @@ public struct StackOutline: Sendable {
         case capsule(IslandShape, IslandMetrics)
     }
 
+    /// The overflow drop, and the cards dripping into it.
+    public struct Drop: Sendable {
+        public let animator: IslandAnimator
+        /// What it melts into, as an index into `cards`; nil for nothing.
+        public let anchor: Int?
+        /// Each seed, with the card it drips out of as an index into `cards`.
+        public let seeds: [(seed: CardStack.Seed, source: Int?)]
+    }
+
     public let cards: [Card]
+    public let overflow: Drop?
+
+    public init(cards: [Card], overflow: Drop? = nil) {
+        self.cards = cards
+        self.overflow = overflow
+    }
 
     /// The notch's sizes, for drawing the notch itself; nil for an empty stack.
     public var notch: IslandMetrics? { cards.first?.metrics }
@@ -447,5 +499,47 @@ public struct StackOutline: Sendable {
             let field = DropletField(metrics: card.metrics, shape: shapes[index], anchor: anchor)
             return field.touchesNotch ? .traced(field) : .capsule(shapes[index], card.metrics)
         }
+    }
+
+    /// The overflow drop, melted into the card it hangs from while close enough, and each card
+    /// dripping into it: melted into the card it leaves while close, into the drop it joins once
+    /// close, and a plain round drop between. A drawing adds these after `pieces(at:)`.
+    public func overflowPieces(at time: Double) -> [Piece] {
+        guard let drop = overflow else { return [] }
+        let capsule = { (index: Int) in
+            DropletAnchor.capsule(cards[index].animator.shape(at: time), metrics: cards[index].metrics)
+        }
+        let metrics = drop.animator.metrics
+        let shape = drop.animator.shape(at: time)
+        var pieces: [Piece] = []
+        if let anchor = drop.anchor, case let field = DropletField(metrics: metrics, shape: shape, anchor: capsule(anchor)),
+           field.touchesNotch
+        {
+            pieces.append(.traced(field))
+        } else {
+            pieces.append(.capsule(shape, metrics))
+        }
+        let into = DropletAnchor.capsule(shape, metrics: metrics)
+        for (seed, source) in drop.seeds where time >= seed.start && time < seed.end {
+            var melted = false
+            let leaving = seed.leavingBlend(at: time)
+            if let source, leaving > 0.01,
+               case let field = DropletField(metrics: metrics, shape: seed.shape(at: time, blend: leaving), anchor: capsule(source)),
+               field.touchesNotch
+            {
+                pieces.append(.traced(field))
+                melted = true
+            }
+            let joining = seed.joiningBlend(at: time)
+            let joined = seed.shape(at: time, blend: joining)
+            if joining > 0.01, joined.pillTop + joined.pillHeight > into.centerY - into.halfHeight - joining {
+                // Traced from above the seed, which falls into the drop from above.
+                pieces.append(.traced(DropletField(
+                    metrics: metrics, shape: joined, anchor: into, traceTop: joined.pillTop - joining - 1)))
+                melted = true
+            }
+            if !melted { pieces.append(.capsule(seed.shape(at: time, blend: 0), metrics)) }
+        }
+        return pieces
     }
 }

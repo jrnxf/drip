@@ -47,11 +47,16 @@ public struct DropletField: Sendable {
     public let metrics: IslandMetrics
     public let shape: IslandShape
     public let anchor: DropletAnchor
+    /// Where tracing the outline starts: just inside the anchor, whose own shape covers the cut, for a
+    /// drop below it; above the drop for one that falls into the anchor from above.
+    public let traceTop: Double
 
-    public init(metrics: IslandMetrics, shape: IslandShape, anchor: DropletAnchor? = nil) {
+    public init(metrics: IslandMetrics, shape: IslandShape, anchor: DropletAnchor? = nil, traceTop: Double? = nil) {
         self.metrics = metrics
         self.shape = shape
-        self.anchor = anchor ?? .notch(metrics)
+        let anchor = anchor ?? .notch(metrics)
+        self.anchor = anchor
+        self.traceTop = traceTop ?? anchor.bottom - 4 * metrics.scale
     }
 
     /// Whether the drop is close enough to its anchor for the two to melt together. Otherwise the

@@ -813,12 +813,11 @@ enum IslandPath {
         path.closeSubpath()
     }
 
-    /// The drop melted into its anchor, traced from just inside the anchor, where the anchor's own
-    /// shape covers the cut.
+    /// The drop melted into its anchor, traced from `field.traceTop`: just inside the anchor, where
+    /// the anchor's own shape covers the cut.
     static func addTraced(_ field: DropletField, to path: CGMutablePath, centerX: CGFloat) {
         let x = { (value: Double) in centerX + CGFloat(value) }
-        let top = field.anchor.bottom - 4 * field.metrics.scale
-        for loop in field.outline(above: top, cell: 0.5) {
+        for loop in field.outline(above: field.traceTop, cell: 0.5) {
             guard let first = loop.first else { continue }
             path.move(to: CGPoint(x: x(first.x), y: CGFloat(first.y)))
             for point in loop.dropFirst() { path.addLine(to: CGPoint(x: x(point.x), y: CGFloat(point.y))) }

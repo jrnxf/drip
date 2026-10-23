@@ -494,13 +494,19 @@ final class StackSession {
     /// The island each card of the stack shows, by `CardStack.Entry.id`.
     var islandOf: [Int: Int32] = [:]
     var clock = 0.0
+    /// Where the pointer last was on the stack, nil while it is off it.
+    var pointer: IslandPoint?
 
     init(stack: CardStack, adopts: Bool, own: [Int32]) {
         self.stack = stack
         self.own = own
         asks = stack.waiting.contains(where: \.waitsForAnswer)
         self.adopts = adopts && !asks
+        stack.measureCount = { measure(2, 1, $0) }
     }
+
+    /// Later commands' cards still offered, oldest first.
+    var offered: [Card] { adoptable.compactMap { islands[$0]?.card } }
 
     /// Whether the stack takes `card` in now. A question never is.
     func takes(_ card: Card) -> Bool {
@@ -578,7 +584,8 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer
             "waits": entry.isWaiting,
         ])
     }
-    // As StackPresenter.admit: one change at a time, into a stack at rest.
+    // As StackPresenter.admit: one change at a time, into a stack at rest, and while no card waits
+    // past a full stack; else the next card grows out of the overflow drop when it can.
     admit: if stack.isReady(at: time) {
         for handle in session.adoptable {
             guard let island = islands[handle] else { continue }
@@ -602,15 +609,38 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer
                 ])
                 continue
             }
-            guard stack.waiting.isEmpty, stack.hasRoom else { break }
+            guard stack.overflow == nil, stack.waiting.isEmpty, stack.hasRoom else { break }
             session.adoptable.removeAll { $0 == handle }
             enter(handle, own: false)
             break admit
         }
-        if stack.nextOwn() != nil { enter(session.own.removeFirst(), own: true) }
+        if stack.overflow == nil, stack.nextOwn() != nil { enter(session.own.removeFirst(), own: true) }
+    }
+    if stack.canRelease(at: time) {
+        var next: (handle: Int32, own: Bool)?
+        if stack.nextOwn() != nil {
+            next = (session.own.removeFirst(), true)
+        } else if let handle = session.adoptable.first(where: { islands[$0].map { !stack.swapsInPlace($0.card) } ?? false }) {
+            session.adoptable.removeAll { $0 == handle }
+            next = (handle, false)
+        }
+        if let next, let island = islands[next.handle],
+           let release = stack.release(island.card, metrics: island.animator.metrics, own: next.own, at: time)
+        {
+            session.islandOf[release.entry.id] = next.handle
+            if case let .entering(start, entryCues) = release.entry.phase {
+                entered.append([
+                    "handle": next.handle, "start": start, "cues": cues(entryCues),
+                    "countdownFrom": release.entry.countdownFrom, "waits": release.entry.isWaiting,
+                    "fromDrop": release.last ? release.count : 0,
+                ])
+            }
+        }
     }
     // Later commands' cards still offered want room; cards that wait for you give way to them.
-    let changes = stack.advance(to: time, elapsed: elapsed, lead: 0, needsRoom: !session.adoptable.isEmpty)
+    let changes = stack.advance(
+        to: time, elapsed: elapsed, lead: 0, needsRoom: !session.adoptable.isEmpty, queued: session.offered)
+    peek(stack, at: session.pointer, time: time)
     let stoppedWaiting = changes.stoppedWaiting.compactMap { session.islandOf[$0.id] }
     let left: [[String: Any]] = changes.left.compactMap { left in
         session.islandOf[left.entry.id].map {
@@ -618,12 +648,38 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double) -> UnsafePointer
         }
     }
     let gone = changes.gone.compactMap { session.islandOf.removeValue(forKey: $0.id) }
-    let done = stack.entries.isEmpty && stack.waiting.isEmpty && session.adoptable.isEmpty
+    let done = stack.entries.isEmpty && stack.waiting.isEmpty && session.adoptable.isEmpty && stack.overflow == nil
     if done { stacks[stackHandle] = nil }
     return send([
         "entered": entered, "swapped": swapped, "stoppedWaiting": stoppedWaiting, "left": left, "gone": gone,
-        "done": done,
+        "done": done, "overflow": stack.overflow.map(overflowState) ?? [String: Any](),
     ])
+}
+
+/// The overflow drop as the page paints its count: `count` and the `previous` count it rolled from
+/// at `changedAt`; `phase` "forming" from `start` with the count fading in at `cue`, "shown",
+/// "releasing" or "leaving" from `start`; `peeking` since `peekChangedAt`, or back to its count
+/// since then, listing `titles`. An empty object for no drop.
+func overflowState(_ overflow: CardStack.Overflow) -> [String: Any] {
+    var state: [String: Any] = [
+        "count": overflow.count, "previous": overflow.previous, "changedAt": overflow.changedAt,
+        "peeking": overflow.peeking, "peekChangedAt": overflow.peekChangedAt, "titles": overflow.peekText,
+        "scale": overflow.metrics.scale,
+    ]
+    switch overflow.phase {
+    case let .forming(start, cues):
+        state["phase"] = "forming"
+        state["start"] = start
+        state["cue"] = cues.sides
+    case .shown:
+        state["phase"] = "shown"
+    case .releasing:
+        state["phase"] = "releasing"
+    case let .leaving(start, _):
+        state["phase"] = "leaving"
+        state["start"] = start
+    }
+    return state
 }
 
 /// Ends the stack at once, as when the page is reset. Replies with every island it still holds,
@@ -636,20 +692,33 @@ public func dripStackEnd(_ stackHandle: Int32) -> UnsafePointer<UInt8> {
 }
 
 /// The pointer at x, y (x from the notch's center, y down from the screen's top) at `time`, or off
-/// the stack when `inside` is 0. While it is on a card nothing moves and no countdown runs. Replies
-/// with the island under it, 0 for none, and the button of that card it is on: "yes", a question's
-/// "no", or "" for none.
+/// the stack when `inside` is 0. While it is on a card or on the overflow drop nothing moves and no
+/// countdown runs, and on the drop, the drop springs wide to list the titles waiting. Replies with
+/// the island under it, 0 for none, the button of that card it is on: "yes", a question's "no", or
+/// "" for none, and whether it is on the drop.
 @_expose(wasm, "drip_stack_pointer")
 @_cdecl("drip_stack_pointer")
 public func dripStackPointer(_ stackHandle: Int32, _ x: Double, _ y: Double, _ inside: Int32, _ time: Double) -> UnsafePointer<UInt8> {
-    guard let session = stacks[stackHandle] else { return send(["handle": 0, "button": ""]) }
+    guard let session = stacks[stackHandle] else { return send(["handle": 0, "button": "", "drop": false]) }
     let point = IslandPoint(x, y)
-    let under = inside != 0 ? session.stack.entry(at: point, time: time) : nil
-    session.stack.hover(under != nil)
+    let stack = session.stack
+    session.pointer = inside != 0 ? point : nil
+    let under = inside != 0 ? stack.entry(at: point, time: time) : nil
+    let onDrop = peek(stack, at: session.pointer, time: time)
+    stack.hover(under != nil || onDrop)
     return send([
         "handle": under.flatMap { session.islandOf[$0.id] } ?? 0,
-        "button": named(under.flatMap { session.stack.button(of: $0, at: point, time: time) }),
+        "button": named(under.flatMap { stack.button(of: $0, at: point, time: time) }), "drop": onDrop,
     ])
+}
+
+/// Springs the overflow drop wide to list the titles waiting while `point` is on it, or back to its
+/// count when it is not, at `time`. Returns whether `point` is on the drop.
+@discardableResult
+func peek(_ stack: CardStack, at point: IslandPoint?, time: Double) -> Bool {
+    let onDrop = point.map { stack.isOnOverflow($0, time: time) } ?? false
+    stack.peek(width: onDrop ? stack.overflow.map { measure(1, 1, $0.peekText) } : nil, at: time)
+    return onDrop
 }
 
 /// A button as the page names it: "yes", "no", or "" for none.
@@ -698,6 +767,40 @@ public func dripStackFrame(_ stackHandle: Int32, _ time: Double) -> UnsafePointe
     return frameBuffer.withUnsafeBufferPointer { $0.baseAddress ?? UnsafePointer(bitPattern: 8)! }
 }
 
+/// The overflow drop at `time`, as doubles: 0 for none, else 1, its capsule's pillTop, pillWidth,
+/// pillHeight and pillRadius, then the pieces of the outline it adds, the drop's own first, then
+/// each card dripping into it: their count, then each as 1, a loop count and each loop as its point
+/// count and x, y pairs, for a piece traced where it melts into something, or as 0, pillTop,
+/// pillWidth, pillHeight and pillRadius for a plain capsule. The page reads `drip_frame_length`
+/// doubles.
+@_expose(wasm, "drip_stack_overflow_frame")
+@_cdecl("drip_stack_overflow_frame")
+public func dripStackOverflowFrame(_ stackHandle: Int32, _ time: Double) -> UnsafePointer<Double> {
+    frameBuffer.removeAll(keepingCapacity: true)
+    guard let stack = stacks[stackHandle]?.stack, let overflow = stack.overflow else {
+        frameBuffer.append(0)
+        return frameBuffer.withUnsafeBufferPointer { $0.baseAddress ?? UnsafePointer(bitPattern: 8)! }
+    }
+    let shape = overflow.animator.shape(at: time)
+    frameBuffer += [1, shape.pillTop, shape.pillWidth, shape.pillHeight, shape.pillRadius(overflow.animator.metrics)]
+    let pieces = stack.outline.overflowPieces(at: time)
+    frameBuffer.append(Double(pieces.count))
+    for piece in pieces {
+        switch piece {
+        case let .traced(field):
+            let loops = field.outline(above: field.traceTop, cell: 0.5)
+            frameBuffer += [1, Double(loops.count)]
+            for loop in loops {
+                frameBuffer.append(Double(loop.count))
+                for point in loop { frameBuffer += [point.x, point.y] }
+            }
+        case let .capsule(shape, metrics):
+            frameBuffer += [0, shape.pillTop, shape.pillWidth, shape.pillHeight, shape.pillRadius(metrics)]
+        }
+    }
+    return frameBuffer.withUnsafeBufferPointer { $0.baseAddress ?? UnsafePointer(bitPattern: 8)! }
+}
+
 /// One island's frame, as `drip_frame` lays it out.
 func appendFrame(shape: IslandShape, metrics: IslandMetrics, layout: IslandContentLayout, traced field: DropletField?) {
     frameBuffer += [
@@ -708,7 +811,7 @@ func appendFrame(shape: IslandShape, metrics: IslandMetrics, layout: IslandConte
         layout.textX, layout.textCenterY, layout.textRoom, field != nil ? 1 : 0,
     ]
     // As `IslandPath.addTraced` does: from just inside what it melts into, on a half-point grid.
-    let loops = field.map { $0.outline(above: $0.anchor.bottom - 4 * metrics.scale, cell: 0.5) } ?? []
+    let loops = field.map { $0.outline(above: $0.traceTop, cell: 0.5) } ?? []
     frameBuffer.append(Double(loops.count))
     for loop in loops {
         frameBuffer.append(Double(loop.count))
