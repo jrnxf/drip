@@ -19,8 +19,8 @@ name: Release
 #
 # Tap setup: jrnxf/homebrew-tap's docs/automatic-updates.md, which issues the TAP_DEPLOY_KEY
 # secret. Formula/drip.rb must already exist in the tap and install the binary with
-# `bin.install "drip"`: the bump script only updates a formula's url and sha256, it never adds a
-# formula or its install step.
+# `bin.install "drip"`: the bump script writes the formula's url and sha256, adding them to a
+# HEAD-only formula, but it never adds a formula or its install step.
 on:
   push:
     tags: ["v*"]
@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Stamp a pre-release's version
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push' && github.ref_type == 'tag'
         run: |
           file=Sources/DripCore/Version.swift
           base="$(sed -n 's/^public let dripVersion = "\(.*\)"$/\1/p' "$file")"
@@ -99,7 +99,7 @@ jobs:
           # The Intel slice, under Rosetta.
           arch -x86_64 ./drip --version
       - name: Check the version matches the tag
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push' && github.ref_type == 'tag'
         run: |
           version="$(./drip --version)"
           if [ "$version" != "${TAG#v}" ]; then
@@ -146,7 +146,7 @@ jobs:
 
   release:
     name: Publish the release with the archive
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     needs: binary
     runs-on: ubuntu-latest
     permissions:
@@ -189,7 +189,7 @@ jobs:
 
   tap:
     name: Update the tap formula
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     # The formula points at the attached archive, so it must be there first.
     needs: [binary, release]
     runs-on: ubuntu-latest

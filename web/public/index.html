@@ -36,14 +36,12 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "drip",
-  "alternateName": "drip for macOS",
   "description": "A free, open-source macOS command-line tool that shows a native card from the MacBook notch when a build, deploy, test or coding agent finishes or needs you.",
   "url": "https://drip.jrnxf.co/",
   "image": "https://drip.jrnxf.co/og.png",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "macOS 13 or later",
   "softwareRequirements": "macOS 13 or later; Homebrew to install",
-  "downloadUrl": "https://github.com/jrnxf/drip/releases",
   "license": "https://opensource.org/licenses/MIT",
   "isAccessibleForFree": true,
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -179,7 +177,7 @@
   /* What a display shows until drip's engine draws in it, and all a reader without JavaScript gets. */
   .still { position: absolute; inset: 32px 0 0; margin: 0; display: grid; place-content: center; gap: 8px; padding: 0 16px; text-align: center; font: 500 10.5px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--lcd-ink); opacity: .7; }
   .still code { text-transform: none; letter-spacing: 0; font-size: 11.5px; overflow-wrap: anywhere; }
-  .loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 16px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--lcd-ink); }
+  .loading { position: absolute; inset: auto 0 0; padding: 0 16px 14px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--lcd-ink); }
   /* Paper: the install receipt, and what each printer prints. A head and a bold rule, entries
      between dashed rules, and an end torn off along its perforation or cut with scissors (tear()
      and cutEnd() in the script draw it). */
@@ -384,6 +382,7 @@
             <div class="display" id="hero-screen" role="img" aria-label="A display where drip's cards drop out of the notch">
               <div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="clock"></span></div>
               <canvas class="stage-canvas"></canvas>
+              <p class="still"><code>$ drip ok &quot;Build finished&quot; -d &quot;make test: 246 passed in 3.2s&quot;</code>a green card from the notch: Build finished</p>
               <div class="loading" id="loading">loading drip's engine</div>
             </div>
             <div class="lcdline"><span class="p" aria-hidden="true">›</span><code id="line" aria-live="polite"></code></div>
