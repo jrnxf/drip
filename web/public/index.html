@@ -59,311 +59,23 @@
       ?? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
   })();
 </script>
-<style>
-  /* Archivo and Martian Mono, latin subsets, self-hosted (licences in web/THIRD_PARTY.md). */
-  @font-face {
-    font-family: "Archivo"; font-style: normal; font-weight: 100 900; font-stretch: 62% 125%; font-display: swap;
-    src: url(archivo.woff2) format("woff2");
-    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-  }
-  @font-face {
-    font-family: "Martian Mono"; font-style: normal; font-weight: 100 800; font-stretch: 75% 112.5%; font-display: swap;
-    src: url(martian-mono.woff2) format("woff2");
-    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-  }
-
-  /* drip drawn as a small piece of hardware: a display that runs the engine, keys you press and
-     a printer that prints what ran. One orange. */
-  :root {
-    --sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
-    --mono: "Martian Mono", ui-monospace, Menlo, monospace;
-    /* The cards are macOS UI: their text is measured and painted in the system font. */
-    --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-    --orange: #ff4f00; --orange-hi: #ff7a3d; --orange-lo: #a83300;
-    --ease: cubic-bezier(.23, 1, .32, 1);
-  }
-  :root, :root[data-theme="dark"] {
-    color-scheme: dark;
-    --bg: #111111; --ink: #ecece8; --ink-2: #b0b0aa; --ink-3: #8a8a84; --rule: #2a2a28; --focus: var(--orange);
-    --body: #222221; --body-2: #1b1b1a; --edge: #333331; --shade: rgba(0,0,0,.6); --lip: rgba(255,255,255,.06);
-    --lcd: #2b2f2a; --lcd-ink: #d9e3d2; --lcd-grid: rgba(255,255,255,.025);
-    --key: #343432; --key-2: #252524; --key-ink: #e6e6e2; --key-floor: #0b0b0b;
-    --paper: #e9e7df; --paper-ink: #1d1d1b;
-  }
-  :root[data-theme="light"] {
-    color-scheme: light;
-    --bg: #d9d9d5; --ink: #151515; --ink-2: #42423f; --ink-3: #5c5c57; --rule: #b9b9b3; --focus: #c43a00;
-    --body: #eeeeeb; --body-2: #e2e2de; --edge: #b5b5af; --shade: rgba(0,0,0,.18); --lip: rgba(255,255,255,.55);
-    --lcd: #c3c8bd; --lcd-ink: #1d211b; --lcd-grid: rgba(0,0,0,.04);
-    --key: #f7f7f5; --key-2: #d8d8d3; --key-ink: #222; --key-floor: var(--edge);
-    --paper: #fbfbf8; --paper-ink: #222;
-  }
-
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 16px; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 300 17px/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
-  a { color: inherit; text-underline-offset: 3px; }
-  button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
-  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-  code { font-family: var(--mono); }
-  code { font-size: .82em; }
-  b { font-weight: 600; }
-  .lbl { font: 500 10.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-  .wrap { max-width: 1480px; margin: 0 auto; padding: 0 36px; }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-
-  /* ---------- top ---------- */
-  .top { display: flex; align-items: center; gap: 22px; height: 58px; }
-  /* The lockup is drawn inline: its ink follows the theme, its drop stays orange. */
-  .word { display: block; color: var(--ink); }
-  .word .mark { display: block; height: 24px; width: auto; }
-  .top .sp { flex: 1; }
-  .top nav { display: flex; gap: 22px; }
-  .top a.lbl { text-decoration: none; }
-  .top a.lbl:hover { color: var(--ink); }
-  /* The theme's two-position slide switch. */
-  .slide { display: flex; align-items: center; gap: 9px; border: 0; background: none; padding: 0; cursor: pointer; }
-  .slide .track { position: relative; flex: none; width: 44px; height: 20px; border-radius: 5px; background: var(--body-2); box-shadow: inset 0 1px 3px var(--shade); border: 1px solid var(--edge); }
-  .slide .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 14px; border-radius: 3px; background: var(--key); box-shadow: 0 1px 0 var(--edge), 0 2px 4px var(--shade); transition: transform .25s var(--ease), background .2s; }
-  .slide[aria-checked="true"] .track::after { transform: translateX(20px); }
-
-  /* ---------- hero ---------- */
-  .hero {
-    display: grid; grid-template-columns: minmax(300px, .7fr) minmax(0, 1.38fr); grid-template-areas: "intro device" "specs device";
-    grid-template-rows: auto auto; column-gap: 56px; align-items: start; align-content: center; padding: 8px 0 40px; min-height: calc(100svh - 58px);
-  }
-  .intro { grid-area: intro; align-self: end; }
-  .hero .specs { grid-area: specs; }
-  .devwrap { grid-area: device; align-self: center; }
-  .model { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; }
-  .model span { padding: 4px 7px; border: 1px solid var(--ink); font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
-  .model span:first-child { background: var(--ink); color: var(--bg); }
-  h1 { margin: 0; font: 200 clamp(46px, 5vw, 84px)/.98 var(--sans); font-stretch: 125%; letter-spacing: -.035em; }
-  h1 b { font-weight: 600; }
-  .lede { margin: 22px 0 0; max-width: 40ch; font-size: 18px; color: var(--ink-2); }
-  .lede b { color: var(--ink); }
-  .plate { margin-top: 26px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; background: var(--body); border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--lip); }
-  .plate code { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .copy-btn { flex: none; border: 0; padding: 6px 10px; border-radius: 5px; background: var(--orange); color: #111; font: 600 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; box-shadow: 0 2px 0 var(--orange-lo); }
-  .copy-btn:active { transform: translateY(2px); box-shadow: none; }
-  .specs { margin: 26px 0 0; padding: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 18px; }
-  .specs dt { font: 500 10.5px/1.6 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-  .specs dd { margin: 0; font: 400 12px/1.6 var(--mono); }
-  .specs dd code { font-size: inherit; }
-
-  /* ---------- the device ---------- */
-  /* Room under the device for the paper hanging out of it (--paper-h). Paper that printing feeds
-     out further hangs over what is below it, so nothing on the page moves as it grows; cut it
-     shorter to see what it covers. */
-  .devwrap { --paper-h: 220px; --pad: 22px; position: relative; padding: 26px 0 calc(var(--paper-h) - 5px - var(--pad) + 30px); }
-  .device, .module {
-    position: relative; border-radius: 26px; padding: var(--pad, 22px); background: linear-gradient(180deg, var(--body), var(--body-2));
-    border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--lip), 0 1px 0 var(--edge), 0 30px 60px -30px var(--shade), 0 12px 24px -16px var(--shade);
-  }
-  :root[data-theme="dark"] .device, :root[data-theme="dark"] .module { box-shadow: inset 0 1px 0 var(--lip), 0 30px 60px -30px #000, 0 12px 24px -16px #000; }
-  .screw { position: absolute; width: 11px; height: 11px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, var(--key), var(--key-2)); box-shadow: inset 0 0 0 1px var(--edge); }
-  .screw::after { content: ""; position: absolute; left: 2px; right: 2px; top: 5px; height: 1px; background: var(--ink-3); transform: rotate(var(--r, 30deg)); }
-  .screw.a { top: 9px; left: 9px; } .screw.b { top: 9px; right: 9px; --r: -20deg; } .screw.c { bottom: 9px; left: 9px; --r: 70deg; } .screw.d { bottom: 9px; right: 9px; --r: 10deg; }
-  .devgrid { --disp: 300px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
-  .display {
-    position: relative; height: 300px; border-radius: 10px; overflow: hidden;
-    background: linear-gradient(var(--lcd-grid) 1px, transparent 1px) 0 0 / 3px 3px, linear-gradient(90deg, var(--lcd-grid) 1px, transparent 1px) 0 0 / 3px 3px, var(--lcd);
-    box-shadow: inset 0 2px 6px rgba(0,0,0,.35), 0 0 0 4px var(--body-2), 0 0 0 5px var(--edge);
-  }
-  .devgrid .display { height: var(--disp); }
-  .display .stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
-  /* The display's own print, scaled with the notch so it keeps clear of it. */
-  .display .glyphs { position: absolute; inset: 0 0 auto 0; height: 32px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px; font: 500 10px/1 var(--mono); letter-spacing: .08em; color: var(--lcd-ink); opacity: .7; width: calc(100% / var(--fit, 1)); transform: scale(var(--fit, 1)); transform-origin: 0 0; }
-  /* What a display shows until drip's engine draws in it, and all a reader without JavaScript gets. */
-  .still { position: absolute; inset: 32px 0 0; margin: 0; display: grid; place-content: center; gap: 8px; padding: 0 16px; text-align: center; font: 500 10.5px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--lcd-ink); opacity: .7; }
-  .still code { text-transform: none; letter-spacing: 0; font-size: 11.5px; overflow-wrap: anywhere; }
-  .loading { position: absolute; inset: auto 0 0; padding: 0 16px 14px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--lcd-ink); }
-  /* Paper: the install receipt, and what each printer prints. A head and a bold rule, entries
-     between dashed rules, and an end torn off along its perforation or cut with scissors (tear()
-     and cutEnd() in the script draw it). */
-  .paper { position: relative; filter: drop-shadow(0 1px 1px rgba(0,0,0,.18)) drop-shadow(0 8px 12px var(--shade)); }
-  .slip { position: relative; background: var(--paper); color: var(--paper-ink); }
-  .slip .head { flex: none; display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--paper-ink); font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
-  /* A printer: a slot in the device, and the paper it feeds out over the device's edge. Each entry
-     is printed at the slot and the whole paper steps out a line at a time, so the newest entry is
-     nearest the slot and the paper's head, printed first, is at its far end. The paper is clipped
-     at the slot, so print still inside the printer is out of sight. Drag the scissors across the
-     paper to cut it shorter. --paper-len is its length (the script sets it, and stacks the
-     printers so higher paper hangs in front). */
-  .printer { position: relative; z-index: 2; height: 10px; }
-  .device > .printer { max-width: 620px; margin: 20px auto 0; }
-  .slot { position: relative; z-index: 1; height: 10px; border-radius: 5px; background: #0d0d0d; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--lip); }
-  .printer .paper { position: absolute; top: 5px; left: 10px; right: 10px; height: var(--paper-len, var(--paper-h)); transform-origin: 50% 0; clip-path: polygon(-80px 0, calc(100% + 80px) 0, calc(100% + 80px) calc(100% + 80px), -80px calc(100% + 80px)); }
-  /* The slot's shadow on the paper stays at the slot as the paper feeds through it. */
-  .printer .paper::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 12px; z-index: 1; background: linear-gradient(rgba(0,0,0,.16), transparent); pointer-events: none; }
-  .printer .slip { height: 100%; display: flex; flex-direction: column; padding: 16px 18px 10px; }
-  .printer .head { padding: 10px 0 4px; border-bottom: 0; border-top: 2px solid var(--paper-ink); }
-  .printer .stamp { font: 400 10px/1.5 var(--mono); opacity: .6; }
-  /* The paper is as long as what is printed on it, so print stops only where the paper was cut. */
-  .log { flex: 1; min-height: 0; overflow: hidden; }
-  /* The scissors work over the paper and a little past its sides, so a cut can start in the air and
-     come in across an edge. A sideways drag cuts; a vertical one still scrolls the page. */
-  .cutter { position: absolute; top: 0; bottom: 0; left: -30px; right: -30px; z-index: 1; touch-action: pan-y; }
-  .slit { position: absolute; top: 0; left: 0; z-index: 1; overflow: visible; pointer-events: none; }
-  .slit path { fill: none; stroke: rgba(0,0,0,.62); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-  .slit.fade { transition: opacity .35s; opacity: 0; }
-  .cut-tip { position: absolute; left: 50%; z-index: 2; transform: translate(-50%, -150%); padding: 6px 9px; border-radius: 5px; background: var(--ink); color: var(--bg); font: 500 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .2s; }
-  .cut-tip.on { opacity: 1; }
-  /* What is cut off falls in a layer of its own over the page; on a touch, the scissors are drawn
-     there too, above the finger, since there is no cursor. */
-  .fallen { position: fixed; z-index: 30; pointer-events: none; transform-origin: 0 0; will-change: transform, opacity; }
-  .fallen .paper { inset: 0; }
-  .touch-scissors { position: fixed; z-index: 31; width: 44px; height: 44px; pointer-events: none; opacity: 0; transition: opacity .15s; }
-  .touch-scissors.on { opacity: 1; }
-  .entry { padding: 10px 0; font: 400 11.5px/1.6 var(--mono); }
-  /* Thermal ink sits a little into the paper. */
-  .printer .entry, .printer .end { text-shadow: 0 0 .5px currentColor; }
-  .entry + .entry { border-top: 1px dashed rgba(0,0,0,.22); }
-  .entry > div { white-space: pre-wrap; overflow-wrap: break-word; }
-  /* A command wraps under itself, clear of its prompt. */
-  .entry .cmd { padding-left: 2ch; text-indent: -2ch; }
-  .entry .c { opacity: .55; }
-  .entry .flag { white-space: nowrap; }
-  .entry .out { font-size: 10.5px; opacity: .62; }
-  .entry .out.err { opacity: 1; text-decoration: underline wavy; text-underline-offset: 2px; }
-  .lcdline { flex: none; display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 38px; border-radius: 7px; background: var(--lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); color: var(--lcd-ink); font: 500 11.5px/1 var(--mono); }
-  .lcdline .p { opacity: .7; }
-  .lcdline code { flex: 1; min-width: 0; font: inherit; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .keys { margin-top: 18px; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 10px; }
-  .key {
-    position: relative; aspect-ratio: 1 / .9; border-radius: 10px; border: 1px solid var(--edge); cursor: pointer; padding: 9px 8px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start;
-    background: linear-gradient(180deg, var(--key), var(--key-2)); color: var(--key-ink); box-shadow: 0 3px 0 var(--key-floor), 0 6px 10px -4px var(--shade), inset 0 1px 0 var(--lip);
-    transition: transform .08s, box-shadow .08s; text-align: left; min-width: 0;
-  }
-  .key:active { transform: translateY(3px); box-shadow: 0 0 0 var(--key-floor), 0 2px 4px -2px var(--shade), inset 0 1px 0 var(--lip); }
-  .key .led { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--c) 30%, var(--key-2)); box-shadow: inset 0 1px 1px rgba(0,0,0,.3); transition: background .15s, box-shadow .15s; }
-  .key.running .led { background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px var(--c); }
-  .key b { font: 600 10.5px/1.1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  /* Callouts, as on an exploded drawing. */
-  .callout { position: absolute; display: flex; align-items: center; gap: 8px; font: 500 10px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
-  .callout::before { content: attr(data-n); display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid currentColor; font-size: 9px; letter-spacing: 0; }
-  .callout i { display: block; height: 1px; background: currentColor; width: var(--w, 40px); }
-  .callout.tl { top: 0; left: 0; } .callout.tr { top: 0; right: 0; } .callout.bl { bottom: 0; left: 0; } .callout.br { bottom: 0; right: 0; }
-
-  /* ---------- sections ---------- */
-  .block { border-top: 1px solid var(--rule); padding: 48px 0 70px; }
-  .block h2 { margin: 10px 0 18px; font: 200 clamp(36px, 3.6vw, 58px)/1 var(--sans); font-stretch: 125%; letter-spacing: -.03em; }
-  .block h2 b { font-weight: 600; }
-  .block .sub { margin: 0; color: var(--ink-2); max-width: 52ch; }
-  .block .sub a { color: var(--ink); }
-
-  /* What it does: six small modules, each on its own display. A module, its title and its text
-     sit on rows shared across the grid's row, so the modules in a row are as tall as the tallest
-     and their titles line up. */
-  .features { margin-top: 36px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 28px; }
-  .feature { display: grid; grid-row: span 3; grid-template-rows: subgrid; row-gap: 0; }
-  .feature .module { display: flex; flex-direction: column; border-radius: 20px; padding: 16px; margin-bottom: 18px; }
-  .feature .display { flex: none; height: 190px; }
-  .feature .row { flex: 1; display: flex; align-items: center; gap: 14px; margin-top: 14px; }
-  /* The module's LCD line, as the hero's: the command running, typed, and under it the step and
-     what came back. Every command it runs is laid out unseen behind it (.ghost), so it keeps the
-     height of the longest as it plays. */
-  .readout { flex: 1; min-width: 0; align-self: stretch; display: grid; padding: 8px 11px 7px; border-radius: 7px; background: var(--lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--body-2), 0 0 0 4px var(--edge); color: var(--lcd-ink); }
-  .readout > *, .readout .ghost > * { grid-area: 1 / 1; min-width: 0; }
-  .readout .ghost { display: grid; visibility: hidden; }
-  .readout .live { display: flex; flex-direction: column; }
-  .readout .cmd { font: 500 11.5px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: break-word; padding-left: 2ch; text-indent: -2ch; }
-  .readout .p, .readout .c { opacity: .62; }
-  .readout .flag, .readout .note { white-space: nowrap; }
-  .readout .stat { margin-top: 3px; font: 500 9.5px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .readout .live .stat { margin-top: auto; padding-top: 3px; }
-  .caret { display: inline-block; width: .55em; height: 1.05em; margin-left: 1px; vertical-align: -.18em; background: currentColor; animation: blink 1.06s steps(1, end) infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
-  .feature h3 { margin: 0 0 6px; font: 600 19px/1.25 var(--sans); font-stretch: 112%; letter-spacing: -.01em; display: flex; gap: 12px; align-items: baseline; }
-  .feature h3 .n { font: 500 10.5px/1 var(--mono); letter-spacing: .1em; color: var(--ink-3); }
-  .feature > p { margin: 0; font-size: 15px; color: var(--ink-2); }
-  .feature > p code { color: var(--ink); }
-  .bigbtn { flex: none; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--orange-lo); background: radial-gradient(circle at 40% 35%, var(--orange-hi), var(--orange)); box-shadow: 0 4px 0 var(--orange-lo), 0 8px 14px -6px var(--shade); cursor: pointer; display: grid; place-items: center; color: #111; font: 700 10px/1 var(--mono); letter-spacing: .08em; transition: transform .08s, box-shadow .08s; }
-  .bigbtn:active { transform: translateY(4px); box-shadow: 0 0 0 var(--orange-lo); }
-  .feature .bigbtn { width: 50px; height: 50px; font-size: 9.5px; }
-
-  /* Spec sheet: the stack module and the table. */
-  .sheet { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 56px; align-items: start; }
-  .sheet .sub { max-width: 46ch; }
-  table.spec { width: 100%; border-collapse: collapse; margin-top: 26px; }
-  table.spec th, table.spec td { text-align: left; padding: 9px 0; border-top: 1px solid var(--rule); vertical-align: top; }
-  table.spec th { width: 30%; padding-right: 16px; font: 500 10.5px/1.6 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-  table.spec td { font: 400 12px/1.6 var(--mono); }
-  table.spec td code { font-size: inherit; }
-  .module.stackmod { --paper-h: 224px; padding-bottom: 22px; margin-bottom: calc(var(--paper-h) - 27px); }
-  /* Tall enough for three cards at the notch's own size, so its fixed scale stays at 1. */
-  .stackmod .display { height: 272px; }
-  .stackmod .row { display: flex; align-items: center; gap: 18px; margin-top: 18px; }
-  .stackmod .printer { margin-top: 20px; }
-  .switch3 { display: flex; align-items: center; gap: 10px; }
-  .switch3 .track { position: relative; display: flex; border-radius: 6px; background: var(--body-2); box-shadow: inset 0 1px 3px var(--shade); border: 1px solid var(--edge); padding: 2px; }
-  .switch3 button { border: 0; background: none; padding: 7px 12px; border-radius: 4px; cursor: pointer; font: 600 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
-  .switch3 button[aria-pressed="true"] { background: var(--key); color: var(--ink); box-shadow: 0 1px 0 var(--edge), 0 2px 4px var(--shade); }
-
-  /* How this page works: three columns of a parts list. */
-  .parts { margin-top: 36px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
-  .parts h3 { margin: 0; padding-bottom: 10px; border-bottom: 2px solid var(--ink); display: flex; align-items: center; gap: 10px; font: 600 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
-  .parts h3 i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
-  .parts ul { list-style: none; margin: 0; padding: 0; }
-  .parts li { padding: 9px 0; border-bottom: 1px solid var(--rule); font: 400 12px/1.6 var(--mono); }
-  .parts li code { font-size: inherit; }
-
-  /* Install: a receipt from the printer. */
-  .install { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 56px; align-items: start; }
-  .receipt .slip { padding: 22px 22px 34px; }
-  .receipt .cmd { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px dashed rgba(0,0,0,.22); }
-  .receipt .cmd code { flex: 1; min-width: 0; font-size: 12.5px; overflow-wrap: anywhere; }
-  .receipt .cmd .c { opacity: .68; }
-  .receipt .tot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-top: 14px; font: 500 10.5px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
-  .install .links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
-  .install .links a { display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--edge); background: linear-gradient(180deg, var(--key), var(--key-2)); box-shadow: 0 3px 0 var(--key-floor); text-decoration: none; font: 600 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--key-ink); }
-  .install .links a:active { transform: translateY(3px); box-shadow: none; }
-
-  .foot { border-top: 1px solid var(--rule); padding: 22px 0 50px; display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; }
-  .foot a { color: var(--ink); }
-
-  @media (width <= 1100px) {
-    .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "device" "specs"; grid-template-rows: auto; row-gap: 8px; min-height: 0; padding-top: 24px; }
-    .devwrap { padding-top: 12px; padding-bottom: calc(var(--paper-h) - 5px - var(--pad) + 8px); }
-    .callout { display: none; }
-    .sheet, .install { grid-template-columns: minmax(0, 1fr); gap: 36px; }
-    .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-  @media (width <= 760px) {
-    .wrap { padding: 0 16px; }
-    .top { gap: 16px; }
-    .top nav, .top .sub { display: none; }
-    .lede { font-size: 17px; }
-    .devwrap { --pad: 14px; --paper-h: 200px; }
-    .device { border-radius: 20px; }
-    .device > .screw { display: none; }
-    .devgrid { --disp: 220px; gap: 14px; }
-    .keys { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-    .keys .key { aspect-ratio: auto; height: 58px; }
-    .features, .parts { grid-template-columns: minmax(0, 1fr); }
-    .stackmod .display { height: 216px; }
-    .module { padding: 16px; border-radius: 20px; }
-    .block { padding: 40px 0 56px; }
-  }
-  @media (prefers-reduced-motion: reduce) { *, *::after { transition-duration: .001ms !important; } }
-</style>
+<!-- site.css: build.sh puts the compiled styles here. -->
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <a class="word" href="#top" aria-label="drip, back to top"><svg class="mark" viewBox="12 60 520 136" aria-hidden="true"><g><path d="M12 71H244V93A12 12 0 0 1 232 105H157.71A12 12 0 0 0 147.32 123A20 20 0 1 1 112.68 123A12 12 0 0 0 102.29 105H96.98A9 9 0 0 0 87.99 113.69A20 20 0 1 1 48.01 113.69A9 9 0 0 0 39.02 105H24A12 12 0 0 1 12 93Z" fill="currentColor"/><path d="M170 165A20 20 0 1 1 210 165A20 20 0 1 1 170 165Z" fill="#ff4f00"/></g><g transform="translate(296 48.64) scale(0.62)"><path d="M0 128A58 58 0 1 1 116 128A58 58 0 1 1 0 128ZM26 128A32 32 0 1 0 90 128A32 32 0 1 0 26 128ZM90 24H116V184H90Z" fill="currentColor"/><path d="M138 72H164V184H138ZM138 128A52 58 0 0 1 190 70V96A26 32 0 0 0 164 128Z" fill="currentColor"/><path d="M212 72H238V184H212Z" fill="currentColor"/><path d="M210 38A15 15 0 1 1 240 38A15 15 0 1 1 210 38Z" fill="currentColor"/><path d="M264 72H290V232H264ZM264 128A58 58 0 1 1 380 128A58 58 0 1 1 264 128ZM290 128A32 32 0 1 0 354 128A32 32 0 1 0 290 128Z" fill="currentColor"/></g></svg></a><span class="lbl sub">for macOS</span>
-    <span class="sp"></span>
-    <nav aria-label="Sections"><a class="lbl" href="#features">features</a><a class="lbl" href="#sheet">spec sheet</a><a class="lbl" href="#install">install</a><a class="lbl" href="https://github.com/jrnxf/drip">source</a></nav>
+<div class="mx-auto max-w-[1480px] px-36 narrow:px-16">
+  <header class="flex h-58 items-center gap-22 narrow:gap-16">
+    <a class="block text-ink" href="#top" aria-label="drip, back to top"><svg class="block h-24 w-auto" viewBox="12 60 520 136" aria-hidden="true"><g><path d="M12 71H244V93A12 12 0 0 1 232 105H157.71A12 12 0 0 0 147.32 123A20 20 0 1 1 112.68 123A12 12 0 0 0 102.29 105H96.98A9 9 0 0 0 87.99 113.69A20 20 0 1 1 48.01 113.69A9 9 0 0 0 39.02 105H24A12 12 0 0 1 12 93Z" fill="currentColor"/><path d="M170 165A20 20 0 1 1 210 165A20 20 0 1 1 170 165Z" fill="#ff4f00"/></g><g transform="translate(296 48.64) scale(0.62)"><path d="M0 128A58 58 0 1 1 116 128A58 58 0 1 1 0 128ZM26 128A32 32 0 1 0 90 128A32 32 0 1 0 26 128ZM90 24H116V184H90Z" fill="currentColor"/><path d="M138 72H164V184H138ZM138 128A52 58 0 0 1 190 70V96A26 32 0 0 0 164 128Z" fill="currentColor"/><path d="M212 72H238V184H212Z" fill="currentColor"/><path d="M210 38A15 15 0 1 1 240 38A15 15 0 1 1 210 38Z" fill="currentColor"/><path d="M264 72H290V232H264ZM264 128A58 58 0 1 1 380 128A58 58 0 1 1 264 128ZM290 128A32 32 0 1 0 354 128A32 32 0 1 0 290 128Z" fill="currentColor"/></g></svg></a><span class="lbl narrow:hidden">for macOS</span>
+    <span class="flex-1"></span>
+    <nav class="flex gap-22 narrow:hidden" aria-label="Sections"><a class="lbl no-underline hover:text-ink" href="#features">features</a><a class="lbl no-underline hover:text-ink" href="#sheet">spec sheet</a><a class="lbl no-underline hover:text-ink" href="#install">install</a><a class="lbl no-underline hover:text-ink" href="https://github.com/jrnxf/drip">source</a></nav>
     <button type="button" class="slide" id="theme" role="switch" aria-checked="true" aria-label="light dark: dark theme"><span class="lbl" aria-hidden="true">light</span> <span class="track"></span> <span class="lbl" aria-hidden="true">dark</span></button>
   </header>
 
   <main id="top">
     <section class="hero" aria-label="drip">
       <div class="intro">
-        <div class="model"><span>drip</span><span>macOS 13+</span><span>MIT</span></div>
-        <h1>the notch, <b>finally useful.</b></h1>
-        <p class="lede">drip is a free, open-source command-line tool for macOS that shows <b>a native card from your MacBook's notch</b> when a build, deploy, test run or coding agent (Claude Code, Codex, Gemini CLI) finishes or needs you. It is not Notification Center, so it needs no permissions.</p>
+        <div class="mb-18 flex flex-wrap gap-14"><span class="type-tag border border-ink bg-ink px-7 py-4 text-bg">drip</span><span class="type-tag border border-ink px-7 py-4">macOS 13+</span><span class="type-tag border border-ink px-7 py-4">MIT</span></div>
+        <h1 class="type-hero m-0">the notch, <b>finally useful.</b></h1>
+        <p class="mt-22 mb-0 max-w-[40ch] text-[18px] text-ink-2 narrow:text-[17px] [&_b]:text-ink">drip is a free, open-source command-line tool for macOS that shows <b>a native card from your MacBook's notch</b> when a build, deploy, test run or coding agent (Claude Code, Codex, Gemini CLI) finishes or needs you. It is not Notification Center, so it needs no permissions.</p>
         <div class="plate"><code>brew install jrnxf/tap/drip</code><button type="button" class="copy-btn" data-copy="brew install jrnxf/tap/drip" aria-label="Copy the install command">copy</button></div>
       </div>
       <dl class="specs">
@@ -395,85 +107,85 @@
       </div>
     </section>
 
-    <section class="block" id="features">
+    <section class="border-t border-t-rule pt-48 pb-70 narrow:pt-40 narrow:pb-56" id="features">
       <div class="lbl">01 / what it does</div>
-      <h2>what it <b>does:</b> notch alerts for any command</h2>
-      <p class="sub">Each module below runs the same engine as the one above. It plays once when it scrolls into view; press PLAY to run it again.</p>
-      <div class="features" id="feature-grid">
-        <article class="feature">
-          <div class="module">
-            <div class="display" role="img" aria-label="A display that plays: Wrap a command"><div class="glyphs" aria-hidden="true"><span>RUN</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip run make test</code>a green card: make test finished, and how long it took</p></div>
-            <div class="row">
+      <h2 class="type-title mt-10 mx-0 mb-18">what it <b>does:</b> notch alerts for any command</h2>
+      <p class="m-0 max-w-[52ch] text-ink-2">Each module below runs the same engine as the one above. It plays once when it scrolls into view; press PLAY to run it again.</p>
+      <div class="mt-36 grid grid-cols-3 gap-x-28 gap-y-40 compact:grid-cols-2 narrow:grid-cols-[minmax(0,1fr)]" id="feature-grid">
+        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
+          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
+            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Wrap a command"><div class="glyphs" aria-hidden="true"><span>RUN</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip run make test</code>a green card: make test finished, and how long it took</p></div>
+            <div class="mt-14 flex flex-1 items-center gap-14">
               <div class="readout"></div>
-              <button type="button" class="bigbtn" aria-label="Play: Wrap a command">PLAY</button>
+              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Wrap a command">PLAY</button>
             </div>
           </div>
-          <h3><span class="n">01</span><span class="t">Wrap a command</span></h3>
-          <p><code>drip run</code> runs it, times it and shows how it went: green on exit 0, red with the exit code otherwise. drip then exits with the command's status.</p>
+          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">01</span><span class="t">Wrap a command</span></h3>
+          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink"><code>drip run</code> runs it, times it and shows how it went: green on exit 0, red with the exit code otherwise. drip then exits with the command's status.</p>
         </article>
-        <article class="feature">
-          <div class="module">
-            <div class="display" role="img" aria-label="A display that plays: Hear from coding agents"><div class="glyphs" aria-hidden="true"><span>HOOK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip setup claude</code>my-app needs you, then my-app is done</p></div>
-            <div class="row">
+        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
+          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
+            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Hear from coding agents"><div class="glyphs" aria-hidden="true"><span>HOOK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip setup claude</code>my-app needs you, then my-app is done</p></div>
+            <div class="mt-14 flex flex-1 items-center gap-14">
               <div class="readout"></div>
-              <button type="button" class="bigbtn" aria-label="Play: Hear from coding agents">PLAY</button>
+              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Hear from coding agents">PLAY</button>
             </div>
           </div>
-          <h3><span class="n">02</span><span class="t">Hear from coding agents</span></h3>
-          <p><code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> points the agent's hooks at drip. A card names the project and what the agent needs, then says when it has finished.</p>
+          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">02</span><span class="t">Hear from coding agents</span></h3>
+          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink"><code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> points the agent's hooks at drip. A card names the project and what the agent needs, then says when it has finished.</p>
         </article>
-        <article class="feature">
-          <div class="module">
-            <div class="display" role="img" aria-label="A display that plays: Update in place"><div class="glyphs" aria-hidden="true"><span>--ID</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok &quot;Deployed&quot; --id deploy</code>the Deploying card turns into Deployed</p></div>
-            <div class="row">
+        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
+          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
+            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Update in place"><div class="glyphs" aria-hidden="true"><span>--ID</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok &quot;Deployed&quot; --id deploy</code>the Deploying card turns into Deployed</p></div>
+            <div class="mt-14 flex flex-1 items-center gap-14">
               <div class="readout"></div>
-              <button type="button" class="bigbtn" aria-label="Play: Update in place">PLAY</button>
+              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Update in place">PLAY</button>
             </div>
           </div>
-          <h3><span class="n">03</span><span class="t">Update in place</span></h3>
-          <p>Cards with the same <code>--id</code> replace each other. When the older card is on screen, it springs to the new card's size instead of queueing a second one.</p>
+          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">03</span><span class="t">Update in place</span></h3>
+          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink">Cards with the same <code>--id</code> replace each other. When the older card is on screen, it springs to the new card's size instead of queueing a second one.</p>
         </article>
-        <article class="feature">
-          <div class="module">
-            <div class="display" role="img" aria-label="A display that plays: Ask, then act"><div class="glyphs" aria-hidden="true"><span>ASK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ask &quot;Merge drip #23?&quot; --yes Merge --no Later</code>a card with Merge and Later buttons</p></div>
-            <div class="row">
+        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
+          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
+            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Ask, then act"><div class="glyphs" aria-hidden="true"><span>ASK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ask &quot;Merge drip #23?&quot; --yes Merge --no Later</code>a card with Merge and Later buttons</p></div>
+            <div class="mt-14 flex flex-1 items-center gap-14">
               <div class="readout"></div>
-              <button type="button" class="bigbtn" aria-label="Play: Ask, then act">PLAY</button>
+              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Ask, then act">PLAY</button>
             </div>
           </div>
-          <h3><span class="n">04</span><span class="t">Ask, then act</span></h3>
-          <p><code>--yes</code> and <code>--no</code> ask a question and wait for the answer. drip exits 0 on yes and 1 on no, so <code>&amp;&amp;</code> runs the next step only on yes. Answer it here.</p>
+          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">04</span><span class="t">Ask, then act</span></h3>
+          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink"><code>--yes</code> and <code>--no</code> ask a question and wait for the answer. drip exits 0 on yes and 1 on no, so <code>&amp;&amp;</code> runs the next step only on yes. Answer it here.</p>
         </article>
-        <article class="feature">
-          <div class="module">
-            <div class="display" role="img" aria-label="A display that plays: Pipe text in"><div class="glyphs" aria-hidden="true"><span>STDIN</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ git log -1 --format=&#x27;%s%n%an&#x27; | drip ok</code>the last commit's subject and author</p></div>
-            <div class="row">
+        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
+          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
+            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Pipe text in"><div class="glyphs" aria-hidden="true"><span>STDIN</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ git log -1 --format=&#x27;%s%n%an&#x27; | drip ok</code>the last commit's subject and author</p></div>
+            <div class="mt-14 flex flex-1 items-center gap-14">
               <div class="readout"></div>
-              <button type="button" class="bigbtn" aria-label="Play: Pipe text in">PLAY</button>
+              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Pipe text in">PLAY</button>
             </div>
           </div>
-          <h3><span class="n">05</span><span class="t">Pipe text in</span></h3>
-          <p>With no title, drip reads stdin: the first line is the title and the rest is the detail. That suits git hooks and cron jobs.</p>
+          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">05</span><span class="t">Pipe text in</span></h3>
+          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink">With no title, drip reads stdin: the first line is the title and the rest is the detail. That suits git hooks and cron jobs.</p>
         </article>
-        <article class="feature">
-          <div class="module">
-            <div class="display" role="img" aria-label="A display that plays: Your own presets"><div class="glyphs" aria-hidden="true"><span>PRESET</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip deploy &quot;Shipped to prod&quot;</code>a card in the deploy preset's icon and color</p></div>
-            <div class="row">
+        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
+          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
+            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Your own presets"><div class="glyphs" aria-hidden="true"><span>PRESET</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip deploy &quot;Shipped to prod&quot;</code>a card in the deploy preset's icon and color</p></div>
+            <div class="mt-14 flex flex-1 items-center gap-14">
               <div class="readout"></div>
-              <button type="button" class="bigbtn" aria-label="Play: Your own presets">PLAY</button>
+              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Your own presets">PLAY</button>
             </div>
           </div>
-          <h3><span class="n">06</span><span class="t">Your own presets</span></h3>
-          <p>Icons, colors, sounds and timing go in <code>~/.config/drip/config.toml</code>. This module defines a <code>deploy</code> preset.</p>
+          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">06</span><span class="t">Your own presets</span></h3>
+          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink">Icons, colors, sounds and timing go in <code>~/.config/drip/config.toml</code>. This module defines a <code>deploy</code> preset.</p>
         </article>
       </div>
     </section>
 
-    <section class="block sheet" id="sheet">
+    <section class="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] gap-56 [align-items:start] border-t border-t-rule pt-48 pb-70 compact:grid-cols-[minmax(0,1fr)] compact:gap-36 narrow:pt-40 narrow:pb-56" id="sheet">
       <div>
         <div class="lbl">02 / spec sheet</div>
-        <h2>up to <b>three alerts at once.</b></h2>
-        <p class="sub">Cards that arrive while one shows stack below it. In chain mode, the default, each new card drops out of the last one. In push mode it drops out of the notch and moves the others down. A fourth card waits for room. This module runs DripCore's <code>CardStack</code>: pick a mode, or press PLAY.</p>
+        <h2 class="type-title mt-10 mx-0 mb-18">up to <b>three alerts at once.</b></h2>
+        <p class="m-0 max-w-[46ch] text-ink-2">Cards that arrive while one shows stack below it. In chain mode, the default, each new card drops out of the last one. In push mode it drops out of the notch and moves the others down. A fourth card waits for room. This module runs DripCore's <code>CardStack</code>: pick a mode, or press PLAY.</p>
         <table class="spec">
           <tr><th scope="row">kinds</th><td>ok, warn, fail, info, ask, and presets from your config</td></tr>
           <tr><th scope="row">text</th><td>a title of up to 2 lines and a detail of up to 3, wrapped by the engine; a card is at most 640 pt wide</td></tr>
@@ -497,11 +209,11 @@
       </div>
     </section>
 
-    <section class="block" id="engine">
+    <section class="border-t border-t-rule pt-48 pb-70 narrow:pt-40 narrow:pb-56" id="engine">
       <div class="lbl">03 / how this page works</div>
-      <h2>how this <b>page works.</b></h2>
-      <p class="sub">DripCore, drip's engine, is compiled from the same Swift sources to WebAssembly and loaded by this page. It parses each command line, resolves the card, wraps the text and runs the springs that drop it out of the notch. The page paints what it computes.</p>
-      <div class="parts">
+      <h2 class="type-title mt-10 mx-0 mb-18">how this <b>page works.</b></h2>
+      <p class="m-0 max-w-[52ch] text-ink-2">DripCore, drip's engine, is compiled from the same Swift sources to WebAssembly and loaded by this page. It parses each command line, resolves the card, wraps the text and runs the springs that drop it out of the notch. The page paints what it computes.</p>
+      <div class="parts mt-36 grid grid-cols-3 gap-28 narrow:grid-cols-[minmax(0,1fr)]">
         <div><h3><i style="--c:#30d158"></i>real drip</h3><ul>
           <li>The command line, parsed by swift-argument-parser, with drip's own errors and <code>--help</code></li>
           <li>Presets, flags and your <code>config.toml</code></li>
@@ -524,12 +236,12 @@
       </div>
     </section>
 
-    <section class="block install" id="install">
+    <section class="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] gap-56 [align-items:start] border-t border-t-rule pt-48 pb-70 compact:grid-cols-[minmax(0,1fr)] compact:gap-36 narrow:pt-40 narrow:pb-56" id="install">
       <div>
         <div class="lbl">04 / install</div>
-        <h2>install <b>on macOS.</b></h2>
-        <p class="sub">Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs. Nothing compiles, and Xcode is not needed. The README covers building from source.</p>
-        <div class="links"><a href="https://github.com/jrnxf/drip">source on GitHub</a><a href="https://github.com/jrnxf/drip#usage">usage</a></div>
+        <h2 class="type-title mt-10 mx-0 mb-18">install <b>on macOS.</b></h2>
+        <p class="m-0 max-w-[52ch] text-ink-2">Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs. Nothing compiles, and Xcode is not needed. The README covers building from source.</p>
+        <div class="mt-26 flex flex-wrap gap-12"><a class="keycap" href="https://github.com/jrnxf/drip">source on GitHub</a><a class="keycap" href="https://github.com/jrnxf/drip#usage">usage</a></div>
       </div>
       <div class="paper receipt"><div class="slip">
         <div class="head"><span>drip</span><span>install</span></div>
@@ -541,12 +253,12 @@
     </section>
   </main>
 
-  <footer class="foot">
+  <footer class="flex flex-wrap justify-between gap-x-24 gap-y-10 border-t border-t-rule pt-22 pb-50">
     <span class="lbl">drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you · MIT</span>
-    <span class="lbl">the cards on this page are drawn by drip's engine · <a href="https://github.com/jrnxf/drip">source</a> · see also <a href="https://okfs.jrnxf.co">okfs</a></span>
+    <span class="lbl">the cards on this page are drawn by drip's engine · <a class="text-ink" href="https://github.com/jrnxf/drip">source</a> · see also <a class="text-ink" href="https://okfs.jrnxf.co">okfs</a></span>
   </footer>
 </div>
-<div class="sr" aria-live="polite" id="announce"></div>
+<div class="absolute h-1 w-1 overflow-hidden whitespace-nowrap [clip:rect(0_0_0_0)]" aria-live="polite" id="announce"></div>
 
 <script type="module">
 import { loadDrip } from "./drip-engine.js";
@@ -556,7 +268,7 @@ const WASM = "__DRIP_WASM__";
 
 // ===== Measuring and painting =====
 // The cards are macOS UI, so their text is measured and painted in the system font, not the page's.
-const FONT = getComputedStyle(document.documentElement).getPropertyValue("--sys");
+const FONT = getComputedStyle(document.documentElement).getPropertyValue("--font-sys");
 const fonts = [(s) => `600 ${14 * s}px ${FONT}`, (s) => `400 ${12 * s}px ${FONT}`, (s) => `600 ${12.5 * s}px ${FONT}`];
 const measurer = document.createElement("canvas").getContext("2d");
 function measure(font, scale, text) { measurer.font = fonts[font](scale); return measurer.measureText(text).width; }
