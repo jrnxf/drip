@@ -495,7 +495,8 @@ A click on the drop does nothing. How they stack is `stack` in the config, or `D
 card drops out of the bottom of the last one and the oldest goes back into the notch first, the
 others moving up behind it. With `push` a new card drops out of the notch once the others have
 moved down out of its way. `off` shows one card at a time. While the pointer is on any card in the stack, nothing moves: every countdown
-stops, gaps stay open and new cards wait. A click on a card dismisses it. Only the cards of drips
+stops, gaps stay open and new cards wait, though they still drip into the drop so its count stays
+true. A click on a card dismisses it. Only the cards of drips
 that returned at once stack; a card that waits (`--wait`, or a question) waits its turn. While a
 question shows, cards that count down stack around it; a card that waits, or another question,
 waits for its answer. drip exits as soon as the question is answered, so the command after it
