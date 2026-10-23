@@ -1,9 +1,19 @@
 name: Release
 
-# Publishing a GitHub release attaches drip as one universal binary (Apple silicon and Intel),
-# packed in drip-<version>-universal-apple-darwin.tar.gz with its .sha256, then points the Homebrew
-# formula at it, so brew installs drip without compiling. The archive holds one directory of the
-# same name, with the executable drip, README.md, LICENSE and THIRD_PARTY.md.
+# Pushing a tag v<version> builds drip as one universal binary (Apple silicon and Intel), packed in
+# drip-<version>-universal-apple-darwin.tar.gz with its .sha256, publishes the tag's GitHub release
+# with both attached, then points the Homebrew formula at it, so brew installs drip without
+# compiling. The archive holds one directory of the same name, with the executable drip, README.md,
+# LICENSE and THIRD_PARTY.md.
+#
+# Two kinds of tag:
+# - v0.1.0-pre.N, a development build: Sources/DripCore/Version.swift says 0.1.0-pre, and the build
+#   stamps the tag's 0.1.0-pre.N in, so each build needs no commit. Its release is a pre-release.
+#   Homebrew reads -pre.N from the archive's name and orders it before 0.1.0; it would read
+#   -dev.N as plain 0.1.0.
+# - v0.1.0, a full release: Version.swift must say 0.1.0 itself.
+# The formula follows every full release, and pre-releases only until the first full one.
+#
 # Pull requests and a manual run build and check the same archive, kept as a workflow artifact
 # only: they never make a release or a tag.
 #
@@ -12,15 +22,15 @@ name: Release
 # `bin.install "drip"`: the bump script only updates a formula's url and sha256, it never adds a
 # formula or its install step.
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 # A newer push to a pull request replaces its run; a release always runs to the end.
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'release' }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
   contents: read
@@ -36,6 +46,33 @@ jobs:
       archive: ${{ steps.archive.outputs.archive }}
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp a pre-release's version
+        if: github.ref_type == 'tag'
+        run: |
+          file=Sources/DripCore/Version.swift
+          base="$(sed -n 's/^public let dripVersion = "\(.*\)"$/\1/p' "$file")"
+          version="${TAG#v}"
+          case "$version" in
+            "$base")
+              case "$base" in *-*) ;; *) exit 0 ;; esac
+              number=""
+              ;;
+            *-*)
+              case "$base" in *-*) number="${version#"$base".}" ;; *) number="" ;; esac
+              ;;
+            *) number="" ;;
+          esac
+          case "$number" in
+            "" | "$version" | *[!0-9]*)
+              case "$base" in *-*) want="v$base.<number>" ;; *) want="v$base" ;; esac
+              echo "$file says $base, so the tag must be $want" >&2
+              exit 1
+              ;;
+          esac
+          sed -i '' "s/^public let dripVersion = \".*\"$/public let dripVersion = \"$version\"/" "$file"
+          grep -qx "public let dripVersion = \"$version\"" "$file"
+        env:
+          TAG: ${{ github.ref_name }}
       - name: Build for arm64 and x86_64
         run: |
           set -- -c release --arch arm64 --arch x86_64
@@ -61,17 +98,17 @@ jobs:
           ./drip --version
           # The Intel slice, under Rosetta.
           arch -x86_64 ./drip --version
-      - name: Check the version matches the release
-        if: github.event_name == 'release'
+      - name: Check the version matches the tag
+        if: github.ref_type == 'tag'
         run: |
           version="$(./drip --version)"
           if [ "$version" != "${TAG#v}" ]; then
-            echo "drip --version prints $version, but the release is $TAG" >&2
+            echo "drip --version prints $version, but the tag is $TAG" >&2
             exit 1
           fi
         env:
-          TAG: ${{ github.event.release.tag_name }}
-      # Named for the version drip prints, which the step above holds to the release's tag.
+          TAG: ${{ github.ref_name }}
+      # Named for the version drip prints, which the step above holds to the tag.
       - name: Archive
         id: archive
         run: |
@@ -107,13 +144,13 @@ jobs:
             ${{ steps.archive.outputs.archive }}.sha256
           if-no-files-found: error
 
-  upload:
-    name: Attach the archive to the release
-    if: github.event_name == 'release'
+  release:
+    name: Publish the release with the archive
+    if: github.ref_type == 'tag'
     needs: binary
     runs-on: ubuntu-latest
     permissions:
-      # To attach files to the release.
+      # To make the release and attach files to it.
       contents: write
     steps:
       # Pinned to a commit: this job holds a token that can change the release.
@@ -123,32 +160,75 @@ jobs:
       - run: sha256sum --check "$ARCHIVE.sha256"
         env:
           ARCHIVE: ${{ needs.binary.outputs.archive }}
+      # A draft until the archive is on it, so a published release always has one. A release made
+      # by hand for the tag is kept, and gets the archive.
+      - name: Make the release
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$TAG already has a release"
+            exit 0
+          fi
+          case "$TAG" in
+            *-*) kind=--prerelease ;;
+            *) kind=--latest ;;
+          esac
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft "$kind" \
+            --title "drip ${TAG#v}" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
       - run: gh release upload "$TAG" "$ARCHIVE" "$ARCHIVE.sha256" --repo "$GITHUB_REPOSITORY" --clobber
         env:
           ARCHIVE: ${{ needs.binary.outputs.archive }}
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.ref_name }}
+      - run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
 
   tap:
     name: Update the tap formula
-    # A pre-release is for trying out; the formula follows full releases only.
-    if: github.event_name == 'release' && !github.event.release.prerelease
+    if: github.ref_type == 'tag'
     # The formula points at the attached archive, so it must be there first.
-    needs: [binary, upload]
+    needs: [binary, release]
     runs-on: ubuntu-latest
     steps:
+      # Until drip's first full release, brew installs the latest pre-release; after it, only full
+      # releases, so a pre-release never replaces a stable drip.
+      - name: Check the formula follows this tag
+        id: follow
+        run: |
+          case "$TAG" in
+            *-*)
+              full="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-pre-releases --exclude-drafts \
+                --limit 1 --json tagName --jq '.[0].tagName // ""')"
+              if [ -n "$full" ]; then
+                echo "$full is out, so the formula stays on full releases"
+                echo "bump=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              ;;
+          esac
+          echo "bump=true" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
       # Pinned to a commit: this job holds the key that can push to the tap brew installs from.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.follow.outputs.bump == 'true'
         with:
           repository: jrnxf/homebrew-tap
           ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
       # One asset for every Mac: the script writes a top-level url and sha256, and checks the
       # asset against its .sha256.
-      - run: scripts/bump-formula.sh drip "$TAG" "macos=$ARCHIVE"
+      - if: steps.follow.outputs.bump == 'true'
+        run: scripts/bump-formula.sh drip "$TAG" "macos=$ARCHIVE"
         env:
           ARCHIVE: ${{ needs.binary.outputs.archive }}
-          TAG: ${{ github.event.release.tag_name }}
-      - run: |
+          TAG: ${{ github.ref_name }}
+      - if: steps.follow.outputs.bump == 'true'
+        run: |
           # A tap PR that points the formula at this release by hand leaves nothing to commit.
           if git diff --quiet; then
             echo "Formula/drip.rb already points at $TAG"
@@ -159,4 +239,4 @@ jobs:
           git commit -am "drip $TAG"
           git push
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.ref_name }}

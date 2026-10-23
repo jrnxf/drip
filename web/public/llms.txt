@@ -1,0 +1,9 @@
+# drip
+
+> Free, open-source macOS CLI (MIT). drip shows a native card from your Mac's notch, or the top of a screen without one, when a command or coding agent finishes or needs you. It is not Notification Center, so it needs no permissions. macOS 13+. Install: `brew install jrnxf/tap/drip`.
+
+## Docs
+
+- [README: install, usage, flags, config](https://github.com/jrnxf/drip#readme)
+- [Claude Code, Codex and Gemini CLI hooks](https://github.com/jrnxf/drip#coding-agents)
+- [Alert when a command finishes: drip run](https://github.com/jrnxf/drip#usage)
