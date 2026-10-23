@@ -79,9 +79,13 @@ struct CardTests {
         // Its yes and no buttons say what it asks: no icon.
         asking.action?.decline = "Deny"
         #expect(!asking.showsIconAtNotch)
-        // A question that does not wait keeps its state's icon.
+        // A question of another kind keeps its state's icon, waiting or not, with one button or two.
         var promote = Card(preset: .warn, title: "staging is ready")
         promote.action = CardAction(label: "Promote", open: nil)
+        #expect(promote.showsIconAtNotch)
+        promote.waitLimit = Defaults.waitLimit
+        #expect(promote.showsIconAtNotch)
+        promote.action?.decline = "Not yet"
         #expect(promote.showsIconAtNotch)
         asking.action = nil
         asking.icon = .mark("claude")

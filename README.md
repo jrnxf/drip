@@ -279,13 +279,13 @@ exits 2, or 1 for `drip hook`.
 | `KIND` | A preset: `ok`, `warn`, `fail`, `info`, `ask`, or a custom preset from the config file. When the first argument is not a preset and no title follows it, it is the title; followed by a title, it is an unknown preset and exits 2, saying how to quote a title of several words. | `info` |
 | `TITLE` | The bold text, up to 2 lines. Required unless stdin provides it. | none |
 | `-d`, `--detail TEXT` | The gray text under the title, up to 3 lines. | none |
-| `-s`, `--seconds N` | Time fully visible, excluding fades: 0.5 to 60. An `ask` card given a time counts it down instead of waiting. | 4.5 |
+| `-s`, `--seconds N` | Time fully visible, excluding fades: 0.5 to 60. An `ask` card or a question given a time counts it down instead of waiting. | 4.5 |
 | `--sound NAME\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. Unknown names print a warning and play nothing. | the preset's |
 | `--icon SYMBOL\|PATH\|app:ID\|mark:NAME\|none` | An SF Symbol name; a path to an image, such as a `.png`, `.pdf` or `.icns` file, drawn as it is; `app:` and an app's bundle identifier, such as `app:com.openai.chat`, for that app's own icon; or `mark:claude`, `mark:codex` or `mark:gemini` for an agent's mark that drip bundles. An icon that cannot load falls back to the preset's with a warning. See [Icons](#icons). | the preset's |
 | `--color HEX\|NAME` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
 | `--open URL\|PATH` | Adds a button that opens a URL or a file, a relative path from the directory drip runs in; see [Buttons](#buttons). Empty, as `--open "$CI_URL"` without a URL, it adds no button and warns. | none |
 | `--button LABEL` | The `--open` button's label, up to 24 characters. | `Open` |
-| `--yes LABEL` | Asks a question with a yes button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if no button was. See [Buttons](#buttons). | none |
+| `--yes LABEL` | Asks a question with a yes button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if no button was. The card waits for its answer, whatever its kind, unless it is given a time. See [Buttons](#buttons). | none |
 | `--no LABEL` | With `--yes`, a no button of this label to its left: drip exits 1 if it was clicked. | none |
 | `--confirm LABEL` | The same as `--yes`. | none |
 | `--id ID` | Names what the card is about, up to 200 characters; see [Replacing cards](#replacing-cards). | none |
@@ -312,10 +312,10 @@ every 2.4 seconds a soft halo grows out of it to about twice its size and fades 
 the dot alone). The card stays until you click it or a newer card with the same `--id` replaces it.
 It gives way to other cards: when another card waits for its place, the card counts down its
 `--seconds` from then like any other card, and it never stays longer than 10 minutes. A question
-(`--yes`) never gives way: it stays until it is answered, replaced or its 10 minutes are up, other
-cards stack around it, and a card with no room in the stack, or another question, waits its turn.
-`--seconds`, `DRIP_SECONDS` or the preset's `seconds` in the config give an `ask` card a countdown
-instead.
+(`--yes`), of any kind, waits too and never gives way: it stays until it is answered, replaced or its
+10 minutes are up, other cards stack around it, and a card with no room in the stack, or another
+question, waits its turn. `--seconds`, `DRIP_SECONDS` or the preset's `seconds` in the config give an
+`ask` card or a question a countdown instead.
 
 **stdin.** When no title is given and stdin is not a terminal, drip reads stdin to the end, keeping
 the first 64 KB, so the command writing it is never cut short: the first non-empty line is the title
@@ -467,7 +467,9 @@ clicked, while the card is still on its way out, so the command after it starts 
 background drip plays the card's exit, and any cards stacked with it, on from where they are.
 With reduced motion, the card goes at once, with no exit, and drip exits with it. With either, drip exits 5 when
 no button was clicked: the card timed out, a newer card with the same `--id` replaced it, or it was
-clicked away from its buttons. 0 and 1 read as yes and no, so the script decides what happens:
+clicked away from its buttons. A question waits for its answer for up to 10 minutes, whatever its
+kind; `--seconds` gives it a deadline instead. 0 and 1 read as yes and no, so the script decides what
+happens:
 
 ```sh
 drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23
