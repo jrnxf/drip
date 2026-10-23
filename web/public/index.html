@@ -908,7 +908,8 @@ class Term {
   }
   open() { this.flush(); const entry = document.createElement("div"); entry.className = "entry"; this.entry = entry; return entry; }
   line(entry, cls, text) { const div = document.createElement("div"); div.className = cls; div.append(text); entry.append(div); return div; }
-  // Output that comes while a command runs waits for the command; any other is printed at once.
+  // Output that comes while a command runs waits for the command, unless the printer is live; any
+  // other is printed at once.
   print(text, cls = "") {
     const entry = this.entry ?? this.open();
     // Printing at once: the entry is already on the paper, so each line feeds out as it comes.
