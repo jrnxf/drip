@@ -36,7 +36,7 @@
   /* Room under the device for the paper hanging out of it (--paper-h). Paper that printing feeds
      out further hangs over what is below it, so nothing on the page moves as it grows; cut it
      shorter to see what it covers. */
-  .devwrap { --paper-h: 220px; --pad: 22px; position: relative; padding: 26px 0 calc(var(--paper-h) - 5px - var(--pad) + 30px); }
+  .devwrap { --paper-h: 220px; --pad: 22px; position: relative; padding: 0 0 calc(var(--paper-h) - 5px - var(--pad) + 30px); }
   .device, .module {
     position: relative; border-radius: 26px; padding: var(--pad, 22px); background: linear-gradient(180deg, var(--color-body), var(--color-body-2));
     border: 1px solid var(--color-edge); box-shadow: inset 0 1px 0 var(--color-lip), 0 1px 0 var(--color-edge), 0 30px 60px -30px var(--color-shade), 0 12px 24px -16px var(--color-shade);
@@ -55,6 +55,20 @@
   .display .stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
   /* The display's own print, scaled with the notch so it keeps clear of it. */
   .display .glyphs { position: absolute; inset: 0 0 auto 0; height: 32px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px; font: 500 10px/1 var(--font-mono); letter-spacing: .08em; color: var(--color-lcd-ink); opacity: .7; width: calc(100% / var(--fit, 1)); transform: scale(var(--fit, 1)); transform-origin: 0 0; }
+  /* The hero's command status, beside DRIP: running or waiting with its time, then how it ended. */
+  .glyphs .run { flex: none; display: none; align-items: center; gap: 7px; margin: 0 auto 0 12px; text-transform: uppercase; opacity: .8; font-variant-numeric: tabular-nums; }
+  .glyphs .run.on { display: inline-flex; }
+  .glyphs .run .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .glyphs .run.going .dot { animation: blinkdot .8s steps(2, jump-none) infinite; }
+  .glyphs .run.ok .dot { background: #30d158; box-shadow: 0 0 6px #30d158; }
+  .glyphs .run.bad .dot { background: #ff453a; box-shadow: 0 0 6px #ff453a; }
+  @keyframes blinkdot { 0% { opacity: 1; } 100% { opacity: .15; } }
+  /* What a hovered or focused key would run, along the display's foot. */
+  .dispnote { position: absolute; left: 12px; right: 12px; bottom: 10px; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none;
+    font: 500 10.5px/1.4 var(--font-mono); letter-spacing: .04em; color: var(--color-lcd-ink); opacity: 0; transform: translateY(3px); transition: opacity .15s, transform .15s var(--ease-out); }
+  .dispnote.on { opacity: .8; transform: none; }
+  .dispnote .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dispnote .hint { flex: none; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; padding: 4px 6px 3px; border-radius: 4px; border: 1px solid currentColor; }
   /* What a display shows until drip's engine draws in it, and all a reader without JavaScript gets. */
   .still { position: absolute; inset: 32px 0 0; margin: 0; display: grid; place-content: center; gap: 8px; padding: 0 16px; text-align: center; font: 500 10.5px/1.5 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-lcd-ink); opacity: .7; }
   .still code { text-transform: none; letter-spacing: 0; font-size: 11.5px; overflow-wrap: anywhere; }
@@ -107,26 +121,40 @@
   .entry .flag { white-space: nowrap; }
   .entry .out { font-size: 10.5px; opacity: .62; }
   .entry .out.err { opacity: 1; text-decoration: underline wavy; text-underline-offset: 2px; }
-  .lcdline { flex: none; display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 38px; border-radius: 7px; background: var(--color-lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--color-body-2), 0 0 0 4px var(--color-edge); color: var(--color-lcd-ink); font: 500 11.5px/1 var(--font-mono); }
-  .lcdline .p { opacity: .7; }
-  .lcdline code { flex: 1; min-width: 0; font: inherit; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .keys { margin-top: 18px; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 10px; }
+  /* The keys: short keycaps under silkscreened group labels, each with its flag or name and a
+     hint. A key is never narrower than its text, so a narrow device wraps whole groups instead. */
+  .keys { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .keys .krow { display: flex; flex-wrap: wrap; gap: 12px 16px; min-width: 0; }
+  .keys .kgroup { display: grid; grid-template-rows: auto 1fr; gap: 6px; min-width: max-content; flex: var(--n) 1 0; }
+  .keys .kkeys { display: flex; flex-wrap: nowrap; gap: 8px; min-width: 0; }
+  .keys .grp { display: flex; align-items: center; gap: 8px; font: 500 9.5px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--color-ink-3); white-space: nowrap; min-width: 0; }
+  .keys .grp::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: .45; }
   .key {
-    position: relative; aspect-ratio: 1 / .9; border-radius: 10px; border: 1px solid var(--color-edge); cursor: pointer; padding: 9px 8px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start;
-    background: linear-gradient(180deg, var(--color-key), var(--color-key-2)); color: var(--color-key-ink); box-shadow: 0 3px 0 var(--color-key-floor), 0 6px 10px -4px var(--color-shade), inset 0 1px 0 var(--color-lip);
-    transition: transform .08s, box-shadow .08s; text-align: left; min-width: 0;
+    position: relative; flex: 1 1 0; min-width: max-content; height: 50px; border-radius: 8px; border: 1px solid var(--color-edge); cursor: pointer; padding: 0 22px 0 10px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
+    background: linear-gradient(180deg, var(--color-key), var(--color-key-2)); color: var(--color-key-ink); text-align: left;
+    box-shadow: 0 4px 0 var(--color-key-floor), 0 9px 14px -7px var(--color-shade), inset 0 1px 0 var(--color-lip), inset 0 -2px 0 rgba(0,0,0,.22); transition: transform .08s, box-shadow .08s;
   }
-  .key:active { transform: translateY(3px); box-shadow: 0 0 0 var(--color-key-floor), 0 2px 4px -2px var(--color-shade), inset 0 1px 0 var(--color-lip); }
-  .key .led { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--c) 30%, var(--color-key-2)); box-shadow: inset 0 1px 1px rgba(0,0,0,.3); transition: background .15s, box-shadow .15s; }
+  .key:active { transform: translateY(4px); box-shadow: 0 0 0 var(--color-key-floor), 0 2px 4px -2px var(--color-shade), inset 0 1px 0 var(--color-lip), inset 0 -1px 0 rgba(0,0,0,.22); }
+  .key .led { position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--c) 30%, var(--color-key-2)); box-shadow: inset 0 1px 1px rgba(0,0,0,.3); transition: background .15s, box-shadow .15s; }
   .key.running .led { background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px var(--c); }
-  .key b { font: 600 10.5px/1.1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  /* The LED blinks while the key's command runs, and stays lit while its cards show. */
+  .key.running.exec .led { animation: blinkled .5s steps(2, jump-none) infinite; }
+  @keyframes blinkled { 0% { background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px var(--c); } 100% { background: color-mix(in srgb, var(--c) 30%, var(--color-key-2)); box-shadow: inset 0 1px 1px rgba(0,0,0,.3); } }
+  .key .face { display: grid; gap: 3px; min-width: 0; }
+  .key b { display: block; font: 600 10px/1.1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+  .key small { display: block; font: 400 9px/1.2 var(--font-mono); color: var(--color-ink-3); white-space: nowrap; }
+  :root[data-theme="light"] .key small { color: #6b6b66; }
   /* Callouts, as on an exploded drawing. */
-  .callout { position: absolute; display: flex; align-items: center; gap: 8px; font: 500 10px/1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); white-space: nowrap; }
+  /* The callouts sit in a row over the device, clear of the paper; where they do not fit in one,
+     they wrap to another. */
+  .callouts { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 7px; }
+  .callout { display: flex; align-items: center; gap: 8px; font: 500 10px/1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); white-space: nowrap; }
   .callout::before { content: attr(data-n); display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid currentColor; font-size: 9px; letter-spacing: 0; }
-  .callout i { display: block; height: 1px; background: currentColor; width: var(--w, 40px); }
-  .callout.tl { top: 0; left: 0; } .callout.tr { top: 0; right: 0; } .callout.bl { bottom: 0; left: 0; } .callout.br { bottom: 0; right: 0; }
+  .callout:first-child, .callout:last-child { flex-grow: 1; }
+  .callout:last-child { justify-content: flex-end; }
+  .callout i { display: block; height: 1px; background: currentColor; flex: 1 0 8px; max-width: var(--w, 40px); }
 
-  /* What it does: the module's LCD line, as the hero's: the command running, typed, and under it
+  /* What it does: the module's LCD line: the command running, typed, and under it
      the step and what came back. Every command it runs is laid out unseen behind it (.ghost), so
      it keeps the height of the longest as it plays. */
   .readout { flex: 1; min-width: 0; align-self: stretch; display: grid; padding: 8px 11px 7px; border-radius: 7px; background: var(--color-lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--color-body-2), 0 0 0 4px var(--color-edge); color: var(--color-lcd-ink); }
@@ -140,7 +168,7 @@
   .readout .live .stat { margin-top: auto; padding-top: 3px; }
   .caret { display: inline-block; width: .55em; height: 1.05em; margin-left: 1px; vertical-align: -.18em; background: currentColor; animation: blink 1.06s steps(1, end) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .caret, .glyphs .run.going .dot, .key.running.exec .led { animation: none; } }
   .bigbtn { flex: none; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--color-orange-lo); background: radial-gradient(circle at 40% 35%, var(--color-orange-hi), var(--color-orange)); box-shadow: 0 4px 0 var(--color-orange-lo), 0 8px 14px -6px var(--color-shade); cursor: pointer; display: grid; place-items: center; color: #111; font: 700 10px/1 var(--font-mono); letter-spacing: .08em; transition: transform .08s, box-shadow .08s; }
   .bigbtn:active { transform: translateY(4px); box-shadow: 0 0 0 var(--color-orange-lo); }
 
@@ -179,15 +207,19 @@
   @media (width <= 1100px) {
     .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "device" "specs"; grid-template-rows: auto; row-gap: 8px; min-height: 0; padding-top: 24px; }
     .devwrap { padding-top: 12px; padding-bottom: calc(var(--paper-h) - 5px - var(--pad) + 8px); }
-    .callout { display: none; }
+    .callouts { display: none; }
   }
   @media (width <= 760px) {
     .devwrap { --pad: 14px; --paper-h: 200px; }
     .device { border-radius: 20px; }
     .device > .screw { display: none; }
     .devgrid { --disp: 220px; gap: 14px; }
-    .keys { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-    .keys .key { aspect-ratio: auto; height: 58px; }
+    .keys .kgroup { flex-basis: 100%; min-width: 0; }
+    .keys .kgroup.pair { flex-basis: calc(50% - 8px); }
+    .keys .kkeys { flex-wrap: wrap; }
+    /* Beside a phone's notch there is only room for the status's dot and time. */
+    .glyphs:has(.run.on) > :first-child, .glyphs .run .w { display: none; }
+    .glyphs .run { margin-left: 0; }
     .stackmod .display { height: 216px; }
     .module { padding: 16px; border-radius: 20px; }
   }
