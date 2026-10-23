@@ -174,7 +174,7 @@ gemini`.
 **Aider** runs a command when it is done and waits for you:
 
 ```sh
-aider --notifications --notifications-command 'drip ok "$(basename "$PWD") is done" --id "aider:$PWD"'
+aider --notifications --notifications-command 'drip ok "$(basename "$PWD") is done" --id "aider:$PWD" --icon terminal.fill'
 ```
 
 or, in `.aider.conf.yml`, `notifications: true` and `notifications-command:` with the same command.
@@ -190,9 +190,9 @@ export const Drip = async ({ $, directory }) => {
       const id = `opencode:${event.properties?.sessionID}`
       if (event.type === "permission.asked") {
         const detail = `opencode wants to use ${event.properties.permission}`
-        await $`drip info ${`${project} needs you`} -d ${detail} --id ${id} --stay`.quiet().nothrow()
+        await $`drip info ${`${project} needs you`} -d ${detail} --id ${id} --icon terminal.fill --stay`.quiet().nothrow()
       } else if (event.type === "session.idle") {
-        await $`drip ok ${`${project} is done`} --id ${id}`.quiet().nothrow()
+        await $`drip ok ${`${project} is done`} --id ${id} --icon terminal.fill`.quiet().nothrow()
       }
     },
   }
