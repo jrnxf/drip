@@ -1,77 +1,11 @@
-/* The page's styles, compiled by Tailwind CSS (build.sh) and inlined into index.html.
-   Preflight is left out: the page sets its own base styles below, so nothing resets what the
+/* The home page's styles, compiled by Tailwind CSS (build.sh) and inlined into index.html.
+   Preflight is left out: the site sets its own base styles (base.css), so nothing resets what the
    browser already draws. Spacing is in pixels (p-22 is 22px), as the design is. */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "./base.css";
 @source "../public/index.html";
-
-/* The page's two breakpoints, inclusive, as its script's matchMedia("(width <= 760px)"). */
-@custom-variant compact (@media (width <= 1100px));
-@custom-variant narrow (@media (width <= 760px));
-/* Hover on any pointer, not only where the primary one can hover. */
-@custom-variant hover (&:hover);
-
-/* Archivo and Martian Mono, latin subsets, self-hosted (licences in web/THIRD_PARTY.md). */
-@font-face {
-  font-family: "Archivo"; font-style: normal; font-weight: 100 900; font-stretch: 62% 125%; font-display: swap;
-  src: url(archivo.woff2) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: "Martian Mono"; font-style: normal; font-weight: 100 800; font-stretch: 75% 112.5%; font-display: swap;
-  src: url(martian-mono.woff2) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-/* drip drawn as a small piece of hardware: a display that runs the engine, keys you press and
-   a printer that prints what ran. One orange. Only these tokens exist: Tailwind's defaults are
-   cleared. The colors are the dark theme's; the light theme sets them again below. */
-@theme static {
-  --*: initial;
-  --spacing: 1px;
-  --font-sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "Martian Mono", ui-monospace, Menlo, monospace;
-  /* The cards are macOS UI: their text is measured and painted in the system font. */
-  --font-sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  --ease-out: cubic-bezier(.23, 1, .32, 1);
-  --color-orange: #ff4f00; --color-orange-hi: #ff7a3d; --color-orange-lo: #a83300;
-  --color-bg: #111111; --color-ink: #ecece8; --color-ink-2: #b0b0aa; --color-ink-3: #8a8a84; --color-rule: #2a2a28; --color-focus: var(--color-orange);
-  --color-body: #222221; --color-body-2: #1b1b1a; --color-edge: #333331; --color-shade: rgba(0,0,0,.6); --color-lip: rgba(255,255,255,.06);
-  --color-lcd: #2b2f2a; --color-lcd-ink: #d9e3d2; --color-lcd-grid: rgba(255,255,255,.025);
-  --color-key: #343432; --color-key-2: #252524; --color-key-ink: #e6e6e2; --color-key-floor: #0b0b0b;
-  --color-paper: #e9e7df; --color-paper-ink: #1d1d1b;
-}
-
-/* Type styles that set the whole font, so nothing is inherited from around them. */
-@utility lbl { font: 500 10.5px/1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); }
-@utility type-tag { font: 600 10.5px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
-@utility type-hero { font: 200 clamp(46px, 5vw, 84px)/.98 var(--font-sans); font-stretch: 125%; letter-spacing: -.035em; }
-@utility type-title { font: 200 clamp(36px, 3.6vw, 58px)/1 var(--font-sans); font-stretch: 125%; letter-spacing: -.03em; }
-@utility type-feature { font: 600 19px/1.25 var(--font-sans); font-stretch: 112%; letter-spacing: -.01em; }
-@utility type-num { font: 500 10.5px/1 var(--font-mono); letter-spacing: .1em; }
-
-@layer base {
-  :root, :root[data-theme="dark"] { color-scheme: dark; }
-  :root[data-theme="light"] {
-    color-scheme: light;
-    --color-bg: #d9d9d5; --color-ink: #151515; --color-ink-2: #42423f; --color-ink-3: #5c5c57; --color-rule: #b9b9b3; --color-focus: #c43a00;
-    --color-body: #eeeeeb; --color-body-2: #e2e2de; --color-edge: #b5b5af; --color-shade: rgba(0,0,0,.18); --color-lip: rgba(255,255,255,.55);
-    --color-lcd: #c3c8bd; --color-lcd-ink: #1d211b; --color-lcd-grid: rgba(0,0,0,.04);
-    --color-key: #f7f7f5; --color-key-2: #d8d8d3; --color-key-ink: #222; --color-key-floor: var(--color-edge);
-    --color-paper: #fbfbf8; --color-paper-ink: #222;
-  }
-
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 16px; }
-  body { margin: 0; background: var(--color-bg); color: var(--color-ink); font: 300 17px/1.5 var(--font-sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
-  a { color: inherit; text-underline-offset: 3px; }
-  button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
-  :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-  code { font-family: var(--font-mono); font-size: .82em; }
-  b { font-weight: 600; }
-  @media (prefers-reduced-motion: reduce) { *, *::after { transition-duration: .001ms !important; } }
-}
 
 /* The hardware: parts with their own light and shadow, and the parts the script builds. */
 @layer components {

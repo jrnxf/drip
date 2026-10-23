@@ -5,5 +5,6 @@
 ## Docs
 
 - [README: install, usage, flags, config](https://github.com/jrnxf/drip#readme)
-- [Claude Code, Codex and Gemini CLI hooks](https://github.com/jrnxf/drip#coding-agents)
-- [Alert when a command finishes: drip run](https://github.com/jrnxf/drip#usage)
+- [Claude Code, Codex and Gemini CLI notifications](https://drip.jrnxf.co/claude-code-notifications)
+- [Alert when a command finishes](https://drip.jrnxf.co/notify-when-command-finishes)
+- [Compared with terminal-notifier, osascript, alerter](https://drip.jrnxf.co/vs)

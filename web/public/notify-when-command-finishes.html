@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Get an alert on Mac when a terminal command finishes - drip</title>
+<meta name="description" content="Put drip run in front of any command: a green card from your Mac&#x27;s notch on success, a red one with the exit code on failure, and how long it took.">
+<link rel="canonical" href="https://drip.jrnxf.co/notify-when-command-finishes">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="drip">
+<meta property="og:url" content="https://drip.jrnxf.co/notify-when-command-finishes">
+<meta property="og:title" content="Get an alert on Mac when a terminal command finishes - drip">
+<meta property="og:description" content="Put drip run in front of any command: a green card from your Mac&#x27;s notch on success, a red one with the exit code on failure, and how long it took.">
+<meta property="og:image" content="https://drip.jrnxf.co/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#d9d9d5" media="(prefers-color-scheme: light)">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="/archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/martian-mono.woff2" as="font" type="font/woff2" crossorigin>
+<!-- guide.css: build.sh puts the compiled styles here. -->
+<script>
+  // The home page's theme: ?theme=, then the visitor's last choice there, then the system's.
+  (() => {
+    const ok = (v) => (v === "dark" || v === "light" ? v : null);
+    let saved = null;
+    try { saved = localStorage.getItem("drip-theme"); } catch {}
+    document.documentElement.dataset.theme = ok(new URLSearchParams(location.search).get("theme")) ?? ok(saved)
+      ?? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  })();
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Get an alert on Mac when a terminal command finishes.",
+      "description": "Put drip run in front of any command: a green card from your Mac's notch on success, a red one with the exit code on failure, and how long it took.",
+      "url": "https://drip.jrnxf.co/notify-when-command-finishes",
+      "about": {
+        "@type": "SoftwareApplication",
+        "name": "drip",
+        "url": "https://drip.jrnxf.co/",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS 13 or later"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "jrnxf",
+        "url": "https://github.com/jrnxf"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How is this different from osascript's display notification?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "osascript -e 'display notification \"done\"' posts to Notification Center, under Script Editor's name and settings, and knows nothing about the command. drip run shows a card at the notch that says whether the command passed, its exit code and how long it took. See drip vs terminal-notifier, osascript and alerter."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does drip slow the command down?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. drip run exits as soon as the command ends; the card plays out on its own. A plain drip ok \"done\" returns at once."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can the card link to the CI run or the log?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes: --open adds a button that opens a URL or a file, and --button names it, as in drip run --open \"$CI_URL\" --button \"View run\" ./deploy.sh."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can it ask before the next step runs?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. drip warn \"staging is ready\" --confirm Promote && ./promote.sh waits for a click: drip exits 0 on yes, 1 on no and 5 when nobody answers."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does it work over ssh or on Linux?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. drip needs a Mac running macOS 13 or newer with someone logged in to the screen; over ssh there is no GUI session, so drip exits 3."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body class="leading-[1.6]">
+<div class="mx-auto max-w-[860px] px-24 narrow:px-16">
+  <header class="flex h-58 items-center gap-22 narrow:gap-16">
+    <a class="block text-ink" href="/" aria-label="drip, home"><svg class="block h-24 w-auto" viewBox="12 60 520 136" aria-hidden="true"><g><path d="M12 71H244V93A12 12 0 0 1 232 105H157.71A12 12 0 0 0 147.32 123A20 20 0 1 1 112.68 123A12 12 0 0 0 102.29 105H96.98A9 9 0 0 0 87.99 113.69A20 20 0 1 1 48.01 113.69A9 9 0 0 0 39.02 105H24A12 12 0 0 1 12 93Z" fill="currentColor"/><path d="M170 165A20 20 0 1 1 210 165A20 20 0 1 1 170 165Z" fill="#ff4f00"/></g><g transform="translate(296 48.64) scale(0.62)"><path d="M0 128A58 58 0 1 1 116 128A58 58 0 1 1 0 128ZM26 128A32 32 0 1 0 90 128A32 32 0 1 0 26 128ZM90 24H116V184H90Z" fill="currentColor"/><path d="M138 72H164V184H138ZM138 128A52 58 0 0 1 190 70V96A26 32 0 0 0 164 128Z" fill="currentColor"/><path d="M212 72H238V184H212Z" fill="currentColor"/><path d="M210 38A15 15 0 1 1 240 38A15 15 0 1 1 210 38Z" fill="currentColor"/><path d="M264 72H290V232H264ZM264 128A58 58 0 1 1 380 128A58 58 0 1 1 264 128ZM290 128A32 32 0 1 0 354 128A32 32 0 1 0 290 128Z" fill="currentColor"/></g></svg></a><span class="flex-1"></span><a class="lbl no-underline hover:text-ink" href="/#install">install</a><a class="lbl no-underline hover:text-ink" href="https://github.com/jrnxf/drip">source</a>
+  </header>
+  <main class="pt-48 pb-64 narrow:pt-28">
+    <article class="guide">
+      <div class="lbl">guide / commands</div>
+      <h1>Get an alert on Mac when a terminal command <b>finishes.</b></h1>
+      <p class="answer">Put <code>drip run</code> in front of any command: it runs it, times it, and shows a green card from your Mac's notch on exit 0, or a red one with the exit code otherwise. drip then exits with the command's own status, so scripts and <code>&amp;&amp;</code> chains work as before.</p>
+      <pre><code>brew install jrnxf/tap/drip
+drip run make test
+drip run npm run build
+drip run --open "$CI_URL" --button "View run" ./deploy.sh</code></pre>
+      <p>drip is a free, open-source command-line tool for macOS 13 or newer. The card grows out of the camera notch, or out of the top edge of a screen without one, and needs no permissions.</p>
+      <h2>How it works</h2>
+      <ol>
+        <li><b>The command runs as usual.</b> drip passes its stdin, stdout and stderr straight through.</li>
+        <li><b>The card says how it went.</b> Exit 0 shows <code>make test finished</code> in green; anything else shows <code>make test failed (exit 2)</code> in red. The detail is how long it took, such as <code>3m 12s</code>.</li>
+        <li><b>drip's options come first</b>, as for <code>time</code> or <code>nice</code>: <code>drip run -s 8 make test</code> keeps the card up for 8 seconds. <code>--</code> before the command also works.</li>
+        <li><b>The exit code is the command's.</b> 127 when it is not found; Ctrl-C ends drip with the same signal, so the script that ran it stops too.</li>
+        <li><b>In a script, call drip directly</b> for your own words: <code>./backup.sh &amp;&amp; drip ok "backup done" || drip fail "backup failed"</code>.</li>
+      </ol>
+      <h2>FAQ</h2>
+      <h3>How is this different from osascript's display notification?</h3>
+      <p><code>osascript -e 'display notification "done"'</code> posts to Notification Center, under Script Editor's name and settings, and knows nothing about the command. <code>drip run</code> shows a card at the notch that says whether the command passed, its exit code and how long it took. See <a href="/vs">drip vs terminal-notifier, osascript and alerter</a>.</p>
+      <h3>Does drip slow the command down?</h3>
+      <p>No. <code>drip run</code> exits as soon as the command ends; the card plays out on its own. A plain <code>drip ok "done"</code> returns at once.</p>
+      <h3>Can the card link to the CI run or the log?</h3>
+      <p>Yes: <code>--open</code> adds a button that opens a URL or a file, and <code>--button</code> names it, as in <code>drip run --open "$CI_URL" --button "View run" ./deploy.sh</code>.</p>
+      <h3>Can it ask before the next step runs?</h3>
+      <p>Yes. <code>drip warn "staging is ready" --confirm Promote &amp;&amp; ./promote.sh</code> waits for a click: drip exits 0 on yes, 1 on no and 5 when nobody answers.</p>
+      <h3>Does it work over ssh or on Linux?</h3>
+      <p>No. drip needs a Mac running macOS 13 or newer with someone logged in to the screen; over ssh there is no GUI session, so drip exits 3.</p>
+    </article>
+  </main>
+  <footer class="flex flex-wrap justify-between gap-x-24 gap-y-10 border-t border-t-rule pt-22 pb-50">
+    <span class="lbl">drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you · MIT</span>
+    <nav class="lbl flex flex-wrap gap-x-18 gap-y-10" aria-label="Guides"><a class="text-ink" href="/">home</a><a class="text-ink" href="/claude-code-notifications">Claude Code notifications</a><a class="text-ink" href="/vs">drip vs terminal-notifier</a></nav>
+  </footer>
+</div>
+</body>
+</html>

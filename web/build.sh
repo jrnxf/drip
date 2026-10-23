@@ -46,15 +46,17 @@ cp -R "$web/public/." "$dist/"
     --enable-mutable-globals --enable-nontrapping-float-to-int "$bin/DripWeb.wasm" -o "$dist/drip.wasm"
 wasm=drip.$(sha256 "$dist/drip.wasm" | cut -c 1-16).wasm
 mv "$dist/drip.wasm" "$dist/$wasm"
-css=$(mktemp)
-trap 'rm -f "$css"' EXIT
-# Not minified: the minifier rewrites some values to shorter ones that compute differently.
-"$tailwind" --input "$web/styles/site.css" --output "$css"
-# The page names its engine, and its styles go in where it marks their place.
-sed "s/__DRIP_WASM__/$wasm/g" "$web/public/index.html" | awk -v css="$css" '
-    $0 == "<!-- site.css: build.sh puts the compiled styles here. -->" {
-        printf "<style>"; while ((getline line < css) > 0) print line; print "</style>"; next
-    }
-    { print }' > "$dist/index.html"
-grep -q "^<style>" "$dist/index.html"
+css=$(mktemp -d)
+trap 'rm -rf "$css"' EXIT
+# Each page marks where its styles go, naming its stylesheet in web/styles, and names its engine.
+for page in "$web"/public/*.html; do
+    style=$(sed -n 's/^<!-- \([a-z]*\)\.css: build\.sh puts the compiled styles here\. -->$/\1/p' "$page")
+    if [ -z "$style" ]; then echo "${page##*/} does not mark where its styles go" >&2; exit 1; fi
+    # Not minified: the minifier rewrites some values to shorter ones that compute differently.
+    [ -f "$css/$style.css" ] || "$tailwind" --input "$web/styles/$style.css" --output "$css/$style.css"
+    sed "s/__DRIP_WASM__/$wasm/g" "$page" | awk -v css="$css/$style.css" -v mark="<!-- $style.css: build.sh puts the compiled styles here. -->" '
+        $0 == mark { printf "<style>"; while ((getline line < css) > 0) print line; print "</style>"; next }
+        { print }' > "$dist/${page##*/}"
+    grep -q "^<style>" "$dist/${page##*/}"
+done
 ls -l "$dist"
