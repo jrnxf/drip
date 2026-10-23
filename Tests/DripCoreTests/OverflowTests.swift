@@ -432,6 +432,27 @@ struct OverflowTests {
         #expect(tops.last.map { abs($0 - top) < 0.01 } == true)
     }
 
+    /// The bottom card dismissed while the pointer holds the stack leaves its place with no card to
+    /// take it: the drop stays exactly where it is, and the next card grows up into that place once
+    /// the pointer leaves.
+    @Test func theDropStaysWhenTheBottomPlaceEmpties() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 12)
+        driver.run(for: 3)
+        let drop = try #require(driver.stack.overflow)
+        let top = drop.animator.targetTop
+        var tops: Set<Double> = [top]
+        driver.stack.hover(true)
+        driver.stack.live[2].dismissed = true
+        driver.run(for: 2) { _, _ in tops.insert(drop.animator.targetTop) }
+        #expect(driver.stack.live.map(\.card.title) == ["a", "b"])
+        #expect(driver.releases.isEmpty)
+        driver.stack.hover(false)
+        driver.run(for: 2) { _, _ in tops.insert(drop.animator.targetTop) }
+        #expect(driver.releases.first?.release.entry.card.title == "d")
+        #expect(driver.releases.first.map { abs($0.top - slot(2)) < 0.01 } == true)
+        #expect(tops == [top])
+    }
+
     // MARK: Motion
 
     @Test func aCardSpreadsOutOfTheDropWhereTheDropIs() {
