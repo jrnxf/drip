@@ -11,9 +11,9 @@ struct CardStackTests {
         return card
     }
 
-    /// A card that waits for you, as `ask` does.
+    /// A card that waits for you, as `--stay` makes it.
     private func asking(_ title: String, seconds: Double = 3) -> Card {
-        var card = Card(preset: .ask, title: title)
+        var card = Card.staying(title: title)
         card.seconds = seconds
         return card
     }
@@ -167,7 +167,7 @@ struct CardStackTests {
         question.action = CardAction(label: "Merge", open: nil, decline: "Later")
         #expect(question.waitsForAnswer)
 
-        // Another drip waits for the stack to finish: the plain ask gives way, the question does not.
+        // Another drip waits for the stack to finish: the card that stays gives way, the question does not.
         let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [question, asking("b")])
         var time = run(stack, until: 3)
         let changes = stack.advance(to: time, elapsed: 0, lead: 0, othersWaiting: true)
@@ -183,7 +183,7 @@ struct CardStackTests {
         #expect(stopped.isEmpty)
         #expect(full.live[0].isWaiting)
 
-        // Beside a plain ask, the plain ask gives way for room instead.
+        // Beside a card that stays, that card gives way for room instead.
         let mixed = CardStack(
             settings: StackSettings(mode: .chain, max: 2), cards: [question, asking("b", seconds: 2), card("c", seconds: 10)])
         stopped = []

@@ -40,7 +40,7 @@ final class HistoryTests {
 
     @Test func anAgentsCardIsKeptWholeAndAnOlderLineStillReads() throws {
         let history = CardHistory(path: try scratch().appending("/history.jsonl"))
-        var agent = card("my-app needs you", kind: "ask")
+        var agent = Card.staying(title: "my-app needs you")
         agent.icon = .app("com.anthropic.claudefordesktop")
         try history.record([agent], missed: false)
         #expect(history.entries().map(\.card) == [agent])
@@ -85,7 +85,7 @@ final class HistoryTests {
         #expect(try HistoryListing.publicJSON(quiet).contains(#""color":"green""#))
         #expect(try HistoryListing.publicJSON(quiet).contains(#""sound":"Glass""#))
         // Icons the way --icon takes them.
-        var agent = card("my-app needs you", kind: "ask")
+        var agent = card("my-app needs you")
         agent.icon = .app("com.anthropic.claudefordesktop")
         #expect(try HistoryListing.publicJSON(HistoryEntry(time: entry.time, missed: false, card: agent))
             .contains(#""icon":"app:com.anthropic.claudefordesktop""#))
@@ -307,9 +307,10 @@ final class HistoryTests {
         let warned = try #require(MissedSummary.cards(for: [card("a", kind: "warn"), card("b"), card("c", kind: "ok")]).first)
         #expect(warned.kind == "warn")
         // Something waiting on you comes before a warning, and the summary of it counts down.
-        let asked = try #require(MissedSummary.cards(for: [card("a", kind: "ask"), card("b", kind: "warn"), card("c")]).first)
-        #expect(asked.kind == "ask")
-        #expect(asked.color == Preset.ask.color)
+        let asked = try #require(MissedSummary.cards(for: [.staying(.ok, title: "a"), card("b", kind: "warn"), card("c")]).first)
+        #expect(asked.kind == "ok")
+        #expect(asked.title == "3 cards while you were away")
+        #expect(asked.color == Preset.ok.color)
         #expect(!asked.waits)
         let custom = try #require(MissedSummary.cards(for: [card("a", kind: "ok"), card("b"), card("c", kind: "deploy")]).first)
         #expect(custom.kind == "deploy")

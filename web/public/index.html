@@ -148,7 +148,7 @@
         </article>
         <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
           <div class="module mb-18 flex flex-col rounded-[20px] p-16">
-            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Ask, then act"><div class="glyphs" aria-hidden="true"><span>ASK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ask &quot;Merge drip #23?&quot; --yes Merge --no Later</code>a card with Merge and Later buttons</p></div>
+            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Ask, then act"><div class="glyphs" aria-hidden="true"><span>ASK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok &quot;Merge drip #23?&quot; --yes Merge --no Later</code>a card with Merge and Later buttons</p></div>
             <div class="mt-14 flex flex-1 items-center gap-14">
               <div class="readout"></div>
               <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Ask, then act">PLAY</button>
@@ -188,9 +188,9 @@
         <h2 class="type-title mt-10 mx-0 mb-18">up to <b>three alerts at once.</b></h2>
         <p class="m-0 max-w-[46ch] text-ink-2">Cards that arrive while one shows stack below it. In chain mode, the default, each new card drops out of the last one. In push mode it drops out of the notch and moves the others down. Cards past the most it shows wait in a drop under the last card, which counts them and lists them under the pointer; each grows out of it as room opens. This module runs DripCore's <code>CardStack</code>: pick a mode, or press PLAY.</p>
         <table class="spec">
-          <tr><th scope="row">kinds</th><td>ok, warn, fail, info, ask, and presets from your config</td></tr>
+          <tr><th scope="row">kinds</th><td>ok, warn, fail, info, and presets from your config: the kind is the look</td></tr>
           <tr><th scope="row">text</th><td>a title of up to 2 lines and a detail of up to 3, wrapped by the engine; a card is at most 640 pt wide</td></tr>
-          <tr><th scope="row">time</th><td>4.5 s by default; <code>--seconds</code> takes 0.5 to 60; an ask card waits for a click</td></tr>
+          <tr><th scope="row">time</th><td>4.5 s by default; <code>--seconds</code> takes 0.5 to 60; <code>--stay</code> keeps a card until it is clicked</td></tr>
           <tr><th scope="row">buttons</th><td><code>--open</code> opens a URL or a file; <code>--yes</code> and <code>--no</code> ask, then exit 0 on yes, 1 on no and 5 without an answer</td></tr>
           <tr><th scope="row">icons</th><td>SF Symbols, image files, app icons, and marks for Claude, Codex and Gemini</td></tr>
           <tr><th scope="row">agents</th><td><code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> adds drip to the agent's own hooks</td></tr>
@@ -836,7 +836,8 @@ class Stage {
       for (const card of st.cards.values()) card.hover = card.handle === under.handle && under.button;
       this.screen.style.cursor = under.handle ? "pointer" : "";
     }
-    const changes = drip.stack.step(st.id, t);
+    // Cards from later commands that the stack did not take wait for it to finish.
+    const changes = drip.stack.step(st.id, t, this.deliveries.length > 0);
     for (const entered of changes.entered ?? []) {
       const card = st.cards.get(entered.handle);
       Object.assign(card, { start: entered.start, cues: entered.cues, visible: entered.countdownFrom - entered.start, waiting: entered.waits });
@@ -922,7 +923,7 @@ class Term {
     this.command(this.open(), command);
     this.held = true;
   }
-  // A flag such as --confirm stays whole, rather than breaking after its dashes.
+  // A flag such as --stay stays whole, rather than breaking after its dashes.
   command(entry, command) {
     const p = document.createElement("span"); p.className = "c"; p.textContent = "$ ";
     const div = this.line(entry, "cmd", p);
@@ -1327,7 +1328,7 @@ async function execOne(stages, term, stage, config, alive) {
   if (program === "clear") { term.clear(); return 0; }
   if (program === "sleep") { await sleep(Math.min(Number(args[0]) || 0, 10) * 1000); return 0; }
   if (program === "help") { term.print(`this terminal runs drip. try: drip ok "hello", drip run npm test, drip --help`, "dim"); return 0; }
-  if (program === "./promote.sh") { term.print("promoting api 1.4.2 to production", "dim"); return 0; }
+  if (program === "./deploy.sh") { for (const l of fakeOutput["./deploy.sh"]) term.print(l, "dim"); return 0; }
   if (program === "gh" && args[0] === "pr" && args[1] === "merge") { term.print(`✓ Merged pull request #${args[2] ?? ""}`, "dim"); return 0; }
   if (program !== "drip") { term.print(`zsh: command not found: ${program}  (this terminal only runs drip)`, "err"); return 127; }
 
@@ -1384,15 +1385,16 @@ const CHIPS = [
   { key: "fail", name: "a failure card", color: "#ff453a", line: `drip fail "Deploy failed" -d "staging: health check timed out after 30s"`, group: "cards", hint: "failure", says: "a red card: Deploy failed" },
   { key: "warn", name: "a warning card", color: "#ff9f0a", line: `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"`, group: "cards", hint: "warning", says: "an orange card: Disk almost full" },
   { key: "run", name: "drip run npm test", color: "#8e8e93", line: `drip run npm test`, group: "watch", hint: "wraps a command", says: "runs npm test, then a card with how it went" },
-  { key: "agent", name: "Claude needs you, then is done", color: "#bf5af2", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'`, group: "watch", hint: "agent hook", says: "Claude Code asks for permission, then says it is done" },
+  { key: "agent", name: "Claude needs you, then is done", color: "#0a84ff", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'`, group: "watch", hint: "agent hook", says: "Claude Code asks for permission, then says it is done" },
   { key: "--id", name: "a card replaced in place", color: "#0a84ff", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy`, group: "more", hint: "updates in place", says: "--id: Deploying turns into Deployed in the same card" },
-  { key: "--open", name: "a card with a button", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip`, group: "buttons", hint: "adds a button", says: "--open: a card with a View button that opens a link" },
+  { key: "--open", name: "a card with a button", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip`, group: "behavior", hint: "adds a button", says: "--open: a card with a View button that opens a link" },
   { key: "preset", name: "your own preset", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"`, group: "more", hint: "your own look", says: "a deploy preset from config.toml: its own icon and color" },
   { key: "stack", name: "five cards at once", color: "#d0d0cc", line: STACK_LINES("chain").join("; "), group: "more", hint: "3 at once", says: "five drips at once: three stack, the other two queue in a drop under them" },
-  { key: "ask", name: "a question with yes and no buttons", color: "#64d2ff", line: `drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23`, group: "buttons", hint: "yes / no buttons", says: "--yes / --no: asks Merge or Later, and waits for your click" },
+  { key: "--yes", name: "a question with yes and no buttons", color: "#ff9f0a", line: `drip warn "Deploy to prod?" -d "api 1.4.2" --yes Deploy --no Cancel && ./deploy.sh`, group: "behavior", hint: "yes / no buttons", says: "--yes / --no: asks Deploy or Cancel, and waits for your click" },
+  { key: "--stay", name: "a card that stays until clicked", color: "#ff453a", line: `drip fail "Deploy failed" -d "rolled back to v1.3.9" --stay`, group: "behavior", hint: "stays until clicked", says: "--stay: a red card that stays until you click it" },
 ];
 // The keys' groups, in two rows.
-const KEYROWS = [["cards", "watch"], ["buttons", "more"]];
+const KEYROWS = [["cards", "watch"], ["behavior", "more"]];
 
 
 // How many of the keys' commands are running; each key counts its own in `runs`.
@@ -1487,7 +1489,7 @@ const FEATURES = [
     steps: [{ line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy` }, { sleep: 2 }, { line: `drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` }],
   },
   { // 04 Ask, then act
-    steps: [{ shown: `drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23`, line: `drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23` }],
+    steps: [{ shown: `drip ok "Merge drip #23?" --yes Merge --no Later && gh pr merge 23`, line: `drip ok "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23` }],
   },
   { // 05 Pipe text in
     steps: [{ line: `git log -1 --format='%s%n%an' | drip ok` }],
@@ -1558,7 +1560,7 @@ stackStage.autoplay = () => {
 stackTerm.print("press PLAY to print five cards", "dim");
 
 // Until the visitor does something, the hero plays a few cards by itself.
-const ATTRACT = [CHIPS[4].line, CHIPS[5].line, CHIPS[8].line, CHIPS[1].line, CHIPS[3].line, CHIPS[6].line, CHIPS[0].line];
+const ATTRACT = [CHIPS[4].line, CHIPS[5].line, CHIPS[8].line, CHIPS[1].line, CHIPS[3].line, CHIPS[6].line, CHIPS[10].line, CHIPS[0].line];
 let attractOn = true, attractTimer = 0, attractIndex = 0;
 function stopAttract() { attractOn = false; clearTimeout(attractTimer); }
 function scheduleAttract(delay) {

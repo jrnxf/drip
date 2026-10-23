@@ -33,7 +33,7 @@ struct ResolveTests {
             #expect(throws: UsageError.self) { try resolver.resolve(kind: kind, title: title, rest: rest, flags: CardFlags()) }?.message
         }
         #expect(message("build", "finished") == """
-            unknown preset 'build' (known: ask, fail, info, ok, warn)
+            unknown preset 'build' (known: fail, info, ok, warn)
             To show "build finished" as the title, quote it: drip "build finished"
             """)
         #expect(message("build", "is", ["done"])?.hasSuffix(#"quote it: drip "build is done""#) == true)

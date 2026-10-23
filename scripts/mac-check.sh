@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds and tests drip on a Mac, records any missing snapshot references, then shows each preset
-# card on screen once, an ask card waiting until the next card needs the notch, a yes/no question and
+# card on screen once, a card that stays until the next card needs the notch, a yes/no question and
 # its exit status, the agent marks
 # drip bundles, drops a few cards that stack under one another, shows a Claude hook card that a newer card from the same session replaces
 # in place, turns a deploy card into its next step and then into ok and fail in place, and lists
@@ -56,23 +56,23 @@ for kind in ok warn fail info deploy; do
     echo "Showing the $kind card"
     XDG_CONFIG_HOME="$config" .build/release/drip "$kind" "drip $kind" --detail "mac-check: the $kind preset"
 done
-# Terminal's own icon, untinted, with the waiting dot sending out its ping. It waits until it is clicked,
+# Terminal's own icon, untinted, with the waiting dot sending out its ping. It stays until it is clicked,
 # or until the next card below waits for the notch: then it counts down like any other card.
-echo "Showing an ask card with Terminal's icon; it waits for a click, or for the next card"
-XDG_CONFIG_HOME="$config" .build/release/drip ask "drip ask" --detail "mac-check: waits for you" \
-    --icon app:com.apple.Terminal
+echo "Showing a card that stays, with Terminal's icon; it waits for a click, or for the next card"
+XDG_CONFIG_HOME="$config" .build/release/drip info "drip info --stay" --detail "mac-check: waits for you" \
+    --icon app:com.apple.Terminal --stay
 
 # A question never gives way: answer it, then check the exit status, 0 for yes and 1 for no.
 echo "Asking a yes/no question; click Merge (exit 0) or Later (exit 1)"
 status=0
-XDG_CONFIG_HOME="$config" .build/release/drip ask "Merge drip #23?" --detail "mac-check: answer with a button" \
+XDG_CONFIG_HOME="$config" .build/release/drip warn "Merge drip #23?" --detail "mac-check: answer with a button" \
     --yes Merge --no Later || status=$?
-echo "drip ask exited $status"
+echo "drip warn --yes exited $status"
 
 # The agent marks drip bundles, for an agent with no app installed, each with its state in the ring.
 for mark in claude codex gemini; do
     echo "Showing the $mark mark"
-    XDG_CONFIG_HOME="$config" .build/release/drip ask "drip ask" --detail "mac-check: mark:$mark" \
+    XDG_CONFIG_HOME="$config" .build/release/drip info "drip info" --detail "mac-check: mark:$mark" \
         --icon "mark:$mark" --seconds 3
 done
 
@@ -83,7 +83,7 @@ done
 XDG_CONFIG_HOME="$config" .build/release/drip info "drip info" --detail "mac-check: after the stack" --seconds 2 --wait
 
 # The last card waited for its turn and its exit, so the queue is empty: the first hook card is on
-# screen when the second arrives, and the second takes its place. The first is an ask card with Claude's app icon,
+# screen when the second arrives, and the second takes its place. The first is an info card that stays, with Claude's app icon,
 # or Claude's bundled mark without Claude.app; the second turns its waiting dot into a check.
 echo "Showing a Claude hook card, then a newer one from the same session in its place; click it to come back here"
 hook() {

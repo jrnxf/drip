@@ -12,11 +12,11 @@ public enum ExitStatus {
     public static let usage: Int32 = 2
     public static let noGUISession: Int32 = 3
     public static let invalidConfig: Int32 = 4
-    /// drip asked with `--yes` or `--confirm` and no button was clicked: the card timed out, a newer
-    /// card with the same id replaced it, or it was clicked off its buttons.
+    /// drip asked with `--yes` and no button was clicked: the card timed out, a newer card with the
+    /// same id replaced it, or it was clicked off its buttons.
     public static let notClicked: Int32 = 5
     /// drip asked with `--yes` and `--no`, and no was clicked. 0 and 1 read as yes and no, as for
-    /// `test`, so `drip ask … --yes Merge --no Later && merge` runs the merge on yes only.
+    /// `test`, so `drip warn … --yes Merge --no Later && merge` runs the merge on yes only.
     public static let declined: Int32 = 1
     /// `drip hook` could not make a card, for any reason. Never 2 or more: Claude Code and Codex read
     /// exit 2 from a hook as "block", and Gemini CLI reads any code but 0 and 1 as "deny", which after
@@ -63,7 +63,7 @@ public struct CardOptions: ParsableArguments {
     var detail: String?
 
     @Option(name: .shortAndLong, help: ArgumentHelp(
-        "Seconds fully visible, excluding fades: 0.5 to 60. An ask card or a question given a time counts it down instead of waiting. (default: 4.5)",
+        "Seconds fully visible, excluding fades: 0.5 to 60. A card that stays or a question given a time counts it down instead of waiting. (default: 4.5)",
         valueName: "n"))
     var seconds: Double?
 
@@ -90,12 +90,7 @@ public struct CardOptions: ParsableArguments {
     var button: String?
 
     @Option(help: ArgumentHelp(
-        "Ask with a button of this label: drip waits up to 10 minutes, then exits 0 if it was clicked and 5 if not.",
-        valueName: "label"))
-    var confirm: String?
-
-    @Option(help: ArgumentHelp(
-        "Ask a question with a yes button of this label, as --confirm does: drip waits up to 10 minutes, then exits 0 if it was clicked.",
+        "Ask a question with a yes button of this label: drip waits up to 10 minutes, then exits 0 if it was clicked and 5 if no button was.",
         valueName: "label"))
     var yes: String?
 
@@ -113,6 +108,9 @@ public struct CardOptions: ParsableArguments {
         "The app a click on the card brings forward, or none. (default: the app drip was run from)",
         valueName: "bundle-id|none"))
     var activate: String?
+
+    @Flag(help: "Keep the card on screen until it is clicked, a newer card with the same --id replaces it, or 10 minutes pass. drip still returns at once.")
+    var stay = false
 
     @Flag(help: "Wait until the card has gone before exiting. Without it, drip returns at once.")
     var wait = false
@@ -134,24 +132,24 @@ public struct CardOptions: ParsableArguments {
                 && URL(string: open) != nil
             if !valid { throw ValidationError("--open: '\(open)' is not a valid URL") }
         }
-        if let button, CardText.line(button, limit: Defaults.buttonLimit) == nil {
-            throw ValidationError("--button needs a label")
-        }
-        if confirm != nil, yes != nil {
-            throw ValidationError("--confirm and --yes both name the button: give one")
-        }
-        for (flag, label) in [("--confirm", confirm), ("--yes", yes)] {
-            guard let label else { continue }
-            if open != nil {
-                throw ValidationError("\(flag) asks a question, so it opens nothing: name an --open button with --button")
+        if let button {
+            if open == nil {
+                throw ValidationError("--button names the --open button, so it needs --open; to ask a question, use --yes")
             }
-            if button != nil { throw ValidationError("\(flag) and --button both name the button: give one") }
-            if CardText.line(label, limit: Defaults.buttonLimit) == nil {
-                throw ValidationError("\(flag) needs a label")
+            if CardText.line(button, limit: Defaults.buttonLimit) == nil {
+                throw ValidationError("--button needs a label")
+            }
+        }
+        if let yes {
+            if open != nil {
+                throw ValidationError("--yes asks a question, so it opens nothing: give --open or --yes, not both")
+            }
+            if CardText.line(yes, limit: Defaults.buttonLimit) == nil {
+                throw ValidationError("--yes needs a label")
             }
         }
         if let no {
-            if confirm == nil, yes == nil {
+            if yes == nil {
                 throw ValidationError("--no needs --yes, the button that answers yes")
             }
             if CardText.line(no, limit: Defaults.buttonLimit) == nil {
@@ -169,36 +167,35 @@ public struct CardOptions: ParsableArguments {
         }
     }
 
-    /// The parsed values, as a plain value. A `--confirm` or `--yes` question is a button with nothing
-    /// to open, and `--no` its second button.
+    /// Throws when the options ask a question, which `drip run` and `drip hook` cannot: nothing reads
+    /// the answer, as `drip run` exits with its command's code and `drip hook` with 0 or 1.
+    func rejectQuestion(in command: String) throws {
+        for (flag, label) in [("--yes", yes), ("--no", no)] where label != nil {
+            throw ValidationError(
+                "drip \(command) takes no \(flag): nothing reads the answer to its question. Ask with drip itself, as in: drip warn \"Deploy?\" --yes Deploy")
+        }
+    }
+
+    /// The parsed values, as a plain value. A `--yes` question is a button with nothing to open, and
+    /// `--no` its second button.
     public var flags: CardFlags {
         let directory = FileManager.default.currentDirectoryPath
         // `--open "$CI_URL"` with the variable empty opens nothing, so the card has no button, and
         // `drip run` still runs its command.
         let target = open.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : Self.target($0, from: directory) }
-        let label: String?
-        if open == nil {
-            // Without --open, --button is the old spelling of --confirm, and --confirm another of --yes.
-            label = yes ?? confirm ?? button
-        } else {
-            // --button names the --open button, and an empty --open has none.
-            label = target == nil ? nil : button
-        }
+        // --button names the --open button, and an empty --open has none.
+        let label = open == nil ? yes : target == nil ? nil : button
         return CardFlags(
             detail: detail, seconds: seconds, sound: sound,
-            icon: icon.map { $0.resolved(from: directory) }, color: color, wait: wait, quiet: quiet, open: target,
-            button: label, decline: open == nil ? no : nil, id: id, activate: activate)
+            icon: icon.map { $0.resolved(from: directory) }, color: color, stay: stay, wait: wait, quiet: quiet,
+            open: target, button: label, decline: open == nil ? no : nil, id: id, activate: activate)
     }
 
-    /// What drip warns about before it shows the card: options that do nothing and the old
-    /// spelling of --confirm.
+    /// What drip warns about before it shows the card: options that do nothing.
     public var warnings: [String] {
         var warnings: [String] = []
         if open?.trimmingCharacters(in: .whitespaces).isEmpty == true {
             warnings.append("--open is empty, so the card has no button")
-        }
-        if button != nil, open == nil {
-            warnings.append("--button without --open is deprecated; use --confirm")
         }
         return warnings
     }
@@ -225,6 +222,8 @@ public struct CardFlags: Equatable {
     public var size: CardSize?
     /// Set only by `drip __render`: everywhere else the motion comes from the config or `DRIP_MOTION`.
     public var motion: Motion?
+    /// Keeps the card on screen, as `--stay` does, unless a time is set for it.
+    public var stay: Bool
     public var wait: Bool
     public var quiet: Bool
     public var open: String?
@@ -238,8 +237,8 @@ public struct CardFlags: Equatable {
 
     public init(
         detail: String? = nil, seconds: Double? = nil, sound: Sound? = nil, icon: Icon? = nil,
-        color: CardColor? = nil, size: CardSize? = nil, motion: Motion? = nil, wait: Bool = false,
-        quiet: Bool = false,
+        color: CardColor? = nil, size: CardSize? = nil, motion: Motion? = nil, stay: Bool = false,
+        wait: Bool = false, quiet: Bool = false,
         open: String? = nil, button: String? = nil, decline: String? = nil, id: String? = nil, activate: String? = nil
     ) {
         self.open = open
@@ -254,6 +253,7 @@ public struct CardFlags: Equatable {
         self.color = color
         self.size = size
         self.motion = motion
+        self.stay = stay
         self.wait = wait
         self.quiet = quiet
     }
@@ -290,9 +290,9 @@ public struct DripCommand: ParsableCommand {
           git log -1 --format='%s%n%an' | drip ok
           drip run make test
           drip run --open "$CI_URL" --button "View run" ./deploy.sh
-          drip warn "staging is ready" --confirm Promote && ./promote.sh
-          drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23
-          drip ask "my-app needs you" --icon app:com.openai.chat
+          drip warn "Deploy to prod?" --yes Deploy --no Cancel && ./deploy.sh
+          drip fail "deploy failed" --stay
+          drip info "my-app needs you" --stay --icon app:com.openai.chat
           drip setup claude
           drip pause 30m
         """
@@ -306,7 +306,7 @@ public struct DripCommand: ParsableCommand {
           2  Usage error.
           3  No GUI session, such as over ssh.
           4  The config file is invalid.
-          5  drip asked with --yes or --confirm and no button was clicked.
+          5  drip asked with --yes and no button was clicked.
           drip run exits with its command's exit code instead.
         """
 
@@ -323,7 +323,7 @@ public struct ShowCommand: ParsableCommand {
     )
 
     @Argument(help: ArgumentHelp(
-        "ok, warn, fail, info, ask or a preset from ~/.config/drip/config.toml. An ask card waits until it is clicked. Taken as the title when no title follows it. (default: info)",
+        "ok, warn, fail, info or a preset from ~/.config/drip/config.toml: the card's icon, color and sound. Taken as the title when no title follows it. (default: info)",
         valueName: "kind"))
     public var kind: String?
 
@@ -369,6 +369,7 @@ public struct RunCommand: ParsableCommand {
     public init() {}
 
     public func validate() throws {
+        try options.rejectQuestion(in: "run")
         // drip's options end where the command starts, so these are the only ones it can see.
         switch words.first {
         case "-h", "--help": throw CleanExit.helpRequest(Self.self)
@@ -413,6 +414,7 @@ public struct HookCommand: ParsableCommand {
     public init() {}
 
     public func validate() throws {
+        try options.rejectQuestion(in: "hook")
         if agentName == nil {
             throw ValidationError("missing the agent: drip hook claude, drip hook codex or drip hook gemini")
         }
@@ -739,15 +741,15 @@ struct HelpSections {
 extension CommandLineParser {
     /// The options whose values are free text, often a script's own output.
     private static let textOptions = [
-        "-d": "--detail", "--detail": "--detail", "--button": "--button", "--confirm": "--confirm", "--yes": "--yes",
-        "--no": "--no", "--id": "--id",
+        "-d": "--detail", "--detail": "--detail", "--button": "--button", "--yes": "--yes", "--no": "--no",
+        "--id": "--id",
     ]
 
     /// Every card option that takes a value, so that `drip run` can tell an option's value from the
     /// command: in `drip run -s 3 make`, 3 is the value and make the command.
     static let valueOptions: Set<String> = [
         "-d", "--detail", "-s", "--seconds", "--sound", "--icon", "--color", "--open", "--button",
-        "--confirm", "--yes", "--no", "--id", "--activate",
+        "--yes", "--no", "--id", "--activate",
     ]
 
     /// The first argument before `--` that starts with a dash but is text, not an option: it holds

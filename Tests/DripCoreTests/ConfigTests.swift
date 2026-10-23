@@ -49,7 +49,7 @@ struct ConfigTests {
             glyph: "checkmark"))
         #expect(presets["fail"]?.seconds == 9)
         #expect(presets["warn"] == .warn)
-        #expect(presets.count == 5)
+        #expect(presets.count == 4)
     }
 
     @Test func customPresetsStartFromInfo() {
@@ -84,14 +84,14 @@ struct ConfigTests {
 
     @Test func anImageIconIsTakenFromTheConfigFilesDirectory() throws {
         let file = try ConfigLoader.parse("""
-            [preset.ask]
+            [preset.agent]
             icon = "icons/agent.png"
             [preset.ok]
             icon = "app:com.openai.chat"
             [preset.fail]
             icon = "/opt/marks/fail.png"
             """, path: path)
-        #expect(file.config.presets["ask"]?.icon == .image("/home/me/.config/drip/icons/agent.png"))
+        #expect(file.config.presets["agent"]?.icon == .image("/home/me/.config/drip/icons/agent.png"))
         #expect(file.config.presets["ok"]?.icon == .app("com.openai.chat"))
         #expect(file.config.presets["fail"]?.icon == .image("/opt/marks/fail.png"))
     }
@@ -297,7 +297,7 @@ struct PrecedenceTests {
         let config = Config(sound: .named("Pop"), presets: ["ok": PresetOverride(sound: .named("Hero"))])
         let resolver = CardResolver(config: config)
         #expect(try resolver.resolve(kind: "ok", title: "t", flags: CardFlags()).sound == .named("Hero"))
-        for kind in ["warn", "fail", "info", "ask"] {
+        for kind in ["warn", "fail", "info"] {
             #expect(try resolver.resolve(kind: kind, title: "t", flags: CardFlags()).sound == .named("Pop"))
         }
         #expect(try resolver.resolve(kind: "fail", title: "t", flags: CardFlags(sound: .named("Ping"))).sound == .named("Ping"))
@@ -325,22 +325,23 @@ struct PrecedenceTests {
         #expect(try CardResolver().resolve(kind: "deploy", title: nil, flags: CardFlags()).title == "deploy")
     }
 
-    @Test func anAskCardWaitsUnlessATimeIsSet() throws {
-        let waiting = try CardResolver().resolve(kind: "ask", title: "t", flags: CardFlags())
+    @Test func aCardThatStaysWaitsUnlessATimeIsSet() throws {
+        let stay = CardFlags(stay: true)
+        let waiting = try CardResolver().resolve(kind: "fail", title: "t", flags: stay)
         #expect(waiting.waitLimit == Defaults.waitLimit)
         // A time from the command line, the environment or the preset makes it count down.
-        let flagged = try CardResolver().resolve(kind: "ask", title: "t", flags: CardFlags(seconds: 8))
+        let flagged = try CardResolver().resolve(kind: "fail", title: "t", flags: CardFlags(seconds: 8, stay: true))
         #expect(flagged.waitLimit == nil && flagged.seconds == 8)
         let environment = try CardResolver(environment: EnvironmentSettings(seconds: 5))
-            .resolve(kind: "ask", title: "t", flags: CardFlags())
+            .resolve(kind: "fail", title: "t", flags: stay)
         #expect(environment.waitLimit == nil && environment.seconds == 5)
-        let preset = try CardResolver(config: Config(presets: ["ask": PresetOverride(seconds: 9)]))
-            .resolve(kind: "ask", title: "t", flags: CardFlags())
+        let preset = try CardResolver(config: Config(presets: ["fail": PresetOverride(seconds: 9)]))
+            .resolve(kind: "fail", title: "t", flags: stay)
         #expect(preset.waitLimit == nil && preset.seconds == 9)
-        // The top-level seconds is every card's time, and an ask card still waits.
-        let global = try CardResolver(config: Config(seconds: 3)).resolve(kind: "ask", title: "t", flags: CardFlags())
+        // The top-level seconds is every card's time, and a card that stays still waits.
+        let global = try CardResolver(config: Config(seconds: 3)).resolve(kind: "fail", title: "t", flags: stay)
         #expect(global.waitLimit == Defaults.waitLimit)
-        // Other presets never wait.
+        // Without --stay, no built-in look waits.
         for kind in ["ok", "warn", "fail", "info"] {
             #expect(try CardResolver().resolve(kind: kind, title: "t", flags: CardFlags()).waitLimit == nil)
         }
@@ -348,7 +349,7 @@ struct PrecedenceTests {
 
     @Test func aQuestionOfAnyKindWaitsUnlessATimeIsSet() throws {
         let asked = CardFlags(button: "Deploy", decline: "Cancel")
-        for kind in ["ok", "warn", "fail", "info", "ask"] {
+        for kind in ["ok", "warn", "fail", "info"] {
             let card = try CardResolver().resolve(kind: kind, title: "deploy to prod?", flags: asked)
             #expect(card.waitLimit == Defaults.waitLimit && card.waitsForAnswer)
         }

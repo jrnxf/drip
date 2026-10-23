@@ -115,8 +115,7 @@ struct DripCLI {
                 throw UsageError("the hook payload is larger than 4 MB")
             }
             let event = try AgentHook.event(agent: command.agent, payload: payload)
-            flags.id = flags.id ?? event.id
-            flags.detail = flags.detail ?? event.detail
+            flags = event.filling(flags)
             flags.icon = flags.icon ?? command.agent.icon(installed: display.isInstalled)
             let card = try makeResolver(console).resolve(kind: event.kind, title: event.title, flags: flags)
             // An agent's hook keeps its output clean, terminal or not.

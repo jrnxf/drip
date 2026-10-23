@@ -295,7 +295,8 @@ enum CardPresenters {
     }
 
     /// Has VoiceOver read `card` out as it shows. The panels never take focus, so VoiceOver would
-    /// not move to them on its own. A failure or an ask interrupts what it is reading.
+    /// not move to them on its own. A failure, a question or a card that stays interrupts what it is
+    /// reading.
     static func announce(_ card: Card) {
         let priority: NSAccessibilityPriorityLevel = card.isUrgent ? .high : .medium
         NSAccessibility.post(

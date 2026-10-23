@@ -61,19 +61,32 @@ public enum AgentHook {
 
     /// What the card says.
     public struct Event: Equatable, Sendable {
-        /// A preset name: `ok` when the agent is done, `ask` when it waits on a decision, `fail` when
-        /// its turn died on an error, `info` when it is only idle.
+        /// A preset name: `ok` when the agent is done, `fail` when its turn died on an error, `info`
+        /// when it waits on a decision or is only idle.
         public var kind: String
         public var title: String
         public var detail: String?
         /// `<agent>:<session>`, so a session's newer card replaces its older one.
         public var id: String?
+        /// Whether the card stays, as with `--stay`: the agent waits on a decision from you.
+        public var stays: Bool
 
-        public init(kind: String, title: String, detail: String? = nil, id: String? = nil) {
+        public init(kind: String, title: String, detail: String? = nil, id: String? = nil, stays: Bool = false) {
             self.kind = kind
             self.title = title
             self.detail = detail
             self.id = id
+            self.stays = stays
+        }
+
+        /// `flags` with what the event says where the command line says nothing: the session's id
+        /// and the detail, and the card stays while the agent waits on you.
+        public func filling(_ flags: CardFlags) -> CardFlags {
+            var flags = flags
+            flags.id = flags.id ?? id
+            flags.detail = flags.detail ?? detail
+            flags.stay = flags.stay || stays
+            return flags
         }
     }
 
@@ -100,12 +113,10 @@ public enum AgentHook {
         case .claude:
             switch string("hook_event_name") {
             case "Notification":
-                let kind: String
-                switch string("notification_type") {
-                case "permission_prompt", "elicitation_dialog": kind = Preset.ask.name
-                default: kind = Preset.info.name
-                }
-                return Event(kind: kind, title: "\(project()) needs you", detail: string("message"), id: id)
+                let decides = ["permission_prompt", "elicitation_dialog"].contains(string("notification_type"))
+                return Event(
+                    kind: Preset.info.name, title: "\(project()) needs you", detail: string("message"), id: id,
+                    stays: decides)
             case "Stop":
                 return Event(
                     kind: Preset.ok.name, title: "\(project()) is done",
@@ -137,7 +148,8 @@ public enum AgentHook {
             switch name {
             case "PermissionRequest":
                 return Event(
-                    kind: Preset.ask.name, title: "\(project()) needs you", detail: codexRequest(object), id: id)
+                    kind: Preset.info.name, title: "\(project()) needs you", detail: codexRequest(object), id: id,
+                    stays: true)
             case "Stop":
                 return Event(
                     kind: Preset.ok.name, title: "\(project()) is done",
@@ -148,8 +160,9 @@ public enum AgentHook {
         case .gemini:
             switch string("hook_event_name") {
             case "Notification":
-                let kind = string("notification_type") == "ToolPermission" ? Preset.ask.name : Preset.info.name
-                return Event(kind: kind, title: "\(project()) needs you", detail: string("message"), id: id)
+                return Event(
+                    kind: Preset.info.name, title: "\(project()) needs you", detail: string("message"), id: id,
+                    stays: string("notification_type") == "ToolPermission")
             case "AfterAgent":
                 return Event(
                     kind: Preset.ok.name, title: "\(project()) is done",

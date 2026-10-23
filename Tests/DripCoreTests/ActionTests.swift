@@ -55,54 +55,40 @@ struct ActionTests {
         #expect(options(["--open", " ", "--button", "View run"])?.warnings == ["--open is empty, so the card has no button"])
         #expect(options(["--open", "https://example.com", "--button", "View run"])?.warnings == [])
         #expect(usageMessage(["--open", "://nope"])?.contains("is not a valid URL") == true)
-        #expect(usageMessage(["--button", "  "])?.contains("--button needs a label") == true)
+        #expect(usageMessage(["--open", "https://example.com", "--button", "  "])?.contains("--button needs a label") == true)
     }
 
-    /// `--confirm` asks: drip waits for the card, and its exit status says whether the button was
-    /// clicked.
-    @Test func confirmAsks() throws {
-        let asked = try #require(flags(["--confirm", "Promote"]))
-        #expect(asked.button == "Promote")
-        #expect(asked.open == nil)
-        #expect(options(["--confirm", "Promote"])?.warnings == [])
-        let card = try CardResolver().resolve(kind: "warn", title: "staging is ready", flags: asked)
-        #expect(card.asksQuestion)
-        #expect(Delivery.choose(for: [card], wait: false) == .wait)
-        #expect(try #require(flags(["--confirm", "-> Ship"])).button == "-> Ship")
-        #expect(usageMessage(["--confirm", " "])?.contains("--confirm needs a label") == true)
-        #expect(usageMessage(["--confirm", "Promote", "--open", "https://example.com"])?.contains("--confirm asks a question") == true)
-        #expect(usageMessage(["--confirm", "Promote", "--open", ""]) != nil)
-        #expect(usageMessage(["--confirm", "Promote", "--button", "Ship"])?.contains("both name the button") == true)
-    }
-
-    /// `--yes` asks as `--confirm` does, and `--no` adds the button that answers no.
+    /// `--yes` asks a question: drip waits for the card, and its exit status says whether the button
+    /// was clicked. `--no` adds the button that answers no.
     @Test func yesAndNoAsk() throws {
         let asked = try #require(flags(["--yes", "Merge", "--no", "Later"]))
         #expect(asked.button == "Merge")
         #expect(asked.decline == "Later")
         #expect(options(["--yes", "Merge", "--no", "Later"])?.warnings == [])
-        let card = try CardResolver().resolve(kind: "ask", title: "Merge drip #23?", flags: asked)
-        #expect(card.action == CardAction(label: "Merge", open: nil, decline: "Later"))
-        #expect(card.asksQuestion && card.waitsForAnswer)
-        #expect(Delivery.choose(for: [card], wait: false) == .wait)
-        // --yes alone is --confirm.
-        #expect(flags(["--yes", "Promote"]) == flags(["--confirm", "Promote"]))
-        #expect(try #require(flags(["--confirm", "Merge", "--no", "Later"])).decline == "Later")
+        // On any look.
+        for kind in ["ok", "warn", "fail", "info"] {
+            let card = try CardResolver().resolve(kind: kind, title: "Merge drip #23?", flags: asked)
+            #expect(card.action == CardAction(label: "Merge", open: nil, decline: "Later"))
+            #expect(card.asksQuestion && card.waitsForAnswer)
+            #expect(Delivery.choose(for: [card], wait: false) == .wait)
+        }
+        let alone = try #require(flags(["--yes", "Promote"]))
+        #expect(alone.button == "Promote" && alone.decline == nil)
         // Text that starts with a dash is the label, not an option.
+        #expect(try #require(flags(["--yes", "-> Ship"])).button == "-> Ship")
         #expect(try #require(flags(["--no", "-> later", "--yes", "-> now"])).decline == "-> later")
         let long = try CardResolver().resolve(
-            kind: "ask", title: "t", flags: CardFlags(button: "y", decline: String(repeating: "n", count: 40)))
+            kind: "warn", title: "t", flags: CardFlags(button: "y", decline: String(repeating: "n", count: 40)))
         #expect(long.action?.decline?.count == Defaults.buttonLimit)
         #expect(usageMessage(["--no", "Later"])?.contains("--no needs --yes") == true)
         #expect(usageMessage(["--yes", "Merge", "--no", " "])?.contains("--no needs a label") == true)
         #expect(usageMessage(["--yes", " "])?.contains("--yes needs a label") == true)
-        #expect(usageMessage(["--yes", "Merge", "--confirm", "Merge"])?.contains("both name the button") == true)
-        #expect(usageMessage(["--yes", "Merge", "--button", "Ship"])?.contains("both name the button") == true)
         #expect(usageMessage(["--yes", "Merge", "--no", "Later", "--open", "https://example.com"])?
             .contains("--yes asks a question") == true)
+        #expect(usageMessage(["--yes", "Promote", "--open", ""]) != nil)
     }
 
-    /// 0 for yes, 1 for no, 5 for no answer at all, as with --confirm.
+    /// 0 for yes, 1 for no, 5 for no answer at all.
     @Test func theExitStatusIsTheAnswer() {
         #expect(ExitStatus.answered(missed: false, declined: false) == 0)
         #expect(ExitStatus.answered(missed: false, declined: true) == 1)
@@ -110,17 +96,54 @@ struct ActionTests {
         #expect(ExitStatus.answered(missed: true, declined: true) == 5)
     }
 
-    /// `--button` without `--open` is the old spelling of `--confirm`, kept through 0.1 with a
-    /// warning, so a script that asks with it, as a deploy approval does, still reads exit 0 or 5.
-    @Test func buttonWithoutOpenStillAsks() throws {
-        let arguments = ["--button", "Approve", "--seconds", "30", "--id", "mac-deploy:1", "--activate", "none", "--quiet"]
-        let asked = try #require(flags(arguments))
-        #expect(asked == (try #require(flags(["--confirm", "Approve", "--seconds", "30", "--id", "mac-deploy:1",
-                                               "--activate", "none", "--quiet"]))))
-        let card = try CardResolver().resolve(kind: "warn", title: "deploy?", flags: asked)
-        #expect(card.asksQuestion)
-        #expect(Delivery.choose(for: [card], wait: false) == .wait)
-        #expect(options(arguments)?.warnings == ["--button without --open is deprecated; use --confirm"])
+    /// `--confirm` is gone, and `--button` names only the `--open` button: `--yes` asks.
+    @Test func confirmAndAButtonWithoutOpenAreUsageErrors() {
+        #expect(usageMessage(["--confirm", "Promote"]) != nil)
+        #expect(usageMessage(["--button", "Approve"])?.contains("--button names the --open button, so it needs --open") == true)
+        #expect(usageMessage(["--yes", "Merge", "--button", "Ship"])?.contains("needs --open") == true)
+    }
+
+    /// `--stay` keeps a card of any look on screen without holding the script.
+    @Test func stayKeepsTheCardWithoutWaiting() throws {
+        let staying = try #require(flags(["--stay"]))
+        #expect(staying.stay)
+        #expect(try #require(flags([])).stay == false)
+        for kind in ["ok", "warn", "fail", "info"] {
+            let card = try CardResolver().resolve(kind: kind, title: "Deploy failed", flags: staying)
+            #expect(card.kind == kind)
+            #expect(card.waitLimit == Defaults.waitLimit)
+            #expect(card.showsWaitingMark && card.isClickable && card.showsIconAtNotch)
+            // It gives way to other cards, unlike a question, and the script moves on.
+            #expect(!card.waitsForAnswer)
+            #expect(Delivery.choose(for: [card], wait: false) == .background)
+        }
+        // A time counts it down instead.
+        let timed = try CardResolver().resolve(kind: "fail", title: "t", flags: CardFlags(seconds: 8, stay: true))
+        #expect(!timed.waits && timed.seconds == 8)
+        // With a link button, it stays and still opens the link.
+        let linked = try CardResolver().resolve(
+            kind: "ok", title: "t", flags: CardFlags(stay: true, open: "https://example.com", button: "View"))
+        #expect(linked.waits && !linked.asksQuestion)
+        #expect(Delivery.choose(for: [linked], wait: false) == .background)
+    }
+
+    /// `drip run` and `drip hook` cannot ask: `drip run` exits with its command's code and `drip
+    /// hook` with 0 or 1, so nothing would read the answer.
+    @Test func runAndHookTakeNoQuestion() {
+        for prefix in [["run"], ["hook", "claude"]] {
+            for question in [["--yes", "Retry"], ["--yes", "Retry", "--no", "Stop"], ["--no", "Stop"]] {
+                let arguments = prefix + question + (prefix == ["run"] ? ["make"] : ["{}"])
+                guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
+                    Issue.record("\(arguments) parsed")
+                    continue
+                }
+                // Any failure of drip hook exits 1, as an agent reads 2 as "block".
+                #expect(status == (prefix == ["run"] ? ExitStatus.usage : ExitStatus.hookFailed), "\(arguments)")
+                #expect(message.contains("--no needs --yes") || message.contains("takes no --yes"), "\(message)")
+            }
+            guard case .invocation = CommandLineParser.parse(prefix + ["--stay"] + (prefix == ["run"] ? ["make"] : ["{}"]))
+            else { Issue.record("\(prefix) --stay did not parse"); continue }
+        }
     }
 
     @Test func theResolverAddsTheButton() throws {
@@ -175,7 +198,7 @@ struct DeliveryTests {
     @Test func aHandOffSurvivesTheTripToTheBackgroundDrip() throws {
         let handOff = StackHandOff(settings: StackSettings(mode: .push, max: 2), cards: [
             HandedCard(card: Card(preset: .ok, title: "done"), top: 42, remaining: 12.5, isWaiting: false),
-            HandedCard(card: Card(preset: .ask, title: "needs you"), top: 98, remaining: 590, isWaiting: true, leaving: 0.04),
+            HandedCard(card: .staying(title: "needs you"), top: 98, remaining: 590, isWaiting: true, leaving: 0.04),
         ])
         let request = BackgroundRequest(handOff: handOff)
         #expect(request.cards.map(\.title) == ["done", "needs you"])

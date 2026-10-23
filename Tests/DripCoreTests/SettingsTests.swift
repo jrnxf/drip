@@ -59,7 +59,9 @@ struct RemovedSettingTests {
             }
             let flag = arguments.first { $0 == "--position" || $0 == "--style" } ?? ""
             #expect(status == expected, "\(arguments)")
-            #expect(message == "drip: unknown option '\(flag)'\nSee '\(help)'.", "\(arguments)")
+            // ArgumentParser may suggest a flag of a similar name, such as --stay for --style.
+            #expect(message.hasPrefix("drip: unknown option '\(flag)'"), "\(arguments)")
+            #expect(message.hasSuffix("\nSee '\(help)'."), "\(arguments)")
         }
     }
 }

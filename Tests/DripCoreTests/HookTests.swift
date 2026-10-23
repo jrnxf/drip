@@ -14,20 +14,23 @@ struct HookTests {
              "message":"Claude needs your permission to use Bash","notification_type":"permission_prompt"}
             """)
         #expect(event == AgentHook.Event(
-            kind: "ask", title: "drip needs you", detail: "Claude needs your permission to use Bash",
-            id: "claude:abc123"))
+            kind: "info", title: "drip needs you", detail: "Claude needs your permission to use Bash",
+            id: "claude:abc123", stays: true))
     }
 
-    @Test func claudeKindFollowsTheNotificationType() throws {
-        func kind(_ type: String) throws -> String {
+    @Test func claudeStaysWhenTheNotificationNeedsADecision() throws {
+        func event(_ type: String) throws -> AgentHook.Event {
             try AgentHook.event(agent: .claude, payload: """
                 {"hook_event_name":"Notification","message":"m","notification_type":"\(type)"}
-                """).kind
+                """)
         }
-        #expect(try kind("permission_prompt") == "ask")
-        #expect(try kind("elicitation_dialog") == "ask")
-        #expect(try kind("idle_prompt") == "info")
-        #expect(try kind("auth_success") == "info")
+        for type in ["permission_prompt", "elicitation_dialog", "idle_prompt", "auth_success"] {
+            #expect(try event(type).kind == "info")
+        }
+        #expect(try event("permission_prompt").stays)
+        #expect(try event("elicitation_dialog").stays)
+        #expect(try !event("idle_prompt").stays)
+        #expect(try !event("auth_success").stays)
     }
 
     @Test func claudeStopIsDoneWithTheLastMessage() throws {
@@ -118,7 +121,8 @@ struct HookTests {
              "tool_name":"Bash","tool_input":{"command":"npm install","description":null}}
             """)
         #expect(event == AgentHook.Event(
-            kind: "ask", title: "web needs you", detail: "Codex wants to run npm install", id: "codex:019a"))
+            kind: "info", title: "web needs you", detail: "Codex wants to run npm install", id: "codex:019a",
+            stays: true))
         func detail(_ input: String) throws -> String? {
             try AgentHook.event(agent: .codex, payload: """
                 {"hook_event_name":"PermissionRequest","tool_name":"apply_patch","tool_input":\(input)}
@@ -151,7 +155,8 @@ struct HookTests {
              "details":{"tool_name":"run_shell_command"}}
             """)
         #expect(event == AgentHook.Event(
-            kind: "ask", title: "site needs you", detail: "Allow run_shell_command: npm test?", id: "gemini:g1"))
+            kind: "info", title: "site needs you", detail: "Allow run_shell_command: npm test?", id: "gemini:g1",
+            stays: true))
         #expect(try AgentHook.event(agent: .gemini, payload: """
             {"hook_event_name":"Notification","notification_type":"Other","message":"m"}
             """).kind == "info")
@@ -245,13 +250,23 @@ struct HookTests {
             {"session_id":"abc","cwd":"/x/drip","hook_event_name":"Notification","message":"hi",
              "notification_type":"permission_prompt"}
             """)
-        let card = try CardResolver().resolve(
-            kind: event.kind, title: event.title, flags: CardFlags(detail: event.detail, id: event.id))
-        #expect(card.kind == "ask")
-        #expect(card.waits)
+        let card = try CardResolver().resolve(kind: event.kind, title: event.title, flags: event.filling(CardFlags()))
+        #expect(card.kind == "info")
+        #expect(card.waits && !card.asksQuestion)
+        #expect(Delivery.choose(for: [card], wait: false) == .background)
         #expect(card.title == "drip needs you")
         #expect(card.detail == "hi")
         #expect(card.id == "claude:abc")
+    }
+
+    /// The command line's own --id and --detail win over the event's, and --stay keeps any card.
+    @Test func theCommandLineBeatsTheEvent() {
+        let event = AgentHook.Event(kind: "ok", title: "t", detail: "theirs", id: "claude:s1")
+        let mine = event.filling(CardFlags(detail: "mine", stay: true, id: "deploy"))
+        #expect(mine.detail == "mine" && mine.id == "deploy" && mine.stay)
+        let theirs = event.filling(CardFlags())
+        #expect(theirs.detail == "theirs" && theirs.id == "claude:s1" && !theirs.stay)
+        #expect(AgentHook.Event(kind: "info", title: "t", stays: true).filling(CardFlags()).stay)
     }
 
     @Test func anAgentShowsItsInstalledAppsIcon() {
@@ -267,9 +282,9 @@ struct HookTests {
             card.icon = agent.icon { _ in false }
             #expect(card.ringGlyph == "checkmark")
         }
-        var card = Card(preset: .ask, title: "drip needs you")
+        var card = Card.staying(title: "drip needs you")
         card.icon = AgentHook.fallbackIcon
-        #expect(card.ringGlyph == "questionmark")
+        #expect(card.ringGlyph == "info")
     }
 
     @Test func needsYouTurnsIntoDoneInTheRing() throws {
@@ -277,7 +292,7 @@ struct HookTests {
             let event = try AgentHook.event(agent: .claude, payload: payload)
             return try CardResolver().resolve(
                 kind: event.kind, title: event.title,
-                flags: CardFlags(detail: event.detail, icon: .app("com.anthropic.claudefordesktop"), id: event.id))
+                flags: event.filling(CardFlags(icon: .app("com.anthropic.claudefordesktop"))))
         }
         let asking = try card("""
             {"session_id":"s1","cwd":"/work/api","hook_event_name":"Notification","message":"m",
@@ -291,7 +306,8 @@ struct HookTests {
         #expect(IslandUpdate.changesState(from: asking, to: done))
         // The agent's icon stays; the state lands in the ring.
         #expect(IslandUpdate.landsInRing(from: asking, to: done))
-        #expect(asking.ringGlyph == "questionmark")
+        #expect(asking.waits)
+        #expect(asking.ringGlyph == "info")
         #expect(done.ringGlyph == "checkmark")
         #expect(!done.waits)
     }
