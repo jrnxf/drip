@@ -59,8 +59,10 @@ unset DRIP_SECONDS DRIP_SIZE DRIP_SOUND DRIP_MOTION DRIP_STACK DRIP_STACK_MAX
 # Record: -x mutes the shutter sound, -V films for that many seconds, -R is the region at native
 # pixels. The take is the cards below with their sleeps, plus room for each card to grow and go.
 take=20
+now() { perl -MTime::HiRes=time -e 'printf "%.2f\n", time'; }
 screencapture -x -V "$take" -R "$crop" "$work/take.mov" &
 rec=$!
+start=$(now)
 sleep 2
 
 "$drip" ok "Build finished" -d "make test: 246 passed in 3.2s" --seconds 3 --wait
@@ -72,23 +74,28 @@ sleep 3
 sleep 0.8
 # Nobody answers, so it times out after 3 seconds (exit 5).
 "$drip" warn "Deploy to prod?" -d "v1.4.0" --yes Deploy --no Cancel --seconds 3 || true
+# The demo ends 1.5 seconds after the last card times out, enough for it to go.
+length=$(awk -v start="$start" -v end="$(now)" 'BEGIN { printf "%.2f", end - start + 1.5 }')
 
-kill -0 "$rec" 2>/dev/null || die "the cards ran past the $take second take. Fix: raise take in this script"
+if ! kill -0 "$rec" 2>/dev/null; then
+    wait "$rec" || die "screencapture failed. Check Screen Recording permission for this terminal"
+    die "the cards ran past the $take second take. Fix: raise take in this script"
+fi
 wait "$rec" || true
 rec=
 [ -s "$work/take.mov" ] || die "the recording is empty. Check Screen Recording permission for this terminal"
 
-# Encode. The MP4 keeps the full recording.
-ffmpeg -y -loglevel error -i "$work/take.mov" -an -c:v libx264 -crf 14 -preset slow \
+# Encode, cut at the end of the demo.
+ffmpeg -y -loglevel error -t "$length" -i "$work/take.mov" -an -c:v libx264 -crf 14 -preset slow \
     -pix_fmt yuv420p -vf "crop=trunc(iw/2)*2:trunc(ih/2)*2" -movflags +faststart docs/demo.mp4
 
-# The README animation: a palette built from the whole take, at 2x the 400 points it is shown at,
+# The README animation: a palette built from the whole demo, at 2x the 400 points it is shown at,
 # stepped down in frame rate and then width until it is under 5 MB.
 limit=5000000
 for settings in 24:800 20:800 15:800 15:640 12:560; do
     fps=${settings%:*}
     width=${settings#*:}
-    ffmpeg -y -loglevel error -i "$work/take.mov" -filter_complex \
+    ffmpeg -y -loglevel error -t "$length" -i "$work/take.mov" -filter_complex \
         "fps=$fps,scale=$width:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=192:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
         -loop 0 docs/demo.gif
     size=$(wc -c <docs/demo.gif)
