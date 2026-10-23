@@ -86,8 +86,11 @@
       </dl>
 
       <div class="devwrap">
-        <span class="callout tl" data-n="1" aria-hidden="true">display: DripCore, as WebAssembly<i style="--w:60px"></i></span>
-        <span class="callout tr" data-n="2" aria-hidden="true"><i style="--w:40px"></i>printer: each command as it runs</span>
+        <div class="callouts" aria-hidden="true">
+          <span class="callout" data-n="1">display: DripCore, as WebAssembly<i style="--w:60px"></i></span>
+          <span class="callout" data-n="2">keys: what each one does</span>
+          <span class="callout" data-n="3"><i style="--w:40px"></i>printer: what ran</span>
+        </div>
         <div class="device">
           <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
           <div class="devgrid">
@@ -460,8 +463,9 @@ class Stage {
         this.leave(card, this.clock - card.start);
       }
       const action = card.card.action;
-      if (answer === "no") this.term?.print(`drip: "${action.decline}" was clicked (exit 1)`, "dim");
-      else this.term?.print(action.open ? `drip: opened ${action.open}` : `drip: "${action.label}" was clicked (exit 0)`, "dim");
+      const term = card.term ?? this.term;
+      if (answer === "no") term?.print(`drip: "${action.decline}" was clicked (exit 1)`, "dim");
+      else term?.print(action.open ? `drip: opened ${action.open}` : `drip: "${action.label}" was clicked (exit 0)`, "dim");
       if (answer === "yes" && action.open && /^https?:\/\//.test(action.open)) open(action.open, "_blank", "noopener");
       card.onClick?.(answer);
     });
@@ -892,12 +896,12 @@ function announce(card) { announcer.textContent = `drip card: ${card.card.title}
 // slot, and the paper steps out a line at a time, as a thermal printer's motor feeds it, so the
 // entry comes out of the slot and the older ones go down with the paper. Past `max` entries the
 // oldest go. The paper's head and the time it was put in are at its far end, printed first.
-// A `live` printer (the hero's) prints at once instead: the command the moment it runs, and each
-// line it prints as it comes, under it.
+// A run (the hero's) prints its command at once instead, and what the command printed under it,
+// all together, once it is done.
 const LINE = 18.4; // an entry's line on the paper, in CSS pixels
 class Term {
-  constructor(log, { max = 40, live = false } = {}) {
-    this.log = log; this.max = max; this.entry = null; this.held = false; this.live = live;
+  constructor(log, { max = 40 } = {}) {
+    this.log = log; this.max = max; this.entry = null; this.held = false;
     this.feed = document.createElement("div"); log.append(this.feed);
     this.end = document.createElement("div"); this.end.className = "end";
     this.stamp = document.createElement("div"); this.stamp.className = "stamp";
@@ -908,42 +912,44 @@ class Term {
   }
   open() { this.flush(); const entry = document.createElement("div"); entry.className = "entry"; this.entry = entry; return entry; }
   line(entry, cls, text) { const div = document.createElement("div"); div.className = cls; div.append(text); entry.append(div); return div; }
-  // Output that comes while a command runs waits for the command, unless the printer is live; any
-  // other is printed at once.
+  // Output that comes while a command runs waits for the command; any other is printed at once.
   print(text, cls = "") {
     const entry = this.entry ?? this.open();
-    // Printing at once: the entry is already on the paper, so each line feeds out as it comes.
-    if (entry.live) {
-      const sheet = this.sheet;
-      for (const part of String(text).split("\n")) this.printing = this.printing.then(() => sheet === this.sheet && this.grow(entry, `out ${cls}`, part));
-      return;
-    }
     for (const part of String(text).split("\n")) this.line(entry, `out ${cls}`, part);
     if (!this.held) this.flush();
   }
-  // A flag such as --confirm stays whole, rather than breaking after its dashes.
   echo(command) {
+    this.command(this.open(), command);
+    this.held = true;
+  }
+  // A flag such as --confirm stays whole, rather than breaking after its dashes.
+  command(entry, command) {
     const p = document.createElement("span"); p.className = "c"; p.textContent = "$ ";
-    const div = this.line(this.open(), "cmd", p);
+    const div = this.line(entry, "cmd", p);
     for (const part of command.split(/(\s+)/)) {
       if (!/^--?\w/.test(part)) { div.append(part); continue; }
       const flag = document.createElement("span"); flag.className = "flag"; flag.textContent = part; div.append(flag);
     }
-    this.held = true;
-    if (this.live) {
-      // The command goes on the paper at once; what it prints follows it there.
-      const entry = this.entry, sheet = this.sheet;
-      entry.live = true;
-      this.printing = this.printing.then(() => sheet === this.sheet && this.feedOut(entry));
-    }
-    return div;
+  }
+  // A command printed the moment it runs, in an entry of its own, so runs can overlap. Returns
+  // where exec() prints: what the command prints is held, and added under it at once when it is
+  // done, without the paper feeding, so the lines above it stay where they are.
+  run(command) {
+    const entry = document.createElement("div"), sheet = this.sheet, held = [];
+    entry.className = "entry";
+    this.command(entry, command);
+    this.printing = this.printing.then(() => sheet === this.sheet && this.feedOut(entry));
+    return {
+      print: (text, cls = "") => { for (const part of String(text).split("\n")) held.push([`out ${cls}`, part]); },
+      done: () => { this.printing = this.printing.then(() => { if (sheet === this.sheet) for (const [cls, part] of held) this.line(entry, cls, part); }); },
+    };
   }
   done() { this.flush(); }
   // Entries print one after another, each once the paper has finished feeding out the one before.
   flush() {
     const entry = this.entry, sheet = this.sheet;
     this.entry = null; this.held = false;
-    if (entry && !entry.live) this.printing = this.printing.then(() => sheet === this.sheet && this.feedOut(entry));
+    if (entry) this.printing = this.printing.then(() => sheet === this.sheet && this.feedOut(entry));
   }
   async feedOut(entry) {
     const before = this.feed.offsetHeight;
@@ -951,19 +957,8 @@ class Term {
     const fed = this.feed.offsetHeight - before;
     const entries = this.feed.querySelectorAll(":scope > .entry");
     for (let i = this.max; i < entries.length; i++) entries[i].remove();
-    await this.step(fed);
-  }
-  // One more line of an entry already on the paper, printed under the lines before it; the paper
-  // steps out by it.
-  async grow(entry, cls, text) {
-    if (!entry.isConnected) return;
-    const before = this.feed.offsetHeight;
-    this.line(entry, cls, text);
-    await this.step(this.feed.offsetHeight - before);
-  }
-  // The whole paper starts back in the slot by what was printed, and steps out a line at a time.
-  async step(fed) {
     if (reduceMotion.matches || fed <= 0) return;
+    // The whole paper starts back in the slot by what was printed, and steps out a line at a time.
     const lines = Math.min(12, Math.max(1, Math.round(fed / LINE))), frames = [];
     for (let i = 0; i <= lines; i++) frames.push({ offset: i / lines, transform: `translateY(${(-fed + (fed * i) / lines).toFixed(2)}px)`, easing: "cubic-bezier(.3, .7, .3, 1)" });
     this.feeding = this.paper.slip.animate(frames, { duration: 60 + lines * 75 });
@@ -1356,7 +1351,7 @@ async function execOne(stages, term, stage, config, alive) {
   const question = cards.find((card) => card.card.action && !card.card.action.open);
   if (question) {
     let answer = null;
-    question.onClick = (clicked) => { answer = clicked; };
+    question.onClick = (clicked) => { answer = clicked; }; question.term = term;
     term.waiting?.();
     while (!answer && stage.keeps(question)) await sleep(100);
     if (!alive()) return 5;
@@ -1368,13 +1363,13 @@ async function execOne(stages, term, stage, config, alive) {
 
 // ===== The hero: the device's display, printer and keys =====
 const heroScreen = document.getElementById("hero-screen");
-const heroTerm = new Term(document.getElementById("hero-tape"), { max: 80, live: true });
+const heroTerm = new Term(document.getElementById("hero-tape"), { max: 80 });
 const narrow = matchMedia("(width <= 760px)");
 // The notch and the cards at their real size, smaller only when the display is too narrow for them.
 const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 600)) });
 const stages = [hero];
 
-// Five drips at once: three stack, and a drop under the last one counts the two waiting for room.
+// Five drips at once: three stack, and the other two queue in a drop under the last one.
 const STACK_LINES = (mode) => [
   `drip ok "Build finished" -d "make test: 246 passed in 3.2s"`,
   `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"`,
@@ -1382,74 +1377,66 @@ const STACK_LINES = (mode) => [
   `drip info "Backup done" -d "412 files, 3.1 GB to the NAS"`,
   `drip ok "Release 1.4 is out" -d "14 files changed"`,
 ].map((line) => (mode === "push" ? `DRIP_STACK=push ${line}` : line));
-// The keys: one example each, with the LED in the color of the card it shows.
+// The keys: one example each, with the LED in the color of the card it shows, its group, the hint
+// printed under its name, and what the display says when it is hovered or focused before a press.
 const CHIPS = [
-  { key: "ok", name: "a success card", color: "#30d158", line: `drip ok "Build finished" -d "make test: 246 passed in 3.2s"` },
-  { key: "fail", name: "a failure card", color: "#ff453a", line: `drip fail "Deploy failed" -d "staging: health check timed out after 30s"` },
-  { key: "warn", name: "a warning card", color: "#ff9f0a", line: `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"` },
-  { key: "run", name: "drip run npm test", color: "#8e8e93", line: `drip run npm test` },
-  { key: "agent", name: "Claude needs you, then is done", color: "#bf5af2", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'` },
-  { key: "--id", name: "a card replaced in place", color: "#0a84ff", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` },
-  { key: "--open", name: "a card with a button", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip` },
-  { key: "preset", name: "your own preset", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` },
-  { key: "stack", name: "five cards at once", color: "#d0d0cc", line: STACK_LINES("chain").join("; ") },
-  { key: "ask", name: "a question with yes and no buttons", color: "#64d2ff", line: `drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23` },
+  { key: "ok", name: "a success card", color: "#30d158", line: `drip ok "Build finished" -d "make test: 246 passed in 3.2s"`, group: "cards", hint: "success", says: "a green card: Build finished" },
+  { key: "fail", name: "a failure card", color: "#ff453a", line: `drip fail "Deploy failed" -d "staging: health check timed out after 30s"`, group: "cards", hint: "failure", says: "a red card: Deploy failed" },
+  { key: "warn", name: "a warning card", color: "#ff9f0a", line: `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"`, group: "cards", hint: "warning", says: "an orange card: Disk almost full" },
+  { key: "run", name: "drip run npm test", color: "#8e8e93", line: `drip run npm test`, group: "watch", hint: "wraps a command", says: "runs npm test, then a card with how it went" },
+  { key: "agent", name: "Claude needs you, then is done", color: "#bf5af2", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'`, group: "watch", hint: "agent hook", says: "Claude Code asks for permission, then says it is done" },
+  { key: "--id", name: "a card replaced in place", color: "#0a84ff", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy`, group: "more", hint: "updates in place", says: "--id: Deploying turns into Deployed in the same card" },
+  { key: "--open", name: "a card with a button", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip`, group: "buttons", hint: "adds a button", says: "--open: a card with a View button that opens a link" },
+  { key: "preset", name: "your own preset", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"`, group: "more", hint: "your own look", says: "a deploy preset from config.toml: its own icon and color" },
+  { key: "stack", name: "five cards at once", color: "#d0d0cc", line: STACK_LINES("chain").join("; "), group: "more", hint: "3 at once", says: "five drips at once: three stack, the other two queue in a drop under them" },
+  { key: "ask", name: "a question with yes and no buttons", color: "#64d2ff", line: `drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23`, group: "buttons", hint: "yes / no buttons", says: "--yes / --no: asks Merge or Later, and waits for your click" },
 ];
-// What each key says: its group, the hint printed under its name, and what the display says when
-// the key is hovered or focused before a press.
-const KEYFACE = {
-  ok: { group: "cards", hint: "success", says: "a green card: Build finished" },
-  fail: { group: "cards", hint: "failure", says: "a red card: Deploy failed" },
-  warn: { group: "cards", hint: "warning", says: "an orange card: Disk almost full" },
-  run: { group: "watch", hint: "wraps a command", says: "runs npm test, then a card with how it went" },
-  agent: { group: "watch", hint: "agent hook", says: "Claude Code asks for permission, then says it is done" },
-  "--open": { group: "buttons", hint: "adds a button", says: "--open: a card with a View button that opens a link" },
-  ask: { group: "buttons", hint: "yes / no buttons", says: "--yes / --no: asks Merge or Later, and waits for your click" },
-  "--id": { group: "more", hint: "updates in place", says: "--id: Deploying turns into Deployed in the same card" },
-  preset: { group: "more", hint: "your own look", says: "a deploy preset from config.toml: its own icon and color" },
-  stack: { group: "more", hint: "3 at once", says: "five drips at once: three stack, a drop counts the two waiting for room" },
-};
 // The keys' groups, in two rows.
 const KEYROWS = [["cards", "watch"], ["buttons", "more"]];
 
 
-let busy = false;
-// A question holds the command until it is answered, and the display says so.
-let heroWaiting = false;
-heroTerm.waiting = () => { heroWaiting = true; };
+// How many of the keys' commands are running; each key counts its own in `runs`.
+let running = 0, latest = 0;
 const runStat = document.getElementById("run-stat"), runWord = runStat.querySelector(".w"), runTime = runStat.querySelector(".t");
-// Runs a key's line. The paper prints it at once; the display counts its time, then says how it
-// ended, and the key's LED blinks until it returns.
+// Runs a key's line, even while others run. The paper prints it at once; the display counts the
+// latest run's time, then says how it ended, and the key's LED blinks until its command returns.
 async function runHero(line, { fromUser = true } = {}) {
   if (fromUser) stopAttract();
-  if (busy) return;
-  busy = true;
+  const run = ++latest; running++;
   unpreview();
-  // The key whose example this is lights until its cards have gone, whoever pressed it.
+  // The key whose example this is lights until the cards have gone, whoever pressed it.
   const key = keyFor.get(line);
-  for (const k of keysBox.querySelectorAll(".running")) k.classList.remove("running", "exec");
-  key?.classList.add("running", "exec");
+  for (const k of keysBox.querySelectorAll(".running")) if (!k.runs) k.classList.remove("running");
+  if (key) { key.runs = (key.runs ?? 0) + 1; key.classList.add("running", "exec"); }
   const started = performance.now(), seconds = () => (performance.now() - started) / 1000;
-  runStat.className = "run on going"; clearTimeout(runStat.fade); heroWaiting = false;
-  const show = () => { runWord.textContent = heroWaiting ? "waiting for you" : "running"; runTime.textContent = `${seconds().toFixed(1)}s`; };
+  const out = heroTerm.run(line);
+  // A question holds the command until it is answered, and the display says so.
+  let waiting = false;
+  out.waiting = () => { waiting = true; };
+  runStat.className = "run on going"; clearTimeout(runStat.fade);
+  const show = () => { if (run === latest) { runWord.textContent = waiting ? "waiting for you" : "running"; runTime.textContent = `${seconds().toFixed(1)}s`; } };
   show();
   const tick = setInterval(show, 100);
   let status = 0;
-  try { status = await exec(line, heroTerm, hero); } finally {
-    clearInterval(tick); key?.classList.remove("exec");
-    runStat.className = `run on ${status ? "bad" : "ok"}`;
-    runWord.textContent = `exit ${status} ·`; runTime.textContent = `${seconds().toFixed(1)}s`;
-    runStat.fade = setTimeout(() => { runStat.className = "run"; }, 2600);
-    busy = false;
-    if (key) (async () => { while (hero.busy && !busy) await sleep(150); if (!busy) key.classList.remove("running"); })();
+  try { status = await exec(line, out, hero, { echo: false }); } finally {
+    clearInterval(tick); running--;
+    if (run === latest) {
+      runStat.className = `run on ${status ? "bad" : "ok"}`;
+      runWord.textContent = `exit ${status} ·`; runTime.textContent = `${seconds().toFixed(1)}s`;
+      runStat.fade = setTimeout(() => { runStat.className = "run"; }, 2600);
+    }
+    if (key && !--key.runs) {
+      key.classList.remove("exec");
+      (async () => { while (hero.busy && !key.runs) await sleep(150); if (!key.runs) key.classList.remove("running"); })();
+    }
   }
 }
 
 // Hovering or focusing a key says on the display what it would run.
 const dispNote = document.getElementById("dispnote"), dispText = dispNote.querySelector(".t");
 function preview(chip) {
-  if (busy || !drip) return;
-  dispText.textContent = KEYFACE[chip.key].says; dispNote.classList.add("on");
+  if (running || !drip) return;
+  dispText.textContent = chip.says; dispNote.classList.add("on");
 }
 function unpreview() { dispNote.classList.remove("on"); }
 
@@ -1459,7 +1446,7 @@ const groupBox = new Map();
 for (const row of KEYROWS) {
   const r = document.createElement("div"); r.className = "krow";
   for (const name of row) {
-    const n = CHIPS.filter((chip) => KEYFACE[chip.key].group === name).length;
+    const n = CHIPS.filter((chip) => chip.group === name).length;
     const g = document.createElement("div"); g.className = `kgroup${n === 2 ? " pair" : ""}`; g.style.setProperty("--n", n);
     g.innerHTML = `<span class="grp" aria-hidden="true"></span><div class="kkeys"></div>`;
     g.querySelector(".grp").textContent = name;
@@ -1468,18 +1455,17 @@ for (const row of KEYROWS) {
   keysBox.append(r);
 }
 for (const chip of CHIPS) {
-  const face = KEYFACE[chip.key];
   const b = document.createElement("button");
   b.type = "button"; b.className = "key"; b.title = chip.line; b.style.setProperty("--c", chip.color);
   b.setAttribute("aria-label", `${chip.key}: ${chip.name}`);
   b.innerHTML = `<span class="led"></span><span class="face"><b></b><small></small></span>`;
-  b.querySelector("b").textContent = chip.key; b.querySelector("small").textContent = face.hint;
+  b.querySelector("b").textContent = chip.key; b.querySelector("small").textContent = chip.hint;
   b.addEventListener("pointerenter", () => preview(chip));
   b.addEventListener("focus", () => preview(chip));
   b.addEventListener("pointerleave", unpreview);
   b.addEventListener("blur", unpreview);
-  b.addEventListener("click", () => { if (drip && !busy) runHero(chip.line); });
-  groupBox.get(face.group).append(b); keyFor.set(chip.line, b);
+  b.addEventListener("click", () => { if (drip) runHero(chip.line); });
+  groupBox.get(chip.group).append(b); keyFor.set(chip.line, b);
 }
 
 // ===== What it does: six modules, each its own display on the same engine =====
@@ -1580,7 +1566,7 @@ function scheduleAttract(delay) {
   if (!attractOn || reduceMotion.matches) return;
   attractTimer = setTimeout(async () => {
     if (!attractOn) return;
-    if (busy || hero.busy || !hero.visible || document.hidden) { scheduleAttract(1200); return; }
+    if (running || hero.busy || !hero.visible || document.hidden) { scheduleAttract(1200); return; }
     await runHero(ATTRACT[attractIndex++ % ATTRACT.length], { fromUser: false });
     scheduleAttract(2600);
   }, delay);
