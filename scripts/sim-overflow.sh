@@ -73,9 +73,11 @@ while [ "$i" -le "$count" ]; do
     title=$(echo "$titles" | cut -d '|' -f $(((i - 1) % 8 + 1)))
     set -- "$kind" "$title" --detail "card $i of $count · sim-overflow" --seconds "$timeout"
     if [ "$i" -eq 1 ] && [ -n "$swap" ]; then
-        # Still on screen when its update comes last, so the update swaps into it.
+        # Still on screen when its update comes last, so the update swaps into it: the update waits
+        # behind every other card past stack_max, and each of those grows out only as a card times out.
         set -- info "Deploying" --detail "card 1 of $count · --id sim-overflow" --id sim-overflow \
-            --seconds "$(awk "BEGIN { s = $timeout + $count * $gap + 4; print (s > 60 ? 60 : s) }")"
+            --seconds "$(awk "BEGIN { q = $count - $max; if (q < 0) q = 0
+                s = $timeout * (q + 2) + $count * $gap + 4; print (s > 60 ? 60 : s) }")"
     fi
     echo "drip $*"
     "$drip" "$@"
