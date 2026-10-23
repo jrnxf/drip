@@ -3,22 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>drip - cards from your Mac's notch</title>
-<meta name="description" content="drip is a command-line tool for macOS. One shell command drops a card out of the camera notch: what finished, and how it went. This page runs drip's engine, compiled to WebAssembly.">
+<title>drip - Mac notch alerts for builds, deploys and AI agents</title>
+<meta name="description" content="Free, open-source macOS CLI. One command shows a native card from the MacBook notch when a build, deploy, test or Claude Code session finishes or needs you.">
 <link rel="canonical" href="https://drip.jrnxf.co/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="drip">
-<meta property="og:url" content="https://drip.jrnxf.co">
-<meta property="og:title" content="drip - cards from your Mac's notch">
-<meta property="og:description" content="One shell command drops a card out of your Mac's camera notch: what finished, and how it went. Try it in the page: it runs drip's engine.">
+<meta property="og:url" content="https://drip.jrnxf.co/">
+<meta property="og:title" content="drip - Mac notch alerts for builds, deploys and AI agents">
+<meta property="og:description" content="Free, open-source macOS CLI. One command shows a native card from the MacBook notch when a build, deploy, test or Claude Code session finishes or needs you.">
 <meta property="og:image" content="https://drip.jrnxf.co/og.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="drip's logo, a notch dripping two beads and an orange drop, beside the words the notch, finally useful, and a small screen showing a Build finished card.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="drip - cards from your Mac's notch">
-<meta name="twitter:description" content="One shell command drops a card out of your Mac's camera notch: what finished, and how it went.">
+<meta name="twitter:title" content="drip - Mac notch alerts for builds, deploys and AI agents">
+<meta name="twitter:description" content="Free, open-source macOS CLI. One command shows a native card from the MacBook notch when a build, deploy, test or Claude Code session finishes or needs you.">
 <meta name="twitter:image" content="https://drip.jrnxf.co/og.png">
 <meta name="twitter:image:alt" content="drip's logo, a notch dripping two beads and an orange drop, beside the words the notch, finally useful, and a small screen showing a Build finished card.">
 <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
@@ -31,6 +31,24 @@
 <link rel="manifest" href="site.webmanifest">
 <link rel="preload" href="archivo.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="martian-mono.woff2" as="font" type="font/woff2" crossorigin>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "drip",
+  "description": "A free, open-source macOS command-line tool that shows a native card from the MacBook notch when a build, deploy, test or coding agent finishes or needs you.",
+  "url": "https://drip.jrnxf.co/",
+  "image": "https://drip.jrnxf.co/og.png",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS 13 or later",
+  "softwareRequirements": "macOS 13 or later; Homebrew to install",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "jrnxf", "url": "https://github.com/jrnxf" },
+  "sameAs": ["https://github.com/jrnxf/drip"]
+}
+</script>
 <script>
   // The theme before the first paint: ?theme=, then the visitor's last choice, then the system's.
   (() => {
@@ -122,7 +140,7 @@
   .model span:first-child { background: var(--ink); color: var(--bg); }
   h1 { margin: 0; font: 200 clamp(46px, 5vw, 84px)/.98 var(--sans); font-stretch: 125%; letter-spacing: -.035em; }
   h1 b { font-weight: 600; }
-  .lede { margin: 22px 0 0; max-width: 34ch; font-size: 18px; color: var(--ink-2); }
+  .lede { margin: 22px 0 0; max-width: 40ch; font-size: 18px; color: var(--ink-2); }
   .lede b { color: var(--ink); }
   .plate { margin-top: 26px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; background: var(--body); border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--lip); }
   .plate code { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -156,7 +174,10 @@
   .display .stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
   /* The display's own print, scaled with the notch so it keeps clear of it. */
   .display .glyphs { position: absolute; inset: 0 0 auto 0; height: 32px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px; font: 500 10px/1 var(--mono); letter-spacing: .08em; color: var(--lcd-ink); opacity: .7; width: calc(100% / var(--fit, 1)); transform: scale(var(--fit, 1)); transform-origin: 0 0; }
-  .loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 16px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--lcd-ink); }
+  /* What a display shows until drip's engine draws in it, and all a reader without JavaScript gets. */
+  .still { position: absolute; inset: 32px 0 0; margin: 0; display: grid; place-content: center; gap: 8px; padding: 0 16px; text-align: center; font: 500 10.5px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--lcd-ink); opacity: .7; }
+  .still code { text-transform: none; letter-spacing: 0; font-size: 11.5px; overflow-wrap: anywhere; }
+  .loading { position: absolute; inset: auto 0 0; padding: 0 16px 14px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--lcd-ink); }
   /* Paper: the install receipt, and what each printer prints. A head and a bold rule, entries
      between dashed rules, and an end torn off along its perforation or cut with scissors (tear()
      and cutEnd() in the script draw it). */
@@ -256,8 +277,8 @@
   @media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
   .feature h3 { margin: 0 0 6px; font: 600 19px/1.25 var(--sans); font-stretch: 112%; letter-spacing: -.01em; display: flex; gap: 12px; align-items: baseline; }
   .feature h3 .n { font: 500 10.5px/1 var(--mono); letter-spacing: .1em; color: var(--ink-3); }
-  .feature p { margin: 0; font-size: 15px; color: var(--ink-2); }
-  .feature p code { color: var(--ink); }
+  .feature > p { margin: 0; font-size: 15px; color: var(--ink-2); }
+  .feature > p code { color: var(--ink); }
   .bigbtn { flex: none; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--orange-lo); background: radial-gradient(circle at 40% 35%, var(--orange-hi), var(--orange)); box-shadow: 0 4px 0 var(--orange-lo), 0 8px 14px -6px var(--shade); cursor: pointer; display: grid; place-items: center; color: #111; font: 700 10px/1 var(--mono); letter-spacing: .08em; transition: transform .08s, box-shadow .08s; }
   .bigbtn:active { transform: translateY(4px); box-shadow: 0 0 0 var(--orange-lo); }
   .feature .bigbtn { width: 50px; height: 50px; font-size: 9.5px; }
@@ -293,7 +314,7 @@
   .receipt .slip { padding: 22px 22px 34px; }
   .receipt .cmd { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px dashed rgba(0,0,0,.22); }
   .receipt .cmd code { flex: 1; min-width: 0; font-size: 12.5px; overflow-wrap: anywhere; }
-  .receipt .cmd .c { opacity: .55; }
+  .receipt .cmd .c { opacity: .68; }
   .receipt .tot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-top: 14px; font: 500 10.5px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
   .install .links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
   .install .links a { display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--edge); background: linear-gradient(180deg, var(--key), var(--key-2)); box-shadow: 0 3px 0 var(--key-floor); text-decoration: none; font: 600 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--key-ink); }
@@ -334,7 +355,7 @@
     <a class="word" href="#top" aria-label="drip, back to top"><svg class="mark" viewBox="12 60 520 136" aria-hidden="true"><g><path d="M12 71H244V93A12 12 0 0 1 232 105H157.71A12 12 0 0 0 147.32 123A20 20 0 1 1 112.68 123A12 12 0 0 0 102.29 105H96.98A9 9 0 0 0 87.99 113.69A20 20 0 1 1 48.01 113.69A9 9 0 0 0 39.02 105H24A12 12 0 0 1 12 93Z" fill="currentColor"/><path d="M170 165A20 20 0 1 1 210 165A20 20 0 1 1 170 165Z" fill="#ff4f00"/></g><g transform="translate(296 48.64) scale(0.62)"><path d="M0 128A58 58 0 1 1 116 128A58 58 0 1 1 0 128ZM26 128A32 32 0 1 0 90 128A32 32 0 1 0 26 128ZM90 24H116V184H90Z" fill="currentColor"/><path d="M138 72H164V184H138ZM138 128A52 58 0 0 1 190 70V96A26 32 0 0 0 164 128Z" fill="currentColor"/><path d="M212 72H238V184H212Z" fill="currentColor"/><path d="M210 38A15 15 0 1 1 240 38A15 15 0 1 1 210 38Z" fill="currentColor"/><path d="M264 72H290V232H264ZM264 128A58 58 0 1 1 380 128A58 58 0 1 1 264 128ZM290 128A32 32 0 1 0 354 128A32 32 0 1 0 290 128Z" fill="currentColor"/></g></svg></a><span class="lbl sub">for macOS</span>
     <span class="sp"></span>
     <nav aria-label="Sections"><a class="lbl" href="#features">features</a><a class="lbl" href="#sheet">spec sheet</a><a class="lbl" href="#install">install</a><a class="lbl" href="https://github.com/jrnxf/drip">source</a></nav>
-    <button type="button" class="slide" id="theme" role="switch" aria-checked="true" aria-label="Dark theme"><span class="lbl" aria-hidden="true">light</span><span class="track"></span><span class="lbl" aria-hidden="true">dark</span></button>
+    <button type="button" class="slide" id="theme" role="switch" aria-checked="true" aria-label="light dark: dark theme"><span class="lbl" aria-hidden="true">light</span> <span class="track"></span> <span class="lbl" aria-hidden="true">dark</span></button>
   </header>
 
   <main id="top">
@@ -342,7 +363,7 @@
       <div class="intro">
         <div class="model"><span>drip</span><span>macOS 13+</span><span>MIT</span></div>
         <h1>the notch, <b>finally useful.</b></h1>
-        <p class="lede">One shell command drops a card out of your Mac's camera notch: <b>what finished, and how it went.</b> Use it after builds, deploys and tests, or when a coding agent needs you.</p>
+        <p class="lede">drip is a free, open-source command-line tool for macOS that shows <b>a native card from your MacBook's notch</b> when a build, deploy, test run or coding agent (Claude Code, Codex, Gemini CLI) finishes or needs you. It is not Notification Center, so it needs no permissions.</p>
         <div class="plate"><code>brew install jrnxf/tap/drip</code><button type="button" class="copy-btn" data-copy="brew install jrnxf/tap/drip" aria-label="Copy the install command">copy</button></div>
       </div>
       <dl class="specs">
@@ -361,6 +382,7 @@
             <div class="display" id="hero-screen" role="img" aria-label="A display where drip's cards drop out of the notch">
               <div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="clock"></span></div>
               <canvas class="stage-canvas"></canvas>
+              <p class="still"><code>$ drip ok &quot;Build finished&quot; -d &quot;make test: 246 passed in 3.2s&quot;</code>a green card from the notch: Build finished</p>
               <div class="loading" id="loading">loading drip's engine</div>
             </div>
             <div class="lcdline"><span class="p" aria-hidden="true">›</span><code id="line" aria-live="polite"></code></div>
@@ -375,15 +397,82 @@
 
     <section class="block" id="features">
       <div class="lbl">01 / what it does</div>
-      <h2>what it <b>does.</b></h2>
+      <h2>what it <b>does:</b> notch alerts for any command</h2>
       <p class="sub">Each module below runs the same engine as the one above. It plays once when it scrolls into view; press PLAY to run it again.</p>
-      <div class="features" id="feature-grid"></div>
+      <div class="features" id="feature-grid">
+        <article class="feature">
+          <div class="module">
+            <div class="display" role="img" aria-label="A display that plays: Wrap a command"><div class="glyphs" aria-hidden="true"><span>RUN</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip run make test</code>a green card: make test finished, and how long it took</p></div>
+            <div class="row">
+              <div class="readout"></div>
+              <button type="button" class="bigbtn" aria-label="Play: Wrap a command">PLAY</button>
+            </div>
+          </div>
+          <h3><span class="n">01</span><span class="t">Wrap a command</span></h3>
+          <p><code>drip run</code> runs it, times it and shows how it went: green on exit 0, red with the exit code otherwise. drip then exits with the command's status.</p>
+        </article>
+        <article class="feature">
+          <div class="module">
+            <div class="display" role="img" aria-label="A display that plays: Hear from coding agents"><div class="glyphs" aria-hidden="true"><span>HOOK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip setup claude</code>my-app needs you, then my-app is done</p></div>
+            <div class="row">
+              <div class="readout"></div>
+              <button type="button" class="bigbtn" aria-label="Play: Hear from coding agents">PLAY</button>
+            </div>
+          </div>
+          <h3><span class="n">02</span><span class="t">Hear from coding agents</span></h3>
+          <p><code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> points the agent's hooks at drip. A card names the project and what the agent needs, then says when it has finished.</p>
+        </article>
+        <article class="feature">
+          <div class="module">
+            <div class="display" role="img" aria-label="A display that plays: Update in place"><div class="glyphs" aria-hidden="true"><span>--ID</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok &quot;Deployed&quot; --id deploy</code>the Deploying card turns into Deployed</p></div>
+            <div class="row">
+              <div class="readout"></div>
+              <button type="button" class="bigbtn" aria-label="Play: Update in place">PLAY</button>
+            </div>
+          </div>
+          <h3><span class="n">03</span><span class="t">Update in place</span></h3>
+          <p>Cards with the same <code>--id</code> replace each other. When the older card is on screen, it springs to the new card's size instead of queueing a second one.</p>
+        </article>
+        <article class="feature">
+          <div class="module">
+            <div class="display" role="img" aria-label="A display that plays: Ask, then act"><div class="glyphs" aria-hidden="true"><span>ASK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ask &quot;Merge drip #23?&quot; --yes Merge --no Later</code>a card with Merge and Later buttons</p></div>
+            <div class="row">
+              <div class="readout"></div>
+              <button type="button" class="bigbtn" aria-label="Play: Ask, then act">PLAY</button>
+            </div>
+          </div>
+          <h3><span class="n">04</span><span class="t">Ask, then act</span></h3>
+          <p><code>--yes</code> and <code>--no</code> ask a question and wait for the answer. drip exits 0 on yes and 1 on no, so <code>&amp;&amp;</code> runs the next step only on yes. Answer it here.</p>
+        </article>
+        <article class="feature">
+          <div class="module">
+            <div class="display" role="img" aria-label="A display that plays: Pipe text in"><div class="glyphs" aria-hidden="true"><span>STDIN</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ git log -1 --format=&#x27;%s%n%an&#x27; | drip ok</code>the last commit's subject and author</p></div>
+            <div class="row">
+              <div class="readout"></div>
+              <button type="button" class="bigbtn" aria-label="Play: Pipe text in">PLAY</button>
+            </div>
+          </div>
+          <h3><span class="n">05</span><span class="t">Pipe text in</span></h3>
+          <p>With no title, drip reads stdin: the first line is the title and the rest is the detail. That suits git hooks and cron jobs.</p>
+        </article>
+        <article class="feature">
+          <div class="module">
+            <div class="display" role="img" aria-label="A display that plays: Your own presets"><div class="glyphs" aria-hidden="true"><span>PRESET</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip deploy &quot;Shipped to prod&quot;</code>a card in the deploy preset's icon and color</p></div>
+            <div class="row">
+              <div class="readout"></div>
+              <button type="button" class="bigbtn" aria-label="Play: Your own presets">PLAY</button>
+            </div>
+          </div>
+          <h3><span class="n">06</span><span class="t">Your own presets</span></h3>
+          <p>Icons, colors, sounds and timing go in <code>~/.config/drip/config.toml</code>. This module defines a <code>deploy</code> preset.</p>
+        </article>
+      </div>
     </section>
 
     <section class="block sheet" id="sheet">
       <div>
         <div class="lbl">02 / spec sheet</div>
-        <h2>up to <b>three at once.</b></h2>
+        <h2>up to <b>three alerts at once.</b></h2>
         <p class="sub">Cards that arrive while one shows stack below it. In chain mode, the default, each new card drops out of the last one. In push mode it drops out of the notch and moves the others down. A fourth card waits for room. This module runs DripCore's <code>CardStack</code>: pick a mode, or press PLAY.</p>
         <table class="spec">
           <tr><th scope="row">kinds</th><td>ok, warn, fail, info, ask, and presets from your config</td></tr>
@@ -398,7 +487,7 @@
       </div>
       <div class="module stackmod">
         <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
-        <div class="display" id="stack-screen" role="img" aria-label="A display where drip stacks four cards"><div class="glyphs" aria-hidden="true"><span>STACK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas></div>
+        <div class="display" id="stack-screen" role="img" aria-label="A display where drip stacks four cards"><div class="glyphs" aria-hidden="true"><span>STACK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok; drip warn; drip fail; drip info</code>three cards stack under the notch, and the fourth waits for room</p></div>
         <div class="row">
           <div class="switch3"><span class="lbl" id="mode-label">mode</span><div class="track" role="group" aria-labelledby="mode-label"><button type="button" data-stack="chain" aria-pressed="true">chain</button><button type="button" data-stack="push" aria-pressed="false">push</button></div></div>
           <span style="flex:1"></span>
@@ -438,7 +527,7 @@
     <section class="block install" id="install">
       <div>
         <div class="lbl">04 / install</div>
-        <h2>install <b>with Homebrew.</b></h2>
+        <h2>install <b>on macOS.</b></h2>
         <p class="sub">Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs. Nothing compiles, and Xcode is not needed. The README covers building from source.</p>
         <div class="links"><a href="https://github.com/jrnxf/drip">source on GitHub</a><a href="https://github.com/jrnxf/drip#usage">usage</a></div>
       </div>
@@ -453,7 +542,7 @@
   </main>
 
   <footer class="foot">
-    <span class="lbl">drip by jrnxf · MIT</span>
+    <span class="lbl">drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you · MIT</span>
     <span class="lbl">the cards on this page are drawn by drip's engine · <a href="https://github.com/jrnxf/drip">source</a> · see also <a href="https://okfs.jrnxf.co">okfs</a></span>
   </footer>
 </div>
@@ -1540,14 +1629,13 @@ for (const chip of CHIPS) {
 }
 
 // ===== What it does: six modules, each its own display on the same engine =====
+// Each scene plays in the card at the same place in #feature-grid.
 const CLAUDE = (event, extra) => JSON.stringify({ hook_event_name: event, cwd: "/work/my-app", session_id: "s1", ...extra });
 const FEATURES = [
-  {
-    label: "RUN", title: "Wrap a command", body: "<code>drip run</code> runs it, times it and shows how it went: green on exit 0, red with the exit code otherwise. drip then exits with the command's status.",
+  { // 01 Wrap a command
     steps: [{ line: `drip run make test` }],
   },
-  {
-    label: "HOOK", title: "Hear from coding agents", body: "<code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> points the agent's hooks at drip. A card names the project and what the agent needs, then says when it has finished.",
+  { // 02 Hear from coding agents
     steps: [
       // The two hooks drip setup claude adds, in the order they fire: Notification, then Stop.
       { shown: "drip hook claude", note: "Claude needs you", line: `drip hook claude '${CLAUDE("Notification", { notification_type: "permission_prompt", message: "Claude needs your permission to use Bash" })}'` },
@@ -1555,43 +1643,24 @@ const FEATURES = [
       { shown: "drip hook claude", note: "Claude is done", line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'` },
     ],
   },
-  {
-    label: "--ID", title: "Update in place", body: "Cards with the same <code>--id</code> replace each other. When the older card is on screen, it springs to the new card's size instead of queueing a second one.",
+  { // 03 Update in place
     steps: [{ line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy` }, { sleep: 2 }, { line: `drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` }],
   },
-  {
-    label: "ASK", title: "Ask, then act", body: "<code>--yes</code> and <code>--no</code> ask a question and wait for the answer. drip exits 0 on yes and 1 on no, so <code>&amp;&amp;</code> runs the next step only on yes. Answer it here.",
+  { // 04 Ask, then act
     steps: [{ shown: `drip ask "Merge drip #23?" --yes Merge --no Later && gh pr merge 23`, line: `drip ask "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23` }],
   },
-  {
-    label: "STDIN", title: "Pipe text in", body: "With no title, drip reads stdin: the first line is the title and the rest is the detail. That suits git hooks and cron jobs.",
+  { // 05 Pipe text in
     steps: [{ line: `git log -1 --format='%s%n%an' | drip ok` }],
   },
-  {
-    label: "PRESET", title: "Your own presets", body: "Icons, colors, sounds and timing go in <code>~/.config/drip/config.toml</code>. This module defines a <code>deploy</code> preset.",
+  { // 06 Your own presets
     config: CONFIG,
     steps: [{ line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` }],
   },
 ];
-const grid = document.getElementById("feature-grid");
+// The cards are in the page itself, so readers without JavaScript get them too; this adds the scenes.
+const cards = document.querySelectorAll("#feature-grid .feature");
 FEATURES.forEach((feature, i) => {
-  const card = document.createElement("article"); card.className = "feature";
-  card.innerHTML = `
-    <div class="module">
-      <div class="display" role="img"><div class="glyphs" aria-hidden="true"><span></span><span class="clock"></span></div><canvas class="stage-canvas"></canvas></div>
-      <div class="row">
-        <div class="readout"></div>
-        <button type="button" class="bigbtn">PLAY</button>
-      </div>
-    </div>
-    <h3><span class="n"></span><span class="t"></span></h3><p></p>`;
-  card.querySelector(".display").setAttribute("aria-label", `A display that plays: ${feature.title}`);
-  card.querySelector(".glyphs span").textContent = feature.label;
-  card.querySelector("h3 .n").textContent = String(i + 1).padStart(2, "0");
-  card.querySelector("h3 .t").textContent = feature.title;
-  card.querySelector("p").innerHTML = feature.body;
-  card.querySelector(".bigbtn").setAttribute("aria-label", `Play: ${feature.title}`);
-  grid.append(card);
+  const card = cards[i];
   const screen = card.querySelector(".display");
   const commands = feature.steps.filter((step) => step.line);
   const term = new Readout(card.querySelector(".readout"), commands);
@@ -1792,6 +1861,7 @@ try {
   const timing = performance.getEntriesByName(new URL(WASM, location.href).href).at(-1);
   window.__dripLoad = { download: t1 - t0, start: t2 - t1, transferSize: timing?.transferSize, decodedBodySize: timing?.decodedBodySize };
   document.getElementById("loading").remove();
+  for (const still of document.querySelectorAll(".still")) still.remove();
   heroTerm.print(`drip ${drip.version}, compiled to WebAssembly, started in ${Math.round(t2 - t0)} ms.`, "dim");
   for (const s of stages) s.autoplay?.();
   if (new URLSearchParams(location.search).get("attract") === "0") stopAttract();

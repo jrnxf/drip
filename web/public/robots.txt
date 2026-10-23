@@ -1,0 +1,6 @@
+# Cloudflare puts its managed content-signals block in front of this file.
+User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=no
+Allow: /
+
+Sitemap: https://drip.jrnxf.co/sitemap.xml

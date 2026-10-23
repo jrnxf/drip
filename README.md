@@ -9,11 +9,14 @@
   <img src="docs/demo.gif" width="400" alt="Three drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then Claude needs you, with Claude needs your permission to use Bash, then Deploy failed, with staging: health check timed out after 30s">
 </p>
 
-A HUD from the shell for macOS: one command shows a brief native card growing out of the camera
-notch, or out of the top edge of a screen without one, with an icon, a title, an optional detail, a
-colored accent and a system sound, then takes it away again. A glance tells you what finished and
-how it went: a build, a deploy, a test run, a backup, a script, an agent. drip returns at once, so
-it never slows the script that calls it.
+drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you.
+
+One command shows a brief card growing out of the camera notch, or out of the top edge of a screen
+without one, with an icon, a title, an optional detail, a colored accent and a system sound, then
+takes it away again. A glance tells you what finished and how it went: a build, a deploy, a test
+run, a backup, a script, or a coding agent such as Claude Code, Codex or Gemini CLI. It is an alert
+from the terminal, but not Notification Center, so it needs no permissions. drip returns at once,
+so it never slows the script that calls it.
 
 ```sh
 drip "build finished"
@@ -44,7 +47,9 @@ A green card grows out of the notch, or out of the top edge of a screen without 
 prints nothing.
 
 Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs, in a few
-seconds: nothing to compile, and no Xcode. Install it with Homebrew rather than downloading the
+seconds: nothing to compile, and no Xcode. drip is still in development: until 0.1.0 is out, brew
+installs the latest development build, a pre-release such as 0.1.0-pre.1, and `brew upgrade`
+moves to the next one, then to 0.1.0. Install it with Homebrew rather than downloading the
 archive from the release page: the binary is signed ad hoc, not notarized, so Gatekeeper blocks a
 copy downloaded in a browser, while brew's download runs as it is. To build the latest `main` from
 source instead, run `brew install --HEAD jrnxf/tap/drip`.
@@ -575,6 +580,22 @@ never overwrites a reference: to regenerate one on purpose, delete its PNG and r
 
 `scripts/demo-gif.sh` draws the animation at the top of this file frame by frame with
 `__render --at`, from the same layers the notch card shows, so it needs no screen recording.
+
+### Releases
+
+A pushed tag makes a release: `.github/workflows/release.yml` builds the universal archive,
+publishes the tag's GitHub release with it, and points the formula in jrnxf/homebrew-tap at it.
+
+```sh
+git tag v0.1.0-pre.1 && git push origin v0.1.0-pre.1   # a development build
+```
+
+While `Sources/DripCore/Version.swift` says `0.1.0-pre`, the tags are `v0.1.0-pre.1`,
+`v0.1.0-pre.2` and so on: each is a pre-release, the build stamps its number into
+`drip --version`, and none needs a commit. Homebrew reads `-pre.N` as a pre-release and orders it
+before 0.1.0; it would read `-dev.N` as plain 0.1.0. For 0.1.0 itself, set `Version.swift` to
+`0.1.0`, merge, and tag `v0.1.0`; then set it to the next version with `-pre`. The formula follows
+pre-releases only until the first full release, so a pre-release never replaces a stable drip.
 
 ### The web page
 
