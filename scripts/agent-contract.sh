@@ -10,8 +10,9 @@
 #   scripts/agent-contract.sh --setup          the one-time sign-ins, then a check
 #   scripts/agent-contract.sh --drift DIR      the drift report alone, for the payloads a run kept
 #
-# Exits 0 when every agent passed, 1 when any failed, and 2 when the only trouble is an agent that
-# needs a login, which never prompts or opens a browser outside --setup. Each run keeps last.json, a
+# Exits 0 when every agent passed, 1 when any failed, 2 when the only trouble is an agent that needs a
+# login, which never prompts or opens a browser outside --setup, and 3 when there is no GUI session
+# (over ssh, or from launchd outside the logged-in user's session), when it runs no agent at all. Each run keeps last.json, a
 # summary and the payloads in ~/.cache/drip-agent-contract/runs/<time>/, and the latest last.json in
 # ~/.cache/drip-agent-contract too.
 #
@@ -62,6 +63,11 @@ fi
 if [ -n "$drift" ]; then
     exec "$harness" drift --repo "$PWD" "$@"
 fi
+
+# drip records no card without a GUI session: then no agent runs, and last.json says why.
+status=0
+"$harness" session --repo "$PWD" --cache "$cache" || status=$?
+[ "$status" -eq 0 ] || exit "$status"
 
 echo "Installing the latest Claude Code, Codex and Gemini CLI"
 tools="$cache/tools"

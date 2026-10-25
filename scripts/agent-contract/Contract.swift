@@ -17,6 +17,7 @@
 // Logins are never printed or written anywhere but where each agent keeps its own: Claude Code's
 // long-lived token stays in the Keychain until the shell that starts the session reads it, Codex
 // uses your own login through a link to it, and Gemini CLI has a Google sign-in of its own here.
+import CoreGraphics
 import Darwin
 import Foundation
 
@@ -306,6 +307,8 @@ struct Options {
     var agents = Agent.allCases
     var keep = false
     var drift: String?
+    /// Whether there is a GUI session to show cards in; nil asks macOS, as drip does.
+    var guiSession: Bool?
     /// The Keychain item that holds Claude Code's token: this service, account `claude`.
     var service = "drip-agent-contract"
     var codexAuth = (NSHomeDirectoryForUser(NSUserName()) ?? NSHomeDirectory()) + "/.codex/auth.json"
@@ -336,6 +339,12 @@ struct Options {
             case "--keychain-service": options.service = value(argument)
             case "--codex-auth": options.codexAuth = value(argument)
             case "--keep": options.keep = true
+            case "--gui-session":
+                switch value(argument) {
+                case "yes": options.guiSession = true
+                case "no": options.guiSession = false
+                case let other: fail("--gui-session takes yes or no, not '\(other)'")
+                }
             case "--drift": options.drift = value(argument)
             case "--only":
                 options.agents = value(argument).split(separator: ",").map { name in
@@ -1117,7 +1126,30 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
     return result
 }
 
+/// The exit status of a check that ran no agent, as there was no GUI session.
+let noGUISessionStatus: Int32 = 3
+
+/// drip shows and records no card without a GUI session, so every card check would fail: rather than
+/// a false alarm, a check started outside the logged-in user's session runs no agent and says so in
+/// last.json. Returns whether the check can go on.
+func checkGUISession(_ options: Options) -> Bool {
+    if options.guiSession ?? (CGSessionCopyCurrentDictionary() != nil) { return true }
+    let reason = "no GUI session, so drip records no cards: run the check as a LaunchAgent in the logged-in user's session"
+    let iso = ISO8601DateFormatter()
+    let commit = run(["/usr/bin/git", "-C", options.repo, "rev-parse", "--short", "HEAD"], timeout: 15).out
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let stamp = iso.string(from: Date())
+    let result: [String: Any] = [
+        "version": 1, "status": "no-gui-session", "exit": noGUISessionStatus, "reason": reason, "started": stamp,
+        "finished": stamp, "drip": commit, "agents": [Any](),
+    ]
+    write(jsonText(result, pretty: true) + "\n", to: path(options.cache, "last.json"))
+    FileHandle.standardError.write(Data("agent-contract: \(reason)\n".utf8))
+    return false
+}
+
 func runCheck(_ options: Options, harness: String) -> Int32 {
+    guard checkGUISession(options) else { return noGUISessionStatus }
     let stamp = DateFormatter()
     stamp.locale = Locale(identifier: "en_US_POSIX")
     stamp.dateFormat = "yyyyMMdd-HHmmss"
@@ -1467,6 +1499,11 @@ if arguments.first == "record" { record(Array(arguments.dropFirst())) }
 let options = Options.parse(arguments)
 guard let harness = Bundle.main.executablePath else { fail("cannot find this program's own path") }
 if let directory = options.drift { exit(driftOnly(options, directory: directory)) }
+// Before anything is installed: with no GUI session, no agent runs.
+if options.mode == "session" {
+    guard !options.repo.isEmpty, !options.cache.isEmpty else { fail("run this through scripts/agent-contract.sh") }
+    exit(checkGUISession(options) ? 0 : noGUISessionStatus)
+}
 guard !options.repo.isEmpty, !options.cache.isEmpty, !options.tools.isEmpty, !options.tmux.isEmpty else {
     fail("run this through scripts/agent-contract.sh")
 }

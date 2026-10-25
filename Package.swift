@@ -29,6 +29,8 @@ let package = Package(
         // Renders cards with `drip __render` and compares them with the reference PNGs in
         // Tests/Snapshots. macOS only; skipped elsewhere and for cards that have no reference yet.
         .testTarget(name: "DripSnapshotTests"),
+        // Builds scripts/agent-contract/Contract.swift and runs it without an agent. macOS only.
+        .testTarget(name: "AgentContractTests"),
     ]
 )
 

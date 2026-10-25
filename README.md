@@ -803,7 +803,13 @@ you have none. Setup checks each login with a tiny session, prints what is ready
 once. After that a check never prompts and never opens a browser: an agent whose login is missing or
 no longer works is skipped with the one line that fixes it.
 
-It exits 0 when every agent passed, 1 when any failed, and 2 when the only trouble is a login. Each
+drip shows and records no card without a GUI session, so a scheduler must run the check as a
+LaunchAgent in the logged-in user's session, not as a LaunchDaemon or over ssh. Started anywhere
+else, it runs no agent, writes `last.json` with the status `no-gui-session` and the reason, and
+exits 3.
+
+It exits 0 when every agent passed, 1 when any failed, 2 when the only trouble is a login, and 3 when
+there is no GUI session. Each
 run keeps `last.json` (what a scheduler reads: the status, and each agent's version, checks and
 drift), `summary.txt`, the payloads each agent sent, and the screen of any check that failed, in
 `~/.cache/drip-agent-contract/runs/<time>/`; the latest `last.json` is in

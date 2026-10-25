@@ -6,6 +6,7 @@ import Foundation
 #endif
 import Testing
 
+#if !os(WASI)
 /// scripts/agent-contract/contract.json, which the live agent check holds each agent's payloads up
 /// against, names the same events drip setup hooks.
 struct ContractTests {
@@ -25,3 +26,4 @@ struct ContractTests {
         #expect(Set(flow).isSubset(of: hooked))
     }
 }
+#endif
