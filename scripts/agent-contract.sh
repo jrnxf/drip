@@ -10,11 +10,13 @@
 #   scripts/agent-contract.sh --setup          the one-time sign-ins, then a check
 #   scripts/agent-contract.sh --drift DIR      the drift report alone, for the payloads a run kept
 #
-# Exits 0 when every agent passed, 1 when any failed, 2 when the only trouble is an agent that needs a
-# login, which never prompts or opens a browser outside --setup, and 3 when there is no GUI session
-# (over ssh, or from launchd outside the logged-in user's session), when it runs no agent at all.
-# Each run keeps last.json, a summary and the payloads in ~/.cache/drip-agent-contract/runs/<time>/,
-# and the latest last.json in ~/.cache/drip-agent-contract too.
+# Exits 0 when every agent passed, 1 when any failed or the check itself could not run (last.json
+# says error, and why), 2 when the only trouble is an agent that needs a login, which never prompts
+# or opens a browser outside --setup, 3 when there is no GUI session (over ssh, or from launchd
+# outside the logged-in user's session), when it runs no agent at all, and 4 when another check is
+# running, which it leaves alone with its last.json. Each run keeps last.json, a summary and each
+# try's payloads in ~/.cache/drip-agent-contract/runs/<time>/, and the latest last.json in
+# ~/.cache/drip-agent-contract too: it says running while a check runs.
 #
 # Everything lives in ~/.cache/drip-agent-contract: the agents, installed afresh with npm every run,
 # drip's state and the agents' homes, and Gemini CLI's own Google sign-in. Your own agents, their
@@ -23,7 +25,21 @@
 # ~/.codex/auth.json.
 set -eu
 
+# --drift DIR is where you ran this from.
+caller=$PWD
 cd "$(dirname "$0")/.."
+
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/drip-agent-contract"
+mkdir -p "$cache"
+
+# Stops before the harness could start, saying why in last.json too, so a scheduler never reads an
+# older check's result.
+stop() {
+    echo "agent-contract: $1" >&2
+    printf '{\n  "version" : 1,\n  "status" : "error",\n  "exit" : 1,\n  "reason" : "%s"\n}\n' "$1" >"$cache/last.json.tmp"
+    mv "$cache/last.json.tmp" "$cache/last.json"
+    exit 1
+}
 
 if [ "$(uname -s)" != Darwin ]; then
     echo "agent-contract: run this on a Mac" >&2
@@ -32,31 +48,39 @@ fi
 
 # A launchd job starts with a short PATH: look where the tools usually are, after yours.
 PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.nix-profile/bin:/etc/profiles/per-user/$(id -un)/bin:/run/current-system/sw/bin"
-for tool in node npm tmux swift; do
-    if ! command -v "$tool" >/dev/null 2>&1; then
-        echo "agent-contract: needs $tool on PATH" >&2
-        exit 1
-    fi
+for tool in node npm tmux swift swiftc; do
+    command -v "$tool" >/dev/null 2>&1 || stop "needs $tool on PATH"
 done
 
-cache="${XDG_CACHE_HOME:-$HOME/.cache}/drip-agent-contract"
-mkdir -p "$cache"
-
+# The harness's own arguments: less --setup, which is its mode, and with --drift's folder whole.
 mode=run
 drift=""
 for argument in "$@"; do
+    shift
     case $argument in
-    --setup) mode=setup ;;
+    --setup)
+        mode=setup
+        continue
+        ;;
     --drift) drift=next ;;
-    *) [ "$drift" = next ] && drift=$argument ;;
+    *)
+        if [ "$drift" = next ]; then
+            case $argument in /*) ;; *) argument="$caller/$argument" ;; esac
+            drift=$argument
+        fi
+        ;;
     esac
+    set -- "$@" "$argument"
 done
 
+# Built aside and moved into place, so a check that is running keeps the harness it started with.
 harness="$cache/harness"
 source=scripts/agent-contract/Contract.swift
-if [ ! -x "$harness" ] || [ "$(cat "$harness.source" 2>/dev/null)" != "$(shasum -a 256 "$source" | cut -d' ' -f1)" ]; then
-    swiftc -O -o "$harness" "$source"
-    shasum -a 256 "$source" | cut -d' ' -f1 >"$harness.source"
+digest=$(shasum -a 256 "$source" | cut -d' ' -f1)
+if [ ! -x "$harness" ] || [ "$(cat "$harness.source" 2>/dev/null)" != "$digest" ]; then
+    swiftc -O -o "$harness.new.$$" "$source" || stop "the harness did not build"
+    mv "$harness.new.$$" "$harness"
+    echo "$digest" >"$harness.source"
 fi
 
 # The drift report reads payloads a run kept: it needs no agent and no drip.
@@ -64,34 +88,9 @@ if [ -n "$drift" ]; then
     exec "$harness" drift --repo "$PWD" "$@"
 fi
 
-# drip records no card without a GUI session: then no agent runs, and last.json says why.
-status=0
-"$harness" session --repo "$PWD" --cache "$cache" || status=$?
-[ "$status" -eq 0 ] || exit "$status"
-
-echo "Installing the latest Claude Code, Codex and Gemini CLI"
-tools="$cache/tools"
-npm_config_cache="$cache/npm" npm_config_update_notifier=false npm install --prefix "$tools" --no-fund --no-audit \
-    --loglevel=error @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest
-
-# The hooks run drip as it is in this checkout.
-swift build -c release
-
 # Keeps the Mac awake while the agents work.
 caffeinate -i -w $$ &
 
-set -- --repo "$PWD" --cache "$cache" --tools "$tools/node_modules/.bin" --tmux "$(command -v tmux)" \
-    --node-bin "$(dirname "$(command -v node)")" "$@"
-if [ "$mode" = setup ]; then
-    # Setup's own arguments, less --setup itself.
-    for argument in "$@"; do
-        shift
-        [ "$argument" = --setup ] || set -- "$@" "$argument"
-    done
-    status=0
-    "$harness" setup "$@" || status=$?
-    [ "$status" -eq 1 ] && exit 1
-    echo
-    echo "Now the check itself, as the schedule runs it"
-fi
-exec "$harness" run "$@"
+# The harness takes the lock, then installs the agents and builds drip: one check at a time.
+exec "$harness" "$mode" --repo "$PWD" --cache "$cache" --tmux "$(command -v tmux)" --npm "$(command -v npm)" \
+    --swift "$(command -v swift)" --node-bin "$(dirname "$(command -v node)")" "$@"

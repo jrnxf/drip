@@ -808,22 +808,30 @@ LaunchAgent in the logged-in user's session, not as a LaunchDaemon or over ssh. 
 else, it runs no agent, writes `last.json` with the status `no-gui-session` and the reason, and
 exits 3.
 
-It exits 0 when every agent passed, 1 when any failed, 2 when the only trouble is a login, and 3 when
-there is no GUI session. Each run keeps `last.json` (what a scheduler reads: the status, and each agent's version, checks and
-drift), `summary.txt`, the payloads each agent sent, and the screen of any check that failed, in
-`~/.cache/drip-agent-contract/runs/<time>/`; the latest `last.json` is in
-`~/.cache/drip-agent-contract` too. The drift report holds every payload up against
+One check runs at a time: the lock comes before the agents are installed or drip is built, so a check
+started while another runs changes nothing under it, exits 4 and leaves that check's `last.json`
+alone.
+
+It exits 0 when every agent passed, 1 when any failed or the check itself could not run (the status
+`error`, with the reason), 2 when the only trouble is a login, 3 when there is no GUI session, and 4
+when another check is running. `~/.cache/drip-agent-contract/last.json` is what a scheduler reads: it
+says `running` while a check runs and then its result, with each agent's version, checks and drift.
+Each run also keeps its own `last.json`, `summary.txt`, the payloads of each try at each agent
+(`payloads/codex-1`, and `payloads/codex-2` for a second try), and the screen of any check that
+failed, in `~/.cache/drip-agent-contract/runs/<time>/`. The drift report holds every payload up against
 `scripts/agent-contract/contract.json`, which names the fields drip reads from each event: a field
 drip reads that is missing or of another type, an event the session should have sent, or a permission
 request that does not match the tool call after it is drift, and a field never seen before is only
-noted. `--drift DIR` prints the report for the payloads a run kept. The kept payloads name your home
+noted. `--drift DIR` prints the report for the payloads a run kept, each agent's last try. The kept payloads name your home
 `/home/user`, so a fix can add them to the tests as they are; update `contract.json` with it.
 
 Everything it uses lives in `~/.cache/drip-agent-contract`: the agents, drip's state, each agent's
 home and settings, and Gemini CLI's own sign-in. Your own agents, their settings and your PATH stay as
 they are. The Codex session links your `~/.codex/auth.json` rather than copying it, and trusts drip's
 hooks for that session alone (`--dangerously-bypass-hook-trust`), where you would trust them once in
-`/hooks`.
+`/hooks`. A refresh of that login in the check goes to your own file, through the link; if your own
+Codex refreshes it at the same moment, Codex may ask you to run `codex login` again. Any program you
+run can read the Claude Code token in the Keychain without asking, as an unattended check must.
 
 ### Releases
 

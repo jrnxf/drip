@@ -36,9 +36,62 @@ func say(_ line: String) {
     fflush(stdout)
 }
 
+/// Stops the check: cleans up what it started and, once it holds the lock, says why in last.json.
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("agent-contract: \(message)\n".utf8))
+    cleanUp()
+    report?.error(message)
     exit(1)
+}
+
+// MARK: - Cleaning up
+
+/// What a check started and has to stop, whichever way it ends: on its own, through `fail`, or on a
+/// signal, which skips every `defer`.
+struct Started {
+    /// The worlds of the agents being checked, with whether to keep them.
+    var worlds: [(world: World, keep: Bool)] = []
+    /// The terminal settings to put back, while a program has this terminal raw or silent.
+    var terminal: termios?
+    /// The program running in a terminal of its own, as `claude setup-token` does.
+    var child: pid_t?
+}
+
+let startedLock = NSLock()
+var started = Started()
+
+func noteStarted(_ change: (inout Started) -> Void) {
+    startedLock.lock()
+    change(&started)
+    startedLock.unlock()
+}
+
+func cleanUp() {
+    startedLock.lock()
+    let now = started
+    started = Started()
+    startedLock.unlock()
+    if let child = now.child { kill(child, SIGTERM) }
+    if var terminal = now.terminal { tcsetattr(STDIN_FILENO, TCSANOW, &terminal) }
+    for (world, keep) in now.worlds {
+        world.stop()
+        if !keep { try? fileManager.removeItem(atPath: world.root) }
+    }
+}
+
+/// Arguments or an environment as C strings, for `posix_spawn` and `execve`; free them with
+/// `freeCStrings`.
+func cStrings(_ strings: [String]) -> [UnsafeMutablePointer<CChar>?] {
+    strings.map { strdup($0) } + [nil]
+}
+
+func freeCStrings(_ strings: [UnsafeMutablePointer<CChar>?]) {
+    strings.forEach { free($0) }
+}
+
+/// An exit status from `waitpid`'s status, with 128 and the signal for a program a signal stopped.
+func exitStatus(_ status: Int32) -> Int32 {
+    (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)
 }
 
 /// A path in single quotes, for a shell script.
@@ -150,11 +203,11 @@ func run(
 /// Runs a command that talks to you, in this terminal and in its process group, so it may read
 /// from it. Returns its exit status; kills it after `timeout` seconds.
 func runHere(_ arguments: [String], environment: [String: String], in directory: String, timeout: Double) -> Int32 {
-    let argv = arguments.map { strdup($0) } + [nil]
-    let envp = environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
+    let argv = cStrings(arguments)
+    let envp = cStrings(environment.map { "\($0.key)=\($0.value)" })
     defer {
-        argv.forEach { free($0) }
-        envp.forEach { free($0) }
+        freeCStrings(argv)
+        freeCStrings(envp)
     }
     // It starts where this process is, for the moment.
     let here = fileManager.currentDirectoryPath
@@ -173,7 +226,7 @@ func runHere(_ arguments: [String], environment: [String: String], in directory:
         }
         pause(0.2)
     }
-    return (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)
+    return exitStatus(status)
 }
 
 // MARK: - JSON
@@ -234,6 +287,10 @@ enum Agent: String, CaseIterable {
         case .gemini: return ["Type your message"]
         }
     }
+
+    /// What the agent's screen shows when it asks whether to trust the project, which the world says
+    /// it does: a prompt typed into that question would answer it.
+    static let asksTrust = ["trust this folder", "Do you trust", "trust the files in this folder"]
 
     /// What the agent's screen shows when it wants a login first.
     var wantsLogin: [String] {
@@ -304,6 +361,11 @@ struct Options {
     var tools = ""
     var tmux = ""
     var nodeBin = ""
+    var npm = ""
+    var swift = ""
+    /// The drip the hooks run: the checkout's release build, unless `--drip` names one built already.
+    var drip = ""
+    var prebuilt = false
     var agents = Agent.allCases
     var keep = false
     var drift: String?
@@ -336,6 +398,9 @@ struct Options {
             case "--tools": options.tools = value(argument)
             case "--tmux": options.tmux = value(argument)
             case "--node-bin": options.nodeBin = value(argument)
+            case "--npm": options.npm = value(argument)
+            case "--swift": options.swift = value(argument)
+            case "--drip": options.drip = value(argument)
             case "--keychain-service": options.service = value(argument)
             case "--codex-auth": options.codexAuth = value(argument)
             case "--keep": options.keep = true
@@ -359,11 +424,25 @@ struct Options {
         guard options.service.range(of: #"^[A-Za-z0-9._-]+$"#, options: .regularExpression) != nil else {
             fail("--keychain-service takes letters, digits, dots, dashes and underscores")
         }
+        if options.tools.isEmpty, !options.cache.isEmpty { options.tools = path(options.cache, "tools/node_modules/.bin") }
+        options.prebuilt = !options.drip.isEmpty
+        if options.drip.isEmpty { options.drip = path(options.repo, ".build/release/drip") }
         return options
     }
 }
 
 // MARK: - A world of its own
+
+/// The agent's terminal's socket: in the cache, unless that path is too long for a socket, as under
+/// a long home, then in a folder of this user's own in /tmp.
+func tmuxSocket(_ options: Options, _ agent: Agent) -> String {
+    let name = "tmux-\(agent.rawValue).sock"
+    let socket = path(options.cache, name)
+    guard socket.utf8.count > 100 else { return socket }
+    let folder = "/tmp/drip-agent-contract-\(getuid())"
+    mkdir(folder, 0o700)
+    return path(folder, name)
+}
 
 /// One agent's scratch world: its home, drip's state, config and queue, the agent's settings, the
 /// project the session runs in, and the recorder that stands in for drip.
@@ -380,7 +459,16 @@ struct World {
     /// Named for what the cards say: "drip-contract needs you".
     var project: String { path(root, "drip-contract") }
     var tmp: String { path(root, "tmp") }
-    var socket: String { path(options.cache, "tmux-\(agent.rawValue).sock") }
+    /// The project as written and as the agent may resolve it, as /tmp is /private/tmp: each agent
+    /// trusts both.
+    var projectPaths: [String] {
+        // realpath, as Foundation's own resolving turns /private/tmp back into /tmp.
+        guard let real = realpath(project, nil) else { return [project] }
+        defer { free(real) }
+        let resolved = String(cString: real)
+        return resolved == project ? [project] : [project, resolved]
+    }
+    var socket: String { tmuxSocket(options, agent) }
 
     /// Where the agent keeps its settings: CLAUDE_CONFIG_DIR, CODEX_HOME, or GEMINI_CLI_HOME, whose
     /// `.gemini` holds them.
@@ -401,7 +489,10 @@ struct World {
             "DISABLE_AUTOUPDATER": "1", "CLAUDE_CODE_TMPDIR": tmp,
         ]
         switch agent {
-        case .claude: environment["CLAUDE_CONFIG_DIR"] = agentHome
+        case .claude:
+            environment["CLAUDE_CONFIG_DIR"] = agentHome
+            // Claude Code's token stays out of the hooks', tools' and drip's environments.
+            environment["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "1"
         case .codex: environment["CODEX_HOME"] = agentHome
         case .gemini:
             environment["GEMINI_CLI_HOME"] = agentHome
@@ -419,36 +510,46 @@ struct World {
     }
 
     /// Makes the world, with everything but drip's hooks, which `installHooks` adds once the login
-    /// is known to work.
-    func make(harness: String) {
+    /// is known to work. Nil when it is ready, else what went wrong.
+    func make(harness: String) -> String? {
         for directory in [home, state, bin, capture, project, tmp, agentHome] {
             try? fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
         }
-        // A copy, so its processes are this world's own to find and stop.
-        try? fileManager.copyItem(atPath: path(options.repo, ".build/release/drip"), toPath: drip)
-        write("#!/bin/sh\nexec \(quoted(harness)) record \(quoted(capture)) \(quoted(drip)) \"$@\"\n", to: path(bin, "drip"), mode: 0o755)
-        // Codex runs hooks through your shell, which sets PATH afresh: drip is on it, as it is once
-        // installed.
+        // Copies of drip and of the recorder, so this world's processes are its own to find and stop,
+        // and a check started meanwhile, which builds both afresh, changes neither.
+        let recorder = path(bin, "recorder")
+        for (source, copy) in [(options.drip, drip), (harness, recorder)] {
+            do {
+                try fileManager.copyItem(atPath: source, toPath: copy)
+            } catch {
+                return "cannot copy \(source): \(error.localizedDescription)"
+            }
+        }
+        write("#!/bin/sh\nexec \(quoted(recorder)) record \(quoted(capture)) \(quoted(drip)) \"$@\"\n", to: path(bin, "drip"), mode: 0o755)
+        // Codex runs hooks through your shell, which sets PATH afresh: drip comes first on it, as it
+        // would once installed. A login shell runs macOS's path_helper after .zshenv, and .zprofile
+        // and .zlogin after that.
         let profile = "export PATH=\(quoted(bin)):\"$PATH\"\n"
-        for name in [".zshenv", ".profile", ".bashrc"] { write(profile, to: path(home, name)) }
+        for name in [".zshenv", ".zprofile", ".zlogin", ".profile", ".bash_profile", ".bashrc"] { write(profile, to: path(home, name)) }
         _ = run(["/usr/bin/git", "init", "-q", project], environment: environment)
         // Every card goes to the history, not to the notch.
-        _ = run([drip, "pause", "1d"], environment: environment)
+        let paused = run([drip, "pause", "24h"], environment: environment)
+        guard paused.status == 0 else { return "drip pause 24h failed, so cards would show at the notch: \(firstLine(paused.err + paused.out))" }
 
         switch agent {
         case .claude:
-            let projects: [String: Any] = [project: ["hasTrustDialogAccepted": true, "hasCompletedProjectOnboarding": true]]
+            var projects: [String: Any] = [:]
+            for project in projectPaths { projects[project] = ["hasTrustDialogAccepted": true, "hasCompletedProjectOnboarding": true] }
             let state: [String: Any] = ["hasCompletedOnboarding": true, "theme": "dark", "projects": projects]
             write(jsonText(state, pretty: true) + "\n", to: path(agentHome, ".claude.json"))
         case .codex:
+            let trusted = projectPaths.map { "[projects.\(jsonText($0))]\ntrust_level = \"trusted\"\n" }.joined(separator: "\n")
             write("""
                 approval_policy = "on-request"
                 sandbox_mode = "read-only"
                 check_for_update_on_startup = false
 
-                [projects.\(jsonText(project))]
-                trust_level = "trusted"
-
+                \(trusted)
                 """, to: path(agentHome, "config.toml"))
             try? fileManager.createSymbolicLink(atPath: path(agentHome, "auth.json"), withDestinationPath: options.codexAuth)
         case .gemini:
@@ -457,7 +558,8 @@ struct World {
                 "general": ["enableAutoUpdate": false, "enableAutoUpdateNotification": false],
             ]
             write(jsonText(settings, pretty: true) + "\n", to: path(agentHome, ".gemini/settings.json"))
-            write(jsonText([project: "TRUST_FOLDER"], pretty: true) + "\n", to: path(root, "trustedFolders.json"))
+            write(jsonText(Dictionary(uniqueKeysWithValues: projectPaths.map { ($0, "TRUST_FOLDER") }), pretty: true) + "\n",
+                  to: path(root, "trustedFolders.json"))
             for name in ["oauth_creds.json", "google_accounts.json"] {
                 let source = path(options.geminiHome, ".gemini", name)
                 if fileManager.fileExists(atPath: source) {
@@ -465,6 +567,7 @@ struct World {
                 }
             }
         }
+        return nil
     }
 
     /// drip's hooks, as `drip setup` adds them. Nil when they went in, else what went wrong.
@@ -476,7 +579,7 @@ struct World {
     /// Stops what the world started: its terminal, and any drip still holding cards.
     func stop() {
         _ = run([options.tmux, "-S", socket, "kill-server"], timeout: 10)
-        _ = run(["/usr/bin/pkill", "-f", drip], timeout: 10)
+        _ = run(["/usr/bin/pkill", "-f", bin + "/"], timeout: 10)
         unlink(socket)
     }
 }
@@ -594,6 +697,8 @@ func record(_ arguments: [String]) -> Never {
         let meta: [String: Any] = [
             "status": process.terminationStatus, "stderr": String(decoding: errorData, as: UTF8.self),
             "environment": environment.filter { ["CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_ENTRYPOINT", "DRIP_HOOK"].contains($0.key) },
+            // Whether the hook could see Claude Code's token; never the token.
+            "token": environment["CLAUDE_CODE_OAUTH_TOKEN"] != nil,
         ]
         write(jsonText(meta) + "\n", to: stem + ".meta.json")
     }
@@ -608,6 +713,8 @@ struct Captured {
     var status: Int32
     var stderr: String
     var environment: [String: String]
+    /// Whether the hook ran with Claude Code's token in its environment.
+    var sawToken: Bool
 
     var event: String { payload["hook_event_name"] as? String ?? "(no hook_event_name)" }
     var session: String? { payload["session_id"] as? String }
@@ -622,7 +729,7 @@ func captured(in directory: String) -> [Captured] {
         return Captured(
             stem: stem, raw: raw, payload: (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] ?? [:],
             status: (meta["status"] as? NSNumber)?.int32Value ?? -1, stderr: meta["stderr"] as? String ?? "",
-            environment: meta["environment"] as? [String: String] ?? [:])
+            environment: meta["environment"] as? [String: String] ?? [:], sawToken: meta["token"] as? Bool ?? false)
     }
 }
 
@@ -724,14 +831,19 @@ final class Session {
         captured(in: world.capture)
     }
 
-    /// The first payload after `index` that `matches`, waiting up to `seconds` for it.
-    func next(after index: Int, within seconds: Double, _ matches: (Captured) -> Bool) -> (Int, Captured)? {
-        var found: (Int, Captured)?
+    /// The payloads the session already acted on, by stem. A hook shows up once drip is done with
+    /// it, so one that started early may show up after a later one: none is ever taken twice.
+    var handled: Set<String> = []
+
+    /// The first payload not yet handled, from a hook that started after `stem`, that `matches`,
+    /// waiting up to `seconds` for it. Marks it handled.
+    func next(after stem: String, within seconds: Double, _ matches: @escaping (Captured) -> Bool) -> Captured? {
+        var found: Captured?
         waitFor(seconds) {
-            let all = payloads()
-            found = all.indices.dropFirst(index + 1).first { matches(all[$0]) }.map { ($0, all[$0]) }
+            found = payloads().first { $0.stem > stem && !handled.contains($0.stem) && matches($0) }
             return found != nil
         }
+        if let found { handled.insert(found.stem) }
         return found
     }
 
@@ -750,7 +862,7 @@ final class Session {
         }
         let launcher = path(world.root, "launch.sh")
         // The terminal stays once the agent exits, so its last words can be read.
-        write("#!/bin/sh\n\(command)\necho \"[the agent exited $?]\"\nexec sleep 3600\n", to: launcher, mode: 0o755)
+        write("#!/bin/sh\n\(command)\necho \"[the agent exited $?]\"\nunset CLAUDE_CODE_OAUTH_TOKEN\nexec sleep 3600\n", to: launcher, mode: 0o755)
         let started = run(
             [world.options.tmux, "-S", world.socket, "-f", "/dev/null", "new-session", "-d", "-s", "agent", "-x", "200", "-y", "50",
              "-c", world.project, "/bin/sh \(quoted(launcher))"],
@@ -761,6 +873,11 @@ final class Session {
         let up = waitFor(60, every: 0.5) {
             shown = screen()
             return agent.ready.contains { shown.contains($0) } || agent.wantsLogin.contains { shown.contains($0) }
+                || Agent.asksTrust.contains { shown.contains($0) }
+        }
+        if Agent.asksTrust.contains(where: { shown.contains($0) }) {
+            keepScreen("the agent asks whether to trust the project")
+            return .failed("\(agent.name) asks whether to trust the project, which its settings already trust: the way it keeps that changed")
         }
         if agent.wantsLogin.contains(where: { shown.contains($0) }) {
             keepScreen("the agent wants a login")
@@ -777,8 +894,8 @@ final class Session {
     }
 
     /// One turn: sends `prompt`, approves each permission the agent asks for, and checks the cards
-    /// on the way. Returns the index of the payload that ended the turn, or nil when it never did.
-    func turn(_ number: Int, _ prompt: String, after start: Int, clearsWaiting: Bool) -> Int? {
+    /// on the way. Returns the stem of the payload that ended the turn, or nil when it never did.
+    func turn(_ number: Int, _ prompt: String, after start: String, clearsWaiting: Bool) -> String? {
         let sentAt = now()
         send(prompt)
         var promptEvent = next(after: start, within: 15) { $0.event == self.contract.prompt }
@@ -787,7 +904,7 @@ final class Session {
             press("Enter")
             promptEvent = next(after: start, within: 30) { $0.event == self.contract.prompt }
         }
-        guard let (promptIndex, promptPayload) = promptEvent else {
+        guard let promptPayload = promptEvent else {
             check("turn \(number): the prompt reaches drip", false, "no \(contract.prompt) within 45 seconds of the prompt")
             return nil
         }
@@ -801,13 +918,11 @@ final class Session {
                   cleared ? "\(contract.prompt) took it away" : "the card still waits after \(contract.prompt)")
         }
 
-        var cursor = promptIndex
         var asked = false
         let deadline = now() + 300
         while now() < deadline {
-            let all = payloads()
-            guard let index = all.indices.dropFirst(cursor + 1).first(where: {
-                contract.isPermission(all[$0].payload) || all[$0].event == contract.done || all[$0].event == "StopFailure"
+            guard let payload = next(after: promptPayload.stem, within: 0, {
+                self.contract.isPermission($0.payload) || $0.event == self.contract.done || $0.event == "StopFailure"
             }) else {
                 if number == 1, !asked, now() - sentAt > 150 {
                     check("turn 1: the agent asks before it runs the command", false,
@@ -819,19 +934,18 @@ final class Session {
                 pause(0.25)
                 continue
             }
-            cursor = index
-            if all[index].event == "StopFailure" {
+            if payload.event == "StopFailure" {
                 // Claude Code's turn died on an error, such as a login it no longer has.
-                let error = all[index].payload["error"] as? String ?? "an error"
-                check("turn \(number): the turn ends", false, "StopFailure: \(error): \(firstLine(all[index].payload["last_assistant_message"] as? String ?? ""))")
+                let error = payload.payload["error"] as? String ?? "an error"
+                check("turn \(number): the turn ends", false, "StopFailure: \(error): \(firstLine(payload.payload["last_assistant_message"] as? String ?? ""))")
                 return nil
             }
-            if all[index].event == contract.done && !contract.isPermission(all[index].payload) {
-                checkDone(number, index)
-                return index
+            if payload.event == contract.done && !contract.isPermission(payload.payload) {
+                checkDone(number, payload)
+                return payload.stem
             }
             asked = true
-            checkPermission(number, all[index])
+            checkPermission(number, payload)
         }
         check("turn \(number): the turn ends", false, "no \(contract.done) within 5 minutes")
         return nil
@@ -856,11 +970,11 @@ final class Session {
                   : "no \(contract.tool) reached drip within 30 seconds of the approval")
     }
 
-    func checkDone(_ number: Int, _ index: Int) {
+    func checkDone(_ number: Int, _ payload: Captured) {
         let id = self.id
         let done = waitFor(15) { history(world).filter { $0.kind == "ok" && $0.id == id }.count >= number }
         check("turn \(number): the done card shows", done,
-              done ? "\(contract.done) shows an ok card" : explain(payloads()[index], wanted: "an ok card"))
+              done ? "\(contract.done) shows an ok card" : explain(payload, wanted: "an ok card"))
     }
 
     /// Why a payload showed no card: how drip took it.
@@ -877,7 +991,7 @@ final class Session {
 
     /// The session from start to end, its checks in `checks`.
     func drive() {
-        guard let first = turn(1, agent.firstPrompt, after: -1, clearsWaiting: false) else { return }
+        guard let first = turn(1, agent.firstPrompt, after: "", clearsWaiting: false) else { return }
         // A card waits again, as when you would sooner type than approve: replays the request the
         // agent made, then sends a prompt.
         var clears = false
@@ -921,6 +1035,12 @@ final class Session {
         check("one card per session", problems.isEmpty,
               problems.isEmpty ? "\(cards.count) cards, each for \(id), one per event that shows one" : problems.joined(separator: "; "))
 
+        if agent == .claude {
+            let saw = all.filter(\.sawToken)
+            check("the token stays out of the hooks", saw.isEmpty,
+                  saw.isEmpty ? "no hook had CLAUDE_CODE_OAUTH_TOKEN in its environment"
+                      : "\(saw.count) hooks ran with CLAUDE_CODE_OAUTH_TOKEN in their environment")
+        }
         if agent == .codex {
             let link = path(world.agentHome, "auth.json")
             let linked = (try? fileManager.destinationOfSymbolicLink(atPath: link)) == world.options.codexAuth
@@ -1022,14 +1142,17 @@ func driftReport(_ payloads: [[String: Any]], contract: Contract) -> [Drift] {
     return found
 }
 
-/// The payloads to keep from a run, as `NN-<event>.json`, with your home named /home/user: they can
-/// go into drip's tests as they are.
+/// The payloads to keep from a run, as `NNN-<event>.json`, in a folder of their own, with your home
+/// named /home/user: they can go into drip's tests as they are.
 func keepPayloads(_ all: [Captured], in directory: String) {
+    try? fileManager.removeItem(atPath: directory)
     try? fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
-    let home = NSHomeDirectory()
+    // Your home itself, not a longer name that starts with it.
+    let home = NSRegularExpression.escapedPattern(for: realHome) + #"(?=/|"|$)"#
     for (index, payload) in all.enumerated() {
-        let text = redacted(String(decoding: payload.raw, as: UTF8.self)).replacingOccurrences(of: home, with: "/home/user")
-        write(text.trimmingCharacters(in: .whitespacesAndNewlines) + "\n", to: path(directory, String(format: "%02d-%@.json", index + 1, payload.event)))
+        let text = redacted(String(decoding: payload.raw, as: UTF8.self))
+            .replacingOccurrences(of: home, with: "/home/user", options: .regularExpression)
+        write(text.trimmingCharacters(in: .whitespacesAndNewlines) + "\n", to: path(directory, String(format: "%03d-%@.json", index + 1, payload.event)))
     }
 }
 
@@ -1072,11 +1195,13 @@ func version(_ options: Options, _ agent: Agent, environment: [String: String]) 
 /// One try at an agent, in a world of its own.
 func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: String, harness: String) -> AgentResult {
     let world = World(agent: agent, root: path(runDirectory, "world", "\(agent.rawValue)-\(number)"), options: options)
-    world.make(harness: harness)
+    noteStarted { $0.worlds.append((world, options.keep)) }
     defer {
+        noteStarted { $0.worlds.removeAll { $0.world.root == world.root } }
         world.stop()
         if !options.keep { try? fileManager.removeItem(atPath: world.root) }
     }
+    let problem = world.make(harness: harness)
     var result = AgentResult(agent: agent, version: version(options, agent, environment: world.environment), status: "failed", attempts: number)
     say("\(agent.name) \(result.version)\(number > 1 ? ", once more" : "")")
 
@@ -1097,6 +1222,7 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
         result.screens = session?.screens ?? []
         return result
     }
+    if let problem { return skip(.failed(problem)) }
     let login = checkLogin(world)
     guard case .ready = login else { return skip(login) }
     if let problem = world.installHooks() { return skip(.failed("drip setup \(agent.rawValue) failed: \(problem)")) }
@@ -1109,7 +1235,8 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
     session.finish()
 
     let all = session.payloads()
-    let kept = path(runDirectory, "payloads", agent.rawValue)
+    // Each try's own: a second try's payloads never mix with the first's.
+    let kept = path(runDirectory, "payloads", "\(agent.rawValue)-\(number)")
     keepPayloads(all, in: kept)
     result.payloads = kept
     result.drift = driftReport(savedPayloads(in: kept), contract: contract)
@@ -1128,6 +1255,43 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
 
 /// The exit status of a check that ran no agent, as there was no GUI session.
 let noGUISessionStatus: Int32 = 3
+/// The exit status of a check that found another one running, and left it and its last.json alone.
+let busyStatus: Int32 = 4
+
+/// last.json, what a scheduler reads: written once the check holds the lock, as `running`, and
+/// again however it ends, so it never tells of an older check. A check that finds another one
+/// running leaves it alone.
+final class Report {
+    let options: Options
+    let started = Date()
+
+    init(options: Options) {
+        self.options = options
+    }
+
+    func save(_ status: String, exit: Int32?, reason: String? = nil, more: [String: Any] = [:]) {
+        let iso = ISO8601DateFormatter()
+        let commit = run(["/usr/bin/git", "-C", options.repo, "rev-parse", "--short", "HEAD"], timeout: 15).out
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var result: [String: Any] = [
+            "version": 1, "status": status, "started": iso.string(from: started), "drip": commit, "agents": [Any](),
+        ]
+        result["exit"] = exit
+        result["reason"] = reason
+        if exit != nil { result["finished"] = iso.string(from: Date()) }
+        result.merge(more) { $1 }
+        let json = jsonText(result, pretty: true) + "\n"
+        if let run = more["run"] as? String { write(json, to: path(run, "last.json")) }
+        write(json, to: path(options.cache, "last.json"))
+    }
+
+    /// A check that stopped short of a result, as when the agents would not install.
+    func error(_ reason: String) {
+        save("error", exit: 1, reason: reason)
+    }
+}
+
+var report: Report?
 
 /// drip shows and records no card without a GUI session, so every card check would fail: rather than
 /// a false alarm, a check started outside the logged-in user's session runs no agent and says so in
@@ -1135,25 +1299,43 @@ let noGUISessionStatus: Int32 = 3
 func checkGUISession(_ options: Options) -> Bool {
     if options.guiSession ?? (CGSessionCopyCurrentDictionary() != nil) { return true }
     let reason = "no GUI session, so drip records no cards: run the check as a LaunchAgent in the logged-in user's session"
-    let iso = ISO8601DateFormatter()
-    let commit = run(["/usr/bin/git", "-C", options.repo, "rev-parse", "--short", "HEAD"], timeout: 15).out
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-    let stamp = iso.string(from: Date())
-    let result: [String: Any] = [
-        "version": 1, "status": "no-gui-session", "exit": noGUISessionStatus, "reason": reason, "started": stamp,
-        "finished": stamp, "drip": commit, "agents": [Any](),
-    ]
-    write(jsonText(result, pretty: true) + "\n", to: path(options.cache, "last.json"))
+    report?.save("no-gui-session", exit: noGUISessionStatus, reason: reason)
     FileHandle.standardError.write(Data("agent-contract: \(reason)\n".utf8))
     return false
 }
 
+/// Installs the latest of each agent and builds drip from the checkout, for this check only: it
+/// holds the lock, so a check that is running keeps the agents and the drip it started with.
+var prepared = false
+
+func prepare(_ options: Options) {
+    guard !prepared else { return }
+    prepared = true
+    say("Installing the latest Claude Code, Codex and Gemini CLI")
+    // npm runs the packages' install scripts, which see only what npm needs of your environment.
+    let inherited = ProcessInfo.processInfo.environment
+    var environment = inherited.filter { ["PATH", "HOME", "USER", "LOGNAME", "LANG", "TMPDIR", "SHELL"].contains($0.key) }
+    environment["npm_config_cache"] = path(options.cache, "npm")
+    environment["npm_config_update_notifier"] = "false"
+    let installed = runHere(
+        [options.npm, "install", "--prefix", path(options.cache, "tools"), "--no-fund", "--no-audit", "--loglevel=error"]
+            + Agent.allCases.map { "\($0.package)@latest" },
+        environment: environment, in: options.cache, timeout: 1200)
+    guard installed == 0 else { fail("npm install of the latest agents exited \(installed)") }
+    guard !options.prebuilt else { return }
+    // The hooks run drip as it is in this checkout.
+    let built = runHere([options.swift, "build", "-c", "release", "--package-path", options.repo], environment: inherited,
+                        in: options.repo, timeout: 1800)
+    guard built == 0 else { fail("swift build -c release exited \(built)") }
+}
+
 func runCheck(_ options: Options, harness: String) -> Int32 {
     guard checkGUISession(options) else { return noGUISessionStatus }
+    prepare(options)
     let stamp = DateFormatter()
     stamp.locale = Locale(identifier: "en_US_POSIX")
     stamp.dateFormat = "yyyyMMdd-HHmmss"
-    let started = Date()
+    let started = report?.started ?? Date()
     let runDirectory = path(options.cache, "runs", stamp.string(from: started))
     try? fileManager.createDirectory(atPath: runDirectory, withIntermediateDirectories: true)
     say("drip agent contract: \(runDirectory)")
@@ -1173,18 +1355,8 @@ func runCheck(_ options: Options, harness: String) -> Int32 {
     let skipped = results.contains { $0.status == "skipped" }
     let exitStatus: Int32 = failed ? 1 : skipped ? 2 : 0
     let status = failed ? "failed" : skipped ? "needs-login" : "passed"
-    let iso = ISO8601DateFormatter()
-    let commit = run(["/usr/bin/git", "-C", options.repo, "rev-parse", "--short", "HEAD"], timeout: 15).out
-        .trimmingCharacters(in: .whitespacesAndNewlines)
     let summaryFile = path(runDirectory, "summary.txt")
-    let result: [String: Any] = [
-        "version": 1, "status": status, "exit": exitStatus, "started": iso.string(from: started),
-        "finished": iso.string(from: Date()), "drip": commit, "run": runDirectory, "summary": summaryFile,
-        "agents": results.map(\.json),
-    ]
-    let json = jsonText(result, pretty: true) + "\n"
-    write(json, to: path(runDirectory, "last.json"))
-    write(json, to: path(options.cache, "last.json"))
+    report?.save(status, exit: exitStatus, more: ["run": runDirectory, "summary": summaryFile, "agents": results.map(\.json)])
     let summary = summarize(results, status: status, exitStatus: exitStatus, started: started, runDirectory: runDirectory)
     write(summary, to: summaryFile)
     for result in results where !result.screens.isEmpty {
@@ -1233,14 +1405,28 @@ func prune(_ directory: String, keeping: Int) {
 
 /// `--drift DIR`: the drift report for payloads a run kept, in DIR or in its agents' folders in it.
 func driftOnly(_ options: Options, directory: String) -> Int32 {
+    /// The agent a folder of payloads is from: `codex`, or a try of it, `codex-2`.
+    func agentOf(_ name: String) -> Agent? {
+        Agent(rawValue: name) ?? Agent(rawValue: String(name.prefix { $0 != "-" }))
+    }
+    /// Each agent's folder in `parent`: its last try's.
+    func agentFolders(in parent: String) -> [(Agent, String)] {
+        let names = ((try? fileManager.contentsOfDirectory(atPath: parent)) ?? [])
+            .sorted { $0.count != $1.count ? $0.count < $1.count : $0 < $1 }
+        var last: [Agent: String] = [:]
+        for name in names {
+            if let agent = agentOf(name) { last[agent] = path(parent, name) }
+        }
+        return Agent.allCases.compactMap { agent in last[agent].map { (agent, $0) } }
+    }
     let name = (directory as NSString).lastPathComponent
     var folders: [(Agent, String)] = []
-    if let agent = Agent(rawValue: name) {
+    if let agent = agentOf(name) {
         folders = [(agent, directory)]
     } else if fileManager.fileExists(atPath: path(directory, "payloads")) {
-        folders = Agent.allCases.map { ($0, path(directory, "payloads", $0.rawValue)) }
+        folders = agentFolders(in: path(directory, "payloads"))
     } else {
-        folders = Agent.allCases.map { ($0, path(directory, $0.rawValue)) }
+        folders = agentFolders(in: directory)
     }
     folders = folders.filter { options.agents.contains($0.0) && fileManager.fileExists(atPath: $0.1) }
     if folders.isEmpty, options.agents.count == 1 { folders = [(options.agents[0], directory)] }
@@ -1317,11 +1503,11 @@ func relayRedacted(_ arguments: [String], environment: [String: String], in dire
     var size = winsize()
     if ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) != 0 || size.ws_row == 0 { size.ws_row = 40 }
     size.ws_col = max(size.ws_col, 220)
-    let argv = arguments.map { strdup($0) } + [nil]
-    let envp = environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
+    let argv = cStrings(arguments)
+    let envp = cStrings(environment.map { "\($0.key)=\($0.value)" })
     defer {
-        argv.forEach { free($0) }
-        envp.forEach { free($0) }
+        freeCStrings(argv)
+        freeCStrings(envp)
     }
     var master: Int32 = -1
     let pid = forkpty(&master, nil, nil, &size)
@@ -1340,7 +1526,17 @@ func relayRedacted(_ arguments: [String], environment: [String: String], in dire
         cfmakeraw(&raw)
         tcsetattr(STDIN_FILENO, TCSANOW, &raw)
     }
-    defer { if terminal { tcsetattr(STDIN_FILENO, TCSANOW, &original) } }
+    noteStarted {
+        $0.child = pid
+        if terminal { $0.terminal = original }
+    }
+    defer {
+        if terminal { tcsetattr(STDIN_FILENO, TCSANOW, &original) }
+        noteStarted {
+            $0.child = nil
+            $0.terminal = nil
+        }
+    }
 
     var redactor = Redactor()
     var buffer = [UInt8](repeating: 0, count: 4096)
@@ -1376,8 +1572,7 @@ func relayRedacted(_ arguments: [String], environment: [String: String], in dire
     show(redactor.feed([], final: true))
     close(master)
     if !exited { waitpid(pid, &status, 0) }
-    let exitStatus = (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)
-    return (exitStatus, redactor.tokens.max { $0.count < $1.count })
+    return (exitStatus(status), redactor.tokens.max { $0.count < $1.count })
 }
 
 /// A line read with the terminal's echo off; nil without a terminal.
@@ -1389,17 +1584,23 @@ func readHidden(_ prompt: String) -> String? {
     var quiet = original
     quiet.c_lflag &= ~tcflag_t(ECHO)
     tcsetattr(STDIN_FILENO, TCSANOW, &quiet)
+    noteStarted { $0.terminal = original }
     defer {
         tcsetattr(STDIN_FILENO, TCSANOW, &original)
+        noteStarted { $0.terminal = nil }
         FileHandle.standardError.write(Data("\n".utf8))
     }
     return readLine()?.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
+/// What a whole long-lived Claude Code token looks like, so a token cut short, as by a line that
+/// wrapped, is never saved.
+let claudeTokenShape = #"^sk-ant-oat[0-9]{2}-[A-Za-z0-9_-]{60,}$"#
+
 /// Saves Claude Code's token in the Keychain, through `security`'s standard input so it is on no
 /// command line. Returns whether the Keychain has it now.
 func saveClaudeToken(_ token: String, _ options: Options) -> Bool {
-    guard token.range(of: #"^[A-Za-z0-9._-]{20,}$"#, options: .regularExpression) != nil else { return false }
+    guard token.range(of: claudeTokenShape, options: .regularExpression) != nil else { return false }
     let command = "add-generic-password -U -s \(options.service) -a claude -T /usr/bin/security -w \(token)\n"
     _ = run(["/usr/bin/security", "-i"], input: Data(command.utf8), timeout: 30)
     return hasClaudeToken(options)
@@ -1408,15 +1609,16 @@ func saveClaudeToken(_ token: String, _ options: Options) -> Bool {
 /// `--setup`: the one-time sign-ins, each checked with a tiny session. Opens the browser only for
 /// Claude Code's token and the Google sign-in, and only when they are not there or no longer work.
 func setup(_ options: Options, harness: String) -> Int32 {
-    guard isatty(STDIN_FILENO) == 1, isatty(STDOUT_FILENO) == 1 else {
-        fail("--setup signs you in, so it needs a terminal: run it in one")
-    }
     let scratch = path(options.cache, "setup")
     try? fileManager.removeItem(atPath: scratch)
-    defer { try? fileManager.removeItem(atPath: scratch) }
-    func world(_ agent: Agent) -> World {
-        let world = World(agent: agent, root: path(scratch, agent.rawValue), options: options)
-        world.make(harness: harness)
+    defer {
+        noteStarted { $0.worlds.removeAll { $0.world.root.hasPrefix(scratch + "/") } }
+        try? fileManager.removeItem(atPath: scratch)
+    }
+    func makeWorld(_ agent: Agent, _ name: String? = nil) -> World {
+        let world = World(agent: agent, root: path(scratch, name ?? agent.rawValue), options: options)
+        noteStarted { $0.worlds.append((world, false)) }
+        if let problem = world.make(harness: harness) { fail(problem) }
         return world
     }
     func describe(_ login: Login) -> String {
@@ -1430,7 +1632,7 @@ func setup(_ options: Options, harness: String) -> Int32 {
     var ready = true
 
     for agent in options.agents {
-        let world = world(agent)
+        let world = makeWorld(agent)
         defer { world.stop() }
         var login = checkLogin(world)
         if case .ready = login {
@@ -1446,9 +1648,10 @@ func setup(_ options: Options, harness: String) -> Int32 {
             environment.removeValue(forKey: "BROWSER")
             environment.removeValue(forKey: "NO_BROWSER")
             let (status, token) = relayRedacted([options.tool(.claude), "setup-token"], environment: environment, in: world.project)
-            var chosen = token
+            var chosen = token.flatMap { $0.range(of: claudeTokenShape, options: .regularExpression) != nil ? $0 : nil }
             if chosen == nil, status == 0 {
-                chosen = readHidden("No token showed up in setup-token's output. Paste the token it printed (it stays hidden): ")
+                chosen = readHidden(
+                    "No whole token showed up in setup-token's output. Run `claude setup-token` in another terminal and paste the token it shows (it stays hidden here): ")
             }
             if let chosen, !chosen.isEmpty {
                 if saveClaudeToken(chosen, options) {
@@ -1476,8 +1679,7 @@ func setup(_ options: Options, harness: String) -> Int32 {
             let status = runHere([options.tool(.gemini), "-p", "Reply with the single word ok."], environment: environment,
                                  in: world.project, timeout: 600)
             // The sign-in is where the world links it from: a fresh world sees it.
-            let fresh = World(agent: .gemini, root: path(scratch, "gemini-verify"), options: options)
-            fresh.make(harness: harness)
+            let fresh = makeWorld(.gemini, "gemini-verify")
             login = status == 0 ? checkLogin(fresh) : .needsLogin(reason: "the Google sign-in did not finish (gemini exited \(status))", fix: "run \(options.setupHint) again")
         }
         if case .ready = login {} else { ready = false }
@@ -1499,39 +1701,50 @@ if arguments.first == "record" { record(Array(arguments.dropFirst())) }
 let options = Options.parse(arguments)
 guard let harness = Bundle.main.executablePath else { fail("cannot find this program's own path") }
 if let directory = options.drift { exit(driftOnly(options, directory: directory)) }
-// Before anything is installed: with no GUI session, no agent runs.
-if options.mode == "session" {
-    guard !options.repo.isEmpty, !options.cache.isEmpty else { fail("run this through scripts/agent-contract.sh") }
-    exit(checkGUISession(options) ? 0 : noGUISessionStatus)
-}
-guard !options.repo.isEmpty, !options.cache.isEmpty, !options.tools.isEmpty, !options.tmux.isEmpty else {
-    fail("run this through scripts/agent-contract.sh")
-}
+guard ["run", "setup"].contains(options.mode) else { fail("unknown mode '\(options.mode)'") }
+guard !options.repo.isEmpty, !options.cache.isEmpty, !options.tmux.isEmpty, !options.npm.isEmpty,
+      options.prebuilt || !options.swift.isEmpty
+else { fail("run this through scripts/agent-contract.sh") }
 
-// One check at a time: a scheduled one and one by hand would share the terminals' names.
-let lockFile = open(path(options.cache, "lock"), O_CREAT | O_RDWR, 0o600)
-if lockFile < 0 || flock(lockFile, LOCK_EX | LOCK_NB) != 0 { fail("another check is running") }
+// One check at a time, taken before anything is installed or built: a check by hand while a
+// scheduled one runs would change the agents and the drip under it. The lock is this process's
+// alone, never its children's.
+try? fileManager.createDirectory(atPath: options.cache, withIntermediateDirectories: true)
+let lockFile = open(path(options.cache, "lock"), O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+if lockFile < 0 || flock(lockFile, LOCK_EX | LOCK_NB) != 0 {
+    FileHandle.standardError.write(Data("agent-contract: another check is running; it keeps last.json\n".utf8))
+    exit(busyStatus)
+}
+report = Report(options: options)
+report?.save("running", exit: nil)
 
-// Ctrl-C or a stop from launchd still takes the agents and their terminals down.
+// Ctrl-C or a stop from launchd still takes the agents and their terminals down, and says so.
 var signalSources: [DispatchSourceSignal] = []
-for number in [SIGINT, SIGTERM, SIGHUP] {
+for (number, name) in [(SIGINT, "SIGINT"), (SIGTERM, "SIGTERM"), (SIGHUP, "SIGHUP")] {
     signal(number, SIG_IGN)
     let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
     source.setEventHandler {
+        cleanUp()
         for agent in Agent.allCases {
-            let socket = path(options.cache, "tmux-\(agent.rawValue).sock")
+            let socket = tmuxSocket(options, agent)
             _ = run([options.tmux, "-S", socket, "kill-server"], timeout: 5)
             unlink(socket)
         }
-        _ = run(["/usr/bin/pkill", "-f", options.cache + "/.*/bin/drip-real"], timeout: 5)
+        _ = run(["/usr/bin/pkill", "-f", options.cache + "/.*/bin/"], timeout: 5)
+        report?.error("stopped by \(name)")
         exit(1)
     }
     source.resume()
     signalSources.append(source)
 }
 
-switch options.mode {
-case "setup": exit(setup(options, harness: harness))
-case "run": exit(runCheck(options, harness: harness))
-default: fail("unknown mode '\(options.mode)'")
+if options.mode == "setup" {
+    guard isatty(STDIN_FILENO) == 1, isatty(STDOUT_FILENO) == 1 else {
+        fail("--setup signs you in, so it needs a terminal: run it in one")
+    }
+    prepare(options)
+    _ = setup(options, harness: harness)
+    say("")
+    say("Now the check itself, as the schedule runs it")
 }
+exit(runCheck(options, harness: harness))
