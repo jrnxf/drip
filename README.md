@@ -740,6 +740,7 @@ swift test            # on Linux, or on a Mac with Xcode
 scripts/mac-check.sh  # on any Mac
 scripts/mac-e2e.sh    # on any Mac, without a person
 scripts/record-demo.sh  # films docs/demo.mp4 and docs/demo.gif on a Mac; needs ffmpeg
+scripts/agent-contract.sh  # the agents' hooks, live, with the latest of each; needs node and tmux
 ```
 
 `swift test` runs the DripCore unit tests anywhere Swift runs, including Linux CI. The snapshot
@@ -779,6 +780,63 @@ a fixed sequence at the notch of the screen under the pointer, records that stri
 at the screen's native pixels, and encodes `docs/demo.mp4` and `docs/demo.gif` with ffmpeg. Set a clean
 wallpaper first, and allow your terminal under System Settings > Privacy & Security > Screen & System
 Audio Recording the first time. Run it again for a new take.
+
+### The live agent check
+
+The tests replay payloads recorded once, so they cannot see Claude Code, Codex or Gemini CLI change
+what their hooks send. `scripts/agent-contract.sh` can: it installs the latest release of each with
+npm, builds drip from the checkout, and runs one short interactive session of each agent in a
+terminal of its own (tmux), through the hooks `drip setup` writes. Each session asks for a shell
+command the agent must ask permission to run, approves it through the terminal, then sends a second
+prompt while a card waits, and checks what a person would see: the waiting card appears, it goes
+once approved, a prompt takes a waiting card away, each turn ends with a done card, and a session
+never has two cards. It runs on a locked Mac too, and shows nothing at the notch: drip is paused in
+its world, so the cards go to its history. A session that goes wrong is tried once more, unless what
+the agent sent is a shape drip cannot read. `--only codex` runs some agents, and `--keep` keeps each
+agent's scratch world.
+
+The one-time setup takes about 5 minutes: run `scripts/agent-contract.sh --setup` in a terminal. It
+opens the browser twice, to approve a long-lived Claude Code token from `claude setup-token`, which
+goes straight into the Keychain (service `drip-agent-contract`, account `claude`) without being
+shown, and for a Google sign-in for Gemini CLI. Codex uses your own login: run `codex login` first if
+you have none. Setup checks each login with a tiny session, prints what is ready, then runs the check
+once. After that a check never prompts and never opens a browser: an agent whose login is missing or
+no longer works is skipped with the one line that fixes it.
+
+This repo ships the check only: no schedule and no alert. Running it, weekly say, and telling you
+when it fails or needs a login are up to your own scheduler, which runs `scripts/agent-contract.sh`
+and reads its exit status and `~/.cache/drip-agent-contract/last.json`, both described below.
+
+drip shows and records no card without a GUI session, so a scheduler must run the check as a
+LaunchAgent in the logged-in user's session, not as a LaunchDaemon or over ssh. Started anywhere
+else, it runs no agent, writes `last.json` with the status `no-gui-session` and the reason, and
+exits 3.
+
+One check runs at a time: the lock comes before the agents are installed or drip is built, so a check
+started while another runs changes nothing under it, exits 4 and leaves that check's `last.json`
+alone.
+
+It exits 0 when every agent passed, 1 when any failed or the check itself could not run (the status
+`error`, with the reason), 2 when the only trouble is a login, 3 when there is no GUI session, and 4
+when another check is running. `~/.cache/drip-agent-contract/last.json` is what a scheduler reads: it
+says `running` while a check runs and then its result: `status` and `reason`, and for each agent its
+`status`, `version`, `reason`, `fix`, `checks`, `drift` and `payloads`.
+Each run also keeps its own `last.json`, `summary.txt`, the payloads of each try at each agent
+(`payloads/codex-1`, and `payloads/codex-2` for a second try), and the screen of any check that
+failed, in `~/.cache/drip-agent-contract/runs/<time>/`. The drift report holds every payload up against
+`scripts/agent-contract/contract.json`, which names the fields drip reads from each event: a field
+drip reads that is missing or of another type, an event the session should have sent, or a permission
+request that does not match the tool call after it is drift, and a field never seen before is only
+noted. `--drift DIR` prints the report for the payloads a run kept, each agent's last try. The kept payloads name your home
+`/home/user`, so a fix can add them to the tests as they are; update `contract.json` with it.
+
+Everything it uses lives in `~/.cache/drip-agent-contract`: the agents, drip's state, each agent's
+home and settings, and Gemini CLI's own sign-in. Your own agents, their settings and your PATH stay as
+they are. The Codex session links your `~/.codex/auth.json` rather than copying it, and trusts drip's
+hooks for that session alone (`--dangerously-bypass-hook-trust`), where you would trust them once in
+`/hooks`. A refresh of that login in the check goes to your own file, through the link; if your own
+Codex refreshes it at the same moment, Codex may ask you to run `codex login` again. Any program you
+run can read the Claude Code token in the Keychain without asking, as an unattended check must.
 
 ### Releases
 

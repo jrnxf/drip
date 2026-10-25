@@ -1,0 +1,88 @@
+{
+  "about": "What drip expects from each agent's hooks, for scripts/agent-contract.sh. events: every event drip setup hooks, with the fields drip reads and their JSON types (reads), and the other fields the agent was last seen sending (seen). flow: the events one live session sends drip, in order. same: fields a permission request and the tool call that follows it must agree on, for drip to take the right card away. requestOnly: keys of a same object that only the permission request carries, which drip leaves out when it matches the call. Tests/DripCoreTests/ContractTests.swift keeps the events in step with drip setup.",
+  "agents": {
+    "claude": {
+      "events": {
+        "PermissionRequest": {
+          "reads": {"session_id": "string", "cwd": "string", "tool_name": "string", "tool_input": "object", "tool_use_id": "string"},
+          "seen": ["hook_event_name", "transcript_path", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "permission_suggestions"]
+        },
+        "Notification": {
+          "reads": {"session_id": "string", "cwd": "string", "notification_type": "string", "message": "string"},
+          "seen": ["hook_event_name", "transcript_path", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "title"]
+        },
+        "Stop": {
+          "reads": {"session_id": "string", "cwd": "string", "last_assistant_message": "string"},
+          "seen": ["hook_event_name", "transcript_path", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "stop_hook_active"]
+        },
+        "StopFailure": {
+          "reads": {"session_id": "string", "cwd": "string", "last_assistant_message": "string"},
+          "seen": ["hook_event_name", "transcript_path", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "error", "error_details"]
+        },
+        "PostToolUse": {
+          "reads": {"session_id": "string", "tool_use_id": "string"},
+          "seen": ["hook_event_name", "transcript_path", "cwd", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "tool_name", "tool_input", "tool_response", "duration_ms"]
+        },
+        "PostToolUseFailure": {
+          "reads": {"session_id": "string", "tool_use_id": "string"},
+          "seen": ["hook_event_name", "transcript_path", "cwd", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "tool_name", "tool_input", "error", "is_interrupt"]
+        },
+        "UserPromptSubmit": {
+          "reads": {"session_id": "string"},
+          "seen": ["hook_event_name", "transcript_path", "cwd", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "prompt"]
+        },
+        "ElicitationResult": {
+          "reads": {"session_id": "string"},
+          "seen": ["hook_event_name", "transcript_path", "cwd", "scratchpad_dir", "prompt_id", "permission_mode", "effort"]
+        }
+      },
+      "flow": {"prompt": "UserPromptSubmit", "permission": "PermissionRequest", "tool": "PostToolUse", "done": "Stop"},
+      "same": ["tool_use_id"]
+    },
+    "codex": {
+      "events": {
+        "PermissionRequest": {
+          "reads": {"session_id": "string", "cwd": "string", "turn_id": "string", "tool_name": "string", "tool_input": "object"},
+          "seen": ["hook_event_name", "transcript_path", "model", "permission_mode"]
+        },
+        "Stop": {
+          "reads": {"session_id": "string", "cwd": "string", "last_assistant_message": "string"},
+          "seen": ["hook_event_name", "turn_id", "transcript_path", "model", "permission_mode", "stop_hook_active"]
+        },
+        "PostToolUse": {
+          "reads": {"session_id": "string", "turn_id": "string", "tool_name": "string", "tool_input": "object"},
+          "seen": ["hook_event_name", "transcript_path", "cwd", "model", "permission_mode", "tool_response", "tool_use_id"]
+        },
+        "UserPromptSubmit": {
+          "reads": {"session_id": "string"},
+          "seen": ["hook_event_name", "turn_id", "transcript_path", "cwd", "model", "permission_mode", "prompt"]
+        }
+      },
+      "flow": {"prompt": "UserPromptSubmit", "permission": "PermissionRequest", "tool": "PostToolUse", "done": "Stop"},
+      "same": ["turn_id", "tool_name", "tool_input"],
+      "requestOnly": {"tool_input": ["description"]}
+    },
+    "gemini": {
+      "events": {
+        "Notification": {
+          "reads": {"session_id": "string", "cwd": "string", "notification_type": "string", "message": "string"},
+          "seen": ["hook_event_name", "transcript_path", "timestamp", "details"]
+        },
+        "AfterAgent": {
+          "reads": {"session_id": "string", "cwd": "string", "prompt_response": "string"},
+          "seen": ["hook_event_name", "transcript_path", "timestamp", "prompt", "stop_hook_active"]
+        },
+        "AfterTool": {
+          "reads": {"session_id": "string"},
+          "seen": ["hook_event_name", "transcript_path", "cwd", "timestamp", "tool_name", "tool_input", "tool_response"]
+        },
+        "BeforeAgent": {
+          "reads": {"session_id": "string"},
+          "seen": ["hook_event_name", "transcript_path", "cwd", "timestamp", "prompt"]
+        }
+      },
+      "flow": {"prompt": "BeforeAgent", "permission": "Notification", "permissionType": "ToolPermission", "tool": "AfterTool", "done": "AfterAgent"},
+      "same": []
+    }
+  }
+}
