@@ -438,9 +438,16 @@ struct CardStackTests {
         // It moves again: held again.
         #expect(stack.hover(true, moved: true, at: time + CardStack.holdLimit + 1))
         #expect(stack.hovering)
-        // Off the stack and back on is a new hold, even without a move in between.
-        #expect(stack.hover(false, moved: false, at: time + 20))
-        #expect(stack.hover(true, moved: false, at: time + 21))
+        // Rested again: let go.
+        #expect(stack.hover(true, moved: false, at: time + 2 * CardStack.holdLimit + 1))
+        #expect(!stack.hovering)
+        // The card under the still pointer leaves and the next slides under it: no new hold.
+        #expect(!stack.hover(false, moved: false, at: time + 20))
+        #expect(!stack.hover(true, moved: false, at: time + 21))
+        #expect(!stack.hovering)
+        // The pointer leaves and comes back on, which moves it: held again.
+        #expect(!stack.hover(false, moved: true, at: time + 22))
+        #expect(stack.hover(true, moved: true, at: time + 23))
     }
 
     /// In a background drip's stack, a card that waits for you and gives way goes back into the

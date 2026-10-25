@@ -95,9 +95,8 @@ public final class CardStack {
     /// cards wait, so a card never slides out from under a click. Not for longer than `holdLimit`
     /// after the pointer last moved, so a pointer left resting on the stack never keeps it there.
     public private(set) var hovering = false
-    /// Whether the pointer is on the stack, held or not.
-    private var pointerOn = false
-    /// When the pointer last moved on the stack, or came onto it.
+    /// When the pointer last moved on the stack, or came onto it. A still pointer that a card leaves
+    /// from under and the next slides under does not count, so it never holds the stack again.
     private var pointerMovedAt = -Double.infinity
     /// Whether a card that waits for you and gives way to a card that needs its place goes back into
     /// the overflow drop, to come back once there is room, rather than counting down and leaving. A
@@ -369,8 +368,7 @@ public final class CardStack {
     /// whether that changed anything.
     @discardableResult
     public func hover(_ on: Bool, moved: Bool = true, at time: Double = 0) -> Bool {
-        if on, moved || !pointerOn { pointerMovedAt = time }
-        pointerOn = on
+        if on, moved { pointerMovedAt = time }
         let holds = on && time - pointerMovedAt < Self.holdLimit
         guard holds != hovering else { return false }
         hovering = holds
