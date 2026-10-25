@@ -139,6 +139,70 @@ struct HarnessTests {
         #expect(!Self.ran(cache, "tmux"))
     }
 
+    /// A check of Gemini CLI alone, whose stand-in fails its login session with `message`.
+    static func geminiLogin(failingWith message: String) throws -> (status: Int32, gemini: [String: Any]) {
+        let cache = try scratch()
+        defer { try? FileManager.default.removeItem(at: cache) }
+        let fake = cache.appendingPathComponent("fake")
+        try script("case \"$1\" in --version) echo 0.0.0; exit 0 ;; esac\necho '\(message)' >&2\nexit 1\n",
+                   at: fake.appendingPathComponent("gemini"))
+        let signIn = cache.appendingPathComponent("gemini/.gemini")
+        try FileManager.default.createDirectory(at: signIn, withIntermediateDirectories: true)
+        try "{}\n".write(to: signIn.appendingPathComponent("oauth_creds.json"), atomically: true, encoding: .utf8)
+        let status = try check(cache, npm: try npm(in: cache), more: ["--gui-session", "yes", "--only", "gemini", "--node-bin", "/usr/bin"])
+        let agents = try #require(try last(cache)["agents"] as? [[String: Any]])
+        return (status, try #require(agents.first))
+    }
+
+    @Test func aGeminiLoginTurnedDownNeedsALogin() throws {
+        let (status, gemini) = try Self.geminiLogin(failingWith: "Request failed with status 401: Unauthorized")
+        #expect(status == 2)
+        #expect(gemini["status"] as? String == "skipped")
+        #expect((gemini["reason"] as? String)?.hasPrefix("needs login") == true)
+    }
+
+    @Test func aGeminiErrorAboutTokensIsAFailureNotALogin() throws {
+        let (status, gemini) = try Self.geminiLogin(failingWith: "The input token count exceeds the maximum number of tokens allowed")
+        #expect(status == 1)
+        #expect(gemini["status"] as? String == "failed")
+        #expect((gemini["reason"] as? String)?.contains("gemini -p exited 1") == true)
+    }
+
+    /// The script, stopped before the harness by a harness that does not build, while another check
+    /// holds the lock or with --drift: either way it leaves last.json alone.
+    @Test func aScriptThatStopsEarlyLeavesARunningChecksLastJSON() throws {
+        let scratch = try Self.scratch()
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let scripts = scratch.appendingPathComponent("repo/scripts")
+        try FileManager.default.createDirectory(at: scripts.appendingPathComponent("agent-contract"), withIntermediateDirectories: true)
+        let script = scripts.appendingPathComponent("agent-contract.sh")
+        try FileManager.default.copyItem(at: Self.repo.appendingPathComponent("scripts/agent-contract.sh"), to: script)
+        try "this is not Swift\n".write(to: scripts.appendingPathComponent("agent-contract/Contract.swift"), atomically: true, encoding: .utf8)
+        let cache = scratch.appendingPathComponent("drip-agent-contract")
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        let lastFile = cache.appendingPathComponent("last.json")
+        let running = "{\"status\" : \"running\"}\n"
+        try running.write(to: lastFile, atomically: true, encoding: .utf8)
+        var environment = ProcessInfo.processInfo.environment
+        environment["XDG_CACHE_HOME"] = scratch.path
+        func stops(_ arguments: [String] = []) throws -> Int32 {
+            try Self.execute(URL(fileURLWithPath: "/bin/sh"), [script.path] + arguments, environment: environment)
+        }
+
+        let lock = open(cache.appendingPathComponent("lock").path, O_CREAT | O_RDWR, 0o600)
+        #expect(flock(lock, LOCK_EX | LOCK_NB) == 0)
+        #expect(try stops() == 1)
+        #expect(try String(contentsOf: lastFile, encoding: .utf8) == running)
+        close(lock)
+
+        #expect(try stops(["--drift", scratch.path]) == 1)
+        #expect(try String(contentsOf: lastFile, encoding: .utf8) == running)
+
+        // With no other check and no --drift, it says why.
+        #expect(try stops() == 1)
+        #expect(try Self.last(cache)["status"] as? String == "error")
+    }
+
     /// A stand-in for Codex in its terminal: it runs drip's hook through a login shell, as Codex
     /// does, for each step of the session the check drives. Its first session asks nothing before
     /// it runs the command, which the check takes for a session that went its own way and tries once

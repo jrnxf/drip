@@ -803,6 +803,10 @@ you have none. Setup checks each login with a tiny session, prints what is ready
 once. After that a check never prompts and never opens a browser: an agent whose login is missing or
 no longer works is skipped with the one line that fixes it.
 
+This repo ships the check only: no schedule and no alert. Running it, weekly say, and telling you
+when it fails or needs a login are up to your own scheduler, which runs `scripts/agent-contract.sh`
+and reads its exit status and `~/.cache/drip-agent-contract/last.json`, both described below.
+
 drip shows and records no card without a GUI session, so a scheduler must run the check as a
 LaunchAgent in the logged-in user's session, not as a LaunchDaemon or over ssh. Started anywhere
 else, it runs no agent, writes `last.json` with the status `no-gui-session` and the reason, and
@@ -815,7 +819,8 @@ alone.
 It exits 0 when every agent passed, 1 when any failed or the check itself could not run (the status
 `error`, with the reason), 2 when the only trouble is a login, 3 when there is no GUI session, and 4
 when another check is running. `~/.cache/drip-agent-contract/last.json` is what a scheduler reads: it
-says `running` while a check runs and then its result, with each agent's version, checks and drift.
+says `running` while a check runs and then its result: `status` and `reason`, and for each agent its
+`status`, `version`, `reason`, `fix`, `checks`, `drift` and `payloads`.
 Each run also keeps its own `last.json`, `summary.txt`, the payloads of each try at each agent
 (`payloads/codex-1`, and `payloads/codex-2` for a second try), and the screen of any check that
 failed, in `~/.cache/drip-agent-contract/runs/<time>/`. The drift report holds every payload up against

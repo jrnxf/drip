@@ -33,11 +33,15 @@ cache="${XDG_CACHE_HOME:-$HOME/.cache}/drip-agent-contract"
 mkdir -p "$cache"
 
 # Stops before the harness could start, saying why in last.json too, so a scheduler never reads an
-# older check's result.
+# older check's result: only while no other check holds the lock, whose last.json stays as it is, and
+# never for --drift, which leaves last.json alone.
 stop() {
     echo "agent-contract: $1" >&2
-    printf '{\n  "version" : 1,\n  "status" : "error",\n  "exit" : 1,\n  "reason" : "%s"\n}\n' "$1" >"$cache/last.json.tmp"
-    mv "$cache/last.json.tmp" "$cache/last.json"
+    if [ -z "$drift" ]; then
+        /usr/bin/lockf -k -s -t 0 "$cache/lock" /bin/sh -c '
+            printf "{\n  \"version\" : 1,\n  \"status\" : \"error\",\n  \"exit\" : 1,\n  \"reason\" : \"%s\"\n}\n" "$1" >"$2/last.json.tmp" &&
+                mv "$2/last.json.tmp" "$2/last.json"' sh "$1" "$cache" || true
+    fi
     exit 1
 }
 
@@ -45,12 +49,6 @@ if [ "$(uname -s)" != Darwin ]; then
     echo "agent-contract: run this on a Mac" >&2
     exit 1
 fi
-
-# A launchd job starts with a short PATH: look where the tools usually are, after yours.
-PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.nix-profile/bin:/etc/profiles/per-user/$(id -un)/bin:/run/current-system/sw/bin"
-for tool in node npm tmux swift swiftc; do
-    command -v "$tool" >/dev/null 2>&1 || stop "needs $tool on PATH"
-done
 
 # The harness's own arguments: less --setup, which is its mode, and with --drift's folder whole.
 mode=run
@@ -71,6 +69,12 @@ for argument in "$@"; do
         ;;
     esac
     set -- "$@" "$argument"
+done
+
+# A launchd job starts with a short PATH: look where the tools usually are, after yours.
+PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.nix-profile/bin:/etc/profiles/per-user/$(id -un)/bin:/run/current-system/sw/bin"
+for tool in node npm tmux swift swiftc; do
+    command -v "$tool" >/dev/null 2>&1 || stop "needs $tool on PATH"
 done
 
 # Built aside and moved into place, so a check that is running keeps the harness it started with.

@@ -610,7 +610,7 @@ func hasClaudeToken(_ options: Options) -> Bool {
 func checkLogin(_ world: World) -> Login {
     let options = world.options
     let prompt = "Reply with the single word ok."
-    let authWords = #"(?i)(401|403|authenticat|oauth|/login|log ?in|sign ?in|credential|api key|token)"#
+    let authWords = #"(?i)(\b40[13]\b|authenticat|invalid api key|expired|/login|sign-?in required)"#
     switch world.agent {
     case .claude:
         guard hasClaudeToken(options) else {
@@ -1745,6 +1745,6 @@ if options.mode == "setup" {
     prepare(options)
     _ = setup(options, harness: harness)
     say("")
-    say("Now the check itself, as the schedule runs it")
+    say("Now the check itself, as your scheduler would run it")
 }
 exit(runCheck(options, harness: harness))
