@@ -291,13 +291,18 @@ public enum AgentHook {
     }
 
     /// The tool call a Codex hook is about. Codex's `PermissionRequest` carries no `tool_use_id`, so
-    /// the call is its turn, its tool and the tool's input, which `PostToolUse` repeats. Nil without a
-    /// turn or a tool.
+    /// the call is its turn, its tool and the tool's input, which `PostToolUse` repeats less the
+    /// `description` only the request adds (the question it asks you). Every other input field stays
+    /// in, so two calls of one turn with different inputs never match. Nil without a turn or a tool.
     static func codexCall(_ object: JSONValue) -> String? {
         guard let turn = object["turn_id"].flatMap(nonBlank), let tool = object["tool_name"].flatMap(nonBlank)
         else { return nil }
-        let input = object["tool_input"].map(canonical) ?? "null"
-        return "\(turn) \(tool) \(fingerprint(input))"
+        var input = object["tool_input"] ?? .null
+        if case let .object(members) = input {
+            input = .object(members.filter { $0.key != "description" })
+        }
+        let text = canonical(input)
+        return "\(turn) \(tool) \(fingerprint(text))"
     }
 
     /// A JSON value as text with its object keys sorted, so the same value reads the same however

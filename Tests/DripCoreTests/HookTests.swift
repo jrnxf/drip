@@ -392,6 +392,52 @@ struct HookTests {
             """) == .nothing)
     }
 
+    /// The pair Codex 0.164.0 sent for an approved command: the request's `tool_input` carries a
+    /// `description` (the question it asks) that the PostToolUse repeat leaves out.
+    @Test func codexClearsAnApprovedRequestWhoseInputCarriesADescription() throws {
+        let asked = try AgentHook.event(agent: .codex, payload: """
+            {"session_id":"01a1","turn_id":"01a2","cwd":"/home/user/drip-contract","hook_event_name":"PermissionRequest",
+             "model":"gpt-6.1-sol","permission_mode":"default","tool_name":"Bash",
+             "tool_input":{"command":"touch approved.txt","description":"Do you approve running touch approved.txt outside the read-only sandbox in this directory?"}}
+            """)
+        #expect(asked.detail == "Do you approve running touch approved.txt outside the read-only sandbox in this directory?")
+        #expect(asked.waitsOn != nil)
+        let ran = try AgentHook.outcome(agent: .codex, payload: """
+            {"session_id":"01a1","turn_id":"01a2","cwd":"/home/user/drip-contract","hook_event_name":"PostToolUse",
+             "model":"gpt-6.1-sol","permission_mode":"default","tool_name":"Bash",
+             "tool_input":{"command":"touch approved.txt"},"tool_response":"","tool_use_id":"exec-3e2b"}
+            """)
+        #expect(ran == .clear(AgentHook.Clear(id: "codex:01a1", tool: asked.waitsOn)))
+    }
+
+    /// Dropping `description` must not make unlike calls alike: a different command, tool or turn
+    /// still names a different call, so one call's PostToolUse never takes another's card.
+    @Test func codexCallsThatDifferStillDoNotClearEachOther() throws {
+        func request(turn: String = "t1", tool: String = "Bash", input: String) throws -> String? {
+            try AgentHook.event(agent: .codex, payload: """
+                {"session_id":"s","turn_id":"\(turn)","hook_event_name":"PermissionRequest","tool_name":"\(tool)",
+                 "tool_input":\(input)}
+                """).waitsOn
+        }
+        func ran(turn: String = "t1", tool: String = "Bash", input: String) throws -> AgentHook.Outcome {
+            try AgentHook.outcome(agent: .codex, payload: """
+                {"session_id":"s","turn_id":"\(turn)","hook_event_name":"PostToolUse","tool_name":"\(tool)",
+                 "tool_input":\(input),"tool_use_id":"call_1"}
+                """)
+        }
+        let rm = try request(input: #"{"command":"rm a","description":"Allow rm a?"}"#)
+        let touch = try request(input: #"{"command":"touch a","description":"Allow touch a?"}"#)
+        #expect(rm != touch)
+        // Both wait at once; each call's PostToolUse takes away only its own card.
+        #expect(try ran(input: #"{"command":"rm a"}"#) == .clear(AgentHook.Clear(id: "codex:s", tool: rm)))
+        #expect(try ran(input: #"{"command":"touch a"}"#) == .clear(AgentHook.Clear(id: "codex:s", tool: touch)))
+        #expect(try ran(input: #"{"command":"rm b"}"#) != .clear(AgentHook.Clear(id: "codex:s", tool: rm)))
+        #expect(try ran(tool: "Edit", input: #"{"command":"rm a"}"#) != .clear(AgentHook.Clear(id: "codex:s", tool: rm)))
+        #expect(try ran(turn: "t2", input: #"{"command":"rm a"}"#) != .clear(AgentHook.Clear(id: "codex:s", tool: rm)))
+        // Only the top-level description is set aside: a nested one is part of the input.
+        #expect(try request(input: #"{"a":{"description":"x"}}"#) != request(input: #"{"a":{"description":"y"}}"#))
+    }
+
     @Test func geminiClearsOnAnyToolOrPrompt() throws {
         for event in ["AfterTool", "BeforeAgent"] {
             #expect(try AgentHook.outcome(agent: .gemini, payload: """
