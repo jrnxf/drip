@@ -1022,7 +1022,8 @@ if options.only?.contains(6) ?? true {
         let running = { Set(NSRunningApplication.runningApplications(withBundleIdentifier: "com.mitchellh.ghostty")
             .map(\.processIdentifier)) }
         let before = running()
-        let first = attach(["open", "-n", "-g", "-a", ghostty.path, "--args", "-e", attachScript])
+        // Not in the background: an instance opened with -g may never open its window to run the script.
+        let first = attach(["open", "-n", "-a", ghostty.path, "--args", "-e", attachScript])
         // The instance it opened goes at the end, whether or not it attached.
         launched += running().subtracting(before).filter { $0 != mine }
         if first == nil {

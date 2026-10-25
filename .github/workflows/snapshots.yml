@@ -6,9 +6,6 @@ name: Record snapshots
 # the runner is where the references come from.
 on:
   workflow_dispatch:
-  # Once, for this branch's references: workflow_dispatch reaches a workflow only on the default branch.
-  push:
-    branches: [fm/drip-mac-e2e]
 
 permissions:
   contents: read
