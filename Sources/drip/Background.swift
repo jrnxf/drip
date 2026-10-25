@@ -151,8 +151,11 @@ enum CardQueue {
     static let patience: TimeInterval = 120
 
     /// In the user's own temporary directory, whatever `TMPDIR` says, so drips started from a shell
-    /// with its own `TMPDIR` (a Nix shell, say) still line up with every other drip.
+    /// with its own `TMPDIR` (a Nix shell, say) still line up with every other drip. `DRIP_QUEUE_DIR`,
+    /// an absolute path, gives drips a queue of their own instead, as `scripts/mac-e2e.sh` does so the
+    /// drip it tests never adopts, or is adopted by, the cards of every other drip on the Mac.
     private static let directory: String = {
+        if let own = ProcessInfo.processInfo.environment["DRIP_QUEUE_DIR"], own.hasPrefix("/") { return own }
         var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
         let base = confstr(_CS_DARWIN_USER_TEMP_DIR, &buffer, buffer.count) > 0
             ? String(cString: buffer) : NSTemporaryDirectory()
@@ -161,6 +164,11 @@ enum CardQueue {
 
     /// This process's ticket, once it has waited for its turn.
     private(set) static var mine: QueueTicket?
+
+    /// When this drip's cards were queued, in seconds since 1970: now, when it holds no ticket.
+    static var queuedAt: Double {
+        mine.flatMap { QueueTicket.queuedAt($0.name) } ?? Date().timeIntervalSince1970
+    }
     /// The cards this process queues, kept for when it queues again after giving up its turn.
     private static var cards: [Card] = []
     private static var leavesAtExit = false

@@ -17,6 +17,13 @@ protocol CardDisplay {
     /// Whether an app with the bundle identifier is installed.
     func isInstalled(_ bundleIdentifier: String) -> Bool
 
+    /// Whether there is a GUI session to show cards in: not over ssh, for example.
+    var hasGUISession: Bool { get }
+
+    /// Where the terminal a click on `card` brings forward is: whether it is the frontmost app, and
+    /// whether the card's tmux pane is the one showing, when drip can tell.
+    func front(of card: Card) -> WhenFocused.Front
+
     /// Draws the card offscreen into a PNG file; `at` seconds into its entrance, or its exit when
     /// `leaving`.
     func render(
@@ -74,6 +81,8 @@ struct DripCLI {
             return setup(command)
         case let .invocation(.history(command)):
             return history(command)
+        case let .invocation(.dismiss(command)):
+            return dismiss(command)
         case let .invocation(.pause(command)):
             return pause(command.seconds)
         case .invocation(.resume):
@@ -99,8 +108,10 @@ struct DripCLI {
         }
     }
 
-    /// The card for an agent's hook. Any failure exits 1: an agent reads 2, and Gemini CLI any other
-    /// code, as "block".
+    /// The card for an agent's hook, or the waiting card it takes away. Any failure exits 1: an
+    /// agent reads 2, and Gemini CLI any other code, as "block". Without a GUI session there is
+    /// nothing to show, which is no failure: drip exits 0 and prints nothing, so an agent used over
+    /// ssh shows no hook error after every turn.
     private func hook(_ command: HookCommand) -> Int32 {
         var flags = command.options.flags
         let console = Console(quiet: flags.quiet)
@@ -111,19 +122,93 @@ struct DripCLI {
             guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit + 1) else {
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
             }
+            // A session nobody attends, such as `claude -p` in a pipeline, or one an orchestrator
+            // silenced with DRIP_HOOK=off: nothing to show, nothing to take away, nothing to fail.
+            guard try AgentHook.speaks(for: command.agent, environment: ProcessInfo.processInfo.environment) else {
+                return ExitStatus.shown
+            }
             if payload.utf8.count > AgentHook.payloadLimit {
                 throw UsageError("the hook payload is larger than 4 MB")
             }
-            let event = try AgentHook.event(agent: command.agent, payload: payload)
+            #if os(WASI)
+            guard case let .card(event) = try AgentHook.outcome(agent: command.agent, payload: payload) else {
+                return ExitStatus.shown
+            }
+            #else
+            let environment = ProcessInfo.processInfo.environment
+            let state = AgentState(environment: environment)
+            let event: AgentHook.Event
+            switch try AgentHook.outcome(agent: command.agent, payload: payload) {
+            case .nothing:
+                return ExitStatus.shown
+            case let .clear(clear):
+                // You answered in the terminal: the card that said the agent needs you would only be
+                // wrong now. One file read when no card waits, as on most tool calls.
+                if state.takeWaiting(clear) { try DismissRequests(environment: environment).request(id: clear.id) }
+                return ExitStatus.shown
+            case let .card(found):
+                event = found
+            }
+            // Claude's permission_prompt notification, when a PermissionRequest hook already showed
+            // the card for it, with what Claude wants to do.
+            if event.isPermissionNotice, let id = event.id, state.waiting(id: id)?.tool != nil {
+                return ExitStatus.shown
+            }
+            #endif
+            guard display.hasGUISession else { return ExitStatus.shown }
             flags = event.filling(flags)
             flags.icon = flags.icon ?? command.agent.icon(installed: display.isInstalled)
-            let card = try makeResolver(console).resolve(kind: event.kind, title: event.title, flags: flags)
+            var title = event.title
+            #if !os(WASI)
+            if let id = event.id, let directory = event.directory {
+                try? state.noteSession(id: id, directory: directory)
+                // Two sessions in folders of the same name, such as two worktrees of one repo, read apart.
+                if let name = AgentHook.projectName(directory), title.hasPrefix(name + " ") {
+                    let project = AgentState.project(directory, among: state.otherDirectories(than: id))
+                    title = project + title.dropFirst(name.count)
+                }
+            }
+            #endif
+            let resolver = try makeResolver(console)
+            var card = try resolver.resolve(kind: event.kind, title: title, flags: flags)
+            #if !os(WASI)
+            if let id = card.id {
+                if card.waits {
+                    try? state.noteWaiting(id: id, tool: event.waitsOn)
+                } else {
+                    state.noteDone(id: id)
+                }
+            }
+            #endif
+            if !card.waits {
+                // You may be watching the agent's terminal already.
+                guard let shown = resolver.whenFocused.apply(to: card, front: display.front(of: card)) else {
+                    return ExitStatus.shown
+                }
+                card = shown
+            }
             // An agent's hook keeps its output clean, terminal or not.
             status = deliver([card], wait: flags.wait, remind: false, console: console)
         } catch {
             status = report(error, console, subcommand: HookCommand.configuration.commandName)
         }
-        return status == ExitStatus.shown ? status : ExitStatus.hookFailed
+        return status == ExitStatus.shown || status == ExitStatus.noGUISession ? ExitStatus.shown : ExitStatus.hookFailed
+    }
+
+    /// Asks every drip showing cards to take them away, those with `--id` only when it is given.
+    private func dismiss(_ command: DismissCommand) -> Int32 {
+        #if os(WASI)
+        Console().error("drip dismiss takes away cards on your Mac, which WebAssembly cannot")
+        return ExitStatus.dismissFailed
+        #else
+        do {
+            try DismissRequests(environment: ProcessInfo.processInfo.environment).request(id: command.id)
+            return ExitStatus.shown
+        } catch {
+            Console().error("cannot dismiss: \(error)")
+            return ExitStatus.dismissFailed
+        }
+        #endif
     }
 
     /// Adds drip's hooks to the agent's settings, or prints them.
@@ -338,6 +423,12 @@ struct UnavailableDisplay: CardDisplay {
 
     func isInstalled(_ bundleIdentifier: String) -> Bool {
         false
+    }
+
+    var hasGUISession: Bool { false }
+
+    func front(of card: Card) -> WhenFocused.Front {
+        WhenFocused.Front(app: false)
     }
 
     func render(

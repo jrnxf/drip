@@ -251,6 +251,9 @@ public struct Card: Equatable, Sendable, Codable {
     public var id: String?
     /// The bundle identifier of the app a click on the card brings forward; nil for none.
     public var activate: String?
+    /// The terminal pane drip was run in, which a click selects once `activate` is in front; nil
+    /// when drip cannot tell, or when the card brings forward another app.
+    public var pane: TerminalPane?
     /// Set for a card that waits for you rather than counting down `seconds`: it stays until it is
     /// clicked or replaced, and gives way to a card waiting for its turn, but never stays longer
     /// than this. Nil for a card that counts down.

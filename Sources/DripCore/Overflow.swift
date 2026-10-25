@@ -239,7 +239,7 @@ extension CardStack {
     /// none waits. Changes it starts begin at `start`. Returns whether anything changed.
     func advanceOverflow(_ others: [Card], replaced: [Card], to time: Double, start: Double) -> Bool {
         let own = waiting.filter { !replaced.contains($0) }
-        queued = own + others
+        queued = own + others + tucked.map(\.card)
         var changed = false
         if let overflow {
             switch overflow.phase {
@@ -255,7 +255,7 @@ extension CardStack {
             }
         }
         if overflow == nil, !hasRoom, !hovering, time - lastEntrance >= Self.entranceSpacing,
-           !own.isEmpty || others.contains(where: { !swapsInPlace($0) }),
+           !own.isEmpty || !tucked.isEmpty || others.contains(where: { !swapsInPlace($0) }),
            let holder = entries.last(where: { !$0.isLeaving || $0.holdsPlaceUntil.isFinite }),
            !holder.isLeaving, holder.animator.end <= time
         {

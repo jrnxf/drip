@@ -71,7 +71,7 @@
           "name": "Do I have to change Claude Code's own notification setting?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. Hooks run alongside it: drip setup claude only adds hooks, and whatever Claude Code did before on a prompt, it still does."
+            "text": "No. Hooks run alongside it: drip setup claude only adds hooks, and whatever Claude Code did before on a prompt, it still does. If each card comes with a second notification from your terminal, turn Claude Code's own off under Notifications in its /config."
           }
         },
         {
@@ -88,6 +88,14 @@
           "acceptedAnswer": {
             "@type": "Answer",
             "text": "A card that comes up while the screen is locked waits for the unlock, and drip history --missed lists what came up while you were away."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I get a card out of the way without going to the terminal?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Click the × that takes the icon's place when the pointer is on the card, or right-click, Control-click or Option-click anywhere on it: the card goes back into the notch and nothing comes forward. drip dismiss does the same from the keyboard, and VoiceOver offers Dismiss on every card."
           }
         },
         {
@@ -121,22 +129,25 @@ drip setup gemini   # Gemini CLI, in ~/.gemini/settings.json</code></pre>
       <p>drip is a free, open-source command-line tool for macOS 13 or newer. It is not Notification Center: it draws its own card, so it needs no Notifications, Accessibility or Automation permission.</p>
       <h2>How it works</h2>
       <ol>
-        <li><b>Hooks, not polling.</b> <code>drip setup claude</code> adds hooks for Claude Code's <code>Notification</code> (a permission prompt or a question), <code>Stop</code> (the turn is done) and <code>StopFailure</code> (a rate limit, an outage or another API error) events. It keeps the rest of the file, backs the old one up next to it, and changes nothing when run again.</li>
-        <li><b>One card per event.</b> Each hook runs <code>drip hook claude</code>, which reads the hook's JSON and shows <code>my-app needs you</code> with Claude's message, <code>my-app is done</code> with the last thing Claude wrote, or <code>my-app stopped</code> with the error.</li>
-        <li><b>Named by project.</b> The title is the project, from the session's working directory, so several sessions at once stay apart.</li>
-        <li><b>Replaced in place.</b> Each session's cards share an id, so the waiting card turns into the done card instead of queueing behind it.</li>
-        <li><b>Back to the terminal.</b> A click on the card brings forward the terminal the agent runs in.</li>
+        <li><b>Hooks, not polling.</b> <code>drip setup claude</code> adds hooks for Claude Code's <code>PermissionRequest</code> (Claude wants to run something), <code>Notification</code> (a question), <code>Stop</code> (the turn is done) and <code>StopFailure</code> (a rate limit, an outage or another API error) events, and for the events that show it moved on. It keeps the rest of the file, backs the old one up next to it, and changes nothing when run again.</li>
+        <li><b>One card per event.</b> Each hook runs <code>drip hook claude</code>, which reads the hook's JSON and shows <code>my-app needs you</code> with what Claude wants, such as <code>Claude wants to run npm install</code>, <code>my-app is done</code> with the last thing Claude wrote, or <code>my-app stopped</code> with the error.</li>
+        <li><b>Gone once you answer.</b> Approve in the terminal, or send Claude a prompt, and the card that said it needs you goes.</li>
+        <li><b>Named by project.</b> The title is the project, from the session's working directory, so several sessions at once stay apart; two folders of the same name read <code>1/drip</code> and <code>2/drip</code>.</li>
+        <li><b>Replaced in place.</b> Each session's cards share an id, so the waiting card turns into the done card instead of queueing behind it. While you watch the terminal, the done card is quiet and short.</li>
+        <li><b>Back to the terminal, or out of the way.</b> A click on the card brings forward the terminal the agent runs in, and its tmux pane. The × on hover, or a right-click, takes the card away and brings nothing forward.</li>
       </ol>
       <p>Codex runs a new hook only once you trust it: run <code>/hooks</code> in Codex after <code>drip setup codex</code>. To see the hooks without changing anything, run <code>drip setup claude --print</code>.</p>
       <h2>FAQ</h2>
       <h3>Does drip use macOS Notification Center?</h3>
       <p>No. drip draws its own card out of the camera notch, or out of the top edge of a screen without one, so it needs no Notifications permission. Cards also show during Do Not Disturb; run <code>drip pause 30m</code> to hold them for a while.</p>
       <h3>Do I have to change Claude Code's own notification setting?</h3>
-      <p>No. Hooks run alongside it: <code>drip setup claude</code> only adds hooks, and whatever Claude Code did before on a prompt, it still does.</p>
+      <p>No. Hooks run alongside it: <code>drip setup claude</code> only adds hooks, and whatever Claude Code did before on a prompt, it still does. If each card comes with a second notification from your terminal, turn Claude Code's own off under Notifications in its <code>/config</code>.</p>
       <h3>My settings.json is managed by home-manager or a dotfile manager. What then?</h3>
       <p>drip never writes a settings file that is a symlink, read-only, or not plain JSON. It says why, prints the hooks to add where the file comes from, and exits 1. <code>drip setup claude --print</code> prints them without trying.</p>
       <h3>What if I am away when Claude Code needs me?</h3>
       <p>A card that comes up while the screen is locked waits for the unlock, and <code>drip history --missed</code> lists what came up while you were away.</p>
+      <h3>How do I get a card out of the way without going to the terminal?</h3>
+      <p>Click the × that takes the icon's place when the pointer is on the card, or right-click, Control-click or Option-click anywhere on it: the card goes back into the notch and nothing comes forward. <code>drip dismiss</code> does the same from the keyboard, and VoiceOver offers Dismiss on every card.</p>
       <h3>How do I remove the hooks?</h3>
       <p>Delete the entries whose command is <code>drip hook claude</code> from <code>~/.claude/settings.json</code>, or restore the backup <code>drip setup</code> left next to it.</p>
     </article>

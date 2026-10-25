@@ -195,6 +195,7 @@
           <tr><th scope="row">icons</th><td>SF Symbols, image files, app icons, and marks for Claude, Codex and Gemini</td></tr>
           <tr><th scope="row">agents</th><td><code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> adds drip to the agent's own hooks</td></tr>
           <tr><th scope="row">replace</th><td><code>--id</code>: a newer card with the same id takes the older one's place</td></tr>
+          <tr><th scope="row">dismiss</th><td>a click brings the sender forward; the × on hover, a right-click or <code>drip dismiss</code> takes a card away without that</td></tr>
           <tr><th scope="row">history</th><td><code>drip history</code> lists past cards; <code>--missed</code>, the ones held while the screen was locked</td></tr>
         </table>
       </div>
@@ -228,6 +229,7 @@
           <li>The commands <code>drip run</code> wraps: they only pretend to run, and drip times them</li>
           <li>The crossfade when a card is replaced in place, on drip's own timings</li>
           <li>No sound</li>
+          <li>A click on a card only takes it away: there is no terminal behind it to bring forward</li>
         </ul></div>
         <div><h3><i style="--c:#ff9f0a"></i>only on a Mac</h3><ul>
           <li>History and missed cards</li>
@@ -840,7 +842,8 @@ class Stage {
     const changes = drip.stack.step(st.id, t, this.deliveries.length > 0);
     for (const entered of changes.entered ?? []) {
       const card = st.cards.get(entered.handle);
-      Object.assign(card, { start: entered.start, cues: entered.cues, visible: entered.countdownFrom - entered.start, waiting: entered.waits });
+      // A card that gave way and comes back drops in afresh.
+      Object.assign(card, { start: entered.start, cues: entered.cues, visible: entered.countdownFrom - entered.start, waiting: entered.waits, exitCues: null, exitAt: undefined, swap: null });
       // The last card waiting is the overflow drop itself, spreading into it as its number rolls out.
       if (entered.fromDrop) card.dropGhost = { count: entered.fromDrop, at: t };
       st.newest = card; announce(card); this.emit("begin", card);
@@ -1344,6 +1347,25 @@ async function execOne(stages, term, stage, config, alive) {
     if (!alive()) return 0;
     reply = drip.command({ args, env, config, notch, widest: stage.widest, run: { status: outcome.status, seconds: (performance.now() - started) / 1000 } });
   }
+  if (reply.dismiss) {
+    // drip dismiss: the cards on this screen go, and those still to come, those with the --id
+    // when one is given.
+    const matches = (card) => reply.dismiss.id === undefined || card.card.id === reply.dismiss.id;
+    const st = stage.stack;
+    if (st) for (const card of [...st.cards.values()]) {
+      if (matches(card) && drip.stack.dismiss(st.id, card.handle) === "dropped") { drip.release(card.handle); st.cards.delete(card.handle); }
+    }
+    if (stage.current && matches(stage.current)) stage.leave(stage.current, stage.clock - stage.current.start);
+    for (const card of stage.queue.filter(matches)) drip.release(card.handle);
+    stage.queue = stage.queue.filter((card) => !matches(card));
+    for (const delivery of stage.deliveries) {
+      for (const card of delivery.cards.filter(matches)) drip.release(card.handle);
+      delivery.cards = delivery.cards.filter((card) => !matches(card));
+    }
+    stage.deliveries = stage.deliveries.filter((delivery) => delivery.cards.length);
+    stage.dirty = true;
+    return 0;
+  }
   if (reply.message !== undefined) { term.print(reply.message, reply.exit === 0 ? "" : "err"); return reply.exit ?? 1; }
   for (const warning of reply.warnings ?? []) term.print(`drip: warning: ${warning}`, "dim");
   if (reply.status) term.print(`zsh: exit ${reply.status}`, "dim");
@@ -1385,7 +1407,7 @@ const CHIPS = [
   { key: "fail", name: "a failure card", color: "#ff453a", line: `drip fail "Deploy failed" -d "staging: health check timed out after 30s"`, group: "cards", hint: "failure", says: "a red card: Deploy failed" },
   { key: "warn", name: "a warning card", color: "#ff9f0a", line: `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"`, group: "cards", hint: "warning", says: "an orange card: Disk almost full" },
   { key: "run", name: "drip run npm test", color: "#8e8e93", line: `drip run npm test`, group: "watch", hint: "wraps a command", says: "runs npm test, then a card with how it went" },
-  { key: "agent", name: "Claude needs you, then is done", color: "#0a84ff", line: `drip hook claude '{"hook_event_name":"Notification","cwd":"/work/my-app","session_id":"s1","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'`, group: "watch", hint: "agent hook", says: "Claude Code asks for permission, then says it is done" },
+  { key: "agent", name: "Claude needs you, then is done", color: "#0a84ff", line: `drip hook claude '{"hook_event_name":"PermissionRequest","cwd":"/work/my-app","session_id":"s1","tool_name":"Bash","tool_input":{"command":"npm test"},"tool_use_id":"toolu_1"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'`, group: "watch", hint: "agent hook", says: "Claude Code asks for permission, then says it is done" },
   { key: "--id", name: "a card replaced in place", color: "#0a84ff", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy`, group: "more", hint: "updates in place", says: "--id: Deploying turns into Deployed in the same card" },
   { key: "--open", name: "a card with a button", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip`, group: "behavior", hint: "adds a button", says: "--open: a card with a View button that opens a link" },
   { key: "preset", name: "your own preset", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"`, group: "more", hint: "your own look", says: "a deploy preset from config.toml: its own icon and color" },
@@ -1480,7 +1502,7 @@ const FEATURES = [
   { // 02 Hear from coding agents
     steps: [
       // The two hooks drip setup claude adds, in the order they fire: Notification, then Stop.
-      { shown: "drip hook claude", note: "Claude needs you", line: `drip hook claude '${CLAUDE("Notification", { notification_type: "permission_prompt", message: "Claude needs your permission to use Bash" })}'` },
+      { shown: "drip hook claude", note: "Claude needs you", line: `drip hook claude '${CLAUDE("PermissionRequest", { tool_name: "Bash", tool_input: { command: "npm test" }, tool_use_id: "toolu_1" })}'` },
       { sleep: 2.6 },
       { shown: "drip hook claude", note: "Claude is done", line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'` },
     ],

@@ -422,6 +422,109 @@ struct CardStackTests {
         #expect(stack.live[0].remaining == 1.5)
     }
 
+    /// A pointer left resting on the stack, as one moved there to read what is under a card, holds
+    /// it for `holdLimit` at most; moving again holds it again.
+    @Test func aRestingPointerLetsTheStackGo() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 1), card("b")])
+        let time = run(stack, until: 0.1)
+        #expect(stack.hover(true, moved: true, at: time))
+        #expect(!stack.hover(true, moved: false, at: time + CardStack.holdLimit - 0.1))
+        run(stack, from: time, until: time + CardStack.holdLimit - 0.1)
+        #expect(titles(stack.entries) == ["a"])
+        // Rested long enough: the stack lets go, with a moment to read the card.
+        #expect(stack.hover(true, moved: false, at: time + CardStack.holdLimit))
+        #expect(!stack.hovering)
+        #expect(stack.live[0].remaining == 1.5)
+        // It moves again: held again.
+        #expect(stack.hover(true, moved: true, at: time + CardStack.holdLimit + 1))
+        #expect(stack.hovering)
+        // Rested again: let go.
+        #expect(stack.hover(true, moved: false, at: time + 2 * CardStack.holdLimit + 1))
+        #expect(!stack.hovering)
+        // The card under the still pointer leaves and the next slides under it: no new hold.
+        #expect(!stack.hover(false, moved: false, at: time + 20))
+        #expect(!stack.hover(true, moved: false, at: time + 21))
+        #expect(!stack.hovering)
+        // The pointer leaves and comes back on, which moves it: held again.
+        #expect(!stack.hover(false, moved: true, at: time + 22))
+        #expect(stack.hover(true, moved: true, at: time + 23))
+    }
+
+    /// In a background drip's stack, a card that waits for you and gives way goes back into the
+    /// overflow drop with what is left of its wait, and comes back once there is room.
+    @Test func aCardThatGivesWayComesBack() {
+        let stack = CardStack(
+            settings: StackSettings(mode: .chain, max: 2),
+            cards: [asking("a", seconds: 2), asking("b", seconds: 2), card("c", seconds: 2)])
+        stack.tucks = true
+        var tucked: [String] = []
+        var stopped: [String] = []
+        var back = false
+        var time = 0.0
+        while time < 20 {
+            if stack.isReady(at: time) {
+                if let next = stack.nextOwn() {
+                    stack.enter(next, metrics: metrics, own: true, decided: time, at: time)
+                } else if let next = stack.nextTucked() {
+                    stack.enter(next.card, metrics: metrics, own: next.own, decided: time, at: time)
+                    back = true
+                }
+            }
+            let changes = stack.advance(to: time, elapsed: 1.0 / 60, lead: 0)
+            tucked += titles(changes.tucked)
+            stopped += titles(changes.stoppedWaiting)
+            time += 1.0 / 60
+        }
+        // a made room for c instead of counting down, then came back once c had gone.
+        #expect(tucked == ["a"])
+        #expect(stopped.isEmpty)
+        #expect(back)
+        #expect(Set(titles(stack.live)) == ["a", "b"])
+        #expect(stack.live.allSatisfy { $0.isWaiting })
+        // Its wait went on from where it was, not from the start.
+        let a = stack.live.first { $0.card.title == "a" }
+        #expect((a?.card.waitLimit ?? .infinity) < Defaults.waitLimit)
+    }
+
+    @Test func aCardThatGaveWayCanBeForgotten() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [asking("a"), card("c", seconds: 2)])
+        stack.tucks = true
+        var time = 0.0
+        var gaveWay: [Int] = []
+        while time < 3, stack.tucked.isEmpty {
+            if stack.isReady(at: time), let next = stack.nextOwn() {
+                stack.enter(next, metrics: metrics, own: true, decided: time, at: time)
+            }
+            gaveWay += stack.advance(to: time, elapsed: 1.0 / 60, lead: 0).tucked.map(\.id)
+            time += 1.0 / 60
+        }
+        #expect(stack.tucked.map(\.card.title) == ["a"])
+        #expect(stack.tucked.map(\.entry) == gaveWay)
+        #expect(!stack.dropTucked { $0.title == "x" })
+        #expect(stack.dropTucked { $0.title == "a" })
+        #expect(stack.tucked.isEmpty)
+    }
+
+    @Test func theCloseMarkIsTheCardsLeftEnd() throws {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 10)])
+        let time = run(stack, until: 3)
+        let entry = try #require(stack.live.first)
+        let shape = entry.animator.shape(at: time)
+        let layout = entry.animator.content(for: shape)
+        let middle = shape.pillTop + shape.pillHeight / 2
+        #expect(stack.isOnClose(of: entry, at: IslandPoint(-shape.pillWidth / 2 + 2, middle), time: time))
+        #expect(stack.isOnClose(of: entry, at: IslandPoint(layout.iconCenter.x, middle), time: time))
+        #expect(!stack.isOnClose(of: entry, at: IslandPoint(layout.iconCenter.x + layout.iconSize, middle), time: time))
+        #expect(!stack.isOnClose(of: entry, at: IslandPoint(layout.iconCenter.x, shape.pillTop + shape.pillHeight + 10), time: time))
+        // Without an icon there is no ×.
+        let bare = CardStack(settings: StackSettings(mode: .chain, max: 3))
+        let noIcon = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 34, hasIcon: false)
+        let other = bare.enter(card("b"), metrics: noIcon, own: true, decided: 0, at: 0)
+        let end = run(bare, until: 3)
+        let otherShape = other.animator.shape(at: end)
+        #expect(!bare.isOnClose(of: other, at: IslandPoint(-otherShape.pillWidth / 2 + 2, otherShape.pillTop + 5), time: end))
+    }
+
     @Test func theOutlineMeltsEachDropIntoWhatItGrowsOutOf() {
         let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 10)])
         let time = run(stack, until: 2)

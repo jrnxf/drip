@@ -31,12 +31,15 @@ public struct Config: Equatable {
     public var stack: StackSettings.Choice?
     /// The most cards on screen at once.
     public var stackMax: Int?
+    /// What an agent's card that counts down does while its terminal is in front.
+    public var whenFocused: WhenFocused?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
 
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
-        stack: StackSettings.Choice? = nil, stackMax: Int? = nil, presets: [String: PresetOverride] = [:]
+        stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
+        presets: [String: PresetOverride] = [:]
     ) {
         self.seconds = seconds
         self.size = size
@@ -44,6 +47,7 @@ public struct Config: Equatable {
         self.motion = motion
         self.stack = stack
         self.stackMax = stackMax
+        self.whenFocused = whenFocused
         self.presets = presets
     }
 
@@ -174,6 +178,7 @@ private struct ConfigReader {
                     throw ConfigError(path: path, line: item.line, key: key, message: "must be between 1 and 6")
                 }
                 config.stackMax = Int(value)
+            case "when_focused": config.whenFocused = try choice(item, key: key, WhenFocused.self)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
             }
@@ -247,7 +252,7 @@ private struct ConfigReader {
     static let reservedNames: Set<String> = [
         "run", "hook", "history", "show", "help", "version", "setup", "config", "init", "install",
         "uninstall", "completion", "completions", "doctor", "mute", "pause", "resume", "listen",
-        "test",
+        "test", "dismiss", "clear",
     ]
 
     static func isValidPresetName(_ name: String) -> Bool {
@@ -332,14 +337,20 @@ public struct EnvironmentSettings: Equatable {
     public var stack: StackSettings.Choice?
     /// The most cards on screen at once.
     public var stackMax: Int?
+    /// What an agent's card that counts down does while its terminal is in front.
+    public var whenFocused: WhenFocused?
     /// The bundle identifier of the app drip was run from, from `__CFBundleIdentifier`.
     public var sender: String?
+    /// The terminal pane drip was run in, from `TMUX` and `TMUX_PANE`, or `WEZTERM_PANE`.
+    public var pane: TerminalPane?
 
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
-        stack: StackSettings.Choice? = nil, stackMax: Int? = nil, sender: String? = nil
+        stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
+        sender: String? = nil
     ) {
         self.sender = sender
+        self.whenFocused = whenFocused
         self.stack = stack
         self.stackMax = stackMax
         self.seconds = seconds
@@ -348,7 +359,8 @@ public struct EnvironmentSettings: Equatable {
         self.motion = motion
     }
 
-    /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK and DRIP_STACK_MAX. Empty
+    /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK, DRIP_STACK_MAX and
+    /// DRIP_WHEN_FOCUSED. Empty
     /// values are ignored; invalid ones are usage errors. Also notes the app drip was run from, from
     /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
@@ -372,6 +384,7 @@ public struct EnvironmentSettings: Equatable {
         size = try choice("DRIP_SIZE", CardSize.self)
         motion = try choice("DRIP_MOTION", Motion.self)
         stack = try choice("DRIP_STACK", StackSettings.Choice.self)
+        whenFocused = try choice("DRIP_WHEN_FOCUSED", WhenFocused.self)
         if let text = value("DRIP_STACK_MAX") {
             guard let max = Int(text), Defaults.stackMaxRange.contains(max) else {
                 throw UsageError("DRIP_STACK_MAX must be a whole number from 1 to 6, not '\(text)'")
@@ -380,5 +393,6 @@ public struct EnvironmentSettings: Equatable {
         }
         sound = value("DRIP_SOUND").map(Sound.init(parsing:))
         sender = CardActivation.sender(in: environment)
+        pane = TerminalPane(environment: environment)
     }
 }

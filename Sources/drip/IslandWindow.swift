@@ -71,6 +71,13 @@ final class IslandLayers {
     private var halo: CAShapeLayer?
     /// The waiting mark's white countdown ring around its dot, hidden until the card stops waiting.
     private var waitingCountdown: CALayer?
+    /// The × that takes the icon's place while the pointer is on the card, and its disc, lighter
+    /// while the pointer is on the × itself. Nil for a card without an icon.
+    private var closeMark: CALayer?
+    private var closeDisc: CAShapeLayer?
+    /// The arrow that takes the ring's place while the pointer is on a card a click opens an app
+    /// from, so the click reads as "go to". Nil for a card with buttons.
+    private var goMark: CALayer?
     let text = CALayer()
     /// Ends the text column short of the ring, with a soft edge: text the capsule is still growing to
     /// hold fades out there instead of running under the ring.
@@ -180,6 +187,7 @@ final class IslandLayers {
         }
         icon.opacity = 0
         content.addSublayer(icon)
+        if image != nil { makeCloseMark(scale: scale) }
 
         if let yesLabel, let buttonsWidth {
             ring.bounds = CGRect(x: 0, y: 0, width: buttonsWidth, height: 26 * sizeScale)
@@ -203,6 +211,7 @@ final class IslandLayers {
         } else {
             makeRing(accent: accent, lineWidth: 2.4 * sizeScale, inset: 1.4 * sizeScale, glyph: card.ringGlyph, scale: scale)
         }
+        if card.action == nil, card.activate != nil { makeGoMark(scale: scale) }
         ring.opacity = 0
         content.addSublayer(ring)
 
@@ -223,6 +232,92 @@ final class IslandLayers {
         textMask.locations = [0, NSNumber(value: Double((reach - textEdge) / reach)), 1]
         textMask.contentsScale = scale
         text.mask = textMask
+    }
+
+    /// The disc's fill, plain and under the pointer.
+    private static let closeFill = NSColor(white: 0.24, alpha: 1).cgColor
+    private static let closeFillHovered = NSColor(white: 0.36, alpha: 1).cgColor
+
+    /// A white symbol drawn into a layer that fills `frame`.
+    private static func glyph(_ name: String, pointSize: CGFloat, frame: CGRect, scale: CGFloat) -> CALayer {
+        let layer = CALayer()
+        layer.frame = frame
+        layer.contentsGravity = .resizeAspect
+        layer.contentsScale = scale
+        let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .bold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
+        if let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(configuration) {
+            layer.contents = image.layerContents(forContentsScale: scale)
+        }
+        return layer
+    }
+
+    /// The close mark over the icon, hidden until the pointer is on the card: black over the whole
+    /// icon, then a grey disc with a white ×. It moves and scales with the icon.
+    private func makeCloseMark(scale: CGFloat) {
+        let mark = CALayer()
+        mark.frame = icon.bounds
+        mark.backgroundColor = NSColor.black.cgColor
+        mark.opacity = 0
+        let disc = CAShapeLayer()
+        disc.frame = mark.bounds
+        disc.path = CGPath(ellipseIn: mark.bounds.insetBy(dx: iconSide * 0.06, dy: iconSide * 0.06), transform: nil)
+        disc.fillColor = Self.closeFill
+        disc.contentsScale = scale
+        mark.addSublayer(disc)
+        mark.addSublayer(Self.glyph(
+            "xmark", pointSize: iconSide * 0.4, frame: mark.bounds.insetBy(dx: iconSide * 0.31, dy: iconSide * 0.31),
+            scale: scale))
+        icon.addSublayer(mark)
+        closeMark = mark
+        closeDisc = disc
+    }
+
+    /// The "go to" mark over the ring's place, hidden until the pointer is on the card: black over
+    /// the ring or the waiting mark, and a white arrow pointing up and out.
+    private func makeGoMark(scale: CGFloat) {
+        let mark = CALayer()
+        mark.frame = ring.bounds
+        mark.backgroundColor = NSColor.black.cgColor
+        mark.opacity = 0
+        let side = ring.bounds.width
+        mark.addSublayer(Self.glyph(
+            "arrow.up.forward", pointSize: side * 0.55, frame: mark.bounds.insetBy(dx: side * 0.18, dy: side * 0.18),
+            scale: scale))
+        ring.addSublayer(mark)
+        goMark = mark
+    }
+
+    /// Where the pointer is on the card, for what the card shows under it.
+    enum Pointer {
+        /// On the card, off its ×: the × and the "go to" mark show.
+        case card
+        /// On the ×, which shows lighter.
+        case close
+    }
+
+    /// Shows the × in the icon's place, and the "go to" mark in the ring's, while the pointer is on
+    /// the card, at once, as a button lightens; hides them when `pointer` is nil.
+    func showPointer(_ pointer: Pointer?) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        closeMark?.opacity = pointer == nil ? 0 : 1
+        closeDisc?.fillColor = pointer == .close ? Self.closeFillHovered : Self.closeFill
+        goMark?.opacity = pointer == nil ? 0 : 1
+        CATransaction.commit()
+    }
+
+    /// Whether `point`, in the root's coordinates as the card is drawn now, is on its close mark: the
+    /// left end of the card, its padding and its icon.
+    func isOnClose(_ point: CGPoint) -> Bool {
+        guard closeMark != nil, metrics.hasIcon else { return false }
+        let drawn = root.presentation() ?? root
+        let shownIcon = icon.presentation() ?? icon
+        let iconFrame = drawn.convert(shownIcon.bounds, from: shownIcon)
+        let clip = (content.presentation() ?? content).frame
+        let reach = 6 * CGFloat(card.size.scale)
+        return point.x >= clip.minX - 2 && point.x <= iconFrame.maxX + reach
+            && point.y >= clip.minY - 2 && point.y <= clip.maxY + 2
     }
 
     /// A button that stands where the ring would, `x` from the left of the ring's place: a capsule
@@ -844,10 +939,22 @@ enum IslandPath {
     }
 }
 
+/// A click on the island, in the view's coordinates.
+struct IslandClick {
+    /// Where the button went down, and where it came up.
+    var down: CGPoint
+    var up: CGPoint
+    /// A right-click, a two-finger tap, or a click with Control or Option held: it only ever takes
+    /// the card away, and brings nothing forward.
+    var secondary: Bool
+}
+
 /// The island's view: reports the pointer and clicks, without ever taking focus.
 final class IslandView: NSView {
     var onMove: ((CGPoint) -> Void)?
-    var onClick: ((CGPoint) -> Void)?
+    var onClick: ((IslandClick) -> Void)?
+    /// Where the last button went down.
+    private var down: CGPoint?
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -860,11 +967,30 @@ final class IslandView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseMoved(with event: NSEvent) { onMove?(convert(event.locationInWindow, from: nil)) }
     override func mouseExited(with event: NSEvent) { onMove?(CGPoint(x: -1, y: -1)) }
-    override func mouseUp(with event: NSEvent) { onClick?(convert(event.locationInWindow, from: nil)) }
+    override func mouseDown(with event: NSEvent) { down = convert(event.locationInWindow, from: nil) }
+    override func rightMouseDown(with event: NSEvent) { down = convert(event.locationInWindow, from: nil) }
+    override func mouseUp(with event: NSEvent) {
+        click(event, secondary: !event.modifierFlags.intersection([.control, .option]).isEmpty)
+    }
+    override func rightMouseUp(with event: NSEvent) { click(event, secondary: true) }
+    /// No context menu: a secondary click takes the card away.
+    override func menu(for event: NSEvent) -> NSMenu? { nil }
+
+    private func click(_ event: NSEvent, secondary: Bool) {
+        let up = convert(event.locationInWindow, from: nil)
+        onClick?(IslandClick(down: down ?? up, up: up, secondary: secondary))
+        down = nil
+    }
 }
 
-/// What VoiceOver offers for a card's buttons, as the island draws them in its layers.
+/// What VoiceOver offers for a card's buttons, as the island draws them in its layers, and for the
+/// card itself.
 enum CardAccessibility {
+    /// Brings forward the app a click on the card brings forward.
+    static let open = "Open"
+    /// Takes the card away without bringing anything forward.
+    static let dismiss = "Dismiss"
+
     /// Each button's label and the answer it gives, in the order they are drawn: no, then yes.
     static func answers(to action: CardAction) -> [(String, CardAnswer)] {
         (action.decline.map { [($0, CardAnswer.no)] } ?? []) + [(action.label, .yes)]
@@ -935,7 +1061,7 @@ final class IslandPresenter: CardPresenting {
         let view = IslandView(frame: NSRect(origin: .zero, size: frame.size))
         view.wantsLayer = true
         view.onMove = { [weak self] point in self?.pointer(at: point) }
-        view.onClick = { [weak self] point in self?.click(at: point) }
+        view.onClick = { [weak self] click in self?.click(click) }
         view.layer?.addSublayer(layers.root)
         // The text is drawn in layers, which VoiceOver cannot read: the view reads it out whole, and
         // offers the buttons as its actions.
@@ -1138,6 +1264,9 @@ final class IslandPresenter: CardPresenting {
     private var departure: (() -> Void)?
     private var pending: DispatchWorkItem?
     private var hovering = false
+    /// Lets the card go on once the pointer has rested on it for `CardStack.holdLimit`; nil once it
+    /// has, until the pointer moves again.
+    private var holdLimit: DispatchWorkItem?
 
     private func schedule(after seconds: Double) {
         pending?.cancel()
@@ -1150,7 +1279,9 @@ final class IslandPresenter: CardPresenting {
         guard let departure else { return }
         self.departure = nil
         pending?.cancel()
+        holdLimit?.cancel()
         if card.action != nil, !clicked { CardActions.missed = true }
+        layers?.showPointer(nil)
         panel?.ignoresMouseEvents = true
         departure()
     }
@@ -1172,32 +1303,73 @@ final class IslandPresenter: CardPresenting {
         return layers.button(at: islandPoint(point, in: layers))
     }
 
+    /// Whether a point in the view is on the card's ×, as it is drawn right now.
+    private func onClose(_ point: CGPoint) -> Bool {
+        guard let layers else { return false }
+        return layers.isOnClose(islandPoint(point, in: layers))
+    }
+
     private func pointer(at point: CGPoint) {
         guard departure != nil, card.isClickable else { return }
-        layers?.setButtonHovered(button(at: point))
         let inside = onIsland(point)
-        guard inside != hovering else { return }
-        hovering = inside
+        layers?.setButtonHovered(inside ? button(at: point) : nil)
+        let under: IslandLayers.Pointer? = inside ? (onClose(point) ? .close : .card) : nil
+        layers?.showPointer(under)
         if inside {
-            // Hold the card and freeze the ring.
-            pending?.cancel()
-            layers.map { IslandLayers.pause($0.ringProgress, paused: true) }
-        } else {
-            layers.map { IslandLayers.pause($0.ringProgress, paused: false) }
-            // A card that waits for you goes on waiting; any other gets a moment more.
-            schedule(after: waiting ? card.duration : 1.5)
+            if !hovering || holdLimit == nil {
+                // Hold the card and freeze the ring, again when the pointer moves after a rest.
+                pending?.cancel()
+                layers.map { IslandLayers.pause($0.ringProgress, paused: true) }
+            }
+            hovering = true
+            armHoldLimit()
+        } else if hovering {
+            hovering = false
+            holdLimit?.cancel()
+            holdLimit = nil
+            letGo()
         }
     }
 
-    /// A click on a button answers with it; anywhere else on the island, it brings the sending app
-    /// forward. Either way the card goes.
-    private func click(at point: CGPoint) {
-        guard departure != nil, card.isClickable, onIsland(point) else { return }
-        if let answer = button(at: point) {
+    /// Lets the card go on after `CardStack.holdLimit` with the pointer resting on it, so a pointer
+    /// left there never keeps it on screen.
+    private func armHoldLimit() {
+        holdLimit?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.hovering else { return }
+            self.holdLimit = nil
+            self.letGo()
+        }
+        holdLimit = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + CardStack.holdLimit, execute: work)
+    }
+
+    /// Starts the ring again and gives the card a moment more, or its wait again for a card that
+    /// waits for you: the pointer left, or rested.
+    private func letGo() {
+        layers.map { IslandLayers.pause($0.ringProgress, paused: false) }
+        schedule(after: waiting ? card.duration : 1.5)
+    }
+
+    /// A click on a button answers with it; on the card's ×, or a secondary click anywhere, takes the
+    /// card away; anywhere else on the island, it brings the sending app forward. Either way the
+    /// card goes.
+    private func click(_ click: IslandClick) {
+        guard departure != nil, card.isClickable, onIsland(click.up) else { return }
+        if click.secondary || (onClose(click.up) && onClose(click.down)) {
+            return dismiss()
+        }
+        if let answer = button(at: click.up) {
             press(answer)
             return
         }
-        if let target = card.activate { CardActions.activate(target, console: console) }
+        if let target = card.activate { CardActions.activate(target, pane: card.pane, console: console) }
+        leave(clicked: false)
+    }
+
+    /// Takes the card away without bringing anything forward: a click on its ×, a secondary click,
+    /// VoiceOver's Dismiss, or `drip dismiss`. A question goes unanswered.
+    func dismiss() {
         leave(clicked: false)
     }
 
@@ -1222,7 +1394,7 @@ final class IslandPresenter: CardPresenting {
     }
 
     /// The card's buttons, offered to VoiceOver as the island's actions, since the island cannot
-    /// take focus.
+    /// take focus, then Open, for a card a click brings an app forward from, and Dismiss.
     private func updateAccessibilityActions() {
         var actions: [NSAccessibilityCustomAction] = []
         if let action = card.action {
@@ -1233,6 +1405,21 @@ final class IslandPresenter: CardPresenting {
                     return true
                 })
             }
+        }
+        if card.activate != nil, card.action == nil {
+            actions.append(NSAccessibilityCustomAction(name: CardAccessibility.open) { [weak self] () -> Bool in
+                guard let self, self.departure != nil, let target = self.card.activate else { return false }
+                CardActions.activate(target, pane: self.card.pane, console: self.console)
+                self.leave(clicked: false)
+                return true
+            })
+        }
+        if card.isClickable {
+            actions.append(NSAccessibilityCustomAction(name: CardAccessibility.dismiss) { [weak self] () -> Bool in
+                guard let self, self.departure != nil else { return false }
+                self.dismiss()
+                return true
+            })
         }
         panel?.contentView?.setAccessibilityCustomActions(actions)
     }

@@ -93,6 +93,9 @@ export async function loadDrip(source, measure) {
       end: (id) => readReply(e.drip_stack_end(id)).handles,
       pointer: (id, x, y, inside, time) => readReply(e.drip_stack_pointer(id, x, y, inside ? 1 : 0, time)),
       click: (id, x, y, time) => readReply(e.drip_stack_click(id, x, y, time)),
+      // Takes the card of the island `handle` away, as `drip dismiss` does: "shown" when it goes as
+      // cards go, "dropped" when it was still to come and the page releases it, else "".
+      dismiss: (id, handle) => ["", "shown", "dropped"][e.drip_stack_dismiss(id, handle)] ?? "",
       // Every card, top to bottom: its island's handle, the seconds left on its countdown, where its
       // capsule's top is heading, and its frame.
       frame(id, time) {

@@ -71,7 +71,8 @@ struct SnapshotTests {
 
     @Test func customIconAndColor() throws {
         try assertSnapshots([
-            Snapshot(name: "custom-icon-color", arguments: ["shipped", "--icon", "paperplane.fill", "--color", "#a78bfa"]),
+            Snapshot(name: "custom-icon-color", arguments: ["shipped", "--icon", "paperplane.fill", "--color", "#a78bfa"],
+                     tolerance: .symbolEdges),
         ])
     }
 
@@ -100,7 +101,7 @@ struct SnapshotTests {
             Snapshot(name: "stay", arguments: asking),
             Snapshot(name: "stay-app", arguments: asking + app),
             Snapshot(name: "ok-app", arguments: done + app),
-            Snapshot(name: "stay-no-app", arguments: asking + ["--icon", "terminal.fill"]),
+            Snapshot(name: "stay-no-app", arguments: asking + ["--icon", "terminal.fill"], tolerance: .symbolEdges),
             Snapshot(name: "stay-mark-claude", arguments: asking + ["--icon", "mark:claude"]),
             Snapshot(name: "stay-mark-codex", arguments: asking + ["--icon", "mark:codex"]),
             Snapshot(name: "stay-mark-gemini", arguments: asking + ["--icon", "mark:gemini"]),
@@ -146,6 +147,16 @@ struct SnapshotTests {
 struct Snapshot {
     var name: String
     var arguments: [String]
+    /// The most pixels that may differ, as one in this many.
+    var tolerance: Tolerance = .strict
+
+    enum Tolerance: Int {
+        /// One pixel in 500.
+        case strict = 500
+        /// One pixel in 200, for a card whose large SF Symbol a Mac with a GPU and GitHub's macOS runner
+        /// antialias a few hundred edge pixels apart, on the same macOS.
+        case symbolEdges = 200
+    }
 }
 
 /// The same card in light and dark.
@@ -177,7 +188,7 @@ func assertSnapshots(_ snapshots: [Snapshot], sourceLocation: SourceLocation = #
             }
             continue
         }
-        if let difference = imageDifference(reference: reference, rendered: rendered) {
+        if let difference = imageDifference(reference: reference, rendered: rendered, oneIn: snapshot.tolerance.rawValue) {
             let failure = paths.failures.appendingPathComponent("\(snapshot.name).png")
             try FileManager.default.createDirectory(at: paths.failures, withIntermediateDirectories: true)
             try? FileManager.default.removeItem(at: failure)
@@ -238,8 +249,9 @@ private func render(
     }
 }
 
-/// Why two PNGs differ, or nil when they match within a small per-pixel tolerance.
-private func imageDifference(reference: URL, rendered: URL) -> String? {
+/// Why two PNGs differ, or nil when they match within a small per-pixel tolerance, with at most one
+/// pixel in `oneIn` differing beyond it.
+private func imageDifference(reference: URL, rendered: URL, oneIn: Int) -> String? {
     guard let expected = RGBAImage(url: reference) else { return "cannot read the reference" }
     guard let actual = RGBAImage(url: rendered) else { return "cannot read the rendering" }
     guard expected.width == actual.width, expected.height == actual.height else {
@@ -255,7 +267,7 @@ private func imageDifference(reference: URL, rendered: URL) -> String? {
             break
         }
     }
-    let allowed = expected.width * expected.height / 500
+    let allowed = expected.width * expected.height / oneIn
     return differing > allowed ? "\(differing) pixels differ (at most \(allowed) may)" : nil
 }
 
