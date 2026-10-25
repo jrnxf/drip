@@ -29,13 +29,8 @@ func write(_ object: [String: Any], to name: String) {
     rename(temporary, path)
 }
 
-/// Whether Accessibility is granted. Only the first call, the one that writes `ready`, may ask the
-/// person; every later check just reads the answer, so polling it never raises the dialog again.
-var asked = false
 func trusted() -> Bool {
-    let mayAsk = prompt && !asked
-    asked = true
-    return AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: mayAsk] as CFDictionary)
+    AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt] as CFDictionary)
 }
 
 /// Whether `point`, in global coordinates with y down from the top of the main screen, is where
