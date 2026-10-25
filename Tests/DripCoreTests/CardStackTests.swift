@@ -483,14 +483,16 @@ struct CardStackTests {
         let stack = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [asking("a"), card("c", seconds: 2)])
         stack.tucks = true
         var time = 0.0
+        var gaveWay: [Int] = []
         while time < 3, stack.tucked.isEmpty {
             if stack.isReady(at: time), let next = stack.nextOwn() {
                 stack.enter(next, metrics: metrics, own: true, decided: time, at: time)
             }
-            _ = stack.advance(to: time, elapsed: 1.0 / 60, lead: 0)
+            gaveWay += stack.advance(to: time, elapsed: 1.0 / 60, lead: 0).tucked.map(\.id)
             time += 1.0 / 60
         }
         #expect(stack.tucked.map(\.card.title) == ["a"])
+        #expect(stack.tucked.map(\.entry) == gaveWay)
         #expect(!stack.dropTucked { $0.title == "x" })
         #expect(stack.dropTucked { $0.title == "a" })
         #expect(stack.tucked.isEmpty)

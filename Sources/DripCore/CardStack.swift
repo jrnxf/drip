@@ -105,9 +105,9 @@ public final class CardStack {
     /// cards on as they are when it is answered, does not.
     public var tucks = false
     /// Cards that waited for you and gave way to a card that needed their place, oldest first, with
-    /// what they have left of their wait and whether each was this drip's own: they wait in the
-    /// overflow drop after every other card.
-    public internal(set) var tucked: [(card: Card, own: Bool)] = []
+    /// what they have left of their wait, whether each was this drip's own and the id of the entry
+    /// that showed it: they wait in the overflow drop after every other card.
+    public internal(set) var tucked: [(card: Card, own: Bool, entry: Int)] = []
     /// A change to the stack waits while the pointer is on it.
     private var needsLayout = false
     var nextID = 1
@@ -206,7 +206,7 @@ public final class CardStack {
 
     /// The oldest card that gave way and waits to come back, taken off `tucked`, when there is room
     /// and no card of this drip's own waits first.
-    public func nextTucked() -> (card: Card, own: Bool)? {
+    public func nextTucked() -> (card: Card, own: Bool, entry: Int)? {
         guard hasRoom, waiting.isEmpty, !tucked.isEmpty else { return nil }
         return tucked.removeFirst()
     }
@@ -412,7 +412,7 @@ public final class CardStack {
                 // already waiting there.
                 var card = oldest.card
                 card.waitLimit = max(oldest.remaining, 1)
-                tucked.append((card, oldest.own))
+                tucked.append((card, oldest.own, oldest.id))
                 oldest.dismissed = false
                 changes.tucked = [oldest]
             } else if !tucks {

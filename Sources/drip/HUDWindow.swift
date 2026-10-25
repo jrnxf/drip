@@ -299,7 +299,7 @@ final class ReplacementWatch {
             // Paused for a screen share or a meeting: the card goes, and shows once the pause ends.
             stop()
             presenter.dismiss()
-            _ = BackgroundDrip.start(BackgroundRequest(cards: [current], record: true))
+            _ = BackgroundDrip.start(BackgroundRequest(cards: [current], record: false))
             return
         }
         guard CardQueue.mine != nil, current.id != nil || current.waits else { return }

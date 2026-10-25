@@ -89,8 +89,8 @@ final class StackPresenter: CardPresenting {
     /// The card the drop spread into, which the count's last number rolls out over, until when.
     private var spreadInto: (entry: Int, until: Double)?
     private var onFinish: ((Bool) -> Void)?
-    /// When each card on screen came, in seconds since 1970, by `CardStack.Entry.id`: a dismissal
-    /// asked for later leaves it.
+    /// When each card on screen came, in seconds since 1970, by `CardStack.Entry.id`, kept for one
+    /// that gave way while it waits to come back: a dismissal asked for later leaves it.
     private var arrivals: [Int: Double] = [:]
     /// When this drip's own cards were queued, in seconds since 1970.
     private let queuedAt = CardQueue.queuedAt
@@ -589,7 +589,10 @@ final class StackPresenter: CardPresenting {
             drawings[left.entry.id]?.layers.showPointer(nil)
             drawings[left.entry.id]?.layers.fade(left.cues, into: false, at: started + left.time)
         }
-        for entry in changes.gone { arrivals[entry.id] = nil }
+        if !changes.gone.isEmpty {
+            let kept = Set(stack.entries.map(\.id) + stack.tucked.map(\.entry))
+            arrivals = arrivals.filter { kept.contains($0.key) }
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for entry in stack.entries + changes.gone {
@@ -756,7 +759,11 @@ final class StackPresenter: CardPresenting {
             dismiss(entry)
         }
         stack.dropWaiting { dismissals.dismisses(id: $0.id, since: queuedAt) }
-        stack.dropTucked { dismissals.dismisses(id: $0.id, since: queuedAt) }
+        for (index, tucked) in stack.tucked.enumerated().reversed()
+            where dismissals.dismisses(id: tucked.card.id, since: arrivals[tucked.entry] ?? queuedAt)
+        {
+            stack.dropTucked(at: index)
+        }
     }
 
     /// When a pause starts while a background drip shows cards, as for a screen share, takes them
@@ -777,7 +784,7 @@ final class StackPresenter: CardPresenting {
         // Newer drips' cards are held by their own drips while paused; this stack is done.
         others = []
         foundAdoptable = false
-        if !cards.isEmpty { _ = BackgroundDrip.start(BackgroundRequest(cards: cards, record: true)) }
+        if !cards.isEmpty { _ = BackgroundDrip.start(BackgroundRequest(cards: cards, record: false)) }
     }
 
     /// Answers `entry` with one of its buttons, from a click or from VoiceOver.
