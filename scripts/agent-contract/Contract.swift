@@ -328,6 +328,9 @@ struct Contract {
     var tool: String
     var done: String
     var same: [String]
+    /// Keys of a `same` object that only the permission request carries, which drip leaves out
+    /// when it matches the call, as it does Codex's `description` (the question it asks you).
+    var requestOnly: [String: Set<String>]
 
     static func load(_ file: String, agent: Agent) -> Contract {
         guard let root = readJSON(file) as? [String: Any], let agents = root["agents"] as? [String: Any],
@@ -343,7 +346,8 @@ struct Contract {
         return Contract(
             events: shapes, prompt: flow["prompt"] ?? "", permission: flow["permission"] ?? "",
             permissionType: flow["permissionType"], tool: flow["tool"] ?? "", done: flow["done"] ?? "",
-            same: entry["same"] as? [String] ?? [])
+            same: entry["same"] as? [String] ?? [],
+            requestOnly: (entry["requestOnly"] as? [String: [String]] ?? [:]).mapValues(Set.init))
     }
 
     func isPermission(_ payload: [String: Any]) -> Bool {
@@ -1120,8 +1124,11 @@ func driftReport(_ payloads: [[String: Any]], contract: Contract) -> [Drift] {
            payloads[$0]["hook_event_name"] as? String == contract.tool
                && payloads[$0]["tool_name"] as? String == payloads[requested]["tool_name"] as? String
        }) {
-        let before = payloads[requested]
+        var before = payloads[requested]
         let after = payloads[ran]
+        for (field, keys) in contract.requestOnly {
+            if let object = before[field] as? [String: Any] { before[field] = object.filter { !keys.contains($0.key) } }
+        }
         for field in contract.same where jsonText(before[field] ?? NSNull()) != jsonText(after[field] ?? NSNull()) {
             var detail = "\(field) differs from \(contract.permission)'s, and drip matches the call by it"
             if let old = before[field] as? [String: Any], let new = after[field] as? [String: Any] {

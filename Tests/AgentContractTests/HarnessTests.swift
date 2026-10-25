@@ -216,11 +216,13 @@ struct HarnessTests {
         hook() { printf '%s' "$1" | /bin/zsh -lc 'drip hook codex'; }
         base="\\"session_id\\":\\"session-$try\\",\\"cwd\\":\\"$PWD\\""
         input='{"command":"touch approved.txt"}'
+        # Codex's request adds the question it asks you to the input, which the tool call leaves out.
+        asked='{"command":"touch approved.txt","description":"May I create approved.txt?"}'
         echo "? for shortcuts"
         read -r prompt
         hook "{\\"hook_event_name\\":\\"UserPromptSubmit\\",$base,\\"turn_id\\":\\"t1\\",\\"prompt\\":\\"go\\"}"
         if [ "$try" -gt 1 ]; then
-            hook "{\\"hook_event_name\\":\\"PermissionRequest\\",$base,\\"turn_id\\":\\"t1\\",\\"tool_name\\":\\"Bash\\",\\"tool_input\\":$input}"
+            hook "{\\"hook_event_name\\":\\"PermissionRequest\\",$base,\\"turn_id\\":\\"t1\\",\\"tool_name\\":\\"Bash\\",\\"tool_input\\":$asked}"
             read -r answer
             hook "{\\"hook_event_name\\":\\"PostToolUse\\",$base,\\"turn_id\\":\\"t1\\",\\"tool_name\\":\\"Bash\\",\\"tool_input\\":$input,\\"tool_use_id\\":\\"u1\\"}"
         fi
@@ -231,6 +233,46 @@ struct HarnessTests {
         exec sleep 600
 
         """
+
+    /// Codex payloads as a run keeps them, in a folder named for Codex, whose tool call ran `ran`.
+    static func codexDrift(ran command: String) throws -> (status: Int32, report: String) {
+        let folder = try scratch().appendingPathComponent("codex")
+        defer { try? FileManager.default.removeItem(at: folder.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let base = #""session_id":"s1","turn_id":"t1","cwd":"/home/user/project""#
+        let payloads = [
+            #"{"hook_event_name":"UserPromptSubmit",\#(base),"prompt":"go"}"#,
+            #"{"hook_event_name":"PermissionRequest",\#(base),"tool_name":"Bash","tool_input":{"command":"touch approved.txt","description":"May I create approved.txt?"}}"#,
+            #"{"hook_event_name":"PostToolUse",\#(base),"tool_name":"Bash","tool_input":{"command":"\#(command)"},"tool_use_id":"u1"}"#,
+            #"{"hook_event_name":"Stop",\#(base),"last_assistant_message":"done"}"#,
+        ]
+        for (index, payload) in payloads.enumerated() {
+            try payload.write(to: folder.appendingPathComponent(String(format: "%03d-payload.json", index + 1)),
+                              atomically: true, encoding: .utf8)
+        }
+        let process = Process()
+        process.executableURL = try harness.get()
+        process.arguments = ["drift", "--repo", repo.path, "--drift", folder.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(decoding: data, as: UTF8.self))
+    }
+
+    /// Codex's request carries the question it asks in its input and the tool call does not, which
+    /// drip allows for; any other difference means drip never takes the card away.
+    @Test func aCodexRequestsQuestionIsNoDrift() throws {
+        let same = try Self.codexDrift(ran: "touch approved.txt")
+        #expect(same.status == 0, "\(same.report)")
+        #expect(!same.report.contains("DRIFT"))
+
+        let other = try Self.codexDrift(ran: "touch other.txt")
+        #expect(other.status == 1)
+        #expect(other.report.contains("DRIFT PostToolUse: tool_input differs"))
+    }
 
     @Test(.enabled(if: tmux != nil && CGSessionCopyCurrentDictionary() != nil, "needs tmux and a GUI session, where drip records cards"))
     func aCodexSessionThroughDripsHooks() throws {

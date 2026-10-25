@@ -1,5 +1,5 @@
 {
-  "about": "What drip expects from each agent's hooks, for scripts/agent-contract.sh. events: every event drip setup hooks, with the fields drip reads and their JSON types (reads), and the other fields the agent was last seen sending (seen). flow: the events one live session sends drip, in order. same: fields a permission request and the tool call that follows it must agree on, for drip to take the right card away. Tests/DripCoreTests/ContractTests.swift keeps the events in step with drip setup.",
+  "about": "What drip expects from each agent's hooks, for scripts/agent-contract.sh. events: every event drip setup hooks, with the fields drip reads and their JSON types (reads), and the other fields the agent was last seen sending (seen). flow: the events one live session sends drip, in order. same: fields a permission request and the tool call that follows it must agree on, for drip to take the right card away. requestOnly: keys of a same object that only the permission request carries, which drip leaves out when it matches the call. Tests/DripCoreTests/ContractTests.swift keeps the events in step with drip setup.",
   "agents": {
     "claude": {
       "events": {
@@ -59,7 +59,8 @@
         }
       },
       "flow": {"prompt": "UserPromptSubmit", "permission": "PermissionRequest", "tool": "PostToolUse", "done": "Stop"},
-      "same": ["turn_id", "tool_name", "tool_input"]
+      "same": ["turn_id", "tool_name", "tool_input"],
+      "requestOnly": {"tool_input": ["description"]}
     },
     "gemini": {
       "events": {
