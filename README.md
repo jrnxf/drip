@@ -551,7 +551,7 @@ locked or drip is paused like any other, and are not added to the history again.
 meeting, a screen share or a call. Cards already on screen go too, within a second, and are held
 with the others; a question stays, as its script waits on it. When the pause ends, the held cards
 show as missed cards do: one or two as they are, three or more as one `N cards while you were away`
-card, and `drip history --missed` lists them. A drip that waits for its card, with `--wait` or a `--yes` question, waits for
+card, and `drip history --missed` lists them, all but those already shown before the pause. A drip that waits for its card, with `--wait` or a `--yes` question, waits for
 the end of the pause, and says so.
 
 ```sh
