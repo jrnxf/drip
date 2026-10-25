@@ -476,7 +476,7 @@ public struct SetupInstaller {
         if agent == .claude {
             hints.append(
                 "Claude Code can also notify you itself, through your terminal: if each card comes with a "
-                    + "second notification, turn Claude Code's off under Notifications in its /config.")
+                    + "second notification, set Local notifications to disabled in its /config.")
         }
         return .done(lines: lines + hints, warnings: warnings)
     }

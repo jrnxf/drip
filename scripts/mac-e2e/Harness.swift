@@ -14,6 +14,7 @@
 // through the helper app (Helper.swift), the only part that needs a permission.
 import AppKit
 import CoreGraphics
+import CryptoKit
 import Darwin
 import ImageIO
 
@@ -545,8 +546,14 @@ final class Helper {
     init?(app: String, prompt: Bool) {
         directory = path(scratch, "helper")
         try? fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        // macOS asks for the grant at most once per helper build: a marker beside the app keeps the
+        // build that asked, so later runs wait silently until it is granted, and a rebuild may ask again.
+        let marker = (app as NSString).deletingPathExtension + ".asked"
+        let build = fileManager.contents(atPath: path(app, "Contents/MacOS/helper"))
+            .map { Data(SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined().utf8) }
+        let ask = prompt && build != nil && fileManager.contents(atPath: marker) != build
         var arguments = ["open", "-g", "-n", app, "--args", directory, String(getpid())]
-        if prompt { arguments.append("--prompt") }
+        if ask { arguments.append("--prompt") }
         guard run(arguments).status == 0 else { return nil }
         let ready = path(directory, "ready")
         guard wait(15, { fileManager.fileExists(atPath: ready) }) != nil,
@@ -554,6 +561,7 @@ final class Helper {
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         trusted = object["trusted"] as? Bool ?? false
+        if ask, !trusted { fileManager.createFile(atPath: marker, contents: build) }
     }
 
     func call(_ request: [String: Any]) -> [String: Any] {
@@ -748,6 +756,8 @@ if let directory = options.judgeCheck {
         let why = verdict.map { $0.dropFirst().joined(separator: " ") } ?? "no verdict in verdicts.txt"
         say("\(ok ? "ok  " : "FAIL")  judged  \(name)\(ok ? "" : ": " + why)")
     }
+    // Nothing ran, so cleanUp() has nothing to stop; only the scratch directory made at start is left.
+    try? fileManager.removeItem(atPath: scratch)
     exit(names.isEmpty || bad > 0 ? 1 : 0)
 }
 
@@ -965,10 +975,22 @@ check(4, "a done card after a waiting one") { expect in
     claude("PermissionRequest", ["session_id": session, "tool_name": "Bash", "tool_input": ["command": "ls"], "tool_use_id": "toolu_x"])
     expect.within(3, wait(3) { showing }, "the permission card shows")
     pause(1)
+    let waiting = Shot(notchArea)
     claude("Stop", ["session_id": session, "last_assistant_message": "**Listed** the files."], matching: nil)
-    pause(1.5)
+    // The card replaces the waiting one in place, and how long that takes depends on what ran before:
+    // wait until drip has kept the done card and one card that is no longer the waiting one has settled.
+    var previous = waiting
+    let appeared = wait(5, every: 0.1) {
+        guard let now = Shot(notchArea) else { return false }
+        defer { previous = now }
+        guard let waiting, let previous, now.cards.count == 1 else { return false }
+        let card = (waiting.cards + now.cards).reduce(CGRect.null) { $0.union($1) }
+        return now.change(from: waiting, in: card) > 0.02 && now.change(from: previous, in: card) < 0.005
+            && recorded("claude:\(session)").contains { $0.card["kind"] as? String == "ok" }
+    }
+    expect.within(5, appeared, "the done card takes its place, one card")
     let cards = cardsOnScreen()
-    expect.expect(cards.count == 1, "the done card takes its place, one card (found \(cards.count))")
+    expect.expect(cards.count == 1, "one card (found \(cards.count))")
     keep("done-card", "One black card: Claude's icon on the left; title 'e2e-app is done'; grey detail 'Listed the files.' "
         + "without asterisks; on the right a green ring with a check mark in it.", around: cards)
     let kept = recorded("claude:\(session)")

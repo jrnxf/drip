@@ -268,7 +268,7 @@ permission prompt, with what Claude wants to do, and `drip setup claude` brings 
 `permission_prompt|elicitation_dialog` matcher up to date. It leaves out `idle_prompt`: Claude Code
 sends it a minute after every finished turn, and its card would replace the done card that says
 what Claude did. Claude Code can also notify you itself, through your terminal; if each card comes
-with a second notification, turn Claude Code's own off under Notifications in its `/config`.
+with a second notification, set Local notifications to disabled in its `/config`.
 
 Codex takes the same shape in `~/.codex/hooks.json`, with `PermissionRequest`, `Stop`,
 `PostToolUse` and `UserPromptSubmit` running `drip hook codex`, or as `[[hooks.Stop]]` tables in

@@ -71,7 +71,7 @@
           "name": "Do I have to change Claude Code's own notification setting?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. Hooks run alongside it: drip setup claude only adds hooks, and whatever Claude Code did before on a prompt, it still does. If each card comes with a second notification from your terminal, turn Claude Code's own off under Notifications in its /config."
+            "text": "No. Hooks run alongside it: drip setup claude only adds hooks, and whatever Claude Code did before on a prompt, it still does. If each card comes with a second notification from your terminal, set Local notifications to disabled in its /config."
           }
         },
         {
@@ -141,7 +141,7 @@ drip setup gemini   # Gemini CLI, in ~/.gemini/settings.json</code></pre>
       <h3>Does drip use macOS Notification Center?</h3>
       <p>No. drip draws its own card out of the camera notch, or out of the top edge of a screen without one, so it needs no Notifications permission. Cards also show during Do Not Disturb; run <code>drip pause 30m</code> to hold them for a while.</p>
       <h3>Do I have to change Claude Code's own notification setting?</h3>
-      <p>No. Hooks run alongside it: <code>drip setup claude</code> only adds hooks, and whatever Claude Code did before on a prompt, it still does. If each card comes with a second notification from your terminal, turn Claude Code's own off under Notifications in its <code>/config</code>.</p>
+      <p>No. Hooks run alongside it: <code>drip setup claude</code> only adds hooks, and whatever Claude Code did before on a prompt, it still does. If each card comes with a second notification from your terminal, set Local notifications to disabled in its <code>/config</code>.</p>
       <h3>My settings.json is managed by home-manager or a dotfile manager. What then?</h3>
       <p>drip never writes a settings file that is a symlink, read-only, or not plain JSON. It says why, prints the hooks to add where the file comes from, and exits 1. <code>drip setup claude --print</code> prints them without trying.</p>
       <h3>What if I am away when Claude Code needs me?</h3>

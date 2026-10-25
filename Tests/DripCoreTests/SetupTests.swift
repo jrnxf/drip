@@ -272,7 +272,7 @@ struct SetupInstallerTests {
 
     /// What setup says about Claude Code's own notifications.
     static let claudeNotifies = "Claude Code can also notify you itself, through your terminal: if each card comes "
-        + "with a second notification, turn Claude Code's off under Notifications in its /config."
+        + "with a second notification, set Local notifications to disabled in its /config."
 
     func backups(in directory: String) throws -> [String] {
         try FileManager.default.contentsOfDirectory(atPath: "\(home)/\(directory)").filter { $0.contains(".drip-backup-") }.sorted()

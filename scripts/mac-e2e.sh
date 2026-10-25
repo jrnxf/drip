@@ -14,9 +14,9 @@
 # make it wait.
 #
 # Clicks and VoiceOver's actions need Accessibility, which a small helper app holds, not your
-# terminal: the first run asks for it (System Settings > Privacy & Security > Accessibility, turn on
-# "drip e2e helper"). The helper lives in ~/.cache/drip-e2e and is rebuilt only when its source
-# changes, which asks again. Without the grant, those checks skip.
+# terminal: the first run asks for it, once (System Settings > Privacy & Security > Accessibility,
+# turn on "drip e2e helper"). The helper lives in ~/.cache/drip-e2e and is rebuilt only when its
+# source changes, which may ask once more. Without the grant, those checks skip.
 set -eu
 
 cd "$(dirname "$0")/.."
