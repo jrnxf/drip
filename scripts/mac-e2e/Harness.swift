@@ -748,6 +748,8 @@ if let directory = options.judgeCheck {
         let why = verdict.map { $0.dropFirst().joined(separator: " ") } ?? "no verdict in verdicts.txt"
         say("\(ok ? "ok  " : "FAIL")  judged  \(name)\(ok ? "" : ": " + why)")
     }
+    // Nothing ran, so cleanUp() has nothing to stop; only the scratch directory made at start is left.
+    try? fileManager.removeItem(atPath: scratch)
     exit(names.isEmpty || bad > 0 ? 1 : 0)
 }
 
@@ -966,9 +968,11 @@ check(4, "a done card after a waiting one") { expect in
     expect.within(3, wait(3) { showing }, "the permission card shows")
     pause(1)
     claude("Stop", ["session_id": session, "last_assistant_message": "**Listed** the files."], matching: nil)
-    pause(1.5)
+    // The card replaces the waiting one in place; how long that takes depends on what ran before, so
+    // wait for it, and fail only if it never comes.
+    let appeared = wait(5) { cardsOnScreen().count == 1 }
+    expect.within(5, appeared, "the done card takes its place, one card")
     let cards = cardsOnScreen()
-    expect.expect(cards.count == 1, "the done card takes its place, one card (found \(cards.count))")
     keep("done-card", "One black card: Claude's icon on the left; title 'e2e-app is done'; grey detail 'Listed the files.' "
         + "without asterisks; on the right a green ring with a check mark in it.", around: cards)
     let kept = recorded("claude:\(session)")
