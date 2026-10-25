@@ -143,13 +143,17 @@ always shows.
 marks with `CLAUDE_CODE_SESSION_ATTENDED=0`. There, `drip hook` reads its payload, shows nothing,
 and exits 0. drip cannot tell a Codex or Gemini CLI session nobody attends, nor an interactive Claude
 Code session an orchestrator drives, so set `DRIP_HOOK=off` in the environment of any agent whose
-cards you do not want, such as the background workers an orchestrator starts, or the orchestrator's
-own session; only the session you talk to then raises cards. `DRIP_HOOK=on` shows cards even from a
-session nobody attends, and any other value is an error that exits 1.
+cards you do not want, such as the background workers an orchestrator starts; only the session you
+talk to then raises cards. An orchestrator's own session, which ends many background turns an hour,
+wants `DRIP_HOOK=attention`: it shows the cards that need you (a permission, a question, an error)
+and skips the done card of every turn. Like `on`, it shows cards even from a session nobody attends,
+since you chose it. `DRIP_HOOK=on` shows every card even from a session nobody attends, and any other
+value is an error that exits 1.
 
 ```sh
 DRIP_HOOK=off codex exec "fix the flaky test"   # no cards from this run
 DRIP_HOOK=on claude -p "summarize the diff"      # cards even from print mode
+DRIP_HOOK=attention claude                       # only the cards that need you
 ```
 
 The card's icon is the agent's own app's, when it is installed: Claude.app for Claude Code

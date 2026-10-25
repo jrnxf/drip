@@ -488,6 +488,68 @@ struct HookTests {
         #expect(throws: UsageError.self) { try AgentHook.speaks(for: .claude, environment: ["DRIP_HOOK": "quiet"]) }
     }
 
+    /// `DRIP_HOOK=attention` is for an orchestrator's own session: the cards that need you stay, the
+    /// done card of every turn goes, and the clear events still take a waiting card away.
+    @Test func attentionSkipsOnlyTheDoneCards() throws {
+        let attention = ["DRIP_HOOK": "attention"]
+        let payloads: [(AgentHook.Agent, done: [String], waiting: [String], failure: [String], clear: [String])] = [
+            (.claude,
+             [#"{"hook_event_name":"Stop","session_id":"s"}"#],
+             [#"{"hook_event_name":"Notification","session_id":"s","message":"m","notification_type":"permission_prompt"}"#,
+              #"{"hook_event_name":"Notification","session_id":"s","message":"m","notification_type":"idle_prompt"}"#,
+              #"{"hook_event_name":"PermissionRequest","session_id":"s","tool_name":"Bash"}"#],
+             [#"{"hook_event_name":"StopFailure","session_id":"s","error":"rate_limit"}"#],
+             AgentHook.clearEvents(for: .claude).map { #"{"hook_event_name":"\#($0)","session_id":"s","tool_use_id":"u"}"# }),
+            (.codex,
+             [#"{"hook_event_name":"Stop","session_id":"s"}"#,
+              #"{"type":"agent-turn-complete","thread-id":"s","last-assistant-message":"ok"}"#],
+             [#"{"hook_event_name":"PermissionRequest","session_id":"s","turn_id":"t","tool_name":"Bash"}"#],
+             [],
+             AgentHook.clearEvents(for: .codex).map { #"{"hook_event_name":"\#($0)","session_id":"s","turn_id":"t","tool_name":"x"}"# }),
+            (.gemini,
+             [#"{"hook_event_name":"AfterAgent","session_id":"s","prompt_response":"ok"}"#],
+             [#"{"hook_event_name":"Notification","session_id":"s","message":"m","notification_type":"ToolPermission"}"#],
+             [],
+             AgentHook.clearEvents(for: .gemini).map { #"{"hook_event_name":"\#($0)","session_id":"s"}"# }),
+        ]
+        for (agent, done, waiting, failure, clear) in payloads {
+            #expect(try AgentHook.speaks(for: agent, environment: attention))
+            for payload in done {
+                guard case let .card(event) = try AgentHook.outcome(agent: agent, payload: payload) else {
+                    Issue.record("\(agent) done: \(payload)")
+                    continue
+                }
+                #expect(try !AgentHook.shows(event, environment: attention), "\(agent) \(payload)")
+                #expect(try AgentHook.shows(event, environment: ["DRIP_HOOK": "on"]), "\(agent) \(payload)")
+                #expect(try AgentHook.shows(event, environment: [:]), "\(agent) \(payload)")
+            }
+            for payload in waiting + failure {
+                guard case let .card(event) = try AgentHook.outcome(agent: agent, payload: payload) else {
+                    Issue.record("\(agent) card: \(payload)")
+                    continue
+                }
+                #expect(try AgentHook.shows(event, environment: attention), "\(agent) \(payload)")
+            }
+            for payload in clear {
+                guard case .clear = try AgentHook.outcome(agent: agent, payload: payload) else {
+                    Issue.record("\(agent) clear: \(payload)")
+                    continue
+                }
+            }
+        }
+        // Unlike an unset DRIP_HOOK, it speaks from a session nobody attends, as `on` does.
+        #expect(try AgentHook.speaks(for: .claude, environment: ["DRIP_HOOK": "attention", "CLAUDE_CODE_ENTRYPOINT": "sdk-cli"]))
+    }
+
+    @Test func dripHookErrorListsEveryValue() throws {
+        do {
+            _ = try AgentHook.speaks(for: .claude, environment: ["DRIP_HOOK": "quiet"])
+            Issue.record("expected a UsageError")
+        } catch let error as UsageError {
+            #expect(error.message.contains("DRIP_HOOK must be on, off or attention, not 'quiet'"), "\(error.message)")
+        }
+    }
+
     /// Codex's cards take their sound from their look, as Claude's do: the same preset, the same sound.
     @Test func everyAgentsCardsSoundTheSame() throws {
         let payloads: [AgentHook.Agent: (needs: String, done: String)] = [

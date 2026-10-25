@@ -139,24 +139,38 @@ public enum AgentHook {
     }
 
     /// `DRIP_HOOK`: `off` keeps `drip hook` silent, as an orchestrator sets for its background
-    /// sessions; `on` shows cards even from a session nobody attends.
+    /// sessions; `on` shows cards even from a session nobody attends; `attention` is for an
+    /// orchestrator's own session: it shows the cards that need you and skips the done cards.
     public enum Switch: String, CaseIterable, Sendable {
-        case on, off
+        case on, off, attention
+    }
+
+    /// `DRIP_HOOK` as set, nil when unset or empty. Throws a `UsageError` for any other value than a
+    /// `Switch`.
+    public static func setting(environment: [String: String]) throws -> Switch? {
+        guard let text = environment["DRIP_HOOK"].flatMap({ $0.isEmpty ? nil : $0 }) else { return nil }
+        guard let choice = Switch(rawValue: text) else {
+            throw UsageError("DRIP_HOOK must be \(ChoiceList.or(Switch.allCases.map(\.rawValue))), not '\(text)'")
+        }
+        return choice
     }
 
     /// Whether `drip hook` shows anything for `agent` in `environment`: never with `DRIP_HOOK=off`,
-    /// always with `DRIP_HOOK=on`, and otherwise only for a session someone attends. Throws a
-    /// `UsageError` for any other `DRIP_HOOK`.
+    /// always with `DRIP_HOOK=on` or `attention`, and otherwise only for a session someone attends.
+    /// Throws a `UsageError` for any other `DRIP_HOOK`. `attention` still drops the done cards: see
+    /// `shows(_:environment:)`.
     public static func speaks(for agent: Agent, environment: [String: String]) throws -> Bool {
-        switch environment["DRIP_HOOK"].flatMap({ $0.isEmpty ? nil : $0 }) {
-        case nil:
-            return !isUnattended(agent, environment: environment)
-        case let text?:
-            guard let choice = Switch(rawValue: text) else {
-                throw UsageError("DRIP_HOOK must be \(ChoiceList.or(Switch.allCases.map(\.rawValue))), not '\(text)'")
-            }
-            return choice == .on
+        switch try setting(environment: environment) {
+        case nil: return !isUnattended(agent, environment: environment)
+        case .off?: return false
+        case .on?, .attention?: return true
         }
+    }
+
+    /// Whether `drip hook` shows `event` in `environment`: every card, but under
+    /// `DRIP_HOOK=attention` the done card raised at the end of a turn, which needs nobody.
+    public static func shows(_ event: Event, environment: [String: String]) throws -> Bool {
+        try setting(environment: environment) != .attention || event.kind != Preset.ok.name
     }
 
     /// Whether the agent runs without anyone at its terminal: `claude -p`, the SDKs, and the

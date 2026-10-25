@@ -155,6 +155,10 @@ struct DripCLI {
                 return ExitStatus.shown
             }
             #endif
+            // DRIP_HOOK=attention: the done card at the end of a turn needs nobody.
+            guard try AgentHook.shows(event, environment: ProcessInfo.processInfo.environment) else {
+                return ExitStatus.shown
+            }
             guard display.hasGUISession else { return ExitStatus.shown }
             flags = event.filling(flags)
             flags.icon = flags.icon ?? command.agent.icon(installed: display.isInstalled)

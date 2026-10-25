@@ -242,9 +242,10 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
             }
             // A hook that takes a waiting card away shows nothing, as on a Mac, and nor does one from
-            // a session nobody attends, or with DRIP_HOOK=off.
+            // a session nobody attends, or with DRIP_HOOK=off; DRIP_HOOK=attention also skips done cards.
             guard try AgentHook.speaks(for: command.agent, environment: environment),
-                  case let .card(event) = try AgentHook.outcome(agent: command.agent, payload: payload)
+                  case let .card(event) = try AgentHook.outcome(agent: command.agent, payload: payload),
+                  try AgentHook.shows(event, environment: environment)
             else {
                 return send(["deliveries": [Any](), "warnings": warnings])
             }

@@ -401,7 +401,8 @@ public struct HookCommand: ParsableCommand {
             a prompt was sent take it away and show nothing. drip setup adds these hooks for you. \
             Without a GUI session, as over ssh, drip shows nothing and exits 0, and so it does for a \
             session nobody attends, such as claude -p, and wherever DRIP_HOOK=off; DRIP_HOOK=on \
-            shows cards even then. Any failure exits 1, \
+            shows cards even then, and DRIP_HOOK=attention shows only the cards that need you or \
+            report an error, not the done cards, for an orchestrator's own session. Any failure exits 1, \
             since an agent reads some other codes as "block".
             """
     )
