@@ -476,9 +476,18 @@ func contactSheet() {
         return (item, image)
     }
     guard !images.isEmpty else { return }
-    let margin = 40, caption = 120
+    let margin = 40
     let width = (images.map(\.1.width).max() ?? 0) + margin * 2
-    let height = images.reduce(margin) { $0 + $1.1.height + caption + margin }
+    let captions = images.map { item, _ in
+        NSAttributedString(string: "\(item.name): \(item.expected)", attributes: [
+            .font: NSFont.systemFont(ofSize: 22), .foregroundColor: NSColor.black,
+        ])
+    }
+    let heights = captions.map {
+        Int($0.boundingRect(with: CGSize(width: width - margin * 2, height: 10_000), options: .usesLineFragmentOrigin)
+            .height.rounded(.up)) + 16
+    }
+    let height = zip(images, heights).reduce(margin) { $0 + $1.0.1.height + $1.1 + margin }
     guard let context = CGContext(
         data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
         space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
@@ -487,13 +496,11 @@ func contactSheet() {
     context.fill(CGRect(x: 0, y: 0, width: width, height: height))
     NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
     var top = height - margin
-    for (item, image) in images {
+    for ((_, image), (text, caption)) in zip(images, zip(captions, heights)) {
         top -= image.height
         context.draw(image, in: CGRect(x: margin, y: top, width: image.width, height: image.height))
-        let text = NSAttributedString(string: "\(item.name): \(item.expected)", attributes: [
-            .font: NSFont.systemFont(ofSize: 22), .foregroundColor: NSColor.black,
-        ])
-        text.draw(in: CGRect(x: margin, y: top - caption, width: width - margin * 2, height: caption - 8))
+        text.draw(with: CGRect(x: margin, y: top - caption, width: width - margin * 2, height: caption - 8),
+                  options: .usesLineFragmentOrigin)
         top -= caption + margin
     }
     NSGraphicsContext.current = nil
@@ -835,8 +842,9 @@ check(2, "hovering a card") { expect in
     }
     point(at: parking)
     pause(0.5)
-    if let after = Shot(notchArea), let resting {
-        expect.expect(after.change(from: resting, in: icon) < 0.02 && after.change(from: resting, in: ring) < 0.02,
+    // The waiting dot pings now and then, so the ring's place is compared with the arrow, not the dot.
+    if let after = Shot(notchArea), let resting, let hovered {
+        expect.expect(after.change(from: resting, in: icon) < 0.02 && after.change(from: hovered, in: ring) > 0.01,
                       "both go again once the pointer leaves")
     }
 }
