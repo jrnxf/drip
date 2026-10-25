@@ -122,6 +122,11 @@ struct DripCLI {
             guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit + 1) else {
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
             }
+            // A session nobody attends, such as `claude -p` in a pipeline, or one an orchestrator
+            // silenced with DRIP_HOOK=off: nothing to show, nothing to take away, nothing to fail.
+            guard try AgentHook.speaks(for: command.agent, environment: ProcessInfo.processInfo.environment) else {
+                return ExitStatus.shown
+            }
             if payload.utf8.count > AgentHook.payloadLimit {
                 throw UsageError("the hook payload is larger than 4 MB")
             }

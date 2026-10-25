@@ -138,6 +138,20 @@ other card; or `skip`, no card at all, but only when drip knows from tmux that t
 is the one in front, since several sessions often share one terminal app. A card that needs you
 always shows.
 
+**Only the session you talk to.** A session nobody is at the terminal for raises no card:
+`claude -p`, the Claude Agent SDK, and the pipelines and agents that run them, which Claude Code
+marks with `CLAUDE_CODE_SESSION_ATTENDED=0`. There, `drip hook` reads its payload, shows nothing,
+and exits 0. drip cannot tell a Codex or Gemini CLI session nobody attends, nor an interactive Claude
+Code session an orchestrator drives, so set `DRIP_HOOK=off` in the environment of any agent whose
+cards you do not want, such as the background workers an orchestrator starts, or the orchestrator's
+own session; only the session you talk to then raises cards. `DRIP_HOOK=on` shows cards even from a
+session nobody attends, and any other value is an error that exits 1.
+
+```sh
+DRIP_HOOK=off codex exec "fix the flaky test"   # no cards from this run
+DRIP_HOOK=on claude -p "summarize the diff"      # cards even from print mode
+```
+
 The card's icon is the agent's own app's, when it is installed: Claude.app for Claude Code
 (`com.anthropic.claudefordesktop`), and the Codex app or ChatGPT.app for Codex
 (`com.openai.codex`, `com.openai.chat`). Without one it is the maker's mark that drip bundles,
@@ -502,9 +516,9 @@ it never keeps it there. A card that waits for you is always clickable: a click 
 with `--activate none`. The card itself never takes focus.
 
 **Out of the way.** While the pointer is on a card you can click, a × takes its icon's place, and a
-card that brings an app forward shows an arrow where its ring was, under a pointing hand. A click on
-the ×, or a right-click, Control-click or Option-click anywhere on the card, takes it away and brings
-nothing forward; a question goes unanswered, as if it timed out. `drip dismiss` takes every card on
+card that brings an app forward shows an arrow where its ring was. A click on the ×, or a
+right-click, Control-click or Option-click anywhere on the card, takes it away and brings nothing
+forward; a question goes unanswered, as if it timed out. `drip dismiss` takes every card on
 screen, and every card still waiting its turn, away the same way; `drip dismiss --id deploy` only
 those with that id; `drip clear` is the same command. Bind it to a key in Shortcuts, Raycast or skhd
 to clear the notch from the keyboard. VoiceOver offers each card's Open and Dismiss as its actions.

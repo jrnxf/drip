@@ -138,6 +138,41 @@ public enum AgentHook {
         }
     }
 
+    /// `DRIP_HOOK`: `off` keeps `drip hook` silent, as an orchestrator sets for its background
+    /// sessions; `on` shows cards even from a session nobody attends.
+    public enum Switch: String, CaseIterable, Sendable {
+        case on, off
+    }
+
+    /// Whether `drip hook` shows anything for `agent` in `environment`: never with `DRIP_HOOK=off`,
+    /// always with `DRIP_HOOK=on`, and otherwise only for a session someone attends. Throws a
+    /// `UsageError` for any other `DRIP_HOOK`.
+    public static func speaks(for agent: Agent, environment: [String: String]) throws -> Bool {
+        switch environment["DRIP_HOOK"].flatMap({ $0.isEmpty ? nil : $0 }) {
+        case nil:
+            return !isUnattended(agent, environment: environment)
+        case let text?:
+            guard let choice = Switch(rawValue: text) else {
+                throw UsageError("DRIP_HOOK must be \(ChoiceList.or(Switch.allCases.map(\.rawValue))), not '\(text)'")
+            }
+            return choice == .on
+        }
+    }
+
+    /// Whether the agent runs without anyone at its terminal: `claude -p`, the SDKs, and the
+    /// pipelines that run them, which Claude Code marks with `CLAUDE_CODE_SESSION_ATTENDED=0`.
+    /// Without that variable, as from an older Claude Code, an `sdk-` `CLAUDE_CODE_ENTRYPOINT` says
+    /// so. The attended mark wins: an interactive session started from inside `claude -p` keeps the
+    /// `sdk-cli` entrypoint it inherits, but is marked attended. drip cannot tell a Codex or Gemini
+    /// CLI session nobody attends: `DRIP_HOOK=off` keeps theirs quiet.
+    public static func isUnattended(_ agent: Agent, environment: [String: String]) -> Bool {
+        guard agent == .claude else { return false }
+        if let attended = environment["CLAUDE_CODE_SESSION_ATTENDED"].flatMap({ $0.isEmpty ? nil : $0 }) {
+            return attended == "0"
+        }
+        return environment["CLAUDE_CODE_ENTRYPOINT"]?.hasPrefix("sdk") ?? false
+    }
+
     /// Reads a payload that shows a card. Throws a `UsageError` as `outcome` does, and for an event
     /// that shows none.
     public static func event(agent: Agent, payload: String) throws -> Event {

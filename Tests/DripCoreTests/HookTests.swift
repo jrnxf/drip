@@ -414,6 +414,53 @@ struct HookTests {
         }
     }
 
+    /// `claude -p` and the pipelines that run it raise no card: nobody is at that terminal.
+    @Test func aSessionNobodyAttendsStaysSilent() throws {
+        let interactive = ["CLAUDE_CODE_ENTRYPOINT": "cli", "CLAUDE_CODE_SESSION_ATTENDED": "1"]
+        #expect(try AgentHook.speaks(for: .claude, environment: interactive))
+        #expect(try AgentHook.speaks(for: .claude, environment: [:]))
+        // An interactive session started from inside `claude -p` inherits its entrypoint, but
+        // Claude Code marks it attended.
+        let started = ["CLAUDE_CODE_ENTRYPOINT": "sdk-cli", "CLAUDE_CODE_SESSION_ATTENDED": "1"]
+        #expect(try AgentHook.speaks(for: .claude, environment: started))
+        for headless in [
+            ["CLAUDE_CODE_ENTRYPOINT": "sdk-cli", "CLAUDE_CODE_SESSION_ATTENDED": "0"],
+            ["CLAUDE_CODE_SESSION_ATTENDED": "0"], ["CLAUDE_CODE_ENTRYPOINT": "sdk-ts"], ["CLAUDE_CODE_ENTRYPOINT": "sdk-py"],
+        ] {
+            #expect(try !AgentHook.speaks(for: .claude, environment: headless), "\(headless)")
+        }
+        // Claude's variables say nothing about another agent's session.
+        #expect(try AgentHook.speaks(for: .codex, environment: ["CLAUDE_CODE_ENTRYPOINT": "sdk-cli"]))
+    }
+
+    @Test func dripHookTurnsTheHooksOffOrOn() throws {
+        for agent in AgentHook.Agent.allCases {
+            #expect(try !AgentHook.speaks(for: agent, environment: ["DRIP_HOOK": "off"]))
+            #expect(try AgentHook.speaks(for: agent, environment: ["DRIP_HOOK": "on", "CLAUDE_CODE_ENTRYPOINT": "sdk-cli"]))
+            #expect(try AgentHook.speaks(for: agent, environment: ["DRIP_HOOK": ""]))
+        }
+        #expect(throws: UsageError.self) { try AgentHook.speaks(for: .claude, environment: ["DRIP_HOOK": "quiet"]) }
+    }
+
+    /// Codex's cards take their sound from their look, as Claude's do: the same preset, the same sound.
+    @Test func everyAgentsCardsSoundTheSame() throws {
+        let payloads: [AgentHook.Agent: (needs: String, done: String)] = [
+            .claude: (#"{"hook_event_name":"PermissionRequest","tool_name":"Bash"}"#, #"{"hook_event_name":"Stop"}"#),
+            .codex: (#"{"hook_event_name":"PermissionRequest","tool_name":"Bash"}"#, #"{"hook_event_name":"Stop"}"#),
+            .gemini: (#"{"hook_event_name":"Notification","notification_type":"ToolPermission"}"#, #"{"hook_event_name":"AfterAgent"}"#),
+        ]
+        var sounds: [AgentHook.Agent: [Sound]] = [:]
+        for (agent, payload) in payloads {
+            sounds[agent] = try [payload.needs, payload.done].map { json in
+                let event = try AgentHook.event(agent: agent, payload: json)
+                return try CardResolver().resolve(kind: event.kind, title: event.title, flags: event.filling(CardFlags())).sound
+            }
+        }
+        #expect(sounds[.codex] == sounds[.claude])
+        #expect(sounds[.gemini] == sounds[.claude])
+        #expect(sounds[.claude]?.allSatisfy { $0 != .none } == true)
+    }
+
     @Test func fingerprintsAreStableAndShort() {
         #expect(AgentHook.fingerprint("") == "cbf29ce484222325")
         #expect(AgentHook.fingerprint("claude:abc").count == 16)

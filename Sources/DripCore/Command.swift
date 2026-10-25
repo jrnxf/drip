@@ -399,7 +399,9 @@ public struct HookCommand: ParsableCommand {
             stopped on an error, and each session's card replaces its last. A card that says the \
             agent needs you goes once you answer in the terminal: the hooks that report a tool ran or \
             a prompt was sent take it away and show nothing. drip setup adds these hooks for you. \
-            Without a GUI session, as over ssh, drip shows nothing and exits 0. Any failure exits 1, \
+            Without a GUI session, as over ssh, drip shows nothing and exits 0, and so it does for a \
+            session nobody attends, such as claude -p, and wherever DRIP_HOOK=off; DRIP_HOOK=on \
+            shows cards even then. Any failure exits 1, \
             since an agent reads some other codes as "block".
             """
     )

@@ -966,10 +966,7 @@ final class IslandView: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseMoved(with event: NSEvent) { onMove?(convert(event.locationInWindow, from: nil)) }
-    override func mouseExited(with event: NSEvent) {
-        onMove?(CGPoint(x: -1, y: -1))
-        NSCursor.arrow.set()
-    }
+    override func mouseExited(with event: NSEvent) { onMove?(CGPoint(x: -1, y: -1)) }
     override func mouseDown(with event: NSEvent) { down = convert(event.locationInWindow, from: nil) }
     override func rightMouseDown(with event: NSEvent) { down = convert(event.locationInWindow, from: nil) }
     override func mouseUp(with event: NSEvent) {
@@ -983,14 +980,6 @@ final class IslandView: NSView {
         let up = convert(event.locationInWindow, from: nil)
         onClick?(IslandClick(down: down ?? up, up: up, secondary: secondary))
         down = nil
-    }
-}
-
-/// The pointing hand over a card a click does something on, so the click reads as one. A panel
-/// that never takes focus gets no cursor rectangles, so the cursor is set as the pointer moves.
-enum CardCursor {
-    static func set(pointing: Bool) {
-        (pointing ? NSCursor.pointingHand : NSCursor.arrow).set()
     }
 }
 
@@ -1326,7 +1315,6 @@ final class IslandPresenter: CardPresenting {
         layers?.setButtonHovered(inside ? button(at: point) : nil)
         let under: IslandLayers.Pointer? = inside ? (onClose(point) ? .close : .card) : nil
         layers?.showPointer(under)
-        if inside != hovering { CardCursor.set(pointing: inside) }
         if inside {
             if !hovering || holdLimit == nil {
                 // Hold the card and freeze the ring, again when the pointer moves after a rest.
@@ -1382,7 +1370,6 @@ final class IslandPresenter: CardPresenting {
     /// Takes the card away without bringing anything forward: a click on its ×, a secondary click,
     /// VoiceOver's Dismiss, or `drip dismiss`. A question goes unanswered.
     func dismiss() {
-        CardCursor.set(pointing: false)
         leave(clicked: false)
     }
 

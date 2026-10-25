@@ -96,8 +96,6 @@ final class StackPresenter: CardPresenting {
     private let queuedAt = CardQueue.queuedAt
     /// Where the pointer was at the last tick, to tell a resting pointer from one that moves.
     private var lastPointer: CGPoint?
-    /// Whether the cursor is the pointing hand, over a card.
-    private var pointing = false
     /// Whether the cards were put away for the pause that holds now, to show once it ends.
     private var putAway = false
 
@@ -686,11 +684,6 @@ final class StackPresenter: CardPresenting {
             layers.setButtonHovered(here.flatMap { button(of: entry, at: $0) })
             let shown: IslandLayers.Pointer? = here.map { isOnClose(of: entry, at: $0) ? .close : .card }
             layers.showPointer(shown)
-        }
-        // Only as the pointer comes onto a card or leaves it: other apps keep their own cursor.
-        if (under != nil) != pointing {
-            pointing = under != nil
-            CardCursor.set(pointing: pointing)
         }
         // On the overflow drop, the drop springs wide to list the titles waiting, newest first. A
         // click on it does nothing.
