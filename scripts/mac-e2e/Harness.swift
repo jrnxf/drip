@@ -1019,8 +1019,15 @@ if options.only?.contains(6) ?? true {
     // Ghostty first, in an instance of its own that goes afterwards; then Terminal, whose window
     // stays once its shell has exited, so only when the helper can close it.
     if let ghostty = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.mitchellh.ghostty") {
+        let running = { Set(NSRunningApplication.runningApplications(withBundleIdentifier: "com.mitchellh.ghostty")
+            .map(\.processIdentifier)) }
+        let before = running()
         let first = attach(["open", "-n", "-g", "-a", ghostty.path, "--args", "-e", attachScript])
-        if let first, first.processIdentifier != mine { launched.append(first.processIdentifier) }
+        // The instance it opened goes at the end, whether or not it attached.
+        launched += running().subtracting(before).filter { $0 != mine }
+        if first == nil {
+            say("      tmux: \(tmux(["list-sessions"])); clients: \(tmux(["list-clients"]))")
+        }
         check(6, "a card from tmux window 2 while window 1 shows") { expect in
             expect.expect(first?.bundleIdentifier == "com.mitchellh.ghostty", "Ghostty attaches to the tmux session")
             _ = tmux(["select-window", "-t", "e2e:0"])
