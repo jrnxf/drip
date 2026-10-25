@@ -12,9 +12,9 @@
 #
 # Exits 0 when every agent passed, 1 when any failed, 2 when the only trouble is an agent that needs a
 # login, which never prompts or opens a browser outside --setup, and 3 when there is no GUI session
-# (over ssh, or from launchd outside the logged-in user's session), when it runs no agent at all. Each run keeps last.json, a
-# summary and the payloads in ~/.cache/drip-agent-contract/runs/<time>/, and the latest last.json in
-# ~/.cache/drip-agent-contract too.
+# (over ssh, or from launchd outside the logged-in user's session), when it runs no agent at all.
+# Each run keeps last.json, a summary and the payloads in ~/.cache/drip-agent-contract/runs/<time>/,
+# and the latest last.json in ~/.cache/drip-agent-contract too.
 #
 # Everything lives in ~/.cache/drip-agent-contract: the agents, installed afresh with npm every run,
 # drip's state and the agents' homes, and Gemini CLI's own Google sign-in. Your own agents, their

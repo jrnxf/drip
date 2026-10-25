@@ -809,8 +809,7 @@ else, it runs no agent, writes `last.json` with the status `no-gui-session` and 
 exits 3.
 
 It exits 0 when every agent passed, 1 when any failed, 2 when the only trouble is a login, and 3 when
-there is no GUI session. Each
-run keeps `last.json` (what a scheduler reads: the status, and each agent's version, checks and
+there is no GUI session. Each run keeps `last.json` (what a scheduler reads: the status, and each agent's version, checks and
 drift), `summary.txt`, the payloads each agent sent, and the screen of any check that failed, in
 `~/.cache/drip-agent-contract/runs/<time>/`; the latest `last.json` is in
 `~/.cache/drip-agent-contract` too. The drift report holds every payload up against
