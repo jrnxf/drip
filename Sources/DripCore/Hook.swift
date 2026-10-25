@@ -196,6 +196,15 @@ public enum AgentHook {
         return event
     }
 
+    /// What a payload asks drip to do in `environment`: as `outcome(agent:payload:)`, but under
+    /// `DRIP_HOOK=attention` a done card it skips still takes away the card its session waits on, as
+    /// the done card would have replaced it. Throws a `UsageError` for any other `DRIP_HOOK`.
+    public static func outcome(agent: Agent, payload: String, environment: [String: String]) throws -> Outcome {
+        let outcome = try outcome(agent: agent, payload: payload)
+        guard case let .card(event) = outcome, try !shows(event, environment: environment) else { return outcome }
+        return event.id.map { .clear(Clear(id: $0)) } ?? .nothing
+    }
+
     /// Reads a payload. Throws a `UsageError` when it is not a JSON object or not an event this agent
     /// sends: a Claude `Notification`, `PermissionRequest`, `Stop` or `StopFailure`; a Codex
     /// `PermissionRequest` or `Stop`, or notify's `agent-turn-complete`; a Gemini `Notification` or

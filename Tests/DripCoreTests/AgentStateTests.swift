@@ -86,5 +86,46 @@ struct AgentStateTests {
         #expect(requests.load(now: now.addingTimeInterval(Defaults.waitLimit)).isEmpty)
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory + "/dismiss").filter { $0.hasSuffix(".json") }.isEmpty)
     }
+
+    /// You deny a permission in the terminal, so no tool runs to take its card away, and the turn
+    /// ends. Under `DRIP_HOOK=attention` no done card shows, but the waiting card still goes.
+    @Test func aSkippedDoneCardStillEndsTheWait() throws {
+        let attention = ["DRIP_HOOK": "attention"]
+        let turns: [(AgentHook.Agent, ask: String, done: String)] = [
+            (.claude,
+             #"{"hook_event_name":"PermissionRequest","session_id":"s","tool_name":"Bash","tool_use_id":"u"}"#,
+             #"{"hook_event_name":"Stop","session_id":"s"}"#),
+            (.codex,
+             #"{"hook_event_name":"PermissionRequest","session_id":"s","turn_id":"t","tool_name":"Bash"}"#,
+             #"{"hook_event_name":"Stop","session_id":"s"}"#),
+            (.gemini,
+             #"{"hook_event_name":"Notification","session_id":"s","message":"m","notification_type":"ToolPermission"}"#,
+             #"{"hook_event_name":"AfterAgent","session_id":"s","prompt_response":"ok"}"#),
+        ]
+        for (agent, ask, done) in turns {
+            guard case let .card(asked) = try AgentHook.outcome(agent: agent, payload: ask, environment: attention),
+                  let id = asked.id, asked.stays
+            else {
+                Issue.record("\(agent) ask: \(ask)")
+                continue
+            }
+            try state.noteWaiting(id: id, tool: asked.waitsOn, now: now)
+            guard case let .clear(clear) = try AgentHook.outcome(agent: agent, payload: done, environment: attention) else {
+                Issue.record("\(agent) done: \(done)")
+                continue
+            }
+            #expect(clear.id == id)
+            #expect(state.takeWaiting(clear, now: now), "\(agent)")
+            #expect(state.waiting(id: id, now: now) == nil, "\(agent)")
+            // Under `on` the done card itself replaces the waiting card.
+            guard case .card = try AgentHook.outcome(agent: agent, payload: done, environment: ["DRIP_HOOK": "on"]) else {
+                Issue.record("\(agent) on: \(done)")
+                continue
+            }
+        }
+        // A done card with no session has no waiting card to take.
+        #expect(try AgentHook.outcome(agent: .codex, payload: #"{"type":"agent-turn-complete","last-assistant-message":"ok"}"#,
+                                      environment: attention) == .nothing)
+    }
 }
 #endif

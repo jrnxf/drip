@@ -131,14 +131,18 @@ struct DripCLI {
                 throw UsageError("the hook payload is larger than 4 MB")
             }
             #if os(WASI)
-            guard case let .card(event) = try AgentHook.outcome(agent: command.agent, payload: payload) else {
+            guard case let .card(event) = try AgentHook.outcome(
+                agent: command.agent, payload: payload, environment: ProcessInfo.processInfo.environment)
+            else {
                 return ExitStatus.shown
             }
             #else
             let environment = ProcessInfo.processInfo.environment
             let state = AgentState(environment: environment)
             let event: AgentHook.Event
-            switch try AgentHook.outcome(agent: command.agent, payload: payload) {
+            // DRIP_HOOK=attention: the done card at the end of a turn needs nobody, but still takes
+            // away the card the session waits on.
+            switch try AgentHook.outcome(agent: command.agent, payload: payload, environment: environment) {
             case .nothing:
                 return ExitStatus.shown
             case let .clear(clear):
@@ -155,10 +159,6 @@ struct DripCLI {
                 return ExitStatus.shown
             }
             #endif
-            // DRIP_HOOK=attention: the done card at the end of a turn needs nobody.
-            guard try AgentHook.shows(event, environment: ProcessInfo.processInfo.environment) else {
-                return ExitStatus.shown
-            }
             guard display.hasGUISession else { return ExitStatus.shown }
             flags = event.filling(flags)
             flags.icon = flags.icon ?? command.agent.icon(installed: display.isInstalled)

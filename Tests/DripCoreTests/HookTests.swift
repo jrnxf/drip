@@ -531,7 +531,7 @@ struct HookTests {
                 #expect(try AgentHook.shows(event, environment: attention), "\(agent) \(payload)")
             }
             for payload in clear {
-                guard case .clear = try AgentHook.outcome(agent: agent, payload: payload) else {
+                guard case .clear = try AgentHook.outcome(agent: agent, payload: payload, environment: attention) else {
                     Issue.record("\(agent) clear: \(payload)")
                     continue
                 }
