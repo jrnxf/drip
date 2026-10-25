@@ -738,6 +738,7 @@ multi-line strings, exits 4 with the line, and so does a file larger than 1 MB.
 swift build
 swift test            # on Linux, or on a Mac with Xcode
 scripts/mac-check.sh  # on any Mac
+scripts/mac-e2e.sh    # on any Mac, without a person
 scripts/record-demo.sh  # films docs/demo.mp4 and docs/demo.gif on a Mac; needs ffmpeg
 ```
 
@@ -755,6 +756,23 @@ under one another, a Claude hook card that a newer card from the same session re
 Claude permission card that its tool's run takes away, a card that stays for `drip dismiss` to take
 away, then lists the last cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
 never overwrites a reference: to regenerate one on purpose, delete its PNG and run the script again.
+
+`scripts/mac-e2e.sh` is the deep suite: run it on a Mac before merging a change to cards or to the
+agents' hooks, as CI has no screen at the notch and no agent to run hooks. It checks what a person
+would look for at the notch, and needs none: it shows cards
+from a release build, runs the hooks `drip setup claude` and `drip setup codex` write with the
+payloads Claude Code and Codex send, moves the pointer onto cards, clicks them, pauses and resumes,
+and attaches tmux from Ghostty and Terminal. It prints `ok` or `FAIL` for each thing it expects, from
+what drip records in its history, which windows it has on screen, which app is in front, what tmux
+says, and pixels at the notch, and exits 1 on a failure. `--only 1,4` runs some checks. It runs drip
+in a world of its own, with its own state, config, card queue (`DRIP_QUEUE_DIR`), Claude Code
+settings and Codex home, all deleted afterwards, so it touches none in use, and it waits for any
+other drip's card to go before each check. Keep your hands off the mouse while it runs. Clicks and
+VoiceOver's actions go through a small helper app it builds in `~/.cache/drip-e2e`, which needs
+Accessibility once: allow `drip e2e helper` when asked, or under System Settings > Privacy & Security
+> Accessibility. Without it, those checks skip. It also keeps a screenshot of each card it shows,
+with what it should look like, and a contact sheet of them all, for a person or a model to judge:
+`judge.md` in the screenshots' folder says how, and `--judge-check` reads the verdicts.
 
 `scripts/record-demo.sh` makes the animation at the top of this file by filming real cards: it plays
 a fixed sequence at the notch of the screen under the pointer, records that strip with `screencapture`

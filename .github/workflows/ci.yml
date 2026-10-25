@@ -40,6 +40,23 @@ jobs:
       - run: swift build -c release
       - run: .build/release/drip --version
 
+  snapshots:
+    # Every test on a Mac, the snapshot comparisons too: each card drawn with `drip __render` against
+    # its reference in Tests/Snapshots. A card that differs is kept as an artifact to look at.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sw_vers
+      # Swift Testing is built for macOS 14, so the tests are too, as in scripts/mac-check.sh.
+      - run: swift test -Xswiftc -target -Xswiftc "$(uname -m)-apple-macosx14.0"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-failures
+          path: .build/snapshot-failures
+          if-no-files-found: ignore
+
   macos-oldest:
     # The release build with an older Swift than macos-latest has, as the README promises macOS 13
     # and Swift 5.9 or newer: Xcode 15.4 brings Swift 5.10.
