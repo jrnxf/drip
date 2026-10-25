@@ -9,18 +9,22 @@ import Testing
 struct SetupTests {
     @Test func theSnippetIsEachAgentsHooks() throws {
         let claude = try JSONValue(parsing: AgentSetup.snippet(for: .claude))
-        #expect(claude["hooks"]?.members?.map(\.key) == ["Notification", "Stop", "StopFailure"])
-        // Not idle_prompt, whose card would replace the done card a minute after every turn.
-        #expect(claude["hooks"]?["Notification"]?.elements?.first?["matcher"] == .string("permission_prompt|elicitation_dialog"))
+        #expect(claude["hooks"]?.members?.map(\.key) == [
+            "PermissionRequest", "Notification", "Stop", "StopFailure",
+            "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "ElicitationResult",
+        ])
+        // PermissionRequest shows permission prompts, with what Claude wants to do. Not idle_prompt,
+        // whose card would replace the done card a minute after every turn.
+        #expect(claude["hooks"]?["Notification"]?.elements?.first?["matcher"] == .string("elicitation_dialog"))
         #expect(claude["hooks"]?["Stop"]?.elements?.first?["matcher"] == nil)
         #expect(claude["hooks"]?["Stop"]?.elements?.first?["hooks"] == .array([.object([
             JSONMember("type", .string("command")), JSONMember("command", .string("drip hook claude")),
         ])]))
 
         let codex = try JSONValue(parsing: AgentSetup.snippet(for: .codex))
-        #expect(codex["hooks"]?.members?.map(\.key) == ["PermissionRequest", "Stop"])
+        #expect(codex["hooks"]?.members?.map(\.key) == ["PermissionRequest", "Stop", "PostToolUse", "UserPromptSubmit"])
         let gemini = try JSONValue(parsing: AgentSetup.snippet(for: .gemini))
-        #expect(gemini["hooks"]?.members?.map(\.key) == ["Notification", "AfterAgent"])
+        #expect(gemini["hooks"]?.members?.map(\.key) == ["Notification", "AfterAgent", "AfterTool", "BeforeAgent"])
         // Gemini CLI enables and disables a hook by its name.
         #expect(gemini["hooks"]?["AfterAgent"]?.elements?.first?["hooks"]?.elements?.first?["name"] == .string("drip"))
         #expect(AgentSetup.snippet(for: .gemini).hasSuffix("}\n"))
@@ -48,10 +52,16 @@ struct SetupTests {
             }
             """
         let merge = try #require(try AgentSetup.merge(text, agent: .claude))
-        #expect(merge.added == ["Notification", "Stop", "StopFailure"])
+        #expect(merge.added == [
+            "PermissionRequest", "Notification", "Stop", "StopFailure", "PostToolUse", "PostToolUseFailure",
+            "UserPromptSubmit", "ElicitationResult",
+        ])
         let value = try JSONValue(parsing: merge.text)
         #expect(value.members?.map(\.key) == ["model", "hooks", "permissions", "cleanupPeriodDays"])
-        #expect(value["hooks"]?.members?.map(\.key) == ["PreToolUse", "Stop", "Notification", "StopFailure"])
+        #expect(value["hooks"]?.members?.map(\.key) == [
+            "PreToolUse", "Stop", "PermissionRequest", "Notification", "StopFailure", "PostToolUse",
+            "PostToolUseFailure", "UserPromptSubmit", "ElicitationResult",
+        ])
         // The other Stop hook stays, and drip's goes after it.
         #expect(value["hooks"]?["Stop"]?.elements?.count == 2)
         #expect(value["hooks"]?["Stop"]?.elements?.first?["hooks"]?.elements?.first?["command"] == .string("say done"))
@@ -78,7 +88,11 @@ struct SetupTests {
             }}
             """
         let merge = try #require(try AgentSetup.merge(text, agent: .claude))
-        #expect(merge.added == ["StopFailure"])
+        #expect(merge.added == [
+            "PermissionRequest", "StopFailure", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit",
+            "ElicitationResult",
+        ])
+        #expect(merge.updated.isEmpty)
         // The matcher someone chose is theirs.
         #expect(try JSONValue(parsing: merge.text)["hooks"]?["Notification"]?.elements?.first?["matcher"]
             == .string("permission_prompt"))
@@ -86,6 +100,25 @@ struct SetupTests {
         #expect(!AgentSetup.runsDrip(command: "drip hook claude", agent: .codex))
         #expect(!AgentSetup.runsDrip(command: "dripper hook claude", agent: .claude))
         #expect(!AgentSetup.runsDrip(command: "drip ok hook claude", agent: .claude))
+    }
+
+    /// drip's own Notification hook from before PermissionRequest stops showing permission prompts,
+    /// which the PermissionRequest hook shows with what Claude wants to do.
+    @Test func dripsOwnOldMatcherIsBroughtUpToDate() throws {
+        let text = """
+            {"hooks": {
+              "Notification": [{"matcher": "permission_prompt|elicitation_dialog", "hooks": [{"type": "command", "command": "drip hook claude"}]}],
+              "Stop": [{"hooks": [{"type": "command", "command": "drip hook claude"}]}],
+              "StopFailure": [{"hooks": [{"type": "command", "command": "drip hook claude"}]}]
+            }}
+            """
+        let merge = try #require(try AgentSetup.merge(text, agent: .claude))
+        #expect(merge.updated == ["Notification"])
+        #expect(merge.added == ["PermissionRequest", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "ElicitationResult"])
+        let value = try JSONValue(parsing: merge.text)
+        #expect(value["hooks"]?["Notification"]?.elements?.count == 1)
+        #expect(value["hooks"]?["Notification"]?.elements?.first?["matcher"] == .string("elicitation_dialog"))
+        #expect(try AgentSetup.merge(merge.text, agent: .claude) == nil)
     }
 
     @Test func aFileDripCannotReadIsLeftAlone() {
@@ -205,9 +238,10 @@ struct SetupTests {
 
     @Test func mergeSkipsEventsThatRunDripElsewhere() throws {
         let merge = try #require(try AgentSetup.merge(nil, agent: .codex, skipping: ["Stop"]))
-        #expect(merge.added == ["PermissionRequest"])
-        #expect(try JSONValue(parsing: merge.text)["hooks"]?.members?.map(\.key) == ["PermissionRequest"])
-        #expect(try AgentSetup.merge(nil, agent: .codex, skipping: ["PermissionRequest", "Stop"]) == nil)
+        #expect(merge.added == ["PermissionRequest", "PostToolUse", "UserPromptSubmit"])
+        #expect(try JSONValue(parsing: merge.text)["hooks"]?.members?.map(\.key) == ["PermissionRequest", "PostToolUse", "UserPromptSubmit"])
+        #expect(try AgentSetup.merge(
+            nil, agent: .codex, skipping: ["PermissionRequest", "Stop", "PostToolUse", "UserPromptSubmit"]) == nil)
     }
 }
 
@@ -236,13 +270,17 @@ struct SetupInstallerTests {
         try text.write(toFile: full, atomically: false, encoding: .utf8)
     }
 
+    /// What setup says about Claude Code's own notifications.
+    static let claudeNotifies = "Claude Code can also notify you itself, through your terminal: if each card comes "
+        + "with a second notification, turn Claude Code's off under Notifications in its /config."
+
     func backups(in directory: String) throws -> [String] {
         try FileManager.default.contentsOfDirectory(atPath: "\(home)/\(directory)").filter { $0.contains(".drip-backup-") }.sorted()
     }
 
     @Test func createsTheFileAndItsDirectory() throws {
         #expect(installer.install(.gemini) == .done(lines: [
-            "Added drip's Notification and AfterAgent hooks to ~/.gemini/settings.json.",
+            "Added drip's Notification, AfterAgent, AfterTool and BeforeAgent hooks to ~/.gemini/settings.json.",
         ], warnings: []))
         #expect(file(".gemini/settings.json") == AgentSetup.snippet(for: .gemini))
         #expect(try backups(in: ".gemini").isEmpty)
@@ -253,8 +291,10 @@ struct SetupInstallerTests {
         try write(original, to: ".claude/settings.json")
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: "\(home)/.claude/settings.json")
         #expect(installer.install(.claude) == .done(lines: [
-            "Added drip's Notification, Stop and StopFailure hooks to ~/.claude/settings.json.",
+            "Added drip's PermissionRequest, Notification, Stop, StopFailure, PostToolUse, PostToolUseFailure, "
+                + "UserPromptSubmit and ElicitationResult hooks to ~/.claude/settings.json.",
             "Backed up the old settings.json to ~/.claude/settings.json.drip-backup-20261021-171500.",
+            Self.claudeNotifies,
         ], warnings: []))
         #expect(file(".claude/settings.json.drip-backup-20261021-171500") == original)
         let attributes = try FileManager.default.attributesOfItem(atPath: "\(home)/.claude/settings.json")
@@ -265,7 +305,8 @@ struct SetupInstallerTests {
             == ["settings.json", "settings.json.drip-backup-20261021-171500"])
 
         // Again: nothing to do, no write and no second backup.
-        #expect(installer.install(.claude) == .done(lines: ["drip's hooks are already in ~/.claude/settings.json."], warnings: []))
+        #expect(installer.install(.claude) == .done(
+            lines: ["drip's hooks are already in ~/.claude/settings.json.", Self.claudeNotifies], warnings: []))
         #expect(try backups(in: ".claude").count == 1)
     }
 
@@ -293,7 +334,8 @@ struct SetupInstallerTests {
 
         // One that already holds drip's hooks needs nothing, so it is fine.
         try write(AgentSetup.snippet(for: .claude), to: "dotfiles/settings.json")
-        #expect(installer.install(.claude) == .done(lines: ["drip's hooks are already in ~/.claude/settings.json."], warnings: []))
+        #expect(installer.install(.claude) == .done(
+            lines: ["drip's hooks are already in ~/.claude/settings.json.", Self.claudeNotifies], warnings: []))
     }
 
     @Test func aReadOnlyFileIsLeftAlone() throws {
@@ -310,7 +352,7 @@ struct SetupInstallerTests {
     @Test func codexMovesFromNotifyToHooks() throws {
         try write("model = \"gpt-5.5\"\nnotify = [\"drip\", \"hook\", \"codex\"]\n", to: ".codex/config.toml")
         #expect(installer.install(.codex) == .done(lines: [
-            "Added drip's PermissionRequest and Stop hooks to ~/.codex/hooks.json.",
+            "Added drip's PermissionRequest, Stop, PostToolUse and UserPromptSubmit hooks to ~/.codex/hooks.json.",
             "Removed notify from ~/.codex/config.toml: the Stop hook shows the done card instead.",
             "Backed up the old config.toml to ~/.codex/config.toml.drip-backup-20261021-171500.",
             "Codex runs a new hook only once you trust it: run /hooks in Codex.",
@@ -343,7 +385,7 @@ struct SetupInstallerTests {
     }
 
     @Test func codexHooksInConfigTomlAreEnough() throws {
-        let config = ["PermissionRequest", "Stop"].map {
+        let config = ["PermissionRequest", "Stop", "PostToolUse", "UserPromptSubmit"].map {
             "[[hooks.\($0)]]\n[[hooks.\($0).hooks]]\ntype = \"command\"\ncommand = \"drip hook codex\"\n"
         }.joined()
         try write(config, to: ".codex/config.toml")
@@ -355,13 +397,13 @@ struct SetupInstallerTests {
         let config = "notify = [\"drip\", \"hook\", \"codex\"]\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ncommand = \"drip hook codex\"\n"
         try write(config, to: ".codex/config.toml")
         #expect(installer.install(.codex) == .done(lines: [
-            "Added drip's PermissionRequest hook to ~/.codex/hooks.json.",
+            "Added drip's PermissionRequest, PostToolUse and UserPromptSubmit hooks to ~/.codex/hooks.json.",
             "Removed notify from ~/.codex/config.toml: the Stop hook shows the done card instead.",
             "Backed up the old config.toml to ~/.codex/config.toml.drip-backup-20261021-171500.",
             "Codex runs a new hook only once you trust it: run /hooks in Codex.",
         ], warnings: []))
         let hooks = try JSONValue(parsing: file(".codex/hooks.json") ?? "")
-        #expect(hooks["hooks"]?.members?.map(\.key) == ["PermissionRequest"])
+        #expect(hooks["hooks"]?.members?.map(\.key) == ["PermissionRequest", "PostToolUse", "UserPromptSubmit"])
 
         // Again: each event runs drip once, from one of the two files.
         #expect(installer.install(.codex) == .done(lines: [

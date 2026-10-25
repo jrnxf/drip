@@ -26,6 +26,8 @@ public enum ExitStatus {
     public static let setupFailed: Int32 = 1
     /// `drip pause` or `drip resume` could not write the pause to the state directory.
     public static let pauseFailed: Int32 = 1
+    /// `drip dismiss` could not write its request to the state directory.
+    public static let dismissFailed: Int32 = 1
 
     /// What a drip that waited for its cards exits with: 5 when a card with a button went without a
     /// click on one, else 1 when a question was answered no, else 0.
@@ -270,13 +272,14 @@ public struct DripCommand: ParsableCommand {
             drip hook claude|codex|gemini [options] [payload]
             drip setup claude|codex|gemini [--print]
             drip history [--missed] [--json | --replay]
+            drip dismiss [--id ID]
             drip pause [DURATION]
             drip resume
             """,
         version: dripVersion,
         subcommands: [
             ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, HistoryCommand.self,
-            PauseCommand.self, ResumeCommand.self, RenderCommand.self, BackgroundCommand.self,
+            DismissCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self, BackgroundCommand.self,
         ],
         defaultSubcommand: ShowCommand.self
     )
@@ -294,6 +297,7 @@ public struct DripCommand: ParsableCommand {
           drip fail "deploy failed" --stay
           drip info "my-app needs you" --stay --icon app:com.openai.chat
           drip setup claude
+          drip dismiss
           drip pause 30m
         """
 
@@ -304,7 +308,7 @@ public struct DripCommand: ParsableCommand {
           1  A question was answered no, drip hook could not make a card, or drip setup left the
              settings alone.
           2  Usage error.
-          3  No GUI session, such as over ssh.
+          3  No GUI session, such as over ssh (drip hook exits 0 instead).
           4  The config file is invalid.
           5  drip asked with --yes and no button was clicked.
           drip run exits with its command's exit code instead.
@@ -392,8 +396,11 @@ public struct HookCommand: ParsableCommand {
         discussion: """
             The payload is the hook's JSON, on stdin as hooks pass it, or an argument as Codex's older \
             notify does. The card names the project and whether the agent needs you, is done or \
-            stopped on an error, and each session's card replaces its last. drip setup adds these \
-            hooks for you. Any failure exits 1, since an agent reads some other codes as "block".
+            stopped on an error, and each session's card replaces its last. A card that says the \
+            agent needs you goes once you answer in the terminal: the hooks that report a tool ran or \
+            a prompt was sent take it away and show nothing. drip setup adds these hooks for you. \
+            Without a GUI session, as over ssh, drip shows nothing and exits 0. Any failure exits 1, \
+            since an agent reads some other codes as "block".
             """
     )
 
@@ -483,6 +490,33 @@ public struct HistoryCommand: ParsableCommand {
 
     public func validate() throws {
         if json, replay { throw ValidationError("--json and --replay cannot be used together") }
+    }
+}
+
+/// `drip dismiss [--id ID]`: takes cards away without bringing anything forward.
+public struct DismissCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "dismiss",
+        abstract: "Take the cards on screen away, without bringing anything forward.",
+        usage: "drip dismiss [--id ID]",
+        discussion: """
+            Takes away every card on screen, and every card still waiting its turn, as a right-click on \
+            each would: nothing comes forward, and a question goes unanswered. With --id, only the \
+            cards with that id. A card that comes after is shown as usual. Bind it to a key in \
+            Shortcuts, Raycast or skhd to clear the notch from the keyboard.
+            """,
+        aliases: ["clear"]
+    )
+
+    @Option(name: .customLong("id"), help: ArgumentHelp("Only the cards with this --id.", valueName: "id"))
+    public var id: String?
+
+    public init() {}
+
+    public func validate() throws {
+        if let id, id.isEmpty || id.count > Defaults.idLimit {
+            throw ValidationError("--id takes 1 to \(Defaults.idLimit) characters")
+        }
     }
 }
 
@@ -604,6 +638,7 @@ public enum Invocation {
     case hook(HookCommand)
     case setup(SetupCommand)
     case history(HistoryCommand)
+    case dismiss(DismissCommand)
     case pause(PauseCommand)
     /// `drip resume`: ends a pause now.
     case resume
@@ -637,6 +672,7 @@ public enum CommandLineParser {
             case let command as HookCommand: return .invocation(.hook(command))
             case let command as SetupCommand: return .invocation(.setup(command))
             case let command as HistoryCommand: return .invocation(.history(command))
+            case let command as DismissCommand: return .invocation(.dismiss(command))
             case let command as PauseCommand: return .invocation(.pause(command))
             case is ResumeCommand: return .invocation(.resume)
             case let command as RenderCommand: return .invocation(.render(command))

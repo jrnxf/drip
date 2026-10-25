@@ -241,7 +241,10 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             guard let payload = command.payload ?? input["stdin"] as? String else {
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
             }
-            let event = try AgentHook.event(agent: command.agent, payload: payload)
+            // A hook that takes a waiting card away shows nothing, as on a Mac.
+            guard case let .card(event) = try AgentHook.outcome(agent: command.agent, payload: payload) else {
+                return send(["deliveries": [Any](), "warnings": warnings])
+            }
             flags = event.filling(flags)
             // No app is installed in a web page.
             flags.icon = flags.icon ?? command.agent.icon { _ in false }
@@ -258,6 +261,9 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             "message": "drip: drip setup adds hooks to your agent's settings on your Mac, not in this page. "
                 + "drip setup \(command.agent.rawValue) --print shows them here.",
         ])
+    case let .invocation(.dismiss(command)):
+        // The page takes its own cards away, those with the id when one is given.
+        return send(["dismiss": command.id.map { ["id": $0] } ?? [String: Any]()])
     case .invocation(.history):
         return send(["exit": 1, "message": "drip: the history lives on your Mac, not in this page"])
     case .invocation(.pause), .invocation(.resume):
@@ -492,6 +498,9 @@ final class StackSession {
     var adoptable: [Int32] = []
     /// The island each card of the stack shows, by `CardStack.Entry.id`.
     var islandOf: [Int: Int32] = [:]
+    /// The islands of the cards that gave way and wait to come back, in `CardStack.tucked`'s order:
+    /// the page keeps them.
+    var tucked: [Int32] = []
     var clock = 0.0
     /// Where the pointer last was on the stack, nil while it is off it.
     var pointer: IslandPoint?
@@ -502,6 +511,8 @@ final class StackSession {
         asks = stack.waiting.contains(where: \.waitsForAnswer)
         self.adopts = adopts && !asks
         stack.measureCount = { measure(2, 1, $0) }
+        // As the app's background drip: a card that waits for you and gives way comes back.
+        stack.tucks = self.adopts
     }
 
     /// Later commands' cards still offered, oldest first.
@@ -615,7 +626,11 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
             enter(handle, own: false)
             break admit
         }
-        if stack.overflow == nil, stack.nextOwn() != nil { enter(session.own.removeFirst(), own: true) }
+        if stack.overflow == nil, stack.nextOwn() != nil {
+            enter(session.own.removeFirst(), own: true)
+        } else if stack.overflow == nil, session.adoptable.isEmpty, let tucked = stack.nextTucked() {
+            enter(session.tucked.removeFirst(), own: tucked.own)
+        }
     }
     if stack.canRelease(at: time) {
         var next: (handle: Int32, own: Bool)?
@@ -624,6 +639,8 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
         } else if let handle = session.adoptable.first(where: { islands[$0].map { !stack.swapsInPlace($0.card) } ?? false }) {
             session.adoptable.removeAll { $0 == handle }
             next = (handle, false)
+        } else if let tucked = stack.nextTucked() {
+            next = (session.tucked.removeFirst(), tucked.own)
         }
         if let next, let island = islands[next.handle],
            let release = stack.release(island.card, metrics: island.animator.metrics, own: next.own, at: time)
@@ -650,8 +667,14 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
             ["handle": $0, "cues": cues(left.cues), "time": left.time, "clicked": left.clicked]
         }
     }
-    let gone = changes.gone.compactMap { session.islandOf.removeValue(forKey: $0.id) }
-    let done = stack.entries.isEmpty && stack.waiting.isEmpty && session.adoptable.isEmpty && stack.overflow == nil
+    // A card that gave way keeps its island, to come back on.
+    session.tucked += changes.tucked.compactMap { session.islandOf[$0.id] }
+    let gone = changes.gone.compactMap { entry -> Int32? in
+        guard let handle = session.islandOf.removeValue(forKey: entry.id) else { return nil }
+        return session.tucked.contains(handle) ? nil : handle
+    }
+    let done = stack.entries.isEmpty && stack.waiting.isEmpty && stack.tucked.isEmpty && session.adoptable.isEmpty
+        && stack.overflow == nil
     if done { stacks[stackHandle] = nil }
     return send([
         "entered": entered, "swapped": swapped, "stoppedWaiting": stoppedWaiting, "left": left, "gone": gone,
@@ -691,7 +714,7 @@ func overflowState(_ overflow: CardStack.Overflow) -> [String: Any] {
 @_cdecl("drip_stack_end")
 public func dripStackEnd(_ stackHandle: Int32) -> UnsafePointer<UInt8> {
     guard let session = stacks.removeValue(forKey: stackHandle) else { return send(["handles": [Int32]()]) }
-    return send(["handles": Array(session.islandOf.values) + session.own + session.adoptable])
+    return send(["handles": Array(session.islandOf.values) + session.own + session.adoptable + session.tucked])
 }
 
 /// The pointer at x, y (x from the notch's center, y down from the screen's top) at `time`, or off
@@ -705,10 +728,12 @@ public func dripStackPointer(_ stackHandle: Int32, _ x: Double, _ y: Double, _ i
     guard let session = stacks[stackHandle] else { return send(["handle": 0, "button": "", "drop": false]) }
     let point = IslandPoint(x, y)
     let stack = session.stack
+    let moved = (inside != 0 ? point : nil) != session.pointer
     session.pointer = inside != 0 ? point : nil
     let under = inside != 0 ? stack.entry(at: point, time: time) : nil
     let onDrop = peek(stack, at: session.pointer, time: time)
-    stack.hover(under != nil || onDrop)
+    // Held while the pointer moves on it, as on a Mac, and let go once it rests.
+    stack.hover(under != nil || onDrop, moved: moved, at: time)
     return send([
         "handle": under.flatMap { session.islandOf[$0.id] } ?? 0,
         "button": named(under.flatMap { stack.button(of: $0, at: point, time: time) }), "drop": onDrop,
@@ -746,6 +771,34 @@ public func dripStackClick(_ stackHandle: Int32, _ x: Double, _ y: Double, _ tim
     if answer != nil, entry.dismissed == nil { entry.answer = answer }
     entry.dismissed = answer != nil || (entry.dismissed ?? false)
     return send(["handle": session.islandOf[entry.id] ?? 0, "button": named(answer)])
+}
+
+/// Takes the card of the island `handle` away, as `drip dismiss` does on a Mac. Replies 1 when it
+/// shows, and goes as cards go; 2 when it was still to come, and is dropped, for the page to release
+/// its island; 0 when the stack does not hold it.
+@_expose(wasm, "drip_stack_dismiss")
+@_cdecl("drip_stack_dismiss")
+public func dripStackDismiss(_ stackHandle: Int32, _ handle: Int32) -> Int32 {
+    guard let session = stacks[stackHandle] else { return 0 }
+    if let entry = session.stack.live.first(where: { session.islandOf[$0.id] == handle }) {
+        entry.dismissed = entry.dismissed ?? false
+        return 1
+    }
+    if let index = session.own.firstIndex(of: handle) {
+        session.own.remove(at: index)
+        session.stack.dropWaiting(at: index)
+        return 2
+    }
+    if let index = session.adoptable.firstIndex(of: handle) {
+        session.adoptable.remove(at: index)
+        return 2
+    }
+    if let index = session.tucked.firstIndex(of: handle) {
+        session.tucked.remove(at: index)
+        session.stack.dropTucked(at: index)
+        return 2
+    }
+    return 0
 }
 
 /// Every card of the stack at `time`, top to bottom, leaving cards included, as doubles: the card

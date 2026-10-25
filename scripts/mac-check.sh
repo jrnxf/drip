@@ -87,11 +87,26 @@ XDG_CONFIG_HOME="$config" .build/release/drip info "drip info" --detail "mac-che
 # or Claude's bundled mark without Claude.app; the second turns its waiting dot into a check.
 echo "Showing a Claude hook card, then a newer one from the same session in its place; click it to come back here"
 hook() {
-    XDG_CONFIG_HOME="$config" .build/release/drip hook claude --seconds 8
+    # Shown as any card, though this terminal is in front, which would make the done card quiet.
+    DRIP_WHEN_FOCUSED=show XDG_CONFIG_HOME="$config" .build/release/drip hook claude --seconds 8
 }
 printf '{"hook_event_name":"Notification","notification_type":"permission_prompt","session_id":"mac-check","cwd":"%s","message":"Claude needs your permission to use Bash"}' "$PWD" | hook
 sleep 3
 printf '{"hook_event_name":"Stop","session_id":"mac-check","cwd":"%s","last_assistant_message":"mac-check: this card took the place of the one before"}' "$PWD" | hook
+
+# A permission card goes once the tool it asked about has run, as when you approve in the terminal.
+sleep 9
+echo "Showing a Claude permission card, then taking it away as its tool runs"
+printf '{"hook_event_name":"PermissionRequest","session_id":"mac-check-2","cwd":"%s","tool_name":"Bash","tool_input":{"command":"swift test"},"tool_use_id":"toolu_mac_check"}' "$PWD" | hook
+sleep 4
+printf '{"hook_event_name":"PostToolUse","session_id":"mac-check-2","tool_name":"Bash","tool_use_id":"toolu_mac_check"}' | hook
+
+# drip dismiss takes cards away without bringing anything forward.
+sleep 2
+echo "Showing a card that stays, then dismissing it; hover it first to see the x and the arrow"
+XDG_CONFIG_HOME="$config" .build/release/drip info "drip dismiss" --detail "mac-check: hover me, then wait" --stay
+sleep 5
+.build/release/drip dismiss
 
 # Each newer card takes the place of the one on screen: the card springs to its size, and a new
 # state's colour settles over the old one as its icon pops in.

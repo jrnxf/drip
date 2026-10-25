@@ -60,6 +60,12 @@ public struct QueueTicket: Equatable, Sendable {
         return name(stamp: stamp + 1, pid: pid, start: start)
     }
 
+    /// When a ticket with this name was queued, in seconds since 1970; nil when it is not a ticket.
+    public static func queuedAt(_ name: String) -> Double? {
+        guard QueueTicket(name: name) != nil, let stamp = UInt64(name.prefix(20)) else { return nil }
+        return Double(stamp) / 1_000_000_000
+    }
+
     /// The file beside a ticket that lists its claimed ids.
     public static func claimName(for ticket: String) -> String {
         ticket + ".claimed"

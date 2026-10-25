@@ -84,6 +84,7 @@ public struct CardResolver {
         }
         card.id = flags.id
         card.activate = CardActivation.target(flag: flags.activate, sender: environment.sender)
+        card.pane = flags.activate == nil && card.activate != nil ? environment.pane : nil
         // A card that stays and a question of any kind wait for you. A time from the command line,
         // the environment or the preset makes them count down instead.
         if flags.stay || card.asksQuestion, flags.seconds == nil, environment.seconds == nil,

@@ -74,11 +74,14 @@ public final class CardStack {
         public var moved = false
         /// Cards that stopped waiting for you to give way, and now count down from `countdownFrom`.
         public var stoppedWaiting: [Entry] = []
+        /// Cards that waited for you and gave way to a card that needed their place: they leave, and
+        /// wait in `tucked` to come back. They are in `left` too.
+        public var tucked: [Entry] = []
         /// Whether the overflow drop formed, took a card in, ticked, moved, went back in or was gone.
         public var overflowChanged = false
 
         public var isEmpty: Bool {
-            left.isEmpty && gone.isEmpty && !moved && stoppedWaiting.isEmpty && !overflowChanged
+            left.isEmpty && gone.isEmpty && !moved && stoppedWaiting.isEmpty && tucked.isEmpty && !overflowChanged
         }
     }
 
@@ -89,8 +92,22 @@ public final class CardStack {
     public private(set) var waiting: [Card]
     var lastEntrance = -Double.infinity
     /// While the pointer is on any card nothing moves: every countdown stops, gaps stay open and new
-    /// cards wait, so a card never slides out from under a click.
+    /// cards wait, so a card never slides out from under a click. Not for longer than `holdLimit`
+    /// after the pointer last moved, so a pointer left resting on the stack never keeps it there.
     public private(set) var hovering = false
+    /// Whether the pointer is on the stack, held or not.
+    private var pointerOn = false
+    /// When the pointer last moved on the stack, or came onto it.
+    private var pointerMovedAt = -Double.infinity
+    /// Whether a card that waits for you and gives way to a card that needs its place goes back into
+    /// the overflow drop, to come back once there is room, rather than counting down and leaving. A
+    /// background drip's stack does; one that waits for its question's answer, which hands its
+    /// cards on as they are when it is answered, does not.
+    public var tucks = false
+    /// Cards that waited for you and gave way to a card that needed their place, oldest first, with
+    /// what they have left of their wait and whether each was this drip's own: they wait in the
+    /// overflow drop after every other card.
+    public internal(set) var tucked: [(card: Card, own: Bool)] = []
     /// A change to the stack waits while the pointer is on it.
     private var needsLayout = false
     var nextID = 1
@@ -107,6 +124,8 @@ public final class CardStack {
     public static let gap: Double = 10
     /// The least time between two cards dropping in; a card also waits until the stack is still.
     public static let entranceSpacing = 0.35
+    /// The longest the stack holds still after the pointer last moved on it.
+    public static let holdLimit = 5.0
 
     public init(settings: StackSettings, cards: [Card] = []) {
         self.settings = settings
@@ -183,6 +202,43 @@ public final class CardStack {
         guard hasRoom, let card = waiting.first else { return nil }
         waiting.removeFirst()
         return card
+    }
+
+    /// The oldest card that gave way and waits to come back, taken off `tucked`, when there is room
+    /// and no card of this drip's own waits first.
+    public func nextTucked() -> (card: Card, own: Bool)? {
+        guard hasRoom, waiting.isEmpty, !tucked.isEmpty else { return nil }
+        return tucked.removeFirst()
+    }
+
+    /// Forgets the cards that gave way and wait to come back for which `drops` holds: a newer card
+    /// with the same id took their place, or they were dismissed. Returns whether any went.
+    @discardableResult
+    public func dropTucked(where drops: (Card) -> Bool) -> Bool {
+        let count = tucked.count
+        tucked.removeAll { drops($0.card) }
+        return tucked.count != count
+    }
+
+    /// Forgets this drip's own card still to drop in at `index` of `waiting`.
+    public func dropWaiting(at index: Int) {
+        guard waiting.indices.contains(index) else { return }
+        waiting.remove(at: index)
+    }
+
+    /// Forgets the card that gave way at `index` of `tucked`.
+    public func dropTucked(at index: Int) {
+        guard tucked.indices.contains(index) else { return }
+        tucked.remove(at: index)
+    }
+
+    /// Forgets this drip's own cards still to drop in for which `drops` holds, as when they were
+    /// dismissed before they showed. Returns whether any went.
+    @discardableResult
+    public func dropWaiting(where drops: (Card) -> Bool) -> Bool {
+        let count = waiting.count
+        waiting.removeAll(where: drops)
+        return waiting.count != count
     }
 
     /// Where each card that holds a place in the stack sits: its capsule's top, from the notch down.
@@ -307,13 +363,18 @@ public final class CardStack {
         place(at: time)
     }
 
-    /// The pointer came onto the stack or left it. Leaving gives every card a moment to read what was
-    /// under the pointer before it goes. Returns whether that changed anything.
+    /// The pointer is on the stack, or off it, at `time`; `moved` when it moved since the last call.
+    /// The stack holds while the pointer is on it, until it has rested there for `holdLimit`. Letting
+    /// go gives every card a moment to read what was under the pointer before it goes. Returns
+    /// whether that changed anything.
     @discardableResult
-    public func hover(_ on: Bool) -> Bool {
-        guard on != hovering else { return false }
-        hovering = on
-        if !on {
+    public func hover(_ on: Bool, moved: Bool = true, at time: Double = 0) -> Bool {
+        if on, moved || !pointerOn { pointerMovedAt = time }
+        pointerOn = on
+        let holds = on && time - pointerMovedAt < Self.holdLimit
+        guard holds != hovering else { return false }
+        hovering = holds
+        if !holds {
             for entry in live where entry.isShown { entry.remaining = max(entry.remaining, 1.5) }
         }
         return true
@@ -346,7 +407,17 @@ public final class CardStack {
         } else if needsRoom || !waiting.isEmpty, !hasRoom, waitingCards.count == live.count,
                   let oldest = yielding.min(by: { $0.id < $1.id })
         {
-            changes.stoppedWaiting = [oldest]
+            if tucks, oldest.dismissed == nil {
+                // Back into the overflow drop, with what it has left of its wait, after the cards
+                // already waiting there.
+                var card = oldest.card
+                card.waitLimit = max(oldest.remaining, 1)
+                tucked.append((card, oldest.own))
+                oldest.dismissed = false
+                changes.tucked = [oldest]
+            } else if !tucks {
+                changes.stoppedWaiting = [oldest]
+            }
         }
         for entry in changes.stoppedWaiting {
             entry.isWaiting = false
@@ -414,6 +485,19 @@ public final class CardStack {
             return point.x >= left && point.x < left + shape.pillWidth + 4
                 && point.y >= top && point.y < top + shape.pillHeight + 4
         }
+    }
+
+    /// Whether `point`, as for `entry(at:time:)`, is on `entry`'s close mark as it is drawn at `time`:
+    /// the left end of its capsule, its padding and its icon, where a pointer on the card shows a ×
+    /// in place of the icon. A click there takes the card away without bringing anything forward.
+    /// Never for a card without an icon.
+    public func isOnClose(of entry: Entry, at point: IslandPoint, time: Double) -> Bool {
+        guard entry.metrics.hasIcon else { return false }
+        let shape = entry.animator.shape(at: time)
+        let layout = entry.animator.content(for: shape)
+        let left = -shape.pillWidth / 2
+        return point.x >= left - 2 && point.x <= layout.iconCenter.x + layout.iconSize / 2 + 6 * entry.metrics.scale
+            && point.y >= shape.pillTop - 2 && point.y <= shape.pillTop + shape.pillHeight + 2
     }
 
     /// Whether `point`, as for `entry(at:time:)`, is on one of `entry`'s buttons as they are drawn at

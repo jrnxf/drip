@@ -31,6 +31,7 @@ drip info "my-app needs you" --stay --icon app:com.openai.chat
 drip info "deploying" --id deploy && drip ok "deployed" --id deploy
 drip setup claude             # Claude Code's hooks: which project needs you, and why
 drip history --missed         # what came up while you were away
+drip dismiss                  # take the cards on screen away, without going to the terminal
 drip pause 30m                # hold cards for half an hour; drip resume ends it early
 ```
 
@@ -103,21 +104,39 @@ Codex after `drip setup codex`.
 
 | Agent | Event | Card |
 | --- | --- | --- |
-| Claude Code | `Notification`: a permission prompt or a question | `info --stay`: `my-app needs you`, with Claude's message |
+| Claude Code | `PermissionRequest`: Claude wants to run a tool | `info --stay`: `my-app needs you`, with what Claude wants, such as `Claude wants to run npm install` |
+| | `Notification`: a question | `info --stay`, with Claude's message |
 | | `Stop`: the turn is done | `ok`: `my-app is done`, with the last thing Claude wrote |
 | | `StopFailure`: a rate limit, an outage or another API error ended the turn | `fail`: `my-app stopped`, with the error, such as `API Error: Rate limit reached` |
+| | `PostToolUse`, `PostToolUseFailure`, `UserPromptSubmit`, `ElicitationResult` | none: takes the waiting card away |
 | Codex | `PermissionRequest` | `info --stay`, such as `Codex wants to run npm install` |
 | | `Stop` | `ok`, with Codex's last message |
+| | `PostToolUse`, `UserPromptSubmit` | none: takes the waiting card away |
 | Gemini CLI | `Notification`: a tool permission | `info --stay`, with Gemini's message |
 | | `AfterAgent` | `ok`, with Gemini's last response |
+| | `AfterTool`, `BeforeAgent` | none: takes the waiting card away |
 
-The title is the project, from the session's working directory. A card that needs you stays, as with
-`--stay`, until you click it or the session's next card replaces it, and the agent's hook still
-returns at once. Each
-session's card has the id `<agent>:<session>`, so a session's new card replaces its last one
-instead of queuing behind it: the waiting card turns into the done card in place, and a click on
-the card brings back the terminal the agent runs in. drip keeps the agent's Markdown out of the
+The title is the project, from the session's working directory. Two sessions in folders of the same
+name, such as two worktrees of one repo, read apart: `1/drip needs you` and `2/drip needs you`. A
+card that needs you stays, as with `--stay`, and the agent's hook still returns at once. It goes as
+soon as you answer in the terminal: the hook for the tool call it asked about, or for the next
+prompt you send, takes it away and shows nothing. Otherwise it stays until you click it, the
+session's next card replaces it, or 10 minutes pass. Each session's card has the id
+`<agent>:<session>`, so a session's new card replaces its last one instead of queuing behind it:
+the waiting card turns into the done card in place. drip keeps the agent's Markdown out of the
 card: it shows the words, without code fences, heading or list markers, or emphasis marks.
+
+**Clicks.** A click on an agent's card brings back the terminal the agent runs in, and in tmux or
+WezTerm the agent's own pane. The × that takes the icon's place while the pointer is on the card,
+or a right-click, Control-click or Option-click anywhere on it, takes the card away and brings
+nothing forward, for when it is only in the way. `drip dismiss` does the same from the keyboard.
+
+**While you watch.** When the agent's terminal is the frontmost app, its done and stopped cards come
+without a sound and count down 1.5 seconds: you are likely watching it already. `when_focused` in
+the [config](#config), or `DRIP_WHEN_FOCUSED`, changes that: `quiet`, the default; `show`, as any
+other card; or `skip`, no card at all, but only when drip knows from tmux that the agent's own pane
+is the one in front, since several sessions often share one terminal app. A card that needs you
+always shows.
 
 The card's icon is the agent's own app's, when it is installed: Claude.app for Claude Code
 (`com.anthropic.claudefordesktop`), and the Codex app or ChatGPT.app for Codex
@@ -130,10 +149,14 @@ you, and a check in a ring when it is done.
 with the hook's JSON on stdin, or as an argument, as Codex's older `notify` passes it. Card options
 such as `--icon` or `--seconds` work as usual, as in
 `drip hook claude --icon ~/.config/drip/claude.png`. A payload it does not know prints an error.
-Any failure, from a usage error to a payload it cannot read, an invalid config or no GUI session,
-exits 1: Claude Code and Codex read exit 2 as "block", and Gemini CLI reads any code but 0
-and 1 that way, which after a turn makes it run the turn again. drip reads up to 4 MB of payload,
-and prints nothing on success, as Gemini CLI needs.
+Without a GUI session, as when you run the agent over ssh, there is nothing to show: drip prints
+nothing and exits 0, so the agent shows no hook error after every turn. Any failure, from a usage
+error to a payload it cannot read or an invalid config, exits 1: Claude Code and Codex read exit 2
+as "block", and Gemini CLI reads any code but 0 and 1 that way, which after a turn makes it run the
+turn again. drip reads up to 4 MB of payload, and prints nothing on success, as Gemini CLI needs.
+A hook that takes a waiting card away reads one small file when no card waits, so the hooks that run
+on every tool call cost next to nothing. drip keeps what each session waits on, and where it runs,
+in `$XDG_STATE_HOME/drip/agents`, or `~/.local/state/drip/agents`.
 
 **By hand.** These are the hooks `drip setup claude` adds to `~/.claude/settings.json`, and that
 `drip setup claude --print` prints:
@@ -141,35 +164,110 @@ and prints nothing on success, as Gemini CLI needs.
 ```json
 {
   "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
-        "matcher": "permission_prompt|elicitation_dialog",
-        "hooks": [{ "type": "command", "command": "drip hook claude" }]
+        "matcher": "elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
       }
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "drip hook claude" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
       }
     ],
     "StopFailure": [
       {
-        "hooks": [{ "type": "command", "command": "drip hook claude" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
       }
     ]
   }
 }
 ```
 
-The matcher leaves out `idle_prompt`: Claude Code sends it a minute after every finished turn, and
-its card would replace the done card that says what Claude did.
+The Notification hook's matcher is only `elicitation_dialog`: the PermissionRequest hook shows a
+permission prompt, with what Claude wants to do, and `drip setup claude` brings drip's older
+`permission_prompt|elicitation_dialog` matcher up to date. It leaves out `idle_prompt`: Claude Code
+sends it a minute after every finished turn, and its card would replace the done card that says
+what Claude did. Claude Code can also notify you itself, through your terminal; if each card comes
+with a second notification, turn Claude Code's own off under Notifications in its `/config`.
 
-Codex takes the same shape in `~/.codex/hooks.json`, with `PermissionRequest` and `Stop` running
-`drip hook codex`, or as `[[hooks.Stop]]` tables in `~/.codex/config.toml`. Its older `notify =
+Codex takes the same shape in `~/.codex/hooks.json`, with `PermissionRequest`, `Stop`,
+`PostToolUse` and `UserPromptSubmit` running `drip hook codex`, or as `[[hooks.Stop]]` tables in
+`~/.codex/config.toml`. Its older `notify =
 ["drip", "hook", "codex"]` still works, but only for done cards: keep one of the two, or every done
 card shows twice. `drip setup codex` takes drip's `notify` out of `config.toml` for you. Gemini CLI
-takes it in `~/.gemini/settings.json`, with `Notification` and `AfterAgent` running `drip hook
-gemini`.
+takes it in `~/.gemini/settings.json`, with `Notification`, `AfterAgent`, `AfterTool` and
+`BeforeAgent` running `drip hook gemini`.
+
+A settings file shared with machines without drip, as dotfiles often are, makes each hook fail
+there with "command not found". Guard the command where that matters:
+`command -v drip >/dev/null && drip hook claude || true`. drip then finds its own hook by the
+words `drip hook claude` in it, and `drip setup` leaves it as it is.
 
 **Aider** runs a command when it is done and waits for you:
 
@@ -252,7 +350,9 @@ are there instead. drip installs nothing else: no daemon, no login item, no pref
 ## Privacy
 
 drip makes no network connections, sends nothing anywhere and collects no analytics. It only
-reads and writes your config, the agents' settings that `drip setup` edits, and its history.
+reads and writes your config, the agents' settings that `drip setup` edits, its history, and small
+state files next to it: the pause, `drip dismiss`'s requests, and which card each agent session
+waits on and the folder it runs in, each forgotten after 10 minutes.
 The history, `~/.local/state/drip/history.jsonl`, is readable only by you and keeps the last 1000
 cards. It holds each card's title and detail, up to 16,384 characters of each, so a card from a
 coding agent keeps the agent's last message. Delete the file to clear it.
@@ -265,6 +365,7 @@ drip run [options] [--] <command> [args...]
 drip hook claude|codex|gemini [options] [payload]
 drip setup claude|codex|gemini [--print]
 drip history [--missed] [--json | --replay]
+drip dismiss [--id ID]
 drip pause [DURATION]
 drip resume
 drip --version | --help
@@ -315,8 +416,9 @@ permission, on any look: `drip fail "deploy failed" --stay`. The card has no cou
 stands where the ring would be, and every 2.4 seconds a soft halo grows out of it to about twice its
 size and fades (with Reduce Motion, the dot alone). The card stays until you click it or a newer
 card with the same `--id` replaces it, and drip returns at once, so the script goes on. It gives way
-to other cards: when another card waits for its place, the card counts down its `--seconds` from
-then like any other card, and it never stays longer than 10 minutes. A question (`--yes`), of any
+to other cards: when another card waits for its place and every card on screen waits too, the
+oldest goes back into the overflow drop under the stack, keeping what is left of its wait, and comes
+back once there is room. It never stays longer than 10 minutes. A question (`--yes`), of any
 look, waits too and never gives way: it stays until it is answered, replaced or its 10 minutes are
 up, other cards stack around it, and a card with no room in the stack, or another question, waits
 its turn. `--seconds`, `DRIP_SECONDS` or the preset's `seconds` in the config give a card that stays
@@ -392,9 +494,20 @@ A click on a card brings forward the app drip was run from, such as your termina
 card away. macOS names that app in the `__CFBundleIdentifier` environment variable of everything it
 starts, and drip uses it; `--activate` names another app by its bundle identifier, and
 `--activate none` leaves a card without a button click-through; on a card with a button, a click off
-the button only takes the card away. A card you can click holds while the pointer is on it, like a
-card with a button. A card that waits for you is always clickable: a click takes it away, even
+the button only takes the card away. In tmux, a click also selects the pane drip ran in, in the
+terminal that shows that tmux session now, which may not be the one that started tmux; in WezTerm,
+the pane. Neither needs a permission. A card you can click holds while the pointer is on it, like a
+card with a button, for up to 5 seconds after the pointer last moved, so a pointer left resting on
+it never keeps it there. A card that waits for you is always clickable: a click takes it away, even
 with `--activate none`. The card itself never takes focus.
+
+**Out of the way.** While the pointer is on a card you can click, a × takes its icon's place, and a
+card that brings an app forward shows an arrow where its ring was, under a pointing hand. A click on
+the ×, or a right-click, Control-click or Option-click anywhere on the card, takes it away and brings
+nothing forward; a question goes unanswered, as if it timed out. `drip dismiss` takes every card on
+screen, and every card still waiting its turn, away the same way; `drip dismiss --id deploy` only
+those with that id; `drip clear` is the same command. Bind it to a key in Shortcuts, Raycast or skhd
+to clear the notch from the keyboard. VoiceOver offers each card's Open and Dismiss as its actions.
 
 ### Missed cards and history
 
@@ -435,9 +548,10 @@ locked or drip is paused like any other, and are not added to the history again.
 ### Pausing
 
 `drip pause` holds every card for an hour, from every drip, as if the screen were locked: for a
-meeting, a screen share or a call. When the pause ends, the held cards show as missed cards do: one
-or two as they are, three or more as one `N cards while you were away` card, and `drip history
---missed` lists them. A drip that waits for its card, with `--wait` or a `--yes` question, waits for
+meeting, a screen share or a call. Cards already on screen go too, within a second, and are held
+with the others; a question stays, as its script waits on it. When the pause ends, the held cards
+show as missed cards do: one or two as they are, three or more as one `N cards while you were away`
+card, and `drip history --missed` lists them. A drip that waits for its card, with `--wait` or a `--yes` question, waits for
 the end of the pause, and says so.
 
 ```sh
@@ -458,7 +572,8 @@ script's log, and `drip hook`, print nothing about it, and `--quiet` keeps it qu
 ### Buttons
 
 `--open` adds a button that opens a URL or a file, such as a CI run, a pull request or a log.
-`--button` names it. Hovering over the card holds it; moving away gives it another 1.5 seconds. The
+`--button` names it. Hovering over the card holds it, for up to 5 seconds after the pointer last
+moved; moving away gives it another 1.5 seconds. The
 button stands where the countdown ring would be. A click on the button opens the target and takes the card
 away; a click anywhere else on the card brings the sending app forward (see [Clicks](#clicks)) and
 takes the card away. Clicking the button never takes focus from the app you are in.
@@ -537,7 +652,8 @@ card drops out of the bottom of the last one and the oldest goes back into the n
 others moving up behind it. With `push` a new card drops out of the notch once the others have
 moved down out of its way. `off` shows one card at a time. While the pointer is on any card in the stack, nothing moves: every countdown
 stops, gaps stay open and new cards wait, though they still drip into the drop so its count stays
-true. A click on a card dismisses it. Only the cards of drips
+true. Once the pointer has rested for 5 seconds, the stack lets go, and moving it holds the stack
+again. A click on a card dismisses it. Only the cards of drips
 that returned at once stack; a card that waits (`--wait`, or a question) waits its turn. While a
 question shows, cards that count down stack around it; a card that waits, or another question,
 waits for its answer. drip exits as soon as the question is answered, so the command after it
@@ -548,9 +664,9 @@ runs at once, and the cards still in the stack play out without it.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown; a question was answered yes, the moment it was clicked. |
-| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason; `drip setup` left the agent's settings alone, or could not write them; or `drip pause` or `drip resume` could not write the pause. |
+| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason but no GUI session; `drip setup` left the agent's settings alone, or could not write them; `drip pause` or `drip resume` could not write the pause; or `drip dismiss` could not write its request. |
 | 2 | Usage error. |
-| 3 | No GUI session, for example over ssh. |
+| 3 | No GUI session, for example over ssh; `drip hook` exits 0 then. |
 | 4 | The config file is invalid; the message names the key and line. |
 | 5 | drip asked with `--yes` and waited, but no button was clicked. |
 
@@ -571,6 +687,7 @@ sound     = true              # a sound for every preset, such as "Hero"; false 
 motion    = "full"            # full | subtle | none
 stack     = "chain"           # chain | push | off: how cards stack
 stack_max = 3                 # most cards on screen at once, 1 to 6
+when_focused = "quiet"        # quiet | show | skip: an agent's done card while you watch its terminal
 
 [preset.ok]                  # override a built-in preset, any subset of keys
 sound = "Hero"
@@ -586,13 +703,14 @@ icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this fi
 ```
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
-`DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`; `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
+`DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`;
+`DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
 environment exits 2. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
 name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `setup`,
 `config`, `init`, `install`, `uninstall`, `completion`, `completions`, `doctor`, `mute`, `pause`,
-`resume`, `listen` or `test`. A custom preset's ring shows no state's mark. Unknown keys print a warning;
+`resume`, `listen`, `test`, `dismiss` or `clear`. A custom preset's ring shows no state's mark. Unknown keys print a warning;
 wrong types exit 4.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
@@ -619,8 +737,9 @@ or the environment.
 On a Mac, `scripts/mac-check.sh` builds, runs every test, records any missing snapshot references
 into `Tests/Snapshots`, shows each preset and a custom `deploy` preset on screen once, a card
 with Terminal's icon that stays until the next card needs the notch, a few cards that stack
-under one another, a Claude hook card that a newer card from the same session replaces in place,
-then lists the last cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
+under one another, a Claude hook card that a newer card from the same session replaces in place, a
+Claude permission card that its tool's run takes away, a card that stays for `drip dismiss` to take
+away, then lists the last cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
 never overwrites a reference: to regenerate one on purpose, delete its PNG and run the script again.
 
 `scripts/record-demo.sh` makes the animation at the top of this file by filming real cards: it plays

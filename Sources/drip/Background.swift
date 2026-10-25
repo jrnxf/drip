@@ -161,6 +161,11 @@ enum CardQueue {
 
     /// This process's ticket, once it has waited for its turn.
     private(set) static var mine: QueueTicket?
+
+    /// When this drip's cards were queued, in seconds since 1970: now, when it holds no ticket.
+    static var queuedAt: Double {
+        mine.flatMap { QueueTicket.queuedAt($0.name) } ?? Date().timeIntervalSince1970
+    }
     /// The cards this process queues, kept for when it queues again after giving up its turn.
     private static var cards: [Card] = []
     private static var leavesAtExit = false

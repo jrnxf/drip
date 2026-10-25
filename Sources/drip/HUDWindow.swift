@@ -34,9 +34,17 @@ struct HUDDisplay: CardDisplay {
         // A question replaced before it showed was never answered.
         var unanswered = false
         var remaining = cards[...]
+        let queuedAt = CardQueue.queuedAt
         func next() {
             guard var card = remaining.popFirst() else { return stopApplication() }
             if CardQueue.isReplaced(card) {
+                unanswered = unanswered || card.asksQuestion
+                return next()
+            }
+            // Dismissed before its turn came, by `drip dismiss` or because the agent moved on.
+            if DismissRequests(environment: ProcessInfo.processInfo.environment).load()
+                .dismisses(id: card.id, since: queuedAt)
+            {
                 unanswered = unanswered || card.asksQuestion
                 return next()
             }
@@ -54,7 +62,7 @@ struct HUDDisplay: CardDisplay {
                 failed = true
                 return next()
             }
-            let watch = ReplacementWatch(presenter: presenter, card: card)
+            let watch = ReplacementWatch(presenter: presenter, card: card, background: adopting)
             // The presenter keeps itself alive through the timers and animations it schedules.
             presenter.start { ok in
                 watch.stop()
@@ -197,12 +205,26 @@ struct HUDDisplay: CardDisplay {
                 console.warn("\(problem); using the preset's icon")
                 card.icon = card.fallbackIcon
             }
+            // A click brings forward the terminal that shows the card's tmux pane now, which may not
+            // be the one that started tmux.
+            if let pane = card.pane, let app = Terminal.app(showing: pane) {
+                card.activate = app
+            }
             return card
         }
     }
 
     func isInstalled(_ bundleIdentifier: String) -> Bool {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) != nil
+    }
+
+    var hasGUISession: Bool { CGSessionCopyCurrentDictionary() != nil }
+
+    func front(of card: Card) -> WhenFocused.Front {
+        // In tmux, the terminal that shows the pane now, which `prepare` makes the click's target too.
+        let target = card.pane.flatMap(Terminal.app(showing:)) ?? card.activate
+        let app = target.map { $0 == NSWorkspace.shared.frontmostApplication?.bundleIdentifier } ?? false
+        return WhenFocused.Front(app: app, pane: card.pane.flatMap(Terminal.isShowing))
     }
 
     /// Ends `NSApplication.run()`. `stop` takes effect only after the next event, so post one.
@@ -231,22 +253,31 @@ protocol CardPresenting: AnyObject {
     /// Ends the wait of a card that waits for you, as another card waits for its turn: it counts
     /// down from now like any other card.
     func stopWaiting()
+
+    /// Takes the card away without bringing anything forward, as a click on its × does.
+    func dismiss()
 }
 
-/// While a card with an id is on screen, looks for a newer card with the same id from another drip,
-/// and swaps it in place of the shown one.
+/// While a card is on screen, looks for a newer card with the same id from another drip, and swaps
+/// it in place of the shown one; takes the card away when `drip dismiss`, or the agent moving on,
+/// asks; and in a background drip, puts the card away to show once a pause that starts ends.
 final class ReplacementWatch {
     private let presenter: CardPresenting
     /// The card on screen, and the ticket it came from.
     private var current: Card
     private var source: String
+    /// When the card on screen came, in seconds since 1970: a dismissal asked for later leaves it.
+    private var since: Double
+    /// Whether this is a background drip, whose card a pause puts away.
+    private let background: Bool
     private var timer: Timer?
 
-    init(presenter: CardPresenting, card: Card) {
+    init(presenter: CardPresenting, card: Card, background: Bool) {
         self.presenter = presenter
         current = card
         source = CardQueue.mine?.name ?? ""
-        guard card.id != nil || card.waits, CardQueue.mine != nil else { return }
+        since = CardQueue.queuedAt
+        self.background = background
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.look() }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
@@ -258,6 +289,20 @@ final class ReplacementWatch {
     }
 
     private func look() {
+        let environment = ProcessInfo.processInfo.environment
+        if DismissRequests(environment: environment).load().dismisses(id: current.id, since: since) {
+            stop()
+            presenter.dismiss()
+            return
+        }
+        if background, !current.asksQuestion, DripPause(environment: environment).isPaused() {
+            // Paused for a screen share or a meeting: the card goes, and shows once the pause ends.
+            stop()
+            presenter.dismiss()
+            _ = BackgroundDrip.start(BackgroundRequest(cards: [current], record: true))
+            return
+        }
+        guard CardQueue.mine != nil, current.id != nil || current.waits else { return }
         if presenter.canReplace, let found = CardQueue.replacement(for: current, after: source),
            let id = found.card.id
         {
@@ -266,6 +311,7 @@ final class ReplacementWatch {
             presenter.replace(with: found.card)
             current = found.card
             source = found.ticket
+            since = QueueTicket.queuedAt(found.ticket) ?? Date().timeIntervalSince1970
             return
         }
         // A card that waits for you gives way to a newer drip waiting for its turn; a question never

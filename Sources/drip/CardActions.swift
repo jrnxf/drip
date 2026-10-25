@@ -12,10 +12,10 @@ enum CardActions {
     /// Activation requests still on their way to Launch Services.
     private static let activations = DispatchGroup()
 
-    /// Brings the app with `bundleIdentifier` forward, as a click in the Dock would. Launch
-    /// Services does it, because a background process asking an app to activate itself can be
-    /// refused.
-    static func activate(_ bundleIdentifier: String, console: Console) {
+    /// Brings the app with `bundleIdentifier` forward, as a click in the Dock would, then the
+    /// terminal `pane` in it, when the card names one. Launch Services does it, because a
+    /// background process asking an app to activate itself can be refused.
+    static func activate(_ bundleIdentifier: String, pane: TerminalPane? = nil, console: Console) {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
             console.error("cannot find the app \(bundleIdentifier) to bring forward")
             return
@@ -24,7 +24,11 @@ enum CardActions {
         configuration.activates = true
         activations.enter()
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
-            if let error { console.error("cannot bring \(bundleIdentifier) forward: \(error.localizedDescription)") }
+            if let error {
+                console.error("cannot bring \(bundleIdentifier) forward: \(error.localizedDescription)")
+            } else if let pane {
+                Terminal.select(pane)
+            }
             CardActions.activations.leave()
         }
     }
