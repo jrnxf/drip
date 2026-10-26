@@ -452,14 +452,17 @@ struct Options {
 // MARK: - A world of its own
 
 /// The agent's terminal's socket: in the cache, unless that path is too long for a socket, as under
-/// a long home, then in a folder of this user's own in /tmp.
+/// a long home, then in a folder of this user's own in /tmp, named for the cache too, so checks
+/// with caches of their own never share a terminal (each stops its own when it ends).
 func tmuxSocket(_ options: Options, _ agent: Agent) -> String {
     let name = "tmux-\(agent.rawValue).sock"
     let socket = path(options.cache, name)
     guard socket.utf8.count > 100 else { return socket }
     let folder = "/tmp/drip-agent-contract-\(getuid())"
     mkdir(folder, 0o700)
-    return path(folder, name)
+    // FNV-1a of the cache's path.
+    let hash = options.cache.utf8.reduce(UInt64(14_695_981_039_346_656_037)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }
+    return path(folder, "tmux-\(agent.rawValue)-\(String(hash, radix: 16)).sock")
 }
 
 /// The variable the `drip` wrapper sets to the XDG_STATE_HOME the hook was started with, empty when
