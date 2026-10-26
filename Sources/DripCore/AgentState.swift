@@ -82,6 +82,28 @@ public struct AgentState {
         return true
     }
 
+    // MARK: Turns
+
+    /// A turn the session started, as its hook showed it.
+    struct Turn: Codable, Equatable {
+        var id: String
+        /// When you sent the prompt, in seconds since 1970.
+        var time: Double
+    }
+
+    /// Notes that you sent the session `id` a prompt, which starts a turn.
+    public func noteTurn(id: String, now: Date = Date()) throws {
+        try write(Turn(id: id, time: now.timeIntervalSince1970), to: path("turn", id))
+    }
+
+    /// When the session's last turn started, in seconds since 1970; nil when drip saw none lately.
+    public func turnStarted(id: String, now: Date = Date()) -> Double? {
+        guard let turn = read(Turn.self, at: path("turn", id)), turn.id == id,
+              now.timeIntervalSince1970 - turn.time < Defaults.waitLimit
+        else { return nil }
+        return turn.time
+    }
+
     // MARK: Sessions
 
     /// Notes that the session `id` runs in `directory`.

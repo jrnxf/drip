@@ -134,9 +134,17 @@ nothing forward, for when it is only in the way. `drip dismiss` does the same fr
 **While you watch.** When the agent's terminal is the frontmost app, its done and stopped cards come
 without a sound and count down 1.5 seconds: you are likely watching it already. `when_focused` in
 the [config](#config), or `DRIP_WHEN_FOCUSED`, changes that: `quiet`, the default; `show`, as any
-other card; or `skip`, no card at all, but only when drip knows from tmux that the agent's own pane
-is the one in front, since several sessions often share one terminal app. A card that needs you
-always shows.
+other card; or `skip`, no card at all, not even one that needs you, but only when drip knows from
+tmux that the agent's own pane is the one in front, since several sessions often share one terminal
+app. With `quiet`, a card that needs you always shows. Either way drip takes you to be watching only
+if you used the keyboard or mouse in the last minute, or the `away_after` you set: a terminal left
+in front while you are away raises its cards as usual.
+
+**Fewer cards.** With many sessions at once, the done cards add up. `agent_cards = "attention"`
+shows only the cards that need you, a permission, a question or an error, from every session you
+attend, as `DRIP_HOOK=attention` does for one. `done_after = 30` keeps the done card of any turn
+shorter than 30 seconds away, counted from the prompt you sent: you likely still have it in mind.
+Both work the same for Claude Code, Codex and Gemini CLI.
 
 **Only the session you talk to.** A session nobody is at the terminal for raises no card:
 `claude -p`, the Claude Agent SDK, and the pipelines and agents that run them, which Claude Code
@@ -705,7 +713,10 @@ sound     = true              # a sound for every preset, such as "Hero"; false 
 motion    = "full"            # full | subtle | none
 stack     = "chain"           # chain | push | off: how cards stack
 stack_max = 3                 # most cards on screen at once, 1 to 6
-when_focused = "quiet"        # quiet | show | skip: an agent's done card while you watch its terminal
+when_focused = "quiet"        # quiet | show | skip: an agent's card while you watch its terminal
+away_after = 60               # seconds without keyboard or mouse before you count as away; 0: always away
+agent_cards = "all"           # all | attention: only the cards that need you, and no done cards
+done_after = 0                # seconds: no done card for a turn shorter than this; 0 shows them all
 
 [preset.ok]                  # override a built-in preset, any subset of keys
 sound = "Hero"
@@ -721,7 +732,8 @@ icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this fi
 ```
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
-`DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`;
+`DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`, `DRIP_AWAY_AFTER`,
+`DRIP_AGENT_CARDS`, `DRIP_DONE_AFTER`;
 `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
 environment exits 2. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces

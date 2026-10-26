@@ -114,11 +114,14 @@ public enum AgentHook {
         public var tool: String?
         /// Another name for the same call, which a card waiting on that name goes for too.
         public var alsoTool: String?
+        /// Whether you sent the agent a prompt, which starts a turn: `done_after` counts from it.
+        public var startsTurn: Bool
 
-        public init(id: String, tool: String? = nil, alsoTool: String? = nil) {
+        public init(id: String, tool: String? = nil, alsoTool: String? = nil, startsTurn: Bool = false) {
             self.id = id
             self.tool = tool
             self.alsoTool = alsoTool
+            self.startsTurn = startsTurn
         }
     }
 
@@ -146,6 +149,27 @@ public enum AgentHook {
     /// orchestrator's own session: it shows the cards that need you and skips the done cards.
     public enum Switch: String, CaseIterable, Sendable {
         case on, off, attention
+    }
+
+    /// Which of an agent's cards show, from `agent_cards` in the config: `all`, or only the cards that
+    /// need you (a permission, a question, an error), as `DRIP_HOOK=attention` does for one session.
+    /// Unlike `DRIP_HOOK=attention`, it still keeps sessions nobody attends quiet.
+    public enum Cards: String, CaseIterable, Sendable {
+        case all, attention
+
+        public static let `default` = Cards.all
+    }
+
+    /// Whether the done card `event` is left out, under `cards`: it needs nobody under `attention`,
+    /// and a turn shorter than `doneAfter` seconds, from `turnStarted` to `now`, likely ended while you
+    /// still had it in mind. A card that needs you, or says the turn failed, always goes on.
+    public static func skipsDone(
+        _ event: Event, cards: Cards, doneAfter: Double, turnStarted: Double?, now: Double
+    ) -> Bool {
+        guard event.kind == Preset.ok.name, !event.stays else { return false }
+        if cards == .attention { return true }
+        guard doneAfter > 0, let turnStarted else { return false }
+        return now - turnStarted < doneAfter
     }
 
     /// `DRIP_HOOK` as set, nil when unset or empty. Throws a `UsageError` for any other value than a
@@ -236,10 +260,10 @@ public enum AgentHook {
                 kind: kind.name, title: "\(project()) \(title)", detail: detail, id: id, stays: stays,
                 waitsOn: stays ? waitsOn : nil, isPermissionNotice: isPermissionNotice, directory: directory))
         }
-        func clear(tool: String? = nil, alsoTool: String? = nil, keyed: Bool = false) -> Outcome {
+        func clear(tool: String? = nil, alsoTool: String? = nil, keyed: Bool = false, startsTurn: Bool = false) -> Outcome {
             // A clear for one tool call that names none could take the wrong card: nothing then.
             guard let id, !keyed || tool != nil else { return .nothing }
-            return .clear(Clear(id: id, tool: tool, alsoTool: alsoTool))
+            return .clear(Clear(id: id, tool: tool, alsoTool: alsoTool, startsTurn: startsTurn))
         }
 
         switch agent {
@@ -268,7 +292,9 @@ public enum AgentHook {
                 let call = toolCall(object, scope: "prompt_id")
                 return clear(
                     tool: call ?? string("tool_use_id"), alsoTool: call == nil ? nil : string("tool_use_id"), keyed: true)
-            case "UserPromptSubmit", "ElicitationResult":
+            case "UserPromptSubmit":
+                return clear(startsTurn: true)
+            case "ElicitationResult":
                 return clear()
             case let name:
                 throw unknown(
@@ -301,7 +327,7 @@ public enum AgentHook {
             case "PostToolUse":
                 return clear(tool: toolCall(object, scope: "turn_id"), keyed: true)
             case "UserPromptSubmit":
-                return clear()
+                return clear(startsTurn: true)
             default:
                 throw unknown(name, expected: "PermissionRequest, Stop, PostToolUse or UserPromptSubmit")
             }
@@ -311,9 +337,11 @@ public enum AgentHook {
                 return card(.info, "needs you", string("message"), stays: string("notification_type") == "ToolPermission")
             case "AfterAgent":
                 return card(.ok, "is done", string("prompt_response").map(plainText))
-            case "AfterTool", "BeforeAgent":
+            case "AfterTool":
                 // Gemini CLI names no tool call, so any card the session waits on goes.
                 return clear()
+            case "BeforeAgent":
+                return clear(startsTurn: true)
             case let name:
                 throw unknown(name, expected: "Notification, AfterAgent, AfterTool or BeforeAgent")
             }

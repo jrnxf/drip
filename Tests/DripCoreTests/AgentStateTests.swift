@@ -26,6 +26,14 @@ struct AgentStateTests {
         #expect(state.waiting(id: "claude:s1", now: now) == nil)
     }
 
+    @Test func aTurnStartsWithAPromptAndIsForgottenWithTheWaitLimit() throws {
+        #expect(state.turnStarted(id: "claude:s1", now: now) == nil)
+        try state.noteTurn(id: "claude:s1", now: now)
+        #expect(state.turnStarted(id: "claude:s1", now: now) == now.timeIntervalSince1970)
+        #expect(state.turnStarted(id: "claude:s2", now: now) == nil)
+        #expect(state.turnStarted(id: "claude:s1", now: now.addingTimeInterval(Defaults.waitLimit)) == nil)
+    }
+
     @Test func aToolCallKnownByTwoNamesTakesTheCardWaitingOnEither() throws {
         try state.noteWaiting(id: "claude:s1", tool: "toolu_01", now: now)
         #expect(!state.takeWaiting(AgentHook.Clear(id: "claude:s1", tool: "p1 Bash 1f", alsoTool: "toolu_02"), now: now))
