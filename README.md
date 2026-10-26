@@ -395,9 +395,13 @@ machine: `--max-age 30m` sets another limit. Age is from the machine's clock, so
 clocks set by the network. One `drip follow` per machine runs at a time.
 
 **Its cards.** A card from the machine names it, as in `api on devbox is done`, and its id is
-`<agent>:<session>@<machine>`, so it never replaces a card of a session on the Mac. drip cannot
-tell whether the herdr you look at on the Mac shows that machine's pane, so `when_focused` takes
-you not to be watching it: its cards always show, with their sound. The `DRIP_HOOK` and attendance
+`<agent>:<session>@<machine>`, so it never replaces a card of a session on the Mac. When the agent
+runs in herdr, `when_focused` and `away_after` apply as they do on the Mac: drip asks the machine's
+herdr, with `herdr --machine <machine> pane get`, whether the agent's pane is the focused one there,
+and takes the app `--activate` names for the terminal in front. herdr marks a pane focused for any
+client attached to that machine, so drip cannot tell whether the herdr in front on the Mac shows
+that machine or Local. When herdr does not answer within 3 seconds, or the agent runs outside herdr,
+drip takes you not to be watching: its cards show, with their sound. The `DRIP_HOOK` and attendance
 of the session on the machine decide whether it raises cards, not the variables `drip follow` runs
 with.
 
@@ -406,8 +410,9 @@ with.
 with `herdr --machine <machine> workspace focus` and `tab focus`. That is as close as herdr lets a
 command get today: it cannot focus a pane on another machine by its id, nor switch the herdr on the
 Mac from Local to that machine, so you see the tab once your herdr shows the machine. herdr names
-the machine by the label you saved it under with `herdr machine`, by default the ssh target's host;
-`--herdr-machine <label>` names another.
+the machine by the label you saved it under with `herdr machine`: by default, the one saved with the
+ssh target, else the one labeled with its host, else the host itself; `--herdr-machine <label>`
+names another. When herdr refuses a click's command, `drip follow`'s log says which and why.
 
 ## Alert when a command finishes
 

@@ -182,9 +182,13 @@ struct DripCLI {
             target: target, queue: command.queue, maxAge: command.maxAge,
             ssh: [environment["DRIP_SSH"].flatMap { $0.isEmpty ? nil : $0 } ?? "/usr/bin/ssh"],
             positionPath: FollowPosition.path(target: target, environment: environment))
+        // herdr names a machine by the label it was saved under, which need not be the ssh target.
+        let herdrMachine = command.herdrMachine(savedMachines: {
+            Terminal.output(["herdr", "machine", "list", "--json"], timeout: 5)
+        })
         let follower = RemoteFollower(settings: settings, handle: { event, stale in
             let surroundings = event.surroundings(
-                self.surroundings(console), activate: activate, herdrMachine: command.herdrMachine, stale: stale)
+                self.surroundings(console), activate: activate, herdrMachine: herdrMachine, stale: stale)
             do {
                 guard let card = try AgentHook.card(agent: event.agent, payload: event.payload, in: surroundings) else {
                     return
@@ -194,7 +198,7 @@ struct DripCLI {
                 console.error("\(target): a \(event.agent.rawValue) event from \(event.machine): \(error)")
             }
         }, log: { console.error($0) })
-        console.error("following \(target)")
+        console.error("following \(target)" + (herdrMachine.map { ", which herdr calls \($0)" } ?? ""))
         do {
             try follower.run()
         } catch {

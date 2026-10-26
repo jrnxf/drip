@@ -133,12 +133,11 @@ public struct TerminalPane: Equatable, Sendable, Codable {
         return (herdrSocket.map { ["HERDR_SOCKET_PATH=\($0)"] } ?? []) + ["herdr"] + arguments
     }
 
-    /// The command whose output `isShowing(herdrPane:)` reads. None for a pane on another machine:
-    /// herdr marks it focused on that machine's server, whether or not this Mac's herdr shows that
-    /// machine.
+    /// The command whose output `isShowing(herdrPane:)` reads. For a pane on another machine, that
+    /// machine's herdr answers over ssh: it marks the pane focused when any client attached to it
+    /// shows the pane, whether or not this Mac's herdr shows that machine.
     public var herdrShowingCommand: [String]? {
-        guard herdrMachine == nil else { return nil }
-        return herdrPane.map { herdr(["pane", "get", $0]) }
+        herdrPane.map { herdr(["pane", "get", $0]) }
     }
 
     /// The commands that bring this pane forward in its terminal, each as the program and its
@@ -213,6 +212,34 @@ extension TerminalPane {
         let fields = output.split(whereSeparator: \.isWhitespace).compactMap { Int($0) }
         guard fields.count == 3 else { return nil }
         return fields[0] == 1 && fields[1] == 1 && fields[2] > 0
+    }
+
+    /// The saved herdr machine that `herdr machine list --json`'s output names for the ssh target
+    /// `target`, whose host is `host`: the one saved with that target, else the one labeled with
+    /// it or its host, else the one whose target has that host, by its label, or its id when the
+    /// label is no machine label. Nil when none matches or the output cannot be read.
+    public static func herdrMachine(forSSHTarget target: String, host: String?, inList output: String) -> String? {
+        guard let reply = try? JSONValue(parsing: output), let list = reply.elements else { return nil }
+        let machines = list.compactMap { machine -> (name: String, label: String?, target: String?)? in
+            let label = machine["label"]?.string, id = machine["id"]?.string
+            guard let name = [label, id].compactMap({ $0 }).first(where: isMachineLabel) else { return nil }
+            return (name, label, machine["target"]?.string)
+        }
+        func hostOf(_ target: String) -> String {
+            String(target.split(separator: "@").last?.split(separator: ":").first ?? "")
+        }
+        let names = [target] + (host.map { [$0] } ?? [])
+        let match = machines.first { $0.target == target }
+            ?? machines.first { $0.label.map(names.contains) == true }
+            ?? machines.first { machine in host.map { machine.target.map(hostOf) == $0 } == true }
+        return match?.name
+    }
+
+    /// What drip logs when `command`, one of `selectCommands`, failed: the command, then the first
+    /// line it wrote to stderr, or else why it stopped.
+    public static func selectFailure(_ command: [String], stderr: String, reason: String) -> String {
+        let said = stderr.split(whereSeparator: \.isNewline).first.map { String($0.prefix(300)) }
+        return "cannot bring the agent's pane forward: \(command.joined(separator: " ")): \(said ?? reason)"
     }
 
     /// Whether `herdr pane get`'s output says the pane shows: herdr marks one pane focused, the

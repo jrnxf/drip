@@ -27,7 +27,7 @@ enum CardActions {
             if let error {
                 console.error("cannot bring \(bundleIdentifier) forward: \(error.localizedDescription)")
             } else if let pane {
-                Terminal.select(pane)
+                Terminal.select(pane, console: console)
             }
             CardActions.activations.leave()
         }

@@ -134,10 +134,14 @@ extension AgentHook {
                 state.noteDone(id: id)
             }
         }
-        // You may be watching the agent's terminal already. drip cannot tell whether this Mac shows
-        // a pane on another machine, so it takes you not to be watching one.
-        let front = origin == nil ? surroundings.front(card) : WhenFocused.Front(app: false, pane: false)
-        return resolver.whenFocused.apply(to: card, front: front, awayAfter: resolver.awayAfter)
+        // You may be watching the agent's terminal already. Asking costs a round trip to another
+        // machine, so only when it matters. For an agent there, only that machine's herdr can say
+        // whether its pane is in front; when it cannot, drip takes you not to be watching.
+        let whenFocused = resolver.whenFocused
+        guard whenFocused != .show else { return card }
+        var front = surroundings.front(card)
+        if origin != nil, front.pane == nil { front = WhenFocused.Front(app: false, pane: false) }
+        return whenFocused.apply(to: card, front: front, awayAfter: resolver.awayAfter)
     }
 }
 #endif
