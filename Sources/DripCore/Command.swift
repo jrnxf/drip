@@ -28,6 +28,9 @@ public enum ExitStatus {
     public static let pauseFailed: Int32 = 1
     /// `drip dismiss` could not write its request to the state directory.
     public static let dismissFailed: Int32 = 1
+    /// `drip follow` could not start: another one follows the machine already, or the state
+    /// directory cannot be written.
+    public static let followFailed: Int32 = 1
 
     /// What a drip that waited for its cards exits with: 5 when a card with a button went without a
     /// click on one, else 1 when a question was answered no, else 0.
@@ -270,7 +273,9 @@ public struct DripCommand: ParsableCommand {
             drip [KIND] [TITLE] [options]
             drip run [options] [--] <command> [args...]
             drip hook claude|codex|gemini [options] [payload]
-            drip setup claude|codex|gemini [--print]
+            drip setup claude|codex|gemini [--print | --remote]
+            drip setup remote
+            drip follow <ssh-target> [options]
             drip history [--missed] [--json | --replay]
             drip dismiss [--id ID]
             drip pause [DURATION]
@@ -278,8 +283,9 @@ public struct DripCommand: ParsableCommand {
             """,
         version: dripVersion,
         subcommands: [
-            ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, HistoryCommand.self,
-            DismissCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self, BackgroundCommand.self,
+            ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, FollowCommand.self,
+            HistoryCommand.self, DismissCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self,
+            BackgroundCommand.self,
         ],
         defaultSubcommand: ShowCommand.self
     )
@@ -297,6 +303,7 @@ public struct DripCommand: ParsableCommand {
           drip fail "deploy failed" --stay
           drip info "my-app needs you" --stay --icon app:com.openai.chat
           drip setup claude
+          drip follow devbox
           drip dismiss
           drip pause 30m
         """
@@ -431,38 +438,146 @@ public struct HookCommand: ParsableCommand {
     }
 }
 
-/// `drip setup claude|codex|gemini [--print]`: adds drip's hooks to a coding agent's settings.
+/// `drip setup claude|codex|gemini [--print | --remote]`: adds drip's hooks to a coding agent's
+/// settings. `drip setup remote`: prints the hook for agents on another machine.
 public struct SetupCommand: ParsableCommand {
+    /// What `drip setup` sets up: an agent, or `remote`, the hook for agents on another machine.
+    public enum Target: String, CaseIterable, ExpressibleByArgument {
+        case claude, codex, gemini, remote
+    }
+
     public static let configuration = CommandConfiguration(
         commandName: "setup",
         abstract: "Add drip's hooks to Claude Code's, Codex's or Gemini CLI's settings.",
-        usage: "drip setup claude|codex|gemini [--print]",
+        usage: """
+            drip setup claude|codex|gemini [--print | --remote]
+            drip setup remote
+            """,
         discussion: """
             Adds drip hook to ~/.claude/settings.json, ~/.codex/hooks.json or ~/.gemini/settings.json, \
             keeping everything else, and backs the old file up next to it. Running it again changes \
             nothing. A settings file that is a symlink or read-only, as home-manager makes, or that \
             is not plain JSON is left alone: drip prints the hooks to add yourself and exits 1. For \
-            Codex it also takes drip out of notify in ~/.codex/config.toml, which the Stop hook replaces.
+            Codex it also takes drip out of notify in ~/.codex/config.toml, which the Stop hook replaces. \
+            For an agent on another machine, which drip follow shows the cards of: drip setup remote \
+            prints drip-remote-hook, a shell script to save there, and --remote prints the hooks that \
+            run it, for the agent's settings there.
             """
     )
 
     /// Optional here so that `drip setup` alone is a one-line error, not the whole help.
-    @Argument(help: ArgumentHelp("The agent whose settings get drip's hooks.", valueName: "agent"))
-    var agentName: AgentHook.Agent?
+    @Argument(help: ArgumentHelp(
+        "The agent whose settings get drip's hooks, or remote for the hook script of another machine.",
+        valueName: "agent"))
+    var target: Target?
 
-    /// The agent whose settings get drip's hooks; `validate()` makes sure there is one.
-    public var agent: AgentHook.Agent {
-        agentName ?? .claude
+    /// The agent whose settings get drip's hooks; nil for `drip setup remote`.
+    public var agent: AgentHook.Agent? {
+        target.flatMap { AgentHook.Agent(rawValue: $0.rawValue) }
     }
 
     @Flag(name: .customLong("print"), help: "Print drip's hooks for the agent's settings instead of adding them.")
     public var printOnly = false
 
+    @Flag(help: "Print the hooks for the agent's settings on another machine, which run drip-remote-hook.")
+    public var remote = false
+
     public init() {}
 
     public func validate() throws {
-        if agentName == nil {
+        guard let target else {
             throw ValidationError("missing the agent: drip setup claude, drip setup codex or drip setup gemini")
+        }
+        if target != .remote, printOnly, remote {
+            throw ValidationError("--remote prints the hooks already: give --print or --remote, not both")
+        }
+    }
+}
+
+/// `drip follow <ssh-target> [options]`: shows the cards of agents on another machine.
+public struct FollowCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "follow",
+        abstract: "Show the cards of coding agents on another machine, over ssh.",
+        usage: "drip follow <ssh-target> [--max-age <duration>] [--activate <bundle-id>] [--herdr-machine <label>] [--queue <path>] [--launchd]",
+        discussion: """
+            Reads the events that drip-remote-hook queues on the machine, over ssh with no prompts, and \
+            shows each one's card as drip hook would on this Mac, by the same config and DRIP_HOOK. \
+            It runs until stopped, reconnecting when the connection drops, and takes up after the last \
+            event it handled. Events older than --max-age when they arrive, as after the Mac slept, \
+            are dropped. drip setup remote prints the hook; --launchd prints a launchd agent that keeps \
+            drip follow running.
+            """
+    )
+
+    /// How old an event may be when it arrives, by default: one queued while the Mac slept is dropped.
+    public static let defaultMaxAge = 5 * 60.0
+
+    @Argument(help: ArgumentHelp("The machine, as ssh takes it: a host, user@host, or a Host from ~/.ssh/config.", valueName: "ssh-target"))
+    public var target: String?
+
+    @Option(name: .customLong("max-age"), help: ArgumentHelp(
+        "Drop events older than this when they arrive: minutes or hours, such as 5m or 1h. (default: 5m)",
+        valueName: "duration"))
+    var maxAgeText: String?
+
+    @Option(help: ArgumentHelp(
+        "The app a click on a card brings forward, or none. (default: the app drip follow was run from)",
+        valueName: "bundle-id|none"))
+    public var activate: String?
+
+    @Option(name: .customLong("herdr-machine"), help: ArgumentHelp(
+        "The machine as herdr on this Mac saved it, which a click focuses the agent's tab on. (default: the ssh target's host)",
+        valueName: "label"))
+    var herdrMachineName: String?
+
+    @Option(help: ArgumentHelp(
+        "The queue on the machine. (default: $DRIP_QUEUE there, else drip/remote.jsonl in $XDG_STATE_HOME or ~/.local/state)",
+        valueName: "path"))
+    public var queue: String?
+
+    @Flag(help: "Print a launchd agent that runs this drip follow at login and keeps it running, instead of running it.")
+    public var launchd = false
+
+    /// Seconds an event may be old when it arrives.
+    public var maxAge: Double {
+        maxAgeText.flatMap(DripPause.duration) ?? Self.defaultMaxAge
+    }
+
+    /// The saved herdr machine a click focuses the agent's tab on: `--herdr-machine`, else the
+    /// target's host, without its user or port. Nil when it is no machine label.
+    public var herdrMachine: String? {
+        var host = herdrMachineName ?? target ?? ""
+        if host.hasPrefix("ssh://") { host = String(host.dropFirst(6)) }
+        if herdrMachineName == nil {
+            host = String(host.split(separator: "@").last ?? "")
+            host = String(host.split(separator: ":").first ?? "")
+        }
+        return TerminalPane.isMachineLabel(host) ? host : nil
+    }
+
+    public init() {}
+
+    public func validate() throws {
+        guard let target else {
+            throw ValidationError("missing the machine, as ssh takes it: drip follow devbox")
+        }
+        if target.isEmpty || target.hasPrefix("-") || target.count > 255
+            || target.contains(where: { $0.isWhitespace || ($0.asciiValue ?? 32) < 32 })
+        {
+            throw ValidationError("'\(target)' is not an ssh target such as devbox or user@devbox")
+        }
+        if let maxAgeText, DripPause.duration(maxAgeText) == nil {
+            throw ValidationError("--max-age: '\(maxAgeText)' is not a duration: give minutes or hours, as in 5m or 1h")
+        }
+        if let activate, activate != CardActivation.none, !CardActivation.isBundleIdentifier(activate) {
+            throw ValidationError("--activate: '\(activate)' is not a bundle identifier such as com.apple.Terminal")
+        }
+        if let herdrMachineName, !TerminalPane.isMachineLabel(herdrMachineName) {
+            throw ValidationError("--herdr-machine: '\(herdrMachineName)' is not a herdr machine label")
+        }
+        if let queue, queue.isEmpty || queue.contains("\n") {
+            throw ValidationError("--queue needs a path")
         }
     }
 }
@@ -640,6 +755,7 @@ public enum Invocation {
     case run(RunCommand)
     case hook(HookCommand)
     case setup(SetupCommand)
+    case follow(FollowCommand)
     case history(HistoryCommand)
     case dismiss(DismissCommand)
     case pause(PauseCommand)
@@ -674,6 +790,7 @@ public enum CommandLineParser {
             case let command as RunCommand: return .invocation(.run(command))
             case let command as HookCommand: return .invocation(.hook(command))
             case let command as SetupCommand: return .invocation(.setup(command))
+            case let command as FollowCommand: return .invocation(.follow(command))
             case let command as HistoryCommand: return .invocation(.history(command))
             case let command as DismissCommand: return .invocation(.dismiss(command))
             case let command as PauseCommand: return .invocation(.pause(command))

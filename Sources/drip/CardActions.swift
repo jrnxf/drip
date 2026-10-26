@@ -33,9 +33,10 @@ enum CardActions {
         }
     }
 
-    /// Waits, briefly, for activations to be handed off, so exiting does not cut them short.
+    /// Waits, briefly, for activations to be handed off, so exiting does not cut them short: long
+    /// enough for herdr on another machine to answer over ssh.
     static func waitForActivations() {
-        _ = activations.wait(timeout: .now() + 2)
+        _ = activations.wait(timeout: .now() + 12)
     }
 
     /// Answers a card's buttons: yes runs the action, no is reported through drip's exit status.

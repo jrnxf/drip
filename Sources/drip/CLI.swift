@@ -79,6 +79,8 @@ struct DripCLI {
             return hook(command)
         case let .invocation(.setup(command)):
             return setup(command)
+        case let .invocation(.follow(command)):
+            return follow(command)
         case let .invocation(.history(command)):
             return history(command)
         case let .invocation(.dismiss(command)):
@@ -113,7 +115,7 @@ struct DripCLI {
     /// nothing to show, which is no failure: drip exits 0 and prints nothing, so an agent used over
     /// ssh shows no hook error after every turn.
     private func hook(_ command: HookCommand) -> Int32 {
-        var flags = command.options.flags
+        let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         let status: Int32
@@ -122,6 +124,7 @@ struct DripCLI {
             guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit + 1) else {
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
             }
+            #if os(WASI)
             // A session nobody attends, such as `claude -p` in a pipeline, or one an orchestrator
             // silenced with DRIP_HOOK=off: nothing to show, nothing to take away, nothing to fail.
             guard try AgentHook.speaks(for: command.agent, environment: ProcessInfo.processInfo.environment) else {
@@ -130,85 +133,86 @@ struct DripCLI {
             if payload.utf8.count > AgentHook.payloadLimit {
                 throw UsageError("the hook payload is larger than 4 MB")
             }
-            #if os(WASI)
             guard case let .card(event) = try AgentHook.outcome(
                 agent: command.agent, payload: payload, environment: ProcessInfo.processInfo.environment)
             else {
                 return ExitStatus.shown
             }
-            #else
-            let environment = ProcessInfo.processInfo.environment
-            let state = AgentState(environment: environment)
-            let event: AgentHook.Event
-            // DRIP_HOOK=attention: the done card at the end of a turn needs nobody, but still takes
-            // away the card the session waits on.
-            switch try AgentHook.outcome(agent: command.agent, payload: payload, environment: environment) {
-            case .nothing:
-                return ExitStatus.shown
-            case let .clear(clear):
-                // You answered in the terminal: the card that said the agent needs you would only be
-                // wrong now. One file read when no card waits, as on most tool calls.
-                if state.takeWaiting(clear) { try DismissRequests(environment: environment).request(id: clear.id) }
-                if clear.startsTurn { try? state.noteTurn(id: clear.id) }
-                return ExitStatus.shown
-            case let .card(found):
-                event = found
-            }
-            // Claude's permission_prompt notification, when a PermissionRequest hook already showed
-            // the card for it, with what Claude wants to do.
-            if event.isPermissionNotice, let id = event.id, state.waiting(id: id)?.tool != nil {
-                return ExitStatus.shown
-            }
-            #endif
             guard display.hasGUISession else { return ExitStatus.shown }
-            flags = event.filling(flags)
-            flags.icon = flags.icon ?? command.agent.icon(installed: display.isInstalled)
-            var title = event.title
-            #if !os(WASI)
-            if let id = event.id, let directory = event.directory {
-                try? state.noteSession(id: id, directory: directory)
-                // Two sessions in folders of the same name, such as two worktrees of one repo, read apart.
-                if let name = AgentHook.projectName(directory), title.hasPrefix(name + " ") {
-                    let project = AgentState.project(directory, among: state.otherDirectories(than: id))
-                    title = project + title.dropFirst(name.count)
-                }
-            }
-            #endif
-            let resolver = try makeResolver(console)
-            #if !os(WASI)
-            // A done card you chose not to see still takes away the card the session waits on, as it
-            // would have replaced it.
-            if let id = event.id, AgentHook.skipsDone(
-                event, cards: resolver.agentCards, doneAfter: resolver.doneAfter, turnStarted: state.turnStarted(id: id),
-                now: Date().timeIntervalSince1970)
-            {
-                if state.takeWaiting(AgentHook.Clear(id: id)) { try DismissRequests(environment: environment).request(id: id) }
-                return ExitStatus.shown
-            }
-            #endif
-            var card = try resolver.resolve(kind: event.kind, title: title, flags: flags)
-            #if !os(WASI)
-            if let id = card.id {
-                if card.waits {
-                    try? state.noteWaiting(id: id, tool: event.waitsOn)
-                } else {
-                    state.noteDone(id: id)
-                }
-            }
-            #endif
-            // You may be watching the agent's terminal already.
-            guard let shown = resolver.whenFocused.apply(
-                to: card, front: display.front(of: card), awayAfter: resolver.awayAfter)
+            var cardFlags = event.filling(flags)
+            cardFlags.icon = cardFlags.icon ?? command.agent.icon(installed: display.isInstalled)
+            let card = try makeResolver(console).resolve(kind: event.kind, title: event.title, flags: cardFlags)
+            #else
+            guard let card = try AgentHook.card(
+                agent: command.agent, payload: payload, flags: flags, in: surroundings(console))
             else {
                 return ExitStatus.shown
             }
-            card = shown
+            #endif
             // An agent's hook keeps its output clean, terminal or not.
             status = deliver([card], wait: flags.wait, remind: false, console: console)
         } catch {
             status = report(error, console, subcommand: HookCommand.configuration.commandName)
         }
         return status == ExitStatus.shown || status == ExitStatus.noGUISession ? ExitStatus.shown : ExitStatus.hookFailed
+    }
+
+    /// Shows the cards of agents on another machine until stopped, or prints the launchd agent that
+    /// runs it.
+    private func follow(_ command: FollowCommand) -> Int32 {
+        let console = Console()
+        #if os(WASI)
+        console.error("drip follow reads another machine over ssh, which WebAssembly cannot")
+        return ExitStatus.usage
+        #else
+        let environment = ProcessInfo.processInfo.environment
+        let target = command.target ?? ""
+        let activate = CardActivation.target(flag: command.activate, sender: CardActivation.sender(in: environment))
+        if activate == nil, command.activate == nil {
+            console.warn("drip cannot tell which terminal you use: a click on a card brings nothing forward until you pass --activate")
+        }
+        if command.launchd {
+            print(FollowAgent.plist(
+                command: [Self.executable(environment: environment)] + Array(CommandLine.arguments.dropFirst())
+                    .filter { $0 != "--launchd" } + (command.activate == nil ? activate.map { ["--activate", $0] } ?? [] : []),
+                target: target, environment: environment), terminator: "")
+            return ExitStatus.shown
+        }
+        let settings = RemoteFollower.Settings(
+            target: target, queue: command.queue, maxAge: command.maxAge,
+            ssh: [environment["DRIP_SSH"].flatMap { $0.isEmpty ? nil : $0 } ?? "/usr/bin/ssh"],
+            positionPath: FollowPosition.path(target: target, environment: environment))
+        let follower = RemoteFollower(settings: settings, handle: { event in
+            let surroundings = event.surroundings(
+                self.surroundings(console), activate: activate, herdrMachine: command.herdrMachine)
+            do {
+                guard let card = try AgentHook.card(agent: event.agent, payload: event.payload, in: surroundings) else {
+                    return
+                }
+                _ = self.deliver([card], wait: false, remind: false, console: console)
+            } catch {
+                console.error("\(target): a \(event.agent.rawValue) event from \(event.machine): \(error)")
+            }
+        }, log: { console.error($0) })
+        console.error("following \(target)")
+        do {
+            try follower.run()
+        } catch {
+            console.error("\(error)")
+            return ExitStatus.followFailed
+        }
+        return ExitStatus.shown
+        #endif
+    }
+
+    /// The drip a launchd agent runs: this one, by the name `PATH` finds it under when it does, as
+    /// Homebrew's link, which stays put when Homebrew upgrades drip.
+    private static func executable(environment: [String: String]) -> String {
+        let this = (Bundle.main.executablePath ?? CommandLine.arguments[0]) as NSString
+        let resolved = this.resolvingSymlinksInPath
+        let directories = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        return directories.map { ($0 as NSString).appendingPathComponent("drip") }
+            .first { $0.hasPrefix("/") && ($0 as NSString).resolvingSymlinksInPath == resolved } ?? resolved
     }
 
     /// Asks every drip showing cards to take them away, those with `--id` only when it is given.
@@ -229,8 +233,12 @@ struct DripCLI {
 
     /// Adds drip's hooks to the agent's settings, or prints them.
     private func setup(_ command: SetupCommand) -> Int32 {
-        if command.printOnly {
-            print(AgentSetup.snippet(for: command.agent), terminator: "")
+        guard let agent = command.agent else {
+            print(RemoteHook.script, terminator: "")
+            return ExitStatus.shown
+        }
+        if command.printOnly || command.remote {
+            print(AgentSetup.snippet(for: agent, remote: command.remote), terminator: "")
             return ExitStatus.shown
         }
         let console = Console()
@@ -238,7 +246,7 @@ struct DripCLI {
         console.error("drip setup changes files, which WebAssembly cannot")
         return ExitStatus.setupFailed
         #else
-        switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(command.agent) {
+        switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(agent) {
         case let .done(lines, warnings):
             warnings.forEach(console.warn)
             lines.forEach { print($0) }
@@ -396,9 +404,20 @@ struct DripCLI {
         }
     }
 
+    #if !os(WASI)
+    /// What an agent's hook reads around its event on this Mac.
+    private func surroundings(_ console: Console) -> AgentHook.Surroundings {
+        AgentHook.Surroundings(
+            environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
+            isInstalled: display.isInstalled, front: display.front(of:),
+            resolver: { try makeResolver(console, environment: $0) })
+    }
+    #endif
+
     /// Reads the config file and environment, printing the config file's warnings.
-    private func makeResolver(_ console: Console) throws -> CardResolver {
-        let environment = ProcessInfo.processInfo.environment
+    private func makeResolver(
+        _ console: Console, environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> CardResolver {
         let file = try ConfigLoader.load(environment: environment)
         file.warnings.forEach(console.warn)
         let settings = try EnvironmentSettings(environment: environment)

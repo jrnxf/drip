@@ -328,6 +328,77 @@ Any other agent or tool: wrap what it runs in `drip run`, or call drip from its 
 The site has the same as a guide: [Claude Code notifications on Mac, from the
 notch](https://drip.jrnxf.co/claude-code-notifications).
 
+### Agents on another machine
+
+An agent on a Linux box you reach over ssh, with no screen and no drip there, raises its cards on
+your Mac by the same rules as one on the Mac: `DRIP_HOOK`, `agent_cards`, `done_after`,
+`when_focused` and the rest of the [config](#config). Its hooks run `drip-remote-hook`, a small
+POSIX sh script that appends each event to a queue file there, and `drip follow` on the Mac reads
+that queue over ssh and shows each event's card as `drip hook` would. The Mac connects out to the
+machine; nothing connects in.
+
+1. On the Mac, save the hook on the machine, here `devbox`, in a folder on its `PATH`:
+
+   ```sh
+   drip setup remote | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
+   ```
+
+2. Add the hooks that run it to the agent's settings on the machine. `drip setup claude --remote`
+   prints them, the same hooks as `drip setup claude` adds on a Mac with `drip-remote-hook claude`
+   as their command; likewise `codex` and `gemini`.
+
+3. On the Mac, follow the machine, by any name `ssh` takes, a `Host` from `~/.ssh/config` too:
+
+   ```sh
+   drip follow devbox
+   ```
+
+   It needs to log in without a prompt, with a key or an agent: it runs ssh with `BatchMode=yes`.
+
+4. To keep it running, have launchd start it at login. `drip follow devbox --launchd` prints the
+   launchd agent, with the terminal you ran it from as the app a click brings forward:
+
+   ```sh
+   drip follow devbox --launchd > ~/Library/LaunchAgents/co.jrnxf.drip.follow.devbox.plist
+   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/co.jrnxf.drip.follow.devbox.plist
+   ```
+
+   It logs to `~/Library/Logs/co.jrnxf.drip.follow.devbox.log`. `launchctl bootout
+   gui/$(id -u)/co.jrnxf.drip.follow.devbox` stops it; delete the plist to keep it stopped.
+
+**The queue.** Each event is one line of JSON in `$XDG_STATE_HOME/drip/remote.jsonl` on the machine,
+or `~/.local/state/drip/remote.jsonl`, or `$DRIP_QUEUE` when set there: the hook's payload, the
+agent, the machine's name (`$DRIP_MACHINE`, or `uname -n`), the time, and the session's `DRIP_HOOK`,
+Claude Code's attendance variables, and herdr's `HERDR_PANE_ID`, `HERDR_TAB_ID` and
+`HERDR_WORKSPACE_ID`. The hook takes a lock with `flock` when the machine has it, so lines from
+sessions at once never mix, and once the queue passes 8 MB it moves it to `remote.jsonl.1`,
+replacing the one before: the two never take much more than 16 MB. The file is readable only by
+you. The hook prints nothing and always exits 0, so it never fails or holds up a turn, even when
+it cannot write the queue. `drip follow --queue <path>` reads another path.
+
+**Following.** `drip follow` checks the queue every second, reconnects when the connection drops,
+after 1 second and then up to a minute between tries, and takes up after the last event it
+handled: it keeps its place in `$XDG_STATE_HOME/drip/follow` on the Mac, so a new connection
+replays nothing it showed. The first time, it starts at the end of the queue. An event older than
+5 minutes when it arrives, as one queued while the Mac slept, is dropped rather than shown with a
+burst of others: `--max-age 30m` sets another limit. Age is from the machine's clock, so keep both
+clocks set by the network. One `drip follow` per machine runs at a time.
+
+**Its cards.** A card from the machine names it, as in `api on devbox is done`, and its id is
+`<agent>:<session>@<machine>`, so it never replaces a card of a session on the Mac. drip cannot
+tell whether the herdr you look at on the Mac shows that machine's pane, so `when_focused` takes
+you not to be watching it: its cards always show, with their sound. The `DRIP_HOOK` and attendance
+of the session on the machine decide whether it raises cards, not the variables `drip follow` runs
+with.
+
+**Clicks.** A click brings forward the terminal you ran `drip follow` from, or the app
+`--activate` names, then, when the agent runs in herdr, focuses its workspace and tab on the machine
+with `herdr --machine <machine> workspace focus` and `tab focus`. That is as close as herdr lets a
+command get today: it cannot focus a pane on another machine by its id, nor switch the herdr on the
+Mac from Local to that machine, so you see the tab once your herdr shows the machine. herdr names
+the machine by the label you saved it under with `herdr machine`, by default the ssh target's host;
+`--herdr-machine <label>` names another.
+
 ## Alert when a command finishes
 
 Put `drip run` in front of any command: it runs it, times it, and shows a green card on exit 0, or
@@ -389,7 +460,9 @@ coding agent keeps the agent's last message. Delete the file to clear it.
 drip [KIND] [TITLE] [options]
 drip run [options] [--] <command> [args...]
 drip hook claude|codex|gemini [options] [payload]
-drip setup claude|codex|gemini [--print]
+drip setup claude|codex|gemini [--print | --remote]
+drip setup remote
+drip follow <ssh-target> [options]
 drip history [--missed] [--json | --replay]
 drip dismiss [--id ID]
 drip pause [DURATION]
