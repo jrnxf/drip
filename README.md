@@ -126,7 +126,7 @@ session's next card replaces it, or 10 minutes pass. Each session's card has the
 the waiting card turns into the done card in place. drip keeps the agent's Markdown out of the
 card: it shows the words, without code fences, heading or list markers, or emphasis marks.
 
-**Clicks.** A click on an agent's card brings back the terminal the agent runs in, and in tmux or
+**Clicks.** A click on an agent's card brings back the terminal the agent runs in, and in tmux, herdr or
 WezTerm the agent's own pane. The × that takes the icon's place while the pointer is on the card,
 or a right-click, Control-click or Option-click anywhere on it, takes the card away and brings
 nothing forward, for when it is only in the way. `drip dismiss` does the same from the keyboard.
@@ -135,8 +135,8 @@ nothing forward, for when it is only in the way. `drip dismiss` does the same fr
 without a sound and count down 1.5 seconds: you are likely watching it already. `when_focused` in
 the [config](#config), or `DRIP_WHEN_FOCUSED`, changes that: `quiet`, the default; `show`, as any
 other card; or `skip`, no card at all, not even one that needs you, but only when drip knows from
-tmux that the agent's own pane is the one in front, since several sessions often share one terminal
-app. With `quiet`, a card that needs you always shows. Either way drip takes you to be watching only
+tmux or herdr that the agent's own pane is the one in front, since several sessions often share one
+terminal app. With `quiet`, a card that needs you always shows. Either way drip takes you to be watching only
 if you used the keyboard or mouse in the last minute, or the `away_after` you set: a terminal left
 in front while you are away raises its cards as usual.
 
@@ -521,8 +521,8 @@ card away. macOS names that app in the `__CFBundleIdentifier` environment variab
 starts, and drip uses it; `--activate` names another app by its bundle identifier, and
 `--activate none` leaves a card without a button click-through; on a card with a button, a click off
 the button only takes the card away. In tmux, a click also selects the pane drip ran in, in the
-terminal that shows that tmux session now, which may not be the one that started tmux; in WezTerm,
-the pane. Neither needs a permission. A card you can click holds while the pointer is on it, like a
+terminal that shows that tmux session now, which may not be the one that started tmux; in herdr, the
+pane's tab and then its agent; in WezTerm, the pane. None of them needs a permission. A card you can click holds while the pointer is on it, like a
 card with a button, for up to 5 seconds after the pointer last moved, so a pointer left resting on
 it never keeps it there. A card that waits for you is always clickable: a click takes it away, even
 with `--activate none`. The card itself never takes focus.

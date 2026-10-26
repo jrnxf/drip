@@ -42,15 +42,29 @@ public struct TerminalPane: Equatable, Sendable, Codable {
     public var tmuxPane: String?
     /// WezTerm's pane id, from `WEZTERM_PANE`.
     public var weztermPane: String?
+    /// herdr's pane id, such as `w1:p2`, from `HERDR_PANE_ID`.
+    public var herdrPane: String?
+    /// herdr's tab id, such as `w1:t2`, from `HERDR_TAB_ID`.
+    public var herdrTab: String?
+    /// herdr's server socket, from `HERDR_SOCKET_PATH`, so a drip started elsewhere asks the same
+    /// server; nil for herdr's own default.
+    public var herdrSocket: String?
 
-    public init(tmuxSocket: String? = nil, tmuxPane: String? = nil, weztermPane: String? = nil) {
+    public init(
+        tmuxSocket: String? = nil, tmuxPane: String? = nil, weztermPane: String? = nil,
+        herdrPane: String? = nil, herdrTab: String? = nil, herdrSocket: String? = nil
+    ) {
         self.tmuxSocket = tmuxSocket
         self.tmuxPane = tmuxPane
         self.weztermPane = weztermPane
+        self.herdrPane = herdrPane
+        self.herdrTab = herdrTab
+        self.herdrSocket = herdrSocket
     }
 
-    /// The pane the environment names; nil when it names none. tmux comes first: WezTerm's
-    /// variable reaches a tmux running inside it, where the pane that matters is tmux's.
+    /// The pane the environment names; nil when it names none. The innermost comes first: tmux,
+    /// then herdr, then WezTerm, whose variables reach a multiplexer running inside it, where the
+    /// pane that matters is the multiplexer's.
     public init?(environment: [String: String]) {
         func value(_ name: String) -> String? {
             environment[name].flatMap { $0.isEmpty ? nil : $0 }
@@ -60,6 +74,10 @@ public struct TerminalPane: Equatable, Sendable, Codable {
            socket.hasPrefix("/")
         {
             self.init(tmuxSocket: socket, tmuxPane: pane)
+        } else if value("HERDR_ENV") == "1", let pane = value("HERDR_PANE_ID"), Self.isHerdrID(pane) {
+            let tab = value("HERDR_TAB_ID").flatMap { Self.isHerdrID($0) ? $0 : nil }
+            let socket = value("HERDR_SOCKET_PATH").flatMap { $0.hasPrefix("/") ? $0 : nil }
+            self.init(herdrPane: pane, herdrTab: tab, herdrSocket: socket)
         } else if let pane = value("WEZTERM_PANE"), Self.isPaneID(pane, prefix: "") {
             self.init(weztermPane: pane)
         } else {
@@ -74,15 +92,36 @@ public struct TerminalPane: Equatable, Sendable, Codable {
         return !digits.isEmpty && digits.count <= 12 && digits.allSatisfy { $0.isASCII && $0.isNumber }
     }
 
+    /// A herdr id, such as `w1J:p2`: letters, digits and colons, starting with a letter, so it is
+    /// never read as an option.
+    static func isHerdrID(_ text: String) -> Bool {
+        guard let first = text.first, first.isASCII, first.isLetter, text.count <= 64 else { return false }
+        return text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == ":") }
+    }
+
+    /// The `herdr` command line with `arguments`, against the pane's own server.
+    func herdr(_ arguments: [String]) -> [String] {
+        (herdrSocket.map { ["HERDR_SOCKET_PATH=\($0)"] } ?? []) + ["herdr"] + arguments
+    }
+
+    /// The command whose output `isShowing(herdrPane:)` reads.
+    public var herdrShowingCommand: [String]? {
+        herdrPane.map { herdr(["pane", "get", $0]) }
+    }
+
     /// The commands that bring this pane forward in its terminal, each as the program and its
     /// arguments. tmux: show the pane's window in the client attached to the pane's session, then
-    /// the pane. WezTerm: activate the pane.
+    /// the pane. herdr: show the pane's tab, then the agent in the pane, which a pane with no agent
+    /// refuses. WezTerm: activate the pane.
     public var selectCommands: [[String]] {
         if let pane = tmuxPane, let socket = tmuxSocket {
             return [
                 ["tmux", "-S", socket, "select-window", "-t", pane],
                 ["tmux", "-S", socket, "select-pane", "-t", pane],
             ]
+        }
+        if let pane = herdrPane {
+            return (herdrTab.map { [herdr(["tab", "focus", $0])] } ?? []) + [herdr(["agent", "focus", pane])]
         }
         if let pane = weztermPane {
             return [["wezterm", "cli", "activate-pane", "--pane-id", pane]]
@@ -137,5 +176,13 @@ extension TerminalPane {
         let fields = output.split(whereSeparator: \.isWhitespace).compactMap { Int($0) }
         guard fields.count == 3 else { return nil }
         return fields[0] == 1 && fields[1] == 1 && fields[2] > 0
+    }
+
+    /// Whether `herdr pane get`'s output says the pane shows: herdr marks one pane focused, the
+    /// active pane of the active tab in the workspace its clients show. Nil when it cannot be read.
+    public static func isShowing(herdrPane output: String) -> Bool? {
+        guard let reply = try? JSONValue(parsing: output), case let .bool(focused)? = reply["result"]?["pane"]?["focused"]
+        else { return nil }
+        return focused
     }
 }

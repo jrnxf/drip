@@ -364,7 +364,8 @@ public struct EnvironmentSettings: Equatable {
     public var doneAfter: Double?
     /// The bundle identifier of the app drip was run from, from `__CFBundleIdentifier`.
     public var sender: String?
-    /// The terminal pane drip was run in, from `TMUX` and `TMUX_PANE`, or `WEZTERM_PANE`.
+    /// The terminal pane drip was run in, from `TMUX` and `TMUX_PANE`, herdr's `HERDR_PANE_ID`, or
+    /// `WEZTERM_PANE`.
     public var pane: TerminalPane?
 
     public init(
