@@ -14,9 +14,10 @@
 # make it wait.
 #
 # Clicks and VoiceOver's actions need Accessibility, which a small helper app holds, not your
-# terminal: the first run asks for it, once (System Settings > Privacy & Security > Accessibility,
-# turn on "drip e2e helper"). The helper lives in ~/.cache/drip-e2e and is rebuilt only when its
-# source changes, which may ask once more. Without the grant, those checks skip.
+# terminal: the first run asks for it, once, in front and only while the screen is awake and
+# unlocked (System Settings > Privacy & Security > Accessibility, turn on "drip e2e helper"). The
+# helper lives in ~/.cache/drip-e2e and is rebuilt only when its source changes, which may ask once
+# more. Without the grant, those checks skip.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -54,6 +55,10 @@ built() {
 harness="$cache/harness"
 if stale scripts/mac-e2e/Harness.swift "$harness"; then
     swiftc -O -o "$harness" scripts/mac-e2e/Harness.swift
+    if ! result=$("$harness" --self-test); then
+        printf '%s\n' "$result" >&2
+        exit 1
+    fi
     built scripts/mac-e2e/Harness.swift "$harness"
 fi
 

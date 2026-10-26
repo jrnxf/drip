@@ -29,8 +29,9 @@ func write(_ object: [String: Any], to name: String) {
     rename(temporary, path)
 }
 
-func trusted() -> Bool {
-    AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt] as CFDictionary)
+/// Whether the helper holds Accessibility; with `asking`, asks for it when it does not.
+func trusted(asking: Bool = false) -> Bool {
+    AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: asking] as CFDictionary)
 }
 
 /// Whether `point`, in global coordinates with y down from the top of the main screen, is where
@@ -149,7 +150,11 @@ func answer(_ request: [String: Any]) -> [String: Any] {
     }
 }
 
-write(["trusted": trusted(), "pid": Int(getpid())], to: "ready")
+if prompt {
+    // The system prompt opens in front of the app that asks, so the app comes to the front first.
+    NSApplication.shared.activate(ignoringOtherApps: true)
+}
+write(["trusted": trusted(asking: prompt), "pid": Int(getpid())], to: "ready")
 let decoder = { (path: String) -> [String: Any]? in
     FileManager.default.contents(atPath: path).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
 }

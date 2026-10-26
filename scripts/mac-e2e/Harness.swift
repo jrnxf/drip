@@ -27,6 +27,7 @@ struct Options {
     var only: Set<Int>?
     var judgeCheck: String?
     var prompt = true
+    var selfTest = false
 }
 
 func parseOptions() -> Options {
@@ -47,6 +48,7 @@ func parseOptions() -> Options {
         case "--only": options.only = Set(value().split(separator: ",").compactMap { Int($0) })
         case "--judge-check": options.judgeCheck = value()
         case "--no-prompt": options.prompt = false
+        case "--self-test": options.selfTest = true
         case let other:
             FileHandle.standardError.write(Data("mac-e2e: unknown option \(other)\n".utf8))
             exit(2)
@@ -56,6 +58,48 @@ func parseOptions() -> Options {
 }
 
 let options = parseOptions()
+
+/// Whether the screen is locked, as the login session says.
+func screenIsLocked() -> Bool {
+    (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+}
+
+/// Whether nobody can see the screen: it is locked, or the display sleeps.
+func screenIsAway() -> Bool {
+    screenIsLocked() || CGDisplayIsAsleep(CGMainDisplayID()) != 0
+}
+
+/// Whether the helper should ask for Accessibility now: when asking is on, there is a build to ask
+/// for, it is not the build that asked already (`asked`, the marker's contents), and the screen is
+/// not away, since macOS would show the one prompt to nobody and the marker would then hide it for good.
+func shouldAsk(prompt: Bool, build: Data?, asked: Data?, away: Bool) -> Bool {
+    prompt && build != nil && asked != build && !away
+}
+
+/// Whether the asked-once marker is written after the helper asked: when it holds the grant, so later
+/// runs launch it in the background and leave the terminal's focus alone, and when the prompt went
+/// unanswered with the screen in front of the person. Not when the screen was away, since nobody saw
+/// the prompt and the next run has to ask again.
+func recordsAsked(trusted: Bool, away: Bool) -> Bool {
+    trusted || !away
+}
+
+if options.selfTest {
+    let build = Data("a".utf8), other = Data("b".utf8)
+    let cases: [(name: String, actual: Bool, expected: Bool)] = [
+        ("asks on a first run", shouldAsk(prompt: true, build: build, asked: nil, away: false), true),
+        ("asks again for a rebuilt helper", shouldAsk(prompt: true, build: build, asked: other, away: false), true),
+        ("does not ask twice for one build", shouldAsk(prompt: true, build: build, asked: build, away: false), false),
+        ("does not ask while the screen is away", shouldAsk(prompt: true, build: build, asked: nil, away: true), false),
+        ("does not ask with --no-prompt", shouldAsk(prompt: false, build: build, asked: nil, away: false), false),
+        ("does not ask without a helper build", shouldAsk(prompt: true, build: nil, asked: nil, away: false), false),
+        ("records the ask once the helper holds the grant", recordsAsked(trusted: true, away: false), true),
+        ("records the ask when the prompt went unanswered", recordsAsked(trusted: false, away: false), true),
+        ("does not record the ask when the screen was away", recordsAsked(trusted: false, away: true), false),
+    ]
+    for test in cases { print("\(test.actual == test.expected ? "ok  " : "FAIL")  \(test.name)") }
+    exit(cases.allSatisfy { $0.actual == $0.expected } ? 0 : 1)
+}
 
 // MARK: - Reporting
 
@@ -542,17 +586,30 @@ final class Helper {
     let directory: String
     var serial = 0
     var trusted = false
+    let marker: String
+    let build: Data?
+
+    /// Whether the helper asked for the grant, which leaves the system prompt open for the person.
+    var asked = false
 
     init?(app: String, prompt: Bool) {
         directory = path(scratch, "helper")
         try? fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
         // macOS asks for the grant at most once per helper build: a marker beside the app keeps the
         // build that asked, so later runs wait silently until it is granted, and a rebuild may ask again.
-        let marker = (app as NSString).deletingPathExtension + ".asked"
-        let build = fileManager.contents(atPath: path(app, "Contents/MacOS/helper"))
+        marker = (app as NSString).deletingPathExtension + ".asked"
+        build = fileManager.contents(atPath: path(app, "Contents/MacOS/helper"))
             .map { Data(SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined().utf8) }
-        let ask = prompt && build != nil && fileManager.contents(atPath: marker) != build
-        var arguments = ["open", "-g", "-n", app, "--args", directory, String(getpid())]
+        let away = screenIsAway()
+        let previous = fileManager.contents(atPath: marker)
+        let ask = shouldAsk(prompt: prompt, build: build, asked: previous, away: away)
+        if away, shouldAsk(prompt: prompt, build: build, asked: previous, away: false) {
+            say("mac-e2e: the screen is locked or asleep, so the helper did not ask for Accessibility: wake it and run scripts/mac-e2e.sh again")
+        }
+        // Asking brings the helper to the front (no -g), so its system prompt does not sit behind the
+        // terminal; the backdrop is not up yet, and stays down until the person has answered.
+        var arguments = ["open", "-n", app, "--args", directory, String(getpid())]
+        if !ask { arguments.insert("-g", at: 1) }
         if ask { arguments.append("--prompt") }
         guard run(arguments).status == 0 else { return nil }
         let ready = path(directory, "ready")
@@ -561,7 +618,27 @@ final class Helper {
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         trusted = object["trusted"] as? Bool ?? false
-        if ask, !trusted { fileManager.createFile(atPath: marker, contents: build) }
+        asked = ask && !trusted
+        // Already granted: record it, so the next run launches the helper in the background.
+        if ask, trusted { fileManager.createFile(atPath: marker, contents: build) }
+    }
+
+    /// Waits up to `timeout` seconds for the person to grant the prompt the helper opened. The marker
+    /// is written when it is granted, or when the prompt went unanswered with the screen in front of
+    /// them the whole time; when it locks or sleeps first, nobody saw the prompt, so the next run asks again.
+    func awaitAnswer(_ timeout: Double) {
+        guard asked else { return }
+        var away = false
+        let stopped = wait(timeout, every: 0.25, {
+            if screenIsAway() { away = true; return true }
+            return call(["op": "trusted"])["trusted"] as? Bool == true
+        })
+        if away {
+            say("mac-e2e: the screen locked or slept with the Accessibility prompt open: wake it and run scripts/mac-e2e.sh again")
+        } else {
+            trusted = stopped != nil
+        }
+        if recordsAsked(trusted: trusted, away: away) { fileManager.createFile(atPath: marker, contents: build) }
     }
 
     func call(_ request: [String: Any]) -> [String: Any] {
@@ -765,7 +842,7 @@ if let directory = options.judgeCheck {
 
 say("mac-e2e: drip \(dripRun(["--version"]).out.trimmingCharacters(in: .whitespacesAndNewlines)), scratch \(scratch)")
 say("mac-e2e: hands off the mouse until it is done; it moves the pointer and clicks cards at the notch")
-if let locked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool, locked {
+if screenIsLocked() {
     say("mac-e2e: the screen is locked, and drip holds cards while it is: unlock it first")
     cleanUp()
     exit(1)
@@ -776,6 +853,11 @@ if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
 if let app = options.helper {
     helper = Helper(app: app, prompt: options.prompt)
     if helper == nil { say("mac-e2e: the helper app did not start") }
+}
+if helper?.asked == true {
+    // The backdrop stays out of the prompt's way until it is answered, for up to 45 seconds.
+    say("mac-e2e: turn on \"drip e2e helper\" in the Accessibility prompt that is open now (waiting up to 45 s)")
+    helper?.awaitAnswer(45)
 }
 if !canClick {
     say("mac-e2e: clicks and VoiceOver's actions are \(ungranted)")
