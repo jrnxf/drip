@@ -176,7 +176,7 @@ final class HistoryTests {
                 time: now.addingTimeInterval(-120), missed: false, card: card("drip is done", kind: "ok"),
                 shown: ShownText(title: ["drip is done"], detail: ["Split it. Pane awareness", "for herdr belongs in drip."])),
         ]
-        let rule = String(repeating: "─", count: 51)
+        let rule = String(repeating: "─", count: 52)
         #expect(HistoryListing.render(entries, now: now, color: false) == """
             2m ago    ┃ drip is done
                       ┃ Split it. Pane awareness
@@ -185,6 +185,17 @@ final class HistoryTests {
             20m ago   ┃ deploy failed  missed
                       ┃ api 1.4.2
             """)
+    }
+
+    @Test func ruleIsAsWideAsTheWidestLine() {
+        let wide = String(repeating: "x", count: 60)
+        let entries = [
+            HistoryEntry(time: now, missed: false, card: card("a"), shown: ShownText(title: ["a"], detail: [wide])),
+            HistoryEntry(time: now, missed: false, card: card("b"), shown: ShownText(title: ["b"])),
+        ]
+        let lines = HistoryListing.render(entries, now: now, color: false).split(separator: "\n")
+        let rule = lines.first { $0.hasPrefix("─") }
+        #expect(rule?.count == lines.map(\.count).max())
     }
 
     @Test func listingColorsOnlyWhenAsked() {

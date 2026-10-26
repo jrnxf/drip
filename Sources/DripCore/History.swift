@@ -185,9 +185,9 @@ public enum HistoryListing {
     public static func render(_ entries: [HistoryEntry], now: Date = Date(), color: Bool) -> String {
         func style(_ text: String, _ code: String) -> String { color ? "\u{1B}[\(code)m\(text)\u{1B}[0m" : text }
         let shown = entries.map(\.shownText)
-        // The rule spans the time column, the bar and the widest line shown.
+        // The rule spans the time column, the gap and bar after it, and the widest line shown.
         let widest = shown.flatMap { $0.title + $0.detail }.map(\.count).max() ?? 0
-        let rule = style(String(repeating: "─", count: timeWidth + 2 + max(widest, ruleMinimum)), "2")
+        let rule = style(String(repeating: "─", count: timeWidth + 3 + max(widest, ruleMinimum)), "2")
         let blank = String(repeating: " ", count: timeWidth)
         let cards = zip(entries, shown).reversed().map { entry, shown -> String in
             let bar = style("┃", barColor(entry.card.kind))
