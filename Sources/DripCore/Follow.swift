@@ -4,28 +4,31 @@ import Foundation
 extension RemoteEvent {
     /// `local`, what `drip hook` reads around an event on this Mac, as it is for this event from
     /// another machine: the session's variables from the event, the machine in card ids and titles,
-    /// and a click that brings `activate` forward and focuses the agent's tab on `herdrMachine`.
+    /// a click that brings `activate` forward and focuses the agent's tab on `herdrMachine`, the time
+    /// the event happened, never later than `local`'s, and no card when the event is `stale`.
     public func surroundings(
-        _ local: AgentHook.Surroundings, activate: String?, herdrMachine: String?
+        _ local: AgentHook.Surroundings, activate: String?, herdrMachine: String?, stale: Bool = false
     ) -> AgentHook.Surroundings {
         var surroundings = local
         surroundings.environment = environment(over: local.environment)
         surroundings.origin = origin(activate: activate, herdrMachine: herdrMachine)
+        surroundings.showsCards = local.showsCards && !stale
+        surroundings.now = { [time, now = local.now] in Date(timeIntervalSince1970: min(time, now().timeIntervalSince1970)) }
         return surroundings
     }
 }
 
 /// `drip follow`: reads the queue of another machine over ssh, with `FollowReader`'s script, and
-/// hands each event young enough to `handle`. Reconnects with a growing pause when the connection
-/// drops or never comes up, and keeps its place in the queue in `positionPath`, so it takes up after
-/// the last line it handled.
+/// hands each event to `handle`, with whether it was too old when it arrived to show a card.
+/// Reconnects with a growing pause when the connection drops or never comes up, and keeps its place
+/// in the queue in `positionPath`, so it takes up after the last line it handled.
 public final class RemoteFollower {
     public struct Settings {
         /// The machine, as ssh takes it.
         public var target: String
         /// The queue's path there; nil for `RemoteHook.defaultQueue`.
         public var queue: String?
-        /// Seconds an event may be old when it arrives.
+        /// Seconds an event may be old when it arrives and still show a card.
         public var maxAge: Double
         /// The ssh program and any options of its own.
         public var ssh: [String]
@@ -65,8 +68,8 @@ public final class RemoteFollower {
     ]
 
     public var settings: Settings
-    /// Shows an event's card.
-    public var handle: (RemoteEvent) -> Void
+    /// Shows an event's card, or only takes away what it would take away when it is stale.
+    public var handle: (_ event: RemoteEvent, _ stale: Bool) -> Void
     /// Says what happens, a line at a time.
     public var log: (String) -> Void
     public var now: () -> Date = Date.init
@@ -75,7 +78,7 @@ public final class RemoteFollower {
     private var stopped = false
     private var process: Process?
 
-    public init(settings: Settings, handle: @escaping (RemoteEvent) -> Void, log: @escaping (String) -> Void) {
+    public init(settings: Settings, handle: @escaping (_ event: RemoteEvent, _ stale: Bool) -> Void, log: @escaping (String) -> Void) {
         self.settings = settings
         self.handle = handle
         self.log = log
@@ -175,11 +178,9 @@ public final class RemoteFollower {
                 case .file:
                     break
                 case let .event(.success(event)):
-                    if event.age(now: now().timeIntervalSince1970) > settings.maxAge {
-                        stale += 1
-                    } else {
-                        handle(event)
-                    }
+                    let tooOld = event.age(now: now().timeIntervalSince1970) > settings.maxAge
+                    if tooOld { stale += 1 }
+                    handle(event, tooOld)
                 case let .event(.failure(error)):
                     log("skipped a line of \(settings.target)'s queue: \(error)")
                 }
@@ -201,7 +202,7 @@ public final class RemoteFollower {
     }
 
     private func dropped(_ count: Int) -> String {
-        "dropped \(count) \(count == 1 ? "event" : "events") older than \(Self.describe(settings.maxAge)) from \(settings.target)"
+        "showed no card for \(count) \(count == 1 ? "event" : "events") older than \(Self.describe(settings.maxAge)) from \(settings.target)"
     }
 
     /// `5m`, `1h` or `1h30m`.

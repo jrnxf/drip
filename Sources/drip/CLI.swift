@@ -182,9 +182,9 @@ struct DripCLI {
             target: target, queue: command.queue, maxAge: command.maxAge,
             ssh: [environment["DRIP_SSH"].flatMap { $0.isEmpty ? nil : $0 } ?? "/usr/bin/ssh"],
             positionPath: FollowPosition.path(target: target, environment: environment))
-        let follower = RemoteFollower(settings: settings, handle: { event in
+        let follower = RemoteFollower(settings: settings, handle: { event, stale in
             let surroundings = event.surroundings(
-                self.surroundings(console), activate: activate, herdrMachine: command.herdrMachine)
+                self.surroundings(console), activate: activate, herdrMachine: command.herdrMachine, stale: stale)
             do {
                 guard let card = try AgentHook.card(agent: event.agent, payload: event.payload, in: surroundings) else {
                     return

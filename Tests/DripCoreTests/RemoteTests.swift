@@ -159,7 +159,7 @@ struct RemoteFollowTests {
     init() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("drip-remote-\(UUID().uuidString)").path
         queue = "\(root)/remote/drip/remote.jsonl"
-        environment = ["HOME": root, "XDG_STATE_HOME": "\(root)/mac"]
+        environment = ["HOME": root, "XDG_STATE_HOME": "\(root)/mac", "XDG_CONFIG_HOME": "\(root)/mac-config"]
         try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
         try RemoteHook.script.write(toFile: "\(root)/drip-remote-hook", atomically: false, encoding: .utf8)
         // ssh's options, then `--`, the target, and the command, which runs here.
@@ -222,22 +222,27 @@ struct RemoteFollowTests {
 
     var positionPath: String { FollowPosition.path(target: "devbox", environment: environment) }
 
-    /// Follows the fake machine until `count` events arrive, then returns their sessions, and the
-    /// pauses before each reconnection.
+    /// Follows the fake machine until `count` events arrive, then returns the sessions of those young
+    /// enough to show, of the stale ones, and the pauses before each reconnection. `handle` sees
+    /// every event too.
     func follow(
-        count: Int, ssh: String = "ssh", now: Date = Date(), whileFollowing: (() throws -> Void)? = nil
-    ) throws -> (sessions: [String], delays: [Double]) {
+        count: Int, ssh: String = "ssh", now: Date = Date(), handle: ((RemoteEvent, Bool) -> Void)? = nil,
+        whileFollowing: (() throws -> Void)? = nil
+    ) throws -> (sessions: [String], stale: [String], delays: [Double]) {
         var sessions: [String] = []
+        var stale: [String] = []
         var delays: [Double] = []
         let settings = RemoteFollower.Settings(
             target: "devbox", queue: queue, ssh: ["\(root)/\(ssh)"], positionPath: positionPath)
-        let follower = RemoteFollower(settings: settings, handle: { _ in }, log: { _ in })
+        let follower = RemoteFollower(settings: settings, handle: { _, _ in }, log: { _ in })
         follower.now = { now }
         follower.sleep = { delays.append($0) }
-        follower.handle = { event in
+        follower.handle = { event, tooOld in
             let payload = try? JSONValue(parsing: event.payload)
-            sessions.append(payload?["session_id"]?.string ?? "?")
-            if sessions.count >= count { follower.stop() }
+            let session = payload?["session_id"]?.string ?? "?"
+            if tooOld { stale.append(session) } else { sessions.append(session) }
+            handle?(event, tooOld)
+            if sessions.count + stale.count >= count { follower.stop() }
         }
         // Never longer than this, whatever happens.
         DispatchQueue.global().asyncAfter(deadline: .now() + 20) { follower.stop() }
@@ -245,7 +250,7 @@ struct RemoteFollowTests {
             DispatchQueue.global().asyncAfter(deadline: .now() + 2) { try? whileFollowing() }
         }
         try follower.run()
-        return (sessions, delays)
+        return (sessions, stale, delays)
     }
 
     @Test func theHookQueuesOneLinePerEvent() throws {
@@ -300,21 +305,54 @@ struct RemoteFollowTests {
     @Test func aFirstFollowShowsOnlyWhatComesNext() throws {
         let now = Date()
         try append([Self.line(session: "before", time: now.timeIntervalSince1970)])
-        let result = try follow(count: 1, now: now) {
+        let result = try follow(count: 1, now: now, whileFollowing: {
             try hook(["codex"], stdin: #"{"hook_event_name":"UserPromptSubmit","session_id":"after"}"#)
-        }
+        })
         #expect(result.sessions == ["after"])
     }
 
-    @Test func eventsTooOldWhenTheyArriveAreDropped() throws {
+    @Test func eventsTooOldWhenTheyArriveAreStale() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        try append([Self.line(session: "old", time: 1_800_000_000 - FollowCommand.defaultMaxAge - 1)])
-        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
         try append([
+            Self.line(session: "old", time: 1_800_000_000 - FollowCommand.defaultMaxAge - 1),
             Self.line(session: "recent", time: 1_800_000_000 - FollowCommand.defaultMaxAge + 1),
             Self.line(session: "ahead", time: 1_800_000_100),
         ])
-        #expect(try follow(count: 2, now: now).sessions == ["recent", "ahead"])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        let result = try follow(count: 3, now: now)
+        #expect(result.sessions == ["recent", "ahead"])
+        #expect(result.stale == ["old"])
+    }
+
+    @Test func aStaleAnswerStillTakesAwayTheCardItAnswers() throws {
+        let now = Date()
+        let mac = AgentHook.Surroundings(
+            environment: environment, hasGUISession: true, isInstalled: { _ in false },
+            front: { _ in WhenFocused.Front(app: false, pane: false) },
+            resolver: { CardResolver(config: Config(), environment: try EnvironmentSettings(environment: $0)) })
+        var cards: [Card?] = []
+        let show: (RemoteEvent, Bool) -> Void = { event, stale in
+            cards.append(try? AgentHook.card(
+                agent: event.agent, payload: event.payload,
+                in: event.surroundings(mac, activate: nil, herdrMachine: nil, stale: stale)))
+        }
+        let ask = #"{"drip":1,"time":\#(Int(now.timeIntervalSince1970)),"agent":"claude","machine":"devbox","env":{},"payload":{"session_id":"s1","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"ls"}}}"#
+        try append([ask])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        _ = try follow(count: 1, now: now, handle: show)
+        #expect(cards.count == 1 && cards[0]?.waits == true)
+        let agents = AgentState(environment: environment)
+        #expect(agents.waiting(id: "claude:s1@devbox", now: now) != nil)
+
+        // You answered on the machine while the Mac slept, longer than --max-age.
+        let answered = now.timeIntervalSince1970 + 60
+        let later = Date(timeIntervalSince1970: answered + FollowCommand.defaultMaxAge + 60)
+        try append([#"{"drip":1,"time":\#(Int(answered)),"agent":"claude","machine":"devbox","env":{},"payload":{"session_id":"s1","hook_event_name":"UserPromptSubmit"}}"#])
+        let result = try follow(count: 1, now: later, handle: show)
+        #expect(result.stale == ["s1"])
+        #expect(cards.count == 2 && cards[1] == nil)
+        #expect(agents.waiting(id: "claude:s1@devbox", now: Date(timeIntervalSince1970: answered)) == nil)
+        #expect(DismissRequests(environment: environment).load().dismisses(id: "claude:s1@devbox", since: now.timeIntervalSince1970 - 1))
     }
 
     @Test func aNewConnectionTakesUpAfterTheLastEventHandled() throws {
@@ -343,8 +381,8 @@ struct RemoteFollowTests {
 
     @Test func oneFollowerPerMachine() throws {
         let settings = RemoteFollower.Settings(target: "devbox", queue: queue, ssh: ["\(root)/ssh"], positionPath: positionPath)
-        let first = RemoteFollower(settings: settings, handle: { _ in }, log: { _ in })
-        let second = RemoteFollower(settings: settings, handle: { _ in }, log: { _ in })
+        let first = RemoteFollower(settings: settings, handle: { _, _ in }, log: { _ in })
+        let second = RemoteFollower(settings: settings, handle: { _, _ in }, log: { _ in })
         let started = DispatchSemaphore(value: 0)
         DispatchQueue.global().async {
             started.signal()
@@ -375,7 +413,10 @@ struct RemoteDecisionTests {
     /// What `drip hook` reads around an event on this Mac, with the terminal in front and you at it.
     func local(_ environment: [String: String] = [:], inFront: Bool = false) -> AgentHook.Surroundings {
         AgentHook.Surroundings(
-            environment: ["XDG_STATE_HOME": state, "HOME": state, "__CFBundleIdentifier": "com.apple.Terminal"]
+            environment: [
+                "XDG_STATE_HOME": state, "XDG_CONFIG_HOME": "\(state)/config", "HOME": state,
+                "__CFBundleIdentifier": "com.apple.Terminal",
+            ]
                 .merging(environment) { $1 },
             hasGUISession: true, isInstalled: { _ in false },
             front: { _ in WhenFocused.Front(app: inFront, pane: inFront, idle: 0) },
@@ -383,14 +424,16 @@ struct RemoteDecisionTests {
             now: { now })
     }
 
-    func remote(_ payload: String, environment: [String: String] = [:]) -> RemoteEvent {
-        RemoteEvent(time: now.timeIntervalSince1970, agent: .claude, machine: "devbox", environment: environment, payload: payload)
+    func remote(_ payload: String, environment: [String: String] = [:], time: Double? = nil) -> RemoteEvent {
+        RemoteEvent(
+            time: time ?? now.timeIntervalSince1970, agent: .claude, machine: "devbox", environment: environment,
+            payload: payload)
     }
 
-    func card(_ event: RemoteEvent, _ local: AgentHook.Surroundings) throws -> Card? {
+    func card(_ event: RemoteEvent, _ local: AgentHook.Surroundings, stale: Bool = false) throws -> Card? {
         try AgentHook.card(
             agent: event.agent, payload: event.payload,
-            in: event.surroundings(local, activate: "com.mitchellh.ghostty", herdrMachine: "devbox"))
+            in: event.surroundings(local, activate: "com.mitchellh.ghostty", herdrMachine: "devbox", stale: stale))
     }
 
     static let stop = #"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"Stop","last_assistant_message":"Done."}"#
@@ -449,6 +492,34 @@ struct RemoteDecisionTests {
         let agents = AgentState(environment: surroundings.environment)
         #expect(agents.waiting(id: "claude:s1@devbox", now: now) == nil)
         #expect(agents.waiting(id: "claude:s1", now: now) != nil)
+    }
+
+    @Test func aStaleEventShowsNoCardButTakesAwayTheOneItReplaces() throws {
+        let surroundings = local()
+        #expect(try card(remote(Self.permission), surroundings)?.waits == true)
+        #expect(try card(remote(Self.stop), surroundings, stale: true) == nil)
+        let agents = AgentState(environment: surroundings.environment)
+        #expect(agents.waiting(id: "claude:s1@devbox", now: now) == nil)
+        #expect(DismissRequests(environment: surroundings.environment).load()
+            .dismisses(id: "claude:s1@devbox", since: Date().timeIntervalSince1970 - 60))
+        // A stale clear does what a fresh one does.
+        #expect(try card(remote(Self.permission), surroundings)?.waits == true)
+        let answered = #"{"session_id":"s1","hook_event_name":"UserPromptSubmit"}"#
+        #expect(try card(remote(answered), surroundings, stale: true) == nil)
+        #expect(agents.waiting(id: "claude:s1@devbox", now: now) == nil)
+    }
+
+    @Test func aTurnIsTimedByWhenItsEventsHappened() throws {
+        // A turn of 3 minutes, heard in one burst after a reconnection.
+        let prompt = #"{"session_id":"s1","hook_event_name":"UserPromptSubmit"}"#
+        let surroundings = local(["DRIP_DONE_AFTER": "60"])
+        #expect(try card(remote(prompt, time: now.timeIntervalSince1970 - 200), surroundings) == nil)
+        let agents = AgentState(environment: surroundings.environment)
+        #expect(agents.turnStarted(id: "claude:s1@devbox", now: now) == now.timeIntervalSince1970 - 200)
+        #expect(try card(remote(Self.stop, time: now.timeIntervalSince1970 - 20), surroundings)?.title == "api on devbox is done")
+        // A machine whose clock is ahead: never later than now here.
+        #expect(try card(remote(prompt, time: now.timeIntervalSince1970 + 600), surroundings) == nil)
+        #expect(agents.turnStarted(id: "claude:s1@devbox", now: now) == now.timeIntervalSince1970)
     }
 
     @Test func foldersOfOneNameReadApartPerMachine() throws {

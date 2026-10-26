@@ -18,13 +18,16 @@ extension AgentHook {
         public var resolver: ([String: String]) throws -> CardResolver
         /// The machine the event came from, for an agent `drip follow` hears from; nil for one on this Mac.
         public var origin: Origin?
+        /// Whether the event may show a card: false for one too old when `drip follow` heard it,
+        /// which still takes away what it would have taken away.
+        public var showsCards: Bool
         public var now: () -> Date
 
         public init(
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
             front: @escaping (Card) -> WhenFocused.Front,
             resolver: @escaping ([String: String]) throws -> CardResolver, origin: Origin? = nil,
-            now: @escaping () -> Date = Date.init
+            showsCards: Bool = true, now: @escaping () -> Date = Date.init
         ) {
             self.environment = environment
             self.hasGUISession = hasGUISession
@@ -32,6 +35,7 @@ extension AgentHook {
             self.front = front
             self.resolver = resolver
             self.origin = origin
+            self.showsCards = showsCards
             self.now = now
         }
 
@@ -76,6 +80,12 @@ extension AgentHook {
         // Claude's permission_prompt notification, when a PermissionRequest hook already showed
         // the card for it, with what Claude wants to do.
         if event.isPermissionNotice, let id, state.waiting(id: id, now: surroundings.now())?.tool != nil {
+            return nil
+        }
+        // An event too old to show still takes away the card the session waits on, as its card
+        // would have replaced it.
+        guard surroundings.showsCards else {
+            if let id, state.takeWaiting(Clear(id: id), now: surroundings.now()) { try surroundings.dismissals.request(id: id) }
             return nil
         }
         guard surroundings.hasGUISession else { return nil }

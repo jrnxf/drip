@@ -380,8 +380,9 @@ it cannot write the queue. `drip follow --queue <path>` reads another path.
 after 1 second and then up to a minute between tries, and takes up after the last event it
 handled: it keeps its place in `$XDG_STATE_HOME/drip/follow` on the Mac, so a new connection
 replays nothing it showed. The first time, it starts at the end of the queue. An event older than
-5 minutes when it arrives, as one queued while the Mac slept, is dropped rather than shown with a
-burst of others: `--max-age 30m` sets another limit. Age is from the machine's clock, so keep both
+5 minutes when it arrives, as one queued while the Mac slept, shows no card rather than one in a
+burst of others, but still takes away the card its session waits on, as after you answered on the
+machine: `--max-age 30m` sets another limit. Age is from the machine's clock, so keep both
 clocks set by the network. One `drip follow` per machine runs at a time.
 
 **Its cards.** A card from the machine names it, as in `api on devbox is done`, and its id is

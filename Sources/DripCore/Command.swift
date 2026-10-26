@@ -505,19 +505,19 @@ public struct FollowCommand: ParsableCommand {
             shows each one's card as drip hook would on this Mac, by the same config and DRIP_HOOK. \
             It runs until stopped, reconnecting when the connection drops, and takes up after the last \
             event it handled. Events older than --max-age when they arrive, as after the Mac slept, \
-            are dropped. drip setup remote prints the hook; --launchd prints a launchd agent that keeps \
+            show no card, but still take away the cards they would. drip setup remote prints the hook; --launchd prints a launchd agent that keeps \
             drip follow running.
             """
     )
 
-    /// How old an event may be when it arrives, by default: one queued while the Mac slept is dropped.
+    /// How old an event may be when it arrives, by default: one queued while the Mac slept shows no card.
     public static let defaultMaxAge = 5 * 60.0
 
     @Argument(help: ArgumentHelp("The machine, as ssh takes it: a host, user@host, or a Host from ~/.ssh/config.", valueName: "ssh-target"))
     public var target: String?
 
     @Option(name: .customLong("max-age"), help: ArgumentHelp(
-        "Drop events older than this when they arrive: minutes or hours, such as 5m or 1h. (default: 5m)",
+        "Show no card for events older than this when they arrive: minutes or hours, such as 5m or 1h. (default: 5m)",
         valueName: "duration"))
     var maxAgeText: String?
 
