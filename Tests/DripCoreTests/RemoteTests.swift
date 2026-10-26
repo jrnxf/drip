@@ -437,16 +437,21 @@ struct RemoteFollowTests {
     }
 
     @Test func oneFollowerPerMachine() throws {
+        let now = Date()
+        try append([Self.line(session: "s1", time: now.timeIntervalSince1970)])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
         let settings = RemoteFollower.Settings(target: "devbox", queue: queue, ssh: ["\(root)/ssh"], positionPath: positionPath)
-        let first = RemoteFollower(settings: settings, handle: { _, _ in }, log: { _ in })
+        // The first holds the lock once it hands on an event: it takes the lock before it connects.
+        let following = DispatchSemaphore(value: 0)
+        let first = RemoteFollower(settings: settings, handle: { _, _ in following.signal() }, log: { _ in })
         let second = RemoteFollower(settings: settings, handle: { _, _ in }, log: { _ in })
-        let started = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
-            started.signal()
-            try? first.run()
+        // Never longer than this, whatever happens.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 20) {
+            first.stop()
+            second.stop()
         }
-        started.wait()
-        Thread.sleep(forTimeInterval: 0.5)
+        DispatchQueue.global().async { try? first.run() }
+        #expect(following.wait(timeout: .now() + 20) == .success)
         #expect(throws: StateError.self) { try second.run(connections: 1) }
         first.stop()
     }
