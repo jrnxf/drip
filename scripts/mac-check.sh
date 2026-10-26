@@ -97,9 +97,9 @@ printf '{"hook_event_name":"Stop","session_id":"mac-check","cwd":"%s","last_assi
 # A permission card goes once the tool it asked about has run, as when you approve in the terminal.
 sleep 9
 echo "Showing a Claude permission card, then taking it away as its tool runs"
-printf '{"hook_event_name":"PermissionRequest","session_id":"mac-check-2","cwd":"%s","tool_name":"Bash","tool_input":{"command":"swift test"},"tool_use_id":"toolu_mac_check"}' "$PWD" | hook
+printf '{"hook_event_name":"PermissionRequest","session_id":"mac-check-2","cwd":"%s","prompt_id":"mac-check-prompt","tool_name":"Bash","tool_input":{"command":"swift test"}}' "$PWD" | hook
 sleep 4
-printf '{"hook_event_name":"PostToolUse","session_id":"mac-check-2","tool_name":"Bash","tool_use_id":"toolu_mac_check"}' | hook
+printf '{"hook_event_name":"PostToolUse","session_id":"mac-check-2","prompt_id":"mac-check-prompt","tool_name":"Bash","tool_input":{"command":"swift test"},"tool_use_id":"toolu_mac_check"}' | hook
 
 # drip dismiss takes cards away without bringing anything forward.
 sleep 2

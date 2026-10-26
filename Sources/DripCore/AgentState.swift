@@ -75,7 +75,9 @@ public struct AgentState {
     /// `clear` names, or `clear` names none. Forgets the card when it does.
     public func takeWaiting(_ clear: AgentHook.Clear, now: Date = Date()) -> Bool {
         guard let waiting = waiting(id: clear.id, now: now) else { return false }
-        if let tool = clear.tool, waiting.tool != tool { return false }
+        if let tool = clear.tool, waiting.tool != tool, clear.alsoTool.map({ waiting.tool != $0 }) ?? true {
+            return false
+        }
         noteDone(id: clear.id)
         return true
     }

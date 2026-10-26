@@ -16,7 +16,7 @@
 //
 // Logins are never printed or written anywhere but where each agent keeps its own: Claude Code's
 // long-lived token stays in the Keychain until the shell that starts the session reads it, Codex
-// uses your own login through a link to it, and Gemini CLI has a Google sign-in of its own here.
+// uses your own login through a link to it, and Gemini CLI's API key is in the Keychain the same way.
 import CoreGraphics
 import Darwin
 import Foundation
@@ -104,6 +104,7 @@ func quoted(_ text: String) -> String {
 func redacted(_ text: String) -> String {
     let patterns = [
         #"sk-ant-[A-Za-z0-9_-]{8,}"#, #"ya29\.[A-Za-z0-9._-]{8,}"#, #"1//[A-Za-z0-9_-]{20,}"#,
+        #"AIza[A-Za-z0-9_-]{20,}"#,
         #"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+"#,
     ]
     return patterns.reduce(text) { $0.replacingOccurrences(of: $1, with: "[redacted]", options: .regularExpression) }
@@ -375,12 +376,14 @@ struct Options {
     var drift: String?
     /// Whether there is a GUI session to show cards in; nil asks macOS, as drip does.
     var guiSession: Bool?
-    /// The Keychain item that holds Claude Code's token: this service, account `claude`.
+    /// The Keychain items that hold Claude Code's token and Gemini CLI's API key: this service, account
+    /// `claude` and account `gemini`.
     var service = "drip-agent-contract"
+    /// The program that reads them; the tests hand it a stand-in.
+    var security = "/usr/bin/security"
     var codexAuth = (NSHomeDirectoryForUser(NSUserName()) ?? NSHomeDirectory()) + "/.codex/auth.json"
 
     var contractFile: String { path(repo, "scripts/agent-contract/contract.json") }
-    var geminiHome: String { path(cache, "gemini") }
     var setupHint: String { "scripts/agent-contract.sh --setup" }
 
     func tool(_ agent: Agent) -> String {
@@ -406,6 +409,7 @@ struct Options {
             case "--swift": options.swift = value(argument)
             case "--drip": options.drip = value(argument)
             case "--keychain-service": options.service = value(argument)
+            case "--security": options.security = value(argument)
             case "--codex-auth": options.codexAuth = value(argument)
             case "--keep": options.keep = true
             case "--gui-session":
@@ -447,6 +451,10 @@ func tmuxSocket(_ options: Options, _ agent: Agent) -> String {
     mkdir(folder, 0o700)
     return path(folder, name)
 }
+
+/// The variable the `drip` wrapper sets to the XDG_STATE_HOME the hook was started with, empty when
+/// it had none.
+let hookStateHome = "DRIP_CONTRACT_HOOK_XDG_STATE_HOME"
 
 /// One agent's scratch world: its home, drip's state, config and queue, the agent's settings, the
 /// project the session runs in, and the recorder that stands in for drip.
@@ -529,7 +537,17 @@ struct World {
                 return "cannot copy \(source): \(error.localizedDescription)"
             }
         }
-        write("#!/bin/sh\nexec \(quoted(recorder)) record \(quoted(capture)) \(quoted(drip)) \"$@\"\n", to: path(bin, "drip"), mode: 0o755)
+        // The world's state and queue are set here, whatever an agent leaves out of its hooks'
+        // environment: Claude Code's scrub removes every XDG_* variable. What the hook had is kept
+        // for the recorder to note.
+        write("""
+            #!/bin/sh
+            \(hookStateHome)="${XDG_STATE_HOME-}"
+            export \(hookStateHome)
+            exec env XDG_STATE_HOME=\(quoted(state)) DRIP_QUEUE_DIR=\(quoted(path(root, "queue"))) \
+                \(quoted(recorder)) record \(quoted(capture)) \(quoted(drip)) "$@"
+
+            """, to: path(bin, "drip"), mode: 0o755)
         // Codex runs hooks through your shell, which sets PATH afresh: drip comes first on it, as it
         // would once installed. A login shell runs macOS's path_helper after .zshenv, and .zprofile
         // and .zlogin after that.
@@ -558,18 +576,21 @@ struct World {
             try? fileManager.createSymbolicLink(atPath: path(agentHome, "auth.json"), withDestinationPath: options.codexAuth)
         case .gemini:
             let settings: [String: Any] = [
-                "security": ["auth": ["selectedType": "oauth-personal"]],
+                // The API key reaches Gemini CLI from the launcher's environment alone. Its hooks get
+                // an environment with the names that look like secrets taken out; the names drip's
+                // world needs there stay.
+                "security": [
+                    "auth": ["selectedType": "gemini-api-key"],
+                    "environmentVariableRedaction": [
+                        "enabled": true,
+                        "allowed": ["XDG_STATE_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "DRIP_QUEUE_DIR", "DRIP_WHEN_FOCUSED"],
+                    ],
+                ],
                 "general": ["enableAutoUpdate": false, "enableAutoUpdateNotification": false],
             ]
             write(jsonText(settings, pretty: true) + "\n", to: path(agentHome, ".gemini/settings.json"))
             write(jsonText(Dictionary(uniqueKeysWithValues: projectPaths.map { ($0, "TRUST_FOLDER") }), pretty: true) + "\n",
                   to: path(root, "trustedFolders.json"))
-            for name in ["oauth_creds.json", "google_accounts.json"] {
-                let source = path(options.geminiHome, ".gemini", name)
-                if fileManager.fileExists(atPath: source) {
-                    try? fileManager.createSymbolicLink(atPath: path(agentHome, ".gemini", name), withDestinationPath: source)
-                }
-            }
         }
         return nil
     }
@@ -602,11 +623,41 @@ let realHome = NSHomeDirectoryForUser(NSUserName()) ?? NSHomeDirectory()
 /// Shell that reads Claude Code's token from the Keychain into the environment of the shell that
 /// starts the agent: the token is never on a command line, in a file or in this process.
 func readClaudeToken(_ options: Options) -> String {
-    "CLAUDE_CODE_OAUTH_TOKEN=$(HOME=\(quoted(realHome)) /usr/bin/security find-generic-password -s \(quoted(options.service)) -a claude -w 2>/dev/null)"
+    "CLAUDE_CODE_OAUTH_TOKEN=$(HOME=\(quoted(realHome)) \(quoted(options.security)) find-generic-password -s \(quoted(options.service)) -a claude -w 2>/dev/null)"
 }
 
 func hasClaudeToken(_ options: Options) -> Bool {
-    run(["/usr/bin/security", "find-generic-password", "-s", options.service, "-a", "claude"], timeout: 30).status == 0
+    run([options.security, "find-generic-password", "-s", options.service, "-a", "claude"], timeout: 30).status == 0
+}
+
+/// The same for Gemini CLI's API key, in account `gemini`.
+func readGeminiKey(_ options: Options) -> String {
+    "GEMINI_API_KEY=$(HOME=\(quoted(realHome)) \(quoted(options.security)) find-generic-password -s \(quoted(options.service)) -a gemini -w 2>/dev/null)"
+}
+
+func hasGeminiKey(_ options: Options) -> Bool {
+    run([options.security, "find-generic-password", "-s", options.service, "-a", "gemini"], timeout: 30).status == 0
+}
+
+/// What an agent's output says went wrong, for a reason line: a plain one when the API's quota is used
+/// up, else the API's own message when it has one, as JSON (`"message": "..."`) or as Gemini CLI prints
+/// its errors (`message: '...'`), else the first line that is no warning or startup note (Gemini CLI
+/// prints those first).
+func reasonLine(_ text: String) -> String {
+    let quota = #"(?i)(\b(code|status)\W{0,3}429\b|RESOURCE_EXHAUSTED|TerminalQuotaError|exhausted your daily quota)"#
+    if text.range(of: quota, options: .regularExpression) != nil {
+        return "Gemini API quota used up: turn on billing for the key in AI Studio, or wait for the daily reset"
+    }
+    let lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+    let message = try? NSRegularExpression(pattern: #""message":\s*"([^"]+)"|\bmessage:\s*'([^']+)'"#)
+    for line in lines {
+        let range = NSRange(line.startIndex..., in: line)
+        if let match = message?.firstMatch(in: line, range: range),
+           let found = Range(match.range(at: 1), in: line) ?? Range(match.range(at: 2), in: line) {
+            return firstLine(String(line[found]))
+        }
+    }
+    return firstLine(lines.filter { !$0.hasPrefix("Warning:") && !$0.hasPrefix("[STARTUP]") }.joined(separator: "\n"))
 }
 
 /// Whether the agent's login works, from one tiny session that runs no hooks, before anything else.
@@ -640,17 +691,21 @@ func checkLogin(_ world: World) -> Login {
         let ran = run([options.tool(.codex), "login", "status"], environment: world.environment, timeout: 60)
         return ran.status == 0 ? .ready : .needsLogin(reason: "Codex says it is not logged in", fix: "run codex login")
     case .gemini:
-        guard fileManager.fileExists(atPath: path(options.geminiHome, ".gemini/oauth_creds.json")) else {
-            return .needsLogin(reason: "no Google sign-in for Gemini CLI here", fix: "run \(options.setupHint)")
+        guard hasGeminiKey(options) else {
+            return .needsLogin(reason: "no Gemini API key in the Keychain", fix: "run \(options.setupHint)")
         }
+        let script = "\(readGeminiKey(options)) || exit 97\nexport GEMINI_API_KEY\nexec \"$@\""
         let ran = run(
-            [options.tool(.gemini), "-p", prompt], environment: world.environment, input: Data(), in: world.project,
-            timeout: 180)
+            ["/bin/sh", "-c", script, "sh", options.tool(.gemini), "-p", prompt], environment: world.environment, input: Data(),
+            in: world.project, timeout: 180)
         if ran.status == 0 { return .ready }
-        if (ran.out + ran.err).range(of: authWords, options: .regularExpression) != nil {
-            return .needsLogin(reason: "Gemini CLI's Google sign-in no longer works: \(firstLine(ran.err + ran.out))", fix: "run \(options.setupHint)")
+        if ran.status == 97 {
+            return .needsLogin(reason: "the Keychain would not give up the Gemini API key (is it locked?)", fix: "unlock the Keychain, or run \(options.setupHint)")
         }
-        return .failed("gemini -p exited \(ran.status)\(ran.timedOut ? " (timed out)" : ""): \(firstLine(ran.err + ran.out))")
+        if (ran.out + ran.err).range(of: authWords + #"|API key|PERMISSION_DENIED|UNSUPPORTED_CLIENT|IneligibleTier"#, options: .regularExpression) != nil {
+            return .needsLogin(reason: "Gemini CLI turned the saved API key down: \(reasonLine(ran.err + ran.out))", fix: "run \(options.setupHint)")
+        }
+        return .failed("gemini -p exited \(ran.status)\(ran.timedOut ? " (timed out)" : ""): \(reasonLine(ran.err + ran.out))")
     }
 }
 
@@ -700,9 +755,9 @@ func record(_ arguments: [String]) -> Never {
         let environment = ProcessInfo.processInfo.environment
         let meta: [String: Any] = [
             "status": process.terminationStatus, "stderr": String(decoding: errorData, as: UTF8.self),
-            "environment": environment.filter { ["CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_ENTRYPOINT", "DRIP_HOOK"].contains($0.key) },
+            "environment": environment.filter { ["CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_ENTRYPOINT", "DRIP_HOOK", hookStateHome].contains($0.key) },
             // Whether the hook could see Claude Code's token; never the token.
-            "token": environment["CLAUDE_CODE_OAUTH_TOKEN"] != nil,
+            "token": environment["CLAUDE_CODE_OAUTH_TOKEN"] != nil || environment["GEMINI_API_KEY"] != nil,
         ]
         write(jsonText(meta) + "\n", to: stem + ".meta.json")
     }
@@ -862,11 +917,11 @@ final class Session {
             // Codex runs a new hook only once you trust it in /hooks; this session trusts drip's.
             command = "\(quoted(tool)) --no-daemon --dangerously-bypass-hook-trust"
         case .gemini:
-            command = quoted(tool)
+            command = "\(readGeminiKey(world.options))\nexport GEMINI_API_KEY\n\(quoted(tool))"
         }
         let launcher = path(world.root, "launch.sh")
         // The terminal stays once the agent exits, so its last words can be read.
-        write("#!/bin/sh\n\(command)\necho \"[the agent exited $?]\"\nunset CLAUDE_CODE_OAUTH_TOKEN\nexec sleep 3600\n", to: launcher, mode: 0o755)
+        write("#!/bin/sh\n\(command)\necho \"[the agent exited $?]\"\nunset CLAUDE_CODE_OAUTH_TOKEN GEMINI_API_KEY\nexec sleep 3600\n", to: launcher, mode: 0o755)
         let started = run(
             [world.options.tmux, "-S", world.socket, "-f", "/dev/null", "new-session", "-d", "-s", "agent", "-x", "200", "-y", "50",
              "-c", world.project, "/bin/sh \(quoted(launcher))"],
@@ -990,7 +1045,11 @@ final class Session {
             return "the hook ran with CLAUDE_CODE_SESSION_ATTENDED=0, so drip took the session for one nobody attends"
         }
         let kinds = history(world).filter { $0.id == id }.map(\.kind)
-        return "no \(wanted) in drip's history for \(id) after \(payload.event) (it has: \(kinds.isEmpty ? "nothing" : kinds.joined(separator: ", ")))"
+        let reason = "no \(wanted) in drip's history for \(id) after \(payload.event) (it has: \(kinds.isEmpty ? "nothing" : kinds.joined(separator: ", ")))"
+        if let seen = payload.environment[hookStateHome], seen != world.state {
+            return reason + "; note: the hook started with \(seen.isEmpty ? "no XDG_STATE_HOME" : "another XDG_STATE_HOME"), which the wrapper overrides with the world's"
+        }
+        return reason
     }
 
     /// The session from start to end, its checks in `checks`.
@@ -1039,11 +1098,12 @@ final class Session {
         check("one card per session", problems.isEmpty,
               problems.isEmpty ? "\(cards.count) cards, each for \(id), one per event that shows one" : problems.joined(separator: "; "))
 
-        if agent == .claude {
+        if agent == .claude || agent == .gemini {
             let saw = all.filter(\.sawToken)
-            check("the token stays out of the hooks", saw.isEmpty,
-                  saw.isEmpty ? "no hook had CLAUDE_CODE_OAUTH_TOKEN in its environment"
-                      : "\(saw.count) hooks ran with CLAUDE_CODE_OAUTH_TOKEN in their environment")
+            let name = agent == .claude ? "CLAUDE_CODE_OAUTH_TOKEN" : "GEMINI_API_KEY"
+            check(agent == .claude ? "the token stays out of the hooks" : "the API key stays out of the hooks", saw.isEmpty,
+                  saw.isEmpty ? "no hook had \(name) in its environment"
+                      : "\(saw.count) hooks ran with \(name) in their environment")
         }
         if agent == .codex {
             let link = path(world.agentHome, "auth.json")
@@ -1604,6 +1664,18 @@ func readHidden(_ prompt: String) -> String? {
 /// wrapped, is never saved.
 let claudeTokenShape = #"^sk-ant-oat[0-9]{2}-[A-Za-z0-9_-]{60,}$"#
 
+/// What a Gemini API key looks like: one run of letters, digits, dashes and underscores, so a key cut
+/// short by a stray space or a second line is never saved.
+let geminiKeyShape = #"^[A-Za-z0-9_-]{30,}$"#
+
+/// Saves Gemini CLI's API key in the Keychain the same way. Returns whether the Keychain has it now.
+func saveGeminiKey(_ key: String, _ options: Options) -> Bool {
+    guard key.range(of: geminiKeyShape, options: .regularExpression) != nil else { return false }
+    let command = "add-generic-password -U -s \(options.service) -a gemini -T /usr/bin/security -w \(key)\n"
+    _ = run(["/usr/bin/security", "-i"], input: Data(command.utf8), timeout: 30)
+    return hasGeminiKey(options)
+}
+
 /// Saves Claude Code's token in the Keychain, through `security`'s standard input so it is on no
 /// command line. Returns whether the Keychain has it now.
 func saveClaudeToken(_ token: String, _ options: Options) -> Bool {
@@ -1614,7 +1686,7 @@ func saveClaudeToken(_ token: String, _ options: Options) -> Bool {
 }
 
 /// `--setup`: the one-time sign-ins, each checked with a tiny session. Opens the browser only for
-/// Claude Code's token and the Google sign-in, and only when they are not there or no longer work.
+/// Claude Code's token, and asks for Gemini CLI's API key only when it is not there or no longer works.
 func setup(_ options: Options, harness: String) -> Int32 {
     let scratch = path(options.cache, "setup")
     try? fileManager.removeItem(atPath: scratch)
@@ -1673,21 +1745,20 @@ func setup(_ options: Options, harness: String) -> Int32 {
         case .codex:
             login = .needsLogin(reason: "this check uses your own Codex login, and Codex is not logged in", fix: "run codex login, then \(options.setupHint) again")
         case .gemini:
-            say("Gemini CLI: one Google sign-in, kept in \(options.geminiHome) for the check only. Answer")
-            say("its question with Enter, then sign in in the browser that opens.")
-            let settings = path(options.geminiHome, ".gemini/settings.json")
-            if !fileManager.fileExists(atPath: settings) {
-                write(jsonText(["security": ["auth": ["selectedType": "oauth-personal"]]], pretty: true) + "\n", to: settings)
+            say("Gemini CLI: an API key from Google AI Studio, with billing on for it, so Google does not use")
+            say("the check's prompts to improve its products (a weekly check costs a few cents). Create one at")
+            say("https://aistudio.google.com/apikey, then paste it here. It stays hidden and goes straight into")
+            say("the Keychain: no file keeps it.")
+            if let key = readHidden("Gemini API key (Enter to skip): "), !key.isEmpty {
+                if saveGeminiKey(key, options) {
+                    say("Saved the key in the Keychain (service \(options.service), account gemini).")
+                    login = checkLogin(world)
+                } else {
+                    login = .failed("that does not look like a whole API key, so the Keychain did not take it")
+                }
+            } else {
+                login = .needsLogin(reason: "no Gemini API key was given", fix: "run \(options.setupHint) again")
             }
-            var environment = world.environment
-            environment["GEMINI_CLI_HOME"] = options.geminiHome
-            environment.removeValue(forKey: "BROWSER")
-            environment.removeValue(forKey: "NO_BROWSER")
-            let status = runHere([options.tool(.gemini), "-p", "Reply with the single word ok."], environment: environment,
-                                 in: world.project, timeout: 600)
-            // The sign-in is where the world links it from: a fresh world sees it.
-            let fresh = makeWorld(.gemini, "gemini-verify")
-            login = status == 0 ? checkLogin(fresh) : .needsLogin(reason: "the Google sign-in did not finish (gemini exited \(status))", fix: "run \(options.setupHint) again")
         }
         if case .ready = login {} else { ready = false }
         lines.append("\(agent.name): \(describe(login))")
