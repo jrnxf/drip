@@ -790,7 +790,7 @@ check(1, "a permission card goes when its tool runs") { expect in
     let tool = "toolu_\(serial)"
     hook("drip hook claude", [
         "hook_event_name": "PermissionRequest", "session_id": session, "tool_name": "Bash",
-        "tool_input": ["command": "swift test"], "tool_use_id": tool,
+        "tool_input": ["command": "swift test"], "prompt_id": "p-\(tool)",
     ])
     expect.within(3, wait(3) { showing }, "the permission card shows")
     pause(1.2)
@@ -798,10 +798,12 @@ check(1, "a permission card goes when its tool runs") { expect in
     expect.expect(cards.count == 1, "one card at the notch (found \(cards.count))")
     keep("permission-card", "One black card: Claude's icon (an orange spark, or the Claude app's icon) on the left; "
         + "title 'e2e-app needs you'; grey detail 'Claude wants to run swift test'; a white dot on the right.", around: cards)
-    hook("drip hook claude", ["hook_event_name": "PostToolUse", "session_id": session, "tool_name": "Bash", "tool_use_id": "toolu_other"])
+    hook("drip hook claude", ["hook_event_name": "PostToolUse", "session_id": session, "prompt_id": "p-\(tool)", "tool_name": "Bash",
+                              "tool_input": ["command": "swift build"], "tool_use_id": "toolu_other"])
     pause(1)
     expect.expect(showing, "another tool's run leaves it")
-    hook("drip hook claude", ["hook_event_name": "PostToolUse", "session_id": session, "tool_name": "Bash", "tool_use_id": tool])
+    hook("drip hook claude", ["hook_event_name": "PostToolUse", "session_id": session, "prompt_id": "p-\(tool)", "tool_name": "Bash",
+                              "tool_input": ["command": "swift test"], "tool_use_id": tool])
     expect.within(1.5, wait(3) { !showing }, "its own tool's run takes it away")
 }
 check(1, "drip dismiss takes a card away") { expect in
@@ -941,7 +943,7 @@ check(4, "approving in the terminal") { expect in
     let session = fresh("claude")
     let tool = "toolu_\(serial)"
     let ask: [String: Any] = ["session_id": session, "permission_mode": "default", "tool_name": "Bash",
-                              "tool_input": ["command": "swift test", "description": "Run the tests"], "tool_use_id": tool]
+                              "tool_input": ["command": "swift test", "description": "Run the tests"], "prompt_id": "p-\(tool)"]
     claude("PermissionRequest", ask)
     // The Notification Claude Code sends for the same prompt, to an older drip's matcher too.
     hook("drip hook claude", ["hook_event_name": "Notification", "session_id": session, "notification_type": "permission_prompt",
@@ -956,7 +958,7 @@ check(4, "approving in the terminal") { expect in
     expect.expect(kept.count == 1, "one card in the history (found \(kept.count))")
     expect.expect(kept.first?.card["detail"] as? String == "Run the tests", "it says what Claude wants: \(kept.first?.card["detail"] ?? "none")")
     expect.expect(kept.first?.sound == "Tink", "it asks for its sound, Tink (\(kept.first?.sound ?? "none"))")
-    claude("PostToolUse", ["session_id": session, "tool_name": "Bash", "tool_use_id": tool,
+    claude("PostToolUse", ["session_id": session, "prompt_id": "p-\(tool)", "tool_name": "Bash", "tool_use_id": tool,
                            "tool_input": ["command": "swift test"], "tool_response": ["stdout": "ok"]])
     expect.within(1.5, wait(3) { !showing }, "approving, so the tool runs, takes it away")
 }
