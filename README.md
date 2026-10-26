@@ -443,14 +443,18 @@ command is `drip hook claude`, `drip hook codex` or `drip hook gemini` in `~/.cl
 `~/.codex/hooks.json` (or `config.toml`) and `~/.gemini/settings.json`. Delete the backups
 `drip setup` left next to those files, named `<file>.drip-backup-<date>-<time>`, if you do not need
 them. If you set `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, the files
-are there instead. drip installs nothing else: no daemon, no login item, no preferences.
+are there instead. drip installs nothing else: no daemon, no login item, no preferences. If you
+[follow another machine](#agents-on-another-machine), stop and delete the launchd agents you saved
+for it, and on the machine delete `drip-remote-hook`, its queue and the hooks that run it.
 
 ## Privacy
 
-drip makes no network connections, sends nothing anywhere and collects no analytics. It only
-reads and writes your config, the agents' settings that `drip setup` edits, its history, and small
-state files next to it: the pause, `drip dismiss`'s requests, and which card each agent session
-waits on and the folder it runs in, each forgotten after 10 minutes.
+drip makes no network connections of its own, sends nothing anywhere and collects no analytics:
+the one connection is the ssh that `drip follow` runs to the machine you name. It only reads and
+writes your config, the agents' settings that `drip setup` edits, its history, and small state
+files next to it: the pause, `drip dismiss`'s requests, which card each agent session waits on and
+the folder it runs in, each forgotten after 10 minutes, and where `drip follow` is in each
+machine's queue.
 The history, `~/.local/state/drip/history.jsonl`, is readable only by you and keeps the last 1000
 cards. It holds each card's title and detail, up to 16,384 characters of each, so a card from a
 coding agent keeps the agent's last message. Delete the file to clear it.
@@ -764,7 +768,7 @@ runs at once, and the cards still in the stack play out without it.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown; a question was answered yes, the moment it was clicked. |
-| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason but no GUI session; `drip setup` left the agent's settings alone, or could not write them; `drip pause` or `drip resume` could not write the pause; or `drip dismiss` could not write its request. |
+| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason but no GUI session; `drip setup` left the agent's settings alone, or could not write them; `drip pause` or `drip resume` could not write the pause; `drip dismiss` could not write its request; or `drip follow` could not start, as when another follows the machine already. |
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh; `drip hook` exits 0 then. |
 | 4 | The config file is invalid; the message names the key and line. |
