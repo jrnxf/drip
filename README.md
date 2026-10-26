@@ -796,7 +796,7 @@ prompt while a card waits, and checks what a person would see: the waiting card 
 once approved, a prompt takes a waiting card away, each turn ends with a done card, and a session
 never has two cards. It runs on a locked Mac too, and shows nothing at the notch: drip is paused in
 its world, so the cards go to its history. A session that goes wrong is tried once more, unless what
-the agent sent is a shape drip cannot read. `--only codex` runs some agents, and `--keep` keeps each
+the agent sent is a shape drip cannot read or the account's quota ran out. `--only codex` runs some agents, and `--keep` keeps each
 agent's scratch world.
 
 The one-time setup takes about 5 minutes: run `scripts/agent-contract.sh --setup` in a terminal. It
@@ -810,7 +810,8 @@ save it yourself with `security add-generic-password -s drip-agent-contract -a g
 uses your own login: run `codex login` first if you have none. Setup checks each login with a tiny
 session, prints what is ready, then runs the check once. After that a check never prompts and never
 opens a browser: an agent whose login is missing or no longer works is skipped with the one line
-that fixes it.
+that fixes it. So is one whose API quota runs out mid-session, as when Gemini CLI stops at its
+usage limit dialog, unless a check had already failed by then.
 
 This repo ships the check only: no schedule and no alert. Running it, weekly say, and telling you
 when it fails or needs a login are up to your own scheduler, which runs `scripts/agent-contract.sh`

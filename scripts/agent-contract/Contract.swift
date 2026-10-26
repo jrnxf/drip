@@ -302,6 +302,16 @@ enum Agent: String, CaseIterable {
         }
     }
 
+    /// What the agent's screen shows when the account's quota is used up: Gemini CLI stops at a
+    /// "Usage limit reached" dialog (Keep trying / Stop) and waits for a key. A 429 it shows while it
+    /// retries on its own is no such stop.
+    var quotaScreen: String? {
+        switch self {
+        case .gemini: return #"(?i)usage limit reached"#
+        case .claude, .codex: return nil
+        }
+    }
+
     /// The first prompt: a shell command the agent has to ask to run.
     var firstPrompt: String {
         switch self {
@@ -639,15 +649,23 @@ func hasGeminiKey(_ options: Options) -> Bool {
     run([options.security, "find-generic-password", "-s", options.service, "-a", "gemini"], timeout: 30).status == 0
 }
 
+/// What Gemini CLI says, on its screen or in its errors, when the key's quota is used up.
+let geminiQuotaWords = #"(?i)(\b(code|status)\W{0,3}429\b|RESOURCE_EXHAUSTED|TerminalQuotaError|exhausted your (daily )?quota|usage limit reached)"#
+
+/// A quota used up is a problem with the account, not with drip's hooks or the key: what is wrong, and its fix.
+let geminiQuotaReason = "Gemini API quota used up"
+let geminiQuotaFix = "turn on billing for the key in AI Studio, or wait for the daily reset"
+
+func isGeminiQuota(_ text: String) -> Bool {
+    text.range(of: geminiQuotaWords, options: .regularExpression) != nil
+}
+
 /// What an agent's output says went wrong, for a reason line: a plain one when the API's quota is used
 /// up, else the API's own message when it has one, as JSON (`"message": "..."`) or as Gemini CLI prints
 /// its errors (`message: '...'`), else the first line that is no warning or startup note (Gemini CLI
 /// prints those first).
 func reasonLine(_ text: String) -> String {
-    let quota = #"(?i)(\b(code|status)\W{0,3}429\b|RESOURCE_EXHAUSTED|TerminalQuotaError|exhausted your daily quota)"#
-    if text.range(of: quota, options: .regularExpression) != nil {
-        return "Gemini API quota used up: turn on billing for the key in AI Studio, or wait for the daily reset"
-    }
+    if isGeminiQuota(text) { return "\(geminiQuotaReason): \(geminiQuotaFix)" }
     let lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
     let message = try? NSRegularExpression(pattern: #""message":\s*"([^"]+)"|\bmessage:\s*'([^']+)'"#)
     for line in lines {
@@ -701,6 +719,10 @@ func checkLogin(_ world: World) -> Login {
         if ran.status == 0 { return .ready }
         if ran.status == 97 {
             return .needsLogin(reason: "the Keychain would not give up the Gemini API key (is it locked?)", fix: "unlock the Keychain, or run \(options.setupHint)")
+        }
+        // A quota used up (a 429) is no bad key: it is looked for first.
+        if isGeminiQuota(ran.err + ran.out) {
+            return .needsLogin(reason: geminiQuotaReason, fix: geminiQuotaFix)
         }
         if (ran.out + ran.err).range(of: authWords + #"|API key|PERMISSION_DENIED|UNSUPPORTED_CLIENT|IneligibleTier"#, options: .regularExpression) != nil {
             return .needsLogin(reason: "Gemini CLI turned the saved API key down: \(reasonLine(ran.err + ran.out))", fix: "run \(options.setupHint)")
@@ -848,6 +870,9 @@ final class Session {
     /// Waiting cards the check put there itself, by replaying a request.
     var replayed = 0
     var screens: [String] = []
+    /// Why the session was stopped short, as when the account's quota ran out: nothing more to drive.
+    var stopped: Login?
+    private var lastLook = Date.distantPast
 
     init(world: World, contract: Contract) {
         self.world = world
@@ -863,6 +888,20 @@ final class Session {
 
     func screen() -> String {
         redacted(tmux(["capture-pane", "-p", "-t", "agent"]).out)
+    }
+
+    /// Whether the agent waits at a quota dialog, looked for at most every two seconds. Once it does,
+    /// the session is `stopped`: the dialog waits for a key, and no hook comes while it does.
+    func quotaShown() -> Bool {
+        if stopped != nil { return true }
+        guard let words = agent.quotaScreen, Date().timeIntervalSince(lastLook) >= 2 else { return false }
+        lastLook = Date()
+        let shown = screen()
+        guard shown.range(of: words, options: .regularExpression) != nil else { return false }
+        keepScreen("the agent stopped at a quota dialog")
+        stopped = .needsLogin(reason: geminiQuotaReason, fix: geminiQuotaFix)
+        say("  \(agent.name) stopped at its usage limit dialog")
+        return true
     }
 
     func keepScreen(_ why: String) {
@@ -900,7 +939,7 @@ final class Session {
         var found: Captured?
         waitFor(seconds) {
             found = payloads().first { $0.stem > stem && !handled.contains($0.stem) && matches($0) }
-            return found != nil
+            return found != nil || quotaShown()
         }
         if let found { handled.insert(found.stem) }
         return found
@@ -964,6 +1003,7 @@ final class Session {
             promptEvent = next(after: start, within: 30) { $0.event == self.contract.prompt }
         }
         guard let promptPayload = promptEvent else {
+            if stopped != nil { return nil }
             check("turn \(number): the prompt reaches drip", false, "no \(contract.prompt) within 45 seconds of the prompt")
             return nil
         }
@@ -983,6 +1023,7 @@ final class Session {
             guard let payload = next(after: promptPayload.stem, within: 0, {
                 self.contract.isPermission($0.payload) || $0.event == self.contract.done || $0.event == "StopFailure"
             }) else {
+                if stopped != nil { return nil }
                 if number == 1, !asked, now() - sentAt > 150 {
                     check("turn 1: the agent asks before it runs the command", false,
                           "no \(contract.permission) reached drip within 150 seconds")
@@ -1241,6 +1282,8 @@ struct AgentResult {
     var attempts = 1
     var payloads: String?
     var screens: [String] = []
+    /// Whether the account's quota cut the session short: a second try would only meet it again.
+    var stoppedShort = false
 
     var json: [String: Any] {
         var json: [String: Any] = [
@@ -1299,7 +1342,9 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
     let started = session.start()
     guard case .ready = started else { return skip(started, session) }
     session.drive()
-    session.finish()
+    let stopped = session.stopped
+    // A session cut short gets no checks over the whole of it.
+    if stopped == nil { session.finish() }
 
     let all = session.payloads()
     // Each try's own: a second try's payloads never mix with the first's.
@@ -1307,6 +1352,8 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
     keepPayloads(all, in: kept)
     result.payloads = kept
     result.drift = driftReport(savedPayloads(in: kept), contract: contract)
+    // The events a session cut short never got to send are no drift of its hooks.
+    if stopped != nil { result.drift.removeAll(where: \.missing) }
     for drift in result.drift {
         say("  \(drift.breaking ? "DRIFT" : "new  ") \(drift.event): \(drift.detail)")
     }
@@ -1316,7 +1363,17 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
     }
     result.checks = session.checks
     result.screens = session.screens
-    result.status = session.checks.allSatisfy(\.ok) && !result.drift.contains(where: \.breaking) ? "passed" : "failed"
+    let ok = session.checks.allSatisfy(\.ok) && !result.drift.contains(where: \.breaking)
+    if let stopped {
+        // An account problem says nothing of the hooks, but what the session got to before it still does.
+        guard !ok else { return skip(stopped, session) }
+        result.stoppedShort = true
+        if case let .needsLogin(reason, fix) = stopped {
+            result.reason = "then the session stopped short: \(reason)"
+            result.fix = fix
+        }
+    }
+    result.status = ok ? "passed" : "failed"
     return result
 }
 
@@ -1412,7 +1469,7 @@ func runCheck(_ options: Options, harness: String) -> Int32 {
         var result = attempt(agent, 1, options: options, runDirectory: runDirectory, harness: harness)
         // A live session can go wrong once for reasons of its own; a shape drip cannot read never
         // comes right on a second try.
-        if result.status == "failed", !result.drift.contains(where: { $0.breaking && !$0.missing }) {
+        if result.status == "failed", !result.stoppedShort, !result.drift.contains(where: { $0.breaking && !$0.missing }) {
             result = attempt(agent, 2, options: options, runDirectory: runDirectory, harness: harness)
         }
         results.append(result)
