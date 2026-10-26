@@ -64,25 +64,30 @@ func screenIsLocked() -> Bool {
     (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
 }
 
+/// Whether nobody can see the screen: it is locked, or the display sleeps.
+func screenIsAway() -> Bool {
+    screenIsLocked() || CGDisplayIsAsleep(CGMainDisplayID()) != 0
+}
+
 /// Whether the helper should ask for Accessibility now: when asking is on, there is a build to ask
 /// for, it is not the build that asked already (`asked`, the marker's contents), and the screen is
-/// unlocked, since macOS would show the one prompt to nobody and the marker would then hide it for good.
-func shouldAsk(prompt: Bool, build: Data?, asked: Data?, locked: Bool) -> Bool {
-    prompt && build != nil && asked != build && !locked
+/// not away, since macOS would show the one prompt to nobody and the marker would then hide it for good.
+func shouldAsk(prompt: Bool, build: Data?, asked: Data?, away: Bool) -> Bool {
+    prompt && build != nil && asked != build && !away
 }
 
 if options.selfTest {
     let build = Data("a".utf8), other = Data("b".utf8)
-    let cases: [(String, Bool, Bool)] = [
-        ("asks on a first run", shouldAsk(prompt: true, build: build, asked: nil, locked: false), true),
-        ("asks again for a rebuilt helper", shouldAsk(prompt: true, build: build, asked: other, locked: false), true),
-        ("does not ask twice for one build", shouldAsk(prompt: true, build: build, asked: build, locked: false), false),
-        ("does not ask while the screen is locked", shouldAsk(prompt: true, build: build, asked: nil, locked: true), false),
-        ("does not ask with --no-prompt", shouldAsk(prompt: false, build: build, asked: nil, locked: false), false),
-        ("does not ask without a helper build", shouldAsk(prompt: true, build: nil, asked: nil, locked: false), false),
-    ].map { ($0.0, $0.1 == $0.2, true) }
-    for (name, ok, _) in cases { print("\(ok ? "ok  " : "FAIL")  \(name)") }
-    exit(cases.allSatisfy(\.1) ? 0 : 1)
+    let cases: [(name: String, actual: Bool, expected: Bool)] = [
+        ("asks on a first run", shouldAsk(prompt: true, build: build, asked: nil, away: false), true),
+        ("asks again for a rebuilt helper", shouldAsk(prompt: true, build: build, asked: other, away: false), true),
+        ("does not ask twice for one build", shouldAsk(prompt: true, build: build, asked: build, away: false), false),
+        ("does not ask while the screen is away", shouldAsk(prompt: true, build: build, asked: nil, away: true), false),
+        ("does not ask with --no-prompt", shouldAsk(prompt: false, build: build, asked: nil, away: false), false),
+        ("does not ask without a helper build", shouldAsk(prompt: true, build: nil, asked: nil, away: false), false),
+    ]
+    for test in cases { print("\(test.actual == test.expected ? "ok  " : "FAIL")  \(test.name)") }
+    exit(cases.allSatisfy { $0.actual == $0.expected } ? 0 : 1)
 }
 
 // MARK: - Reporting
@@ -570,6 +575,8 @@ final class Helper {
     let directory: String
     var serial = 0
     var trusted = false
+    let marker: String
+    let build: Data?
 
     /// Whether the helper asked for the grant, which leaves the system prompt open for the person.
     var asked = false
@@ -579,15 +586,14 @@ final class Helper {
         try? fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
         // macOS asks for the grant at most once per helper build: a marker beside the app keeps the
         // build that asked, so later runs wait silently until it is granted, and a rebuild may ask again.
-        let marker = (app as NSString).deletingPathExtension + ".asked"
-        let build = fileManager.contents(atPath: path(app, "Contents/MacOS/helper"))
+        marker = (app as NSString).deletingPathExtension + ".asked"
+        build = fileManager.contents(atPath: path(app, "Contents/MacOS/helper"))
             .map { Data(SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined().utf8) }
-        // Checked now, not only at the start of the run: the release build before this takes a minute,
-        // in which the screen may have locked.
-        let locked = screenIsLocked()
-        let ask = shouldAsk(prompt: prompt, build: build, asked: fileManager.contents(atPath: marker), locked: locked)
-        if locked, prompt, build != nil, fileManager.contents(atPath: marker) != build {
-            say("mac-e2e: the screen is locked, so the helper did not ask for Accessibility: unlock it and run scripts/mac-e2e.sh again")
+        let away = screenIsAway()
+        let wanted = shouldAsk(prompt: prompt, build: build, asked: fileManager.contents(atPath: marker), away: false)
+        let ask = wanted && !away
+        if wanted, away {
+            say("mac-e2e: the screen is locked or asleep, so the helper did not ask for Accessibility: wake it and run scripts/mac-e2e.sh again")
         }
         // Asking brings the helper to the front (no -g), so its system prompt does not sit behind the
         // terminal; the backdrop is not up yet, and stays down until the person has answered.
@@ -601,9 +607,25 @@ final class Helper {
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         trusted = object["trusted"] as? Bool ?? false
-        if ask, !trusted {
+        asked = ask && !trusted
+    }
+
+    /// Waits up to `timeout` seconds for the person to grant the prompt the helper opened. The marker
+    /// is written only when the prompt went unanswered with the screen in front of them the whole
+    /// time; when it locks or sleeps first, nobody saw the prompt, so the next run asks again.
+    func awaitAnswer(_ timeout: Double) {
+        guard asked else { return }
+        var away = false
+        let stopped = wait(timeout, every: 0.25, {
+            if screenIsAway() { away = true; return true }
+            return call(["op": "trusted"])["trusted"] as? Bool == true
+        })
+        if away {
+            say("mac-e2e: the screen locked or slept with the Accessibility prompt open: wake it and run scripts/mac-e2e.sh again")
+        } else if stopped != nil {
+            trusted = true
+        } else {
             fileManager.createFile(atPath: marker, contents: build)
-            asked = true
         }
     }
 
@@ -820,14 +842,13 @@ if let app = options.helper {
     helper = Helper(app: app, prompt: options.prompt)
     if helper == nil { say("mac-e2e: the helper app did not start") }
 }
-if !canClick {
-    say("mac-e2e: clicks and VoiceOver's actions are \(ungranted)")
-}
 if helper?.asked == true {
     // The backdrop stays out of the prompt's way until it is answered, for up to 45 seconds.
     say("mac-e2e: turn on \"drip e2e helper\" in the Accessibility prompt that is open now (waiting up to 45 s)")
-    let answered = wait(45, every: 0.25, { helper?.call(["op": "trusted"])["trusted"] as? Bool == true })
-    helper?.trusted = answered != nil
+    helper?.awaitAnswer(45)
+}
+if !canClick {
+    say("mac-e2e: clicks and VoiceOver's actions are \(ungranted)")
 }
 backdrop.orderFrontRegardless()
 backdrop.display()
