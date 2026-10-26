@@ -169,6 +169,7 @@ struct RemoteEventTests {
 #if !os(WASI)
 /// `drip-remote-hook` run by sh, and `drip follow` reading what it queued through a fake ssh that
 /// runs the reader here: no real connection is ever made.
+@Suite(.serialized)
 struct RemoteFollowTests {
     let root: String
     let queue: String
@@ -219,7 +220,11 @@ struct RemoteFollowTests {
         try process.run()
         try input.fileHandleForWriting.write(contentsOf: Data(stdin.utf8))
         try input.fileHandleForWriting.close()
-        process.waitUntilExit()
+        // The hook never holds up a turn: give it 20 seconds at most.
+        let deadline = Date().addingTimeInterval(20)
+        while process.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        #expect(!process.isRunning, "drip-remote-hook \(arguments) did not end")
+        RemoteFollower.end(process, patience: 0)
         return process.terminationStatus
     }
 

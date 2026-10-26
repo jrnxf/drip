@@ -139,8 +139,9 @@ public final class RemoteFollower {
         }
         self.process = process
         defer {
-            if process.isRunning { process.terminate() }
-            process.waitUntilExit()
+            // A reader stuck writing what nobody reads any more gets an error instead, and ends.
+            try? output.fileHandleForReading.close()
+            Self.end(process)
             self.process = nil
         }
         try? input.fileHandleForWriting.write(contentsOf: Data(FollowReader.script(queue: settings.queue, position: position).utf8))
@@ -223,6 +224,15 @@ public final class RemoteFollower {
 
     private func dropped(_ count: Int) -> String {
         "showed no card for \(count) \(count == 1 ? "event" : "events") older than \(Self.describe(settings.maxAge)) from \(settings.target)"
+    }
+
+    /// Ends `process`: asks it to, then, after `patience` seconds, makes it.
+    public static func end(_ process: Process, patience: Double = 5) {
+        if process.isRunning { process.terminate() }
+        let deadline = Date().addingTimeInterval(patience)
+        while process.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        process.waitUntilExit()
     }
 
     /// `5m`, `1h` or `1h30m`.
