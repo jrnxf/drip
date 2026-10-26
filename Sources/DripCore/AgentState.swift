@@ -82,6 +82,41 @@ public struct AgentState {
         return true
     }
 
+    // MARK: Turns
+
+    /// A turn the session started, as its hook showed it.
+    struct Turn: Codable, Equatable {
+        var id: String
+        /// When you sent the prompt, in seconds since 1970.
+        var time: Double
+    }
+
+    /// Notes that you sent the session `id` a prompt, which starts a turn, and forgets the turns gone quiet.
+    public func noteTurn(id: String, now: Date = Date()) throws {
+        pruneTurns(now: now)
+        try write(Turn(id: id, time: now.timeIntervalSince1970), to: path("turn", id))
+    }
+
+    private func pruneTurns(now: Date) {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
+        for name in names where name.hasPrefix("turn-") && name.hasSuffix(".json") {
+            pruneTurn(at: (directory as NSString).appendingPathComponent(name), now: now)
+        }
+    }
+
+    private func pruneTurn(at file: String, now: Date) {
+        if let turn = read(Turn.self, at: file), now.timeIntervalSince1970 - turn.time < Defaults.waitLimit { return }
+        unlink(file)
+    }
+
+    /// When the session's last turn started, in seconds since 1970; nil when drip saw none lately.
+    public func turnStarted(id: String, now: Date = Date()) -> Double? {
+        guard let turn = read(Turn.self, at: path("turn", id)), turn.id == id,
+              now.timeIntervalSince1970 - turn.time < Defaults.waitLimit
+        else { return nil }
+        return turn.time
+    }
+
     // MARK: Sessions
 
     /// Notes that the session `id` runs in `directory`.
@@ -89,12 +124,16 @@ public struct AgentState {
         try write(Session(id: id, directory: directory, time: now.timeIntervalSince1970), to: path("session", id))
     }
 
-    /// The folders other sessions than `id` ran in lately, and forgets those gone quiet.
+    /// The folders other sessions than `id` ran in lately, and forgets the sessions and turns gone quiet.
     public func otherDirectories(than id: String, now: Date = Date()) -> [String] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
-        return names.filter { $0.hasPrefix("session-") && $0.hasSuffix(".json") }.compactMap { name in
+        return names.filter { $0.hasSuffix(".json") }.compactMap { name in
             let file = (directory as NSString).appendingPathComponent(name)
-            guard let session = read(Session.self, at: file) else { return nil }
+            if name.hasPrefix("turn-") {
+                pruneTurn(at: file, now: now)
+                return nil
+            }
+            guard name.hasPrefix("session-"), let session = read(Session.self, at: file) else { return nil }
             if now.timeIntervalSince1970 - session.time >= Defaults.waitLimit {
                 unlink(file)
                 return nil

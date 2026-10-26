@@ -26,6 +26,41 @@ struct AgentStateTests {
         #expect(state.waiting(id: "claude:s1", now: now) == nil)
     }
 
+    @Test func aTurnStartsWithAPromptAndIsForgottenWithTheWaitLimit() throws {
+        #expect(state.turnStarted(id: "claude:s1", now: now) == nil)
+        try state.noteTurn(id: "claude:s1", now: now)
+        #expect(state.turnStarted(id: "claude:s1", now: now) == now.timeIntervalSince1970)
+        #expect(state.turnStarted(id: "claude:s2", now: now) == nil)
+        #expect(state.turnStarted(id: "claude:s1", now: now.addingTimeInterval(Defaults.waitLimit)) == nil)
+    }
+
+    @Test func aNewPromptDeletesTurnsGoneQuiet() throws {
+        let later = now.addingTimeInterval(Defaults.waitLimit)
+        try state.noteTurn(id: "claude:old", now: now)
+        try state.noteTurn(id: "claude:recent", now: later.addingTimeInterval(-1))
+        try state.noteTurn(id: "claude:new", now: later)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory).count == 2)
+        #expect(state.turnStarted(id: "claude:recent", now: later) != nil)
+        #expect(state.turnStarted(id: "claude:new", now: later) != nil)
+    }
+
+    /// Claude Code sends Stop again when another Stop hook keeps it going: the turn still counts
+    /// from the prompt.
+    @Test func aTurnOutlivesItsDoneCard() throws {
+        try state.noteTurn(id: "claude:s1", now: now)
+        #expect(state.turnStarted(id: "claude:s1", now: now.addingTimeInterval(5)) == now.timeIntervalSince1970)
+        #expect(state.turnStarted(id: "claude:s1", now: now.addingTimeInterval(10)) == now.timeIntervalSince1970)
+    }
+
+    @Test func aTurnGoneQuietIsDeletedWithTheSessions() throws {
+        try state.noteTurn(id: "claude:old", now: now)
+        try state.noteTurn(id: "claude:new", now: now.addingTimeInterval(Defaults.waitLimit))
+        _ = state.otherDirectories(than: "claude:a", now: now.addingTimeInterval(Defaults.waitLimit))
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory)
+        #expect(names.count == 1)
+        #expect(state.turnStarted(id: "claude:new", now: now.addingTimeInterval(Defaults.waitLimit)) != nil)
+    }
+
     @Test func aToolCallKnownByTwoNamesTakesTheCardWaitingOnEither() throws {
         try state.noteWaiting(id: "claude:s1", tool: "toolu_01", now: now)
         #expect(!state.takeWaiting(AgentHook.Clear(id: "claude:s1", tool: "p1 Bash 1f", alsoTool: "toolu_02"), now: now))

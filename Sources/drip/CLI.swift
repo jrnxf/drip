@@ -149,6 +149,7 @@ struct DripCLI {
                 // You answered in the terminal: the card that said the agent needs you would only be
                 // wrong now. One file read when no card waits, as on most tool calls.
                 if state.takeWaiting(clear) { try DismissRequests(environment: environment).request(id: clear.id) }
+                if clear.startsTurn { try? state.noteTurn(id: clear.id) }
                 return ExitStatus.shown
             case let .card(found):
                 event = found
@@ -174,6 +175,17 @@ struct DripCLI {
             }
             #endif
             let resolver = try makeResolver(console)
+            #if !os(WASI)
+            // A done card you chose not to see still takes away the card the session waits on, as it
+            // would have replaced it.
+            if let id = event.id, AgentHook.skipsDone(
+                event, cards: resolver.agentCards, doneAfter: resolver.doneAfter, turnStarted: state.turnStarted(id: id),
+                now: Date().timeIntervalSince1970)
+            {
+                if state.takeWaiting(AgentHook.Clear(id: id)) { try DismissRequests(environment: environment).request(id: id) }
+                return ExitStatus.shown
+            }
+            #endif
             var card = try resolver.resolve(kind: event.kind, title: title, flags: flags)
             #if !os(WASI)
             if let id = card.id {
@@ -184,13 +196,13 @@ struct DripCLI {
                 }
             }
             #endif
-            if !card.waits {
-                // You may be watching the agent's terminal already.
-                guard let shown = resolver.whenFocused.apply(to: card, front: display.front(of: card)) else {
-                    return ExitStatus.shown
-                }
-                card = shown
+            // You may be watching the agent's terminal already.
+            guard let shown = resolver.whenFocused.apply(
+                to: card, front: display.front(of: card), awayAfter: resolver.awayAfter)
+            else {
+                return ExitStatus.shown
             }
+            card = shown
             // An agent's hook keeps its output clean, terminal or not.
             status = deliver([card], wait: flags.wait, remind: false, console: console)
         } catch {

@@ -20,10 +20,38 @@ struct TerminalPaneTests {
         #expect(pane?.selectCommands == [["wezterm", "cli", "activate-pane", "--pane-id", "12"]])
     }
 
+    @Test func herdrNamesItsPaneTabAndServer() throws {
+        let environment = [
+            "HERDR_ENV": "1", "HERDR_PANE_ID": "w1J:p2", "HERDR_TAB_ID": "w1J:t2", "HERDR_SOCKET_PATH": "/home/user/.config/herdr/herdr.sock",
+        ]
+        let pane = try #require(TerminalPane(environment: environment))
+        #expect(pane == TerminalPane(herdrPane: "w1J:p2", herdrTab: "w1J:t2", herdrSocket: "/home/user/.config/herdr/herdr.sock"))
+        let socket = "HERDR_SOCKET_PATH=/home/user/.config/herdr/herdr.sock"
+        #expect(pane.selectCommands == [
+            [socket, "herdr", "tab", "focus", "w1J:t2"],
+            [socket, "herdr", "agent", "focus", "w1J:p2"],
+        ])
+        #expect(pane.herdrShowingCommand == [socket, "herdr", "pane", "get", "w1J:p2"])
+        // Without a tab or a socket of its own: the agent, on herdr's default server.
+        let bare = try #require(TerminalPane(environment: ["HERDR_ENV": "1", "HERDR_PANE_ID": "w1:p1", "HERDR_SOCKET_PATH": "relative"]))
+        #expect(bare.selectCommands == [["herdr", "agent", "focus", "w1:p1"]])
+        // tmux inside herdr: tmux's pane; herdr inside WezTerm: herdr's.
+        #expect(TerminalPane(environment: environment.merging(["TMUX": "/tmp/t,1,0", "TMUX_PANE": "%1"]) { $1 })?.tmuxPane == "%1")
+        #expect(TerminalPane(environment: environment.merging(["WEZTERM_PANE": "7"]) { $1 })?.herdrPane == "w1J:p2")
+    }
+
+    @Test func herdrSaysWhetherThePaneIsFocused() {
+        #expect(TerminalPane.isShowing(herdrPane: #"{"id":"cli:pane:get","result":{"pane":{"focused":true,"pane_id":"w1:p2"}}}"#) == true)
+        #expect(TerminalPane.isShowing(herdrPane: #"{"result":{"pane":{"focused":false}}}"#) == false)
+        #expect(TerminalPane.isShowing(herdrPane: #"{"error":{"code":"pane_not_found"}}"#) == nil)
+        #expect(TerminalPane.isShowing(herdrPane: "not json") == nil)
+    }
+
     @Test func anythingElseNamesNoPane() {
         for environment in [
             [:], ["TMUX_PANE": "%3"], ["TMUX": "/tmp/t,1,0", "TMUX_PANE": "3"], ["TMUX": "relative,1,0", "TMUX_PANE": "%3"],
             ["TMUX": "/tmp/t,1,0", "TMUX_PANE": "%3;rm"], ["WEZTERM_PANE": "-1"], ["WEZTERM_PANE": ""],
+            ["HERDR_PANE_ID": "w1:p2"], ["HERDR_ENV": "1", "HERDR_PANE_ID": "-w1"], ["HERDR_ENV": "1", "HERDR_PANE_ID": "w1;rm"],
         ] {
             #expect(TerminalPane(environment: environment) == nil, "\(environment)")
         }

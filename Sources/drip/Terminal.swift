@@ -5,10 +5,11 @@ import Foundation
 import AppKit
 #endif
 
-/// The terminal a card came from, through the tools its multiplexer or terminal provides: tmux and
-/// WezTerm's command lines, which need no permission.
+/// The terminal a card came from, through the tools its multiplexer or terminal provides: tmux,
+/// herdr and WezTerm's command lines, which need no permission.
 enum Terminal {
-    /// What `arguments`, a program found on `PATH` and its arguments, prints, when it exits 0 within
+    /// What `arguments`, a program found on `PATH` and its arguments, after any `NAME=value` for its
+    /// environment, prints, when it exits 0 within
     /// a second; nil otherwise, as when the program is missing.
     static func output(_ arguments: [String]) -> String? {
         let process = Process()
@@ -57,8 +58,12 @@ enum Terminal {
         for command in pane.selectCommands { _ = output(command) }
     }
 
-    /// Whether the pane is the one its tmux client shows; nil when drip cannot tell, as outside tmux.
+    /// Whether the pane is the one its tmux client or herdr shows; nil when drip cannot tell, as
+    /// outside both.
     static func isShowing(_ pane: TerminalPane) -> Bool? {
+        if let command = pane.herdrShowingCommand {
+            return output(command).flatMap(TerminalPane.isShowing(herdrPane:))
+        }
         guard let socket = pane.tmuxSocket, let id = pane.tmuxPane,
               let output = output(["tmux", "-S", socket, "display-message", "-p", "-t", id, TerminalPane.tmuxShowingFormat])
         else { return nil }

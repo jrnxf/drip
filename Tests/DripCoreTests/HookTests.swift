@@ -381,12 +381,14 @@ struct HookTests {
         #expect(try AgentHook.outcome(agent: .claude, payload: """
             {"hook_event_name":"PostToolUse","tool_use_id":"toolu_01"}
             """) == .nothing)
-        // A prompt you sent, or an answer to a question, clears whatever the session waits on.
-        for event in ["UserPromptSubmit", "ElicitationResult"] {
-            #expect(try AgentHook.outcome(agent: .claude, payload: """
-                {"session_id":"s1","hook_event_name":"\(event)"}
-                """) == .clear(AgentHook.Clear(id: "claude:s1")))
-        }
+        // A prompt you sent, or an answer to a question, clears whatever the session waits on; only
+        // the prompt starts a turn.
+        #expect(try AgentHook.outcome(agent: .claude, payload: """
+            {"session_id":"s1","hook_event_name":"UserPromptSubmit"}
+            """) == .clear(AgentHook.Clear(id: "claude:s1", startsTurn: true)))
+        #expect(try AgentHook.outcome(agent: .claude, payload: """
+            {"session_id":"s1","hook_event_name":"ElicitationResult"}
+            """) == .clear(AgentHook.Clear(id: "claude:s1")))
         #expect(throws: UsageError.self) {
             try AgentHook.event(agent: .claude, payload: #"{"session_id":"s1","hook_event_name":"UserPromptSubmit"}"#)
         }
@@ -410,7 +412,7 @@ struct HookTests {
         #expect(other != ran)
         #expect(try AgentHook.outcome(agent: .codex, payload: """
             {"session_id":"019a","turn_id":"t2","hook_event_name":"UserPromptSubmit","prompt":"go on"}
-            """) == .clear(AgentHook.Clear(id: "codex:019a")))
+            """) == .clear(AgentHook.Clear(id: "codex:019a", startsTurn: true)))
         // Without a turn, no call to match: nothing.
         #expect(try AgentHook.outcome(agent: .codex, payload: """
             {"session_id":"019a","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{}}
@@ -464,10 +466,29 @@ struct HookTests {
     }
 
     @Test func geminiClearsOnAnyToolOrPrompt() throws {
-        for event in ["AfterTool", "BeforeAgent"] {
+        for (event, startsTurn) in [("AfterTool", false), ("BeforeAgent", true)] {
             #expect(try AgentHook.outcome(agent: .gemini, payload: """
                 {"session_id":"g1","hook_event_name":"\(event)","tool_name":"run_shell_command"}
-                """) == .clear(AgentHook.Clear(id: "gemini:g1")))
+                """) == .clear(AgentHook.Clear(id: "gemini:g1", startsTurn: startsTurn)))
+        }
+    }
+
+    @Test func aDoneCardIsLeftOutUnderAttentionOrForAQuickTurn() {
+        let done = AgentHook.Event(kind: "ok", title: "api is done", id: "claude:s1")
+        let failed = AgentHook.Event(kind: "fail", title: "api stopped", id: "claude:s1")
+        let waits = AgentHook.Event(kind: "info", title: "api needs you", id: "claude:s1", stays: true)
+        func skips(_ event: AgentHook.Event, _ cards: AgentHook.Cards = .all, after: Double = 0, started: Double? = 100) -> Bool {
+            AgentHook.skipsDone(event, cards: cards, doneAfter: after, turnStarted: started, now: 120)
+        }
+        #expect(!skips(done))
+        #expect(skips(done, .attention))
+        // A 20 second turn, under done_after = 30 but not 10.
+        #expect(skips(done, after: 30))
+        #expect(!skips(done, after: 10))
+        // No turn seen, as when drip's hooks came mid-turn: the card shows.
+        #expect(!skips(done, after: 30, started: nil))
+        for event in [failed, waits] {
+            #expect(!skips(event, .attention, after: 30))
         }
     }
 

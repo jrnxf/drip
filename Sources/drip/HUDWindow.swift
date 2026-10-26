@@ -224,7 +224,9 @@ struct HUDDisplay: CardDisplay {
         // In tmux, the terminal that shows the pane now, which `prepare` makes the click's target too.
         let target = card.pane.flatMap(Terminal.app(showing:)) ?? card.activate
         let app = target.map { $0 == NSWorkspace.shared.frontmostApplication?.bundleIdentifier } ?? false
-        return WhenFocused.Front(app: app, pane: card.pane.flatMap(Terminal.isShowing))
+        // Any keyboard or mouse event, which macOS tells without the Input Monitoring permission.
+        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+        return WhenFocused.Front(app: app, pane: card.pane.flatMap(Terminal.isShowing), idle: idle)
     }
 
     /// Ends `NSApplication.run()`. `stop` takes effect only after the next event, so post one.

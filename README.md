@@ -126,17 +126,25 @@ session's next card replaces it, or 10 minutes pass. Each session's card has the
 the waiting card turns into the done card in place. drip keeps the agent's Markdown out of the
 card: it shows the words, without code fences, heading or list markers, or emphasis marks.
 
-**Clicks.** A click on an agent's card brings back the terminal the agent runs in, and in tmux or
-WezTerm the agent's own pane. The × that takes the icon's place while the pointer is on the card,
-or a right-click, Control-click or Option-click anywhere on it, takes the card away and brings
+**Clicks.** A click on an agent's card brings back the terminal the agent runs in, and in tmux,
+herdr or WezTerm the agent's own pane. The × that takes the icon's place while the pointer is on the
+card, or a right-click, Control-click or Option-click anywhere on it, takes the card away and brings
 nothing forward, for when it is only in the way. `drip dismiss` does the same from the keyboard.
 
 **While you watch.** When the agent's terminal is the frontmost app, its done and stopped cards come
 without a sound and count down 1.5 seconds: you are likely watching it already. `when_focused` in
 the [config](#config), or `DRIP_WHEN_FOCUSED`, changes that: `quiet`, the default; `show`, as any
-other card; or `skip`, no card at all, but only when drip knows from tmux that the agent's own pane
-is the one in front, since several sessions often share one terminal app. A card that needs you
-always shows.
+other card; or `skip`, no card at all, not even one that needs you, but only when drip knows from
+tmux or herdr that the agent's own pane is the one in front, since several sessions often share one
+terminal app. With `quiet`, a card that needs you always shows. Either way drip takes you to be
+watching only if you used the keyboard or mouse in the last minute, or the `away_after` you set: a
+terminal left in front while you are away raises its cards as usual.
+
+**Fewer cards.** With many sessions at once, the done cards add up. `agent_cards = "attention"`
+shows only the cards that need you, a permission, a question or an error, from every session you
+attend, as `DRIP_HOOK=attention` does for one. `done_after = 30` keeps the done card of any turn
+shorter than 30 seconds away, counted from the prompt you sent: you likely still have it in mind.
+Both work the same for Claude Code, Codex and Gemini CLI.
 
 **Only the session you talk to.** A session nobody is at the terminal for raises no card:
 `claude -p`, the Claude Agent SDK, and the pipelines and agents that run them, which Claude Code
@@ -173,8 +181,8 @@ error to a payload it cannot read or an invalid config, exits 1: Claude Code and
 as "block", and Gemini CLI reads any code but 0 and 1 that way, which after a turn makes it run the
 turn again. drip reads up to 4 MB of payload, and prints nothing on success, as Gemini CLI needs.
 A hook that takes a waiting card away reads one small file when no card waits, so the hooks that run
-on every tool call cost next to nothing. drip keeps what each session waits on, and where it runs,
-in `$XDG_STATE_HOME/drip/agents`, or `~/.local/state/drip/agents`.
+on every tool call cost next to nothing. drip keeps what each session waits on, where it runs, and
+when its turn started, in `$XDG_STATE_HOME/drip/agents`, or `~/.local/state/drip/agents`.
 
 **By hand.** These are the hooks `drip setup claude` adds to `~/.claude/settings.json`, and that
 `drip setup claude --print` prints:
@@ -513,11 +521,11 @@ card away. macOS names that app in the `__CFBundleIdentifier` environment variab
 starts, and drip uses it; `--activate` names another app by its bundle identifier, and
 `--activate none` leaves a card without a button click-through; on a card with a button, a click off
 the button only takes the card away. In tmux, a click also selects the pane drip ran in, in the
-terminal that shows that tmux session now, which may not be the one that started tmux; in WezTerm,
-the pane. Neither needs a permission. A card you can click holds while the pointer is on it, like a
-card with a button, for up to 5 seconds after the pointer last moved, so a pointer left resting on
-it never keeps it there. A card that waits for you is always clickable: a click takes it away, even
-with `--activate none`. The card itself never takes focus.
+terminal that shows that tmux session now, which may not be the one that started tmux; in herdr, the
+pane's tab and then its agent; in WezTerm, the pane. None of them needs a permission. A card you
+can click holds while the pointer is on it, like a card with a button, for up to 5 seconds after
+the pointer last moved, so a pointer left resting on it never keeps it there. A card that waits for
+you is always clickable: a click takes it away, even with `--activate none`. The card itself never takes focus.
 
 **Out of the way.** While the pointer is on a card you can click, a × takes its icon's place, and a
 card that brings an app forward shows an arrow where its ring was. A click on the ×, or a
@@ -705,7 +713,10 @@ sound     = true              # a sound for every preset, such as "Hero"; false 
 motion    = "full"            # full | subtle | none
 stack     = "chain"           # chain | push | off: how cards stack
 stack_max = 3                 # most cards on screen at once, 1 to 6
-when_focused = "quiet"        # quiet | show | skip: an agent's done card while you watch its terminal
+when_focused = "quiet"        # quiet | show | skip: an agent's card while you watch its terminal
+away_after = 60               # seconds without keyboard or mouse before you count as away; 0: always away
+agent_cards = "all"           # all | attention: only the cards that need you, and no done cards
+done_after = 0                # seconds: no done card for a turn shorter than this; 0 shows them all
 
 [preset.ok]                  # override a built-in preset, any subset of keys
 sound = "Hero"
@@ -721,7 +732,8 @@ icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this fi
 ```
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
-`DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`;
+`DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`, `DRIP_AWAY_AFTER`,
+`DRIP_AGENT_CARDS`, `DRIP_DONE_AFTER`;
 `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
 environment exits 2. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces

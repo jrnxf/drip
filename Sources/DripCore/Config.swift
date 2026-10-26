@@ -31,16 +31,26 @@ public struct Config: Equatable {
     public var stack: StackSettings.Choice?
     /// The most cards on screen at once.
     public var stackMax: Int?
-    /// What an agent's card that counts down does while its terminal is in front.
+    /// What an agent's card does while its terminal is in front.
     public var whenFocused: WhenFocused?
+    /// Seconds without the keyboard or mouse after which drip takes you to be away from the screen.
+    public var awayAfter: Double?
+    /// Which of an agent's cards show.
+    public var agentCards: AgentHook.Cards?
+    /// The shortest turn, in seconds, whose done card shows.
+    public var doneAfter: Double?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
 
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
+        awayAfter: Double? = nil, agentCards: AgentHook.Cards? = nil, doneAfter: Double? = nil,
         presets: [String: PresetOverride] = [:]
     ) {
+        self.awayAfter = awayAfter
+        self.agentCards = agentCards
+        self.doneAfter = doneAfter
         self.seconds = seconds
         self.size = size
         self.sound = sound
@@ -179,6 +189,9 @@ private struct ConfigReader {
                 }
                 config.stackMax = Int(value)
             case "when_focused": config.whenFocused = try choice(item, key: key, WhenFocused.self)
+            case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
+            case "agent_cards": config.agentCards = try choice(item, key: key, AgentHook.Cards.self)
+            case "done_after": config.doneAfter = try seconds(item, key: key, in: Defaults.doneAfterRange)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
             }
@@ -270,15 +283,19 @@ private struct ConfigReader {
         }
     }
 
-    private func seconds(_ item: TOMLItem, key: String) throws -> Double {
+    private func seconds(
+        _ item: TOMLItem, key: String, in range: ClosedRange<Double> = Defaults.secondsRange
+    ) throws -> Double {
         let value: Double
         switch item.value {
         case let .integer(integer): value = Double(integer)
         case let .float(float): value = float
         default: throw wrongType(item, key: key, expected: "a number")
         }
-        guard Defaults.secondsRange.contains(value) else {
-            throw ConfigError(path: path, line: item.line, key: key, message: "must be between 0.5 and 60")
+        guard range.contains(value) else {
+            throw ConfigError(
+                path: path, line: item.line, key: key,
+                message: "must be between \(Defaults.number(range.lowerBound)) and \(Defaults.number(range.upperBound))")
         }
         return value
     }
@@ -337,18 +354,29 @@ public struct EnvironmentSettings: Equatable {
     public var stack: StackSettings.Choice?
     /// The most cards on screen at once.
     public var stackMax: Int?
-    /// What an agent's card that counts down does while its terminal is in front.
+    /// What an agent's card does while its terminal is in front.
     public var whenFocused: WhenFocused?
+    /// Seconds without the keyboard or mouse after which drip takes you to be away from the screen.
+    public var awayAfter: Double?
+    /// Which of an agent's cards show.
+    public var agentCards: AgentHook.Cards?
+    /// The shortest turn, in seconds, whose done card shows.
+    public var doneAfter: Double?
     /// The bundle identifier of the app drip was run from, from `__CFBundleIdentifier`.
     public var sender: String?
-    /// The terminal pane drip was run in, from `TMUX` and `TMUX_PANE`, or `WEZTERM_PANE`.
+    /// The terminal pane drip was run in, from `TMUX` and `TMUX_PANE`, herdr's `HERDR_PANE_ID`, or
+    /// `WEZTERM_PANE`.
     public var pane: TerminalPane?
 
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
+        awayAfter: Double? = nil, agentCards: AgentHook.Cards? = nil, doneAfter: Double? = nil,
         sender: String? = nil
     ) {
+        self.awayAfter = awayAfter
+        self.agentCards = agentCards
+        self.doneAfter = doneAfter
         self.sender = sender
         self.whenFocused = whenFocused
         self.stack = stack
@@ -359,8 +387,8 @@ public struct EnvironmentSettings: Equatable {
         self.motion = motion
     }
 
-    /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK, DRIP_STACK_MAX and
-    /// DRIP_WHEN_FOCUSED. Empty
+    /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK, DRIP_STACK_MAX,
+    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_AGENT_CARDS and DRIP_DONE_AFTER. Empty
     /// values are ignored; invalid ones are usage errors. Also notes the app drip was run from, from
     /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
@@ -385,6 +413,18 @@ public struct EnvironmentSettings: Equatable {
         motion = try choice("DRIP_MOTION", Motion.self)
         stack = try choice("DRIP_STACK", StackSettings.Choice.self)
         whenFocused = try choice("DRIP_WHEN_FOCUSED", WhenFocused.self)
+        agentCards = try choice("DRIP_AGENT_CARDS", AgentHook.Cards.self)
+        func seconds(_ name: String, in range: ClosedRange<Double>) throws -> Double? {
+            guard let text = value(name) else { return nil }
+            guard let seconds = Double(text), range.contains(seconds) else {
+                throw UsageError(
+                    "\(name) must be a number of seconds from \(Defaults.number(range.lowerBound)) to "
+                        + "\(Defaults.number(range.upperBound)), not '\(text)'")
+            }
+            return seconds
+        }
+        awayAfter = try seconds("DRIP_AWAY_AFTER", in: Defaults.awayAfterRange)
+        doneAfter = try seconds("DRIP_DONE_AFTER", in: Defaults.doneAfterRange)
         if let text = value("DRIP_STACK_MAX") {
             guard let max = Int(text), Defaults.stackMaxRange.contains(max) else {
                 throw UsageError("DRIP_STACK_MAX must be a whole number from 1 to 6, not '\(text)'")
