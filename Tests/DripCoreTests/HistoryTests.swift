@@ -240,6 +240,16 @@ final class HistoryTests {
         #expect(HistoryListing.render([entry], now: now, color: false).count < 1000)
     }
 
+    @Test func theLongestStoredTextIsEstimatedAsTheCardShowsIt() {
+        var long = card(String(repeating: "t", count: CardHistory.textLimit))
+        long.detail = String(repeating: "d", count: CardHistory.textLimit)
+        let shown = ShownText(estimating: long)
+        #expect(shown.title.count == Defaults.titleLines)
+        #expect(shown.detail.count == Defaults.detailLines)
+        #expect(shown.title.last?.hasSuffix("…") == true)
+        #expect(shown.detail.last?.hasSuffix("…") == true)
+    }
+
     @Test func shortEstimatedTextComesBackWhole() {
         var short = card("built")
         short.detail = "api 1.4.2"
