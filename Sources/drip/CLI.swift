@@ -21,8 +21,11 @@ protocol CardDisplay {
     var hasGUISession: Bool { get }
 
     /// Where the terminal a click on `card` brings forward is: whether it is the frontmost app, and
-    /// whether the card's tmux pane is the one showing, when drip can tell.
+    /// how long since you last used the keyboard or mouse.
     func front(of card: Card) -> WhenFocused.Front
+
+    /// Whether the card's pane is the one its terminal shows; nil when drip cannot tell.
+    func paneShowing(_ card: Card) -> Bool?
 
     /// Draws the card offscreen into a PNG file; `at` seconds into its entrance, or its exit when
     /// `leaving`.
@@ -420,7 +423,7 @@ struct DripCLI {
     private func surroundings(_ console: Console) -> AgentHook.Surroundings {
         AgentHook.Surroundings(
             environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
-            isInstalled: display.isInstalled, front: display.front(of:),
+            isInstalled: display.isInstalled, front: display.front(of:), paneShowing: display.paneShowing,
             resolver: { try makeResolver(console, environment: $0) })
     }
     #endif
@@ -475,6 +478,10 @@ struct UnavailableDisplay: CardDisplay {
 
     func front(of card: Card) -> WhenFocused.Front {
         WhenFocused.Front(app: false)
+    }
+
+    func paneShowing(_ card: Card) -> Bool? {
+        nil
     }
 
     func render(

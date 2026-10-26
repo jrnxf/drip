@@ -173,6 +173,15 @@ public struct TerminalPane: Equatable, Sendable, Codable {
 }
 
 extension TerminalPane {
+    /// The titles `ghosttyRaiseScript` looks for, in order, each as an AppleScript string literal:
+    /// herdr's title for a terminal that shows the machine, then for one that shows `localHost`.
+    /// Nil for a pane on this Mac, or without the machine's name.
+    public func ghosttyTitlePrefixes(localHost: String?) -> [String]? {
+        guard herdrMachine != nil, let hostName else { return nil }
+        return ([hostName] + (localHost.map { [$0] } ?? []))
+            .map { "\"" + $0.replacing("\\", with: "\\\\").replacing("\"", with: "\\\"") + ": \"" }
+    }
+
     /// Ghostty's bundle identifier.
     public static let ghostty = "com.mitchellh.ghostty"
 
@@ -183,9 +192,7 @@ extension TerminalPane {
     /// switches to the Space the terminal is on. Nil for a pane on this Mac, or without the
     /// machine's name.
     public func ghosttyRaiseScript(localHost: String?) -> String? {
-        guard herdrMachine != nil, let hostName else { return nil }
-        let prefixes = ([hostName] + (localHost.map { [$0] } ?? []))
-            .map { "\"" + $0.replacing("\\", with: "\\\\").replacing("\"", with: "\\\"") + ": \"" }
+        guard let prefixes = ghosttyTitlePrefixes(localHost: localHost) else { return nil }
         return """
             with timeout of 4 seconds
                 tell application id "\(Self.ghostty)"

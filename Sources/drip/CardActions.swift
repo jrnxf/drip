@@ -34,10 +34,10 @@ enum CardActions {
         DispatchQueue.global().async {
             defer { CardActions.activations.leave() }
             if yielded { Thread.sleep(forTimeInterval: 0.1) }
-            switch Terminal.run(["osascript", "-e", script], timeout: 5) {
+            switch Terminal.run(["osascript", "-e", script], timeout: raiseTimeout) {
             case let .success(title) where !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
-                report(bundleIdentifier, as: "Ghostty's \(title.trimmingCharacters(in: .whitespacesAndNewlines))", console: console)
                 Terminal.select(pane, console: console)
+                report(bundleIdentifier, as: "Ghostty's \(title.trimmingCharacters(in: .whitespacesAndNewlines))", console: console)
                 return
             case .success:
                 console.error("no Ghostty terminal shows herdr on \(pane.hostName ?? "the machine") or this Mac; bringing Ghostty forward")
@@ -71,8 +71,8 @@ enum CardActions {
             if let error {
                 console.error("cannot bring \(bundleIdentifier) forward: \(error.localizedDescription)")
             } else {
-                report(bundleIdentifier, as: bundleIdentifier, console: console)
                 if let pane { Terminal.select(pane, console: console) }
+                report(bundleIdentifier, as: bundleIdentifier, console: console)
             }
             CardActions.activations.leave()
         }
@@ -106,10 +106,14 @@ enum CardActions {
         }
     }
 
+    /// How long Ghostty has to bring forward its terminal that shows herdr.
+    private static let raiseTimeout = 5.0
+
     /// Waits, briefly, for activations to be handed off, so exiting does not cut them short: long
-    /// enough for herdr on another machine to answer over ssh.
+    /// enough for Ghostty to bring its terminal forward, then herdr on another machine to answer
+    /// both commands that select the agent's tab over ssh, and the report after.
     static func waitForActivations() {
-        _ = activations.wait(timeout: .now() + 12)
+        _ = activations.wait(timeout: .now() + raiseTimeout + 2 * Terminal.remoteTimeout + 2)
     }
 
     /// Answers a card's buttons: yes runs the action, no is reported through drip's exit status.

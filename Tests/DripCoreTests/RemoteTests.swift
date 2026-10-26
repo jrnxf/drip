@@ -493,7 +493,10 @@ struct RemoteDecisionTests {
     }
 
     /// What `drip hook` reads around an event on this Mac, with the terminal where `front` says.
-    func local(_ environment: [String: String] = [:], front: @escaping (Card) -> WhenFocused.Front) -> AgentHook.Surroundings {
+    func local(
+        _ environment: [String: String] = [:], front: @escaping (Card) -> WhenFocused.Front,
+        paneShowing: @escaping (Card) -> Bool? = { _ in nil }
+    ) -> AgentHook.Surroundings {
         AgentHook.Surroundings(
             environment: [
                 "XDG_STATE_HOME": state, "XDG_CONFIG_HOME": "\(state)/config", "HOME": state,
@@ -501,7 +504,7 @@ struct RemoteDecisionTests {
             ]
                 .merging(environment) { $1 },
             hasGUISession: true, isInstalled: { _ in false },
-            front: front,
+            front: front, paneShowing: paneShowing,
             resolver: { CardResolver(config: Config(), environment: try EnvironmentSettings(environment: $0)) },
             now: { now })
     }
@@ -561,12 +564,14 @@ struct RemoteDecisionTests {
     @Test func aRemoteCardFollowsWhenFocusedOnItsMachinesWord() throws {
         let herdr = ["HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t2", "HERDR_WORKSPACE_ID": "w1"]
         let asked = Asked()
-        /// The terminal in front and you at it `idle` seconds ago, with the agent's pane in front on
-        /// the machine as its herdr says, which is nil when it does not answer in time.
-        func there(_ environment: [String: String], pane: Bool?, idle: Double = 0) throws -> Card? {
-            try card(remote(Self.stop, environment: herdr), local(environment) { card in
+        /// The terminal in front, or not, and you at it `idle` seconds ago, with the agent's pane in
+        /// front on the machine as its herdr says, which is nil when it does not answer in time.
+        func there(_ environment: [String: String], pane: Bool?, app: Bool = true, idle: Double = 0) throws -> Card? {
+            try card(remote(Self.stop, environment: herdr), local(environment) { _ in
+                WhenFocused.Front(app: app, idle: idle)
+            } paneShowing: { card in
                 asked.panes.append(card.pane)
-                return WhenFocused.Front(app: true, pane: pane, idle: idle)
+                return pane
             })
         }
         let skip = ["DRIP_WHEN_FOCUSED": "skip"]
@@ -582,9 +587,11 @@ struct RemoteDecisionTests {
         #expect(try there(skip, pane: false)?.sound != Sound.none)
         #expect(try there(skip, pane: nil)?.sound != Sound.none)
         #expect(try there([:], pane: nil)?.sound != Sound.none)
-        // With show, drip never asks the machine.
+        // With show, with the terminal not in front here, or with you away, drip never asks the machine.
         let count = asked.panes.count
         #expect(try there(["DRIP_WHEN_FOCUSED": "show"], pane: true)?.sound != Sound.none)
+        #expect(try there(skip, pane: true, app: false)?.sound != Sound.none)
+        #expect(try there(skip, pane: true, idle: 120)?.sound != Sound.none)
         #expect(asked.panes.count == count)
     }
 
