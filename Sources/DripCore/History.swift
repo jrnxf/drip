@@ -96,6 +96,18 @@ public struct HistoryEntry: Equatable, Sendable, Codable {
         self.shown = shown
     }
 
+    private enum CodingKeys: String, CodingKey { case time, missed, card, shown }
+
+    /// `shown` is best-effort: a value that does not decode, as a future drip or a hand edit could
+    /// write, leaves it nil so the lines are estimated instead of the whole entry being dropped.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        time = try c.decode(Date.self, forKey: .time)
+        missed = try c.decode(Bool.self, forKey: .missed)
+        card = try c.decode(Card.self, forKey: .card)
+        shown = try? c.decodeIfPresent(ShownText.self, forKey: .shown)
+    }
+
     /// The lines the card showed: the recorded ones, or an estimate from its text.
     public var shownText: ShownText { shown ?? ShownText(estimating: card) }
 }
