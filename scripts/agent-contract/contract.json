@@ -4,8 +4,8 @@
     "claude": {
       "events": {
         "PermissionRequest": {
-          "reads": {"session_id": "string", "cwd": "string", "tool_name": "string", "tool_input": "object", "tool_use_id": "string"},
-          "seen": ["hook_event_name", "transcript_path", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "permission_suggestions"]
+          "reads": {"session_id": "string", "cwd": "string", "prompt_id": "string", "tool_name": "string", "tool_input": "object"},
+          "seen": ["hook_event_name", "transcript_path", "scratchpad_dir", "permission_mode", "effort", "permission_suggestions"]
         },
         "Notification": {
           "reads": {"session_id": "string", "cwd": "string", "notification_type": "string", "message": "string"},
@@ -20,12 +20,12 @@
           "seen": ["hook_event_name", "transcript_path", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "error", "error_details"]
         },
         "PostToolUse": {
-          "reads": {"session_id": "string", "tool_use_id": "string"},
-          "seen": ["hook_event_name", "transcript_path", "cwd", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "tool_name", "tool_input", "tool_response", "duration_ms"]
+          "reads": {"session_id": "string", "prompt_id": "string", "tool_name": "string", "tool_input": "object", "tool_use_id": "string"},
+          "seen": ["hook_event_name", "transcript_path", "cwd", "scratchpad_dir", "permission_mode", "effort", "tool_response", "duration_ms"]
         },
         "PostToolUseFailure": {
-          "reads": {"session_id": "string", "tool_use_id": "string"},
-          "seen": ["hook_event_name", "transcript_path", "cwd", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "tool_name", "tool_input", "error", "is_interrupt"]
+          "reads": {"session_id": "string", "prompt_id": "string", "tool_name": "string", "tool_input": "object", "tool_use_id": "string"},
+          "seen": ["hook_event_name", "transcript_path", "cwd", "scratchpad_dir", "permission_mode", "effort", "error", "is_interrupt"]
         },
         "UserPromptSubmit": {
           "reads": {"session_id": "string"},
@@ -37,7 +37,7 @@
         }
       },
       "flow": {"prompt": "UserPromptSubmit", "permission": "PermissionRequest", "tool": "PostToolUse", "done": "Stop"},
-      "same": ["tool_use_id"]
+      "same": ["prompt_id", "tool_name", "tool_input"]
     },
     "codex": {
       "events": {

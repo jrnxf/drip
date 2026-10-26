@@ -26,6 +26,12 @@ struct AgentStateTests {
         #expect(state.waiting(id: "claude:s1", now: now) == nil)
     }
 
+    @Test func aToolCallKnownByTwoNamesTakesTheCardWaitingOnEither() throws {
+        try state.noteWaiting(id: "claude:s1", tool: "toolu_01", now: now)
+        #expect(!state.takeWaiting(AgentHook.Clear(id: "claude:s1", tool: "p1 Bash 1f", alsoTool: "toolu_02"), now: now))
+        #expect(state.takeWaiting(AgentHook.Clear(id: "claude:s1", tool: "p1 Bash 1f", alsoTool: "toolu_01"), now: now))
+    }
+
     @Test func aPromptTakesWhateverTheSessionWaitsOn() throws {
         try state.noteWaiting(id: "gemini:g1", tool: nil, now: now)
         // A clear for one tool call never takes a card that names none.
@@ -93,7 +99,7 @@ struct AgentStateTests {
         let attention = ["DRIP_HOOK": "attention"]
         let turns: [(AgentHook.Agent, ask: String, done: String)] = [
             (.claude,
-             #"{"hook_event_name":"PermissionRequest","session_id":"s","tool_name":"Bash","tool_use_id":"u"}"#,
+             #"{"hook_event_name":"PermissionRequest","session_id":"s","tool_name":"Bash"}"#,
              #"{"hook_event_name":"Stop","session_id":"s"}"#),
             (.codex,
              #"{"hook_event_name":"PermissionRequest","session_id":"s","turn_id":"t","tool_name":"Bash"}"#,

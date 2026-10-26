@@ -321,11 +321,12 @@ struct HookTests {
     @Test func claudePermissionRequestSaysWhatClaudeWants() throws {
         let event = try AgentHook.event(agent: .claude, payload: """
             {"session_id":"s1","cwd":"/work/api","hook_event_name":"PermissionRequest","permission_mode":"default",
-             "tool_name":"Bash","tool_input":{"command":"npm install"},"tool_use_id":"toolu_01"}
+             "prompt_id":"p1","tool_name":"Bash","tool_input":{"command":"npm install"}}
             """)
         #expect(event == AgentHook.Event(
             kind: "info", title: "api needs you", detail: "Claude wants to run npm install", id: "claude:s1",
-            stays: true, waitsOn: "toolu_01", directory: "/work/api"))
+            stays: true, waitsOn: event.waitsOn, directory: "/work/api"))
+        #expect(event.waitsOn?.hasPrefix("p1 Bash ") == true)
         func detail(_ tool: String, _ input: String) throws -> String? {
             try AgentHook.event(agent: .claude, payload: """
                 {"cwd":"/work/api","hook_event_name":"PermissionRequest","tool_name":"\(tool)","tool_input":\(input)}
@@ -340,6 +341,30 @@ struct HookTests {
         #expect(try detail("mcp__github__create_issue", #"{"title":"x"}"#) == "Claude wants to use mcp__github__create_issue")
         // Claude's own description of a command wins, as Codex's does.
         #expect(try detail("Bash", #"{"command":"rm -rf build","description":"Clean the build"}"#) == "Clean the build")
+    }
+
+    /// The pair Claude Code 2.1.310 sent for an approved command: the request has no `tool_use_id`
+    /// and its `tool_input` matches the PostToolUse's, which does carry one.
+    @Test func claudeClearsAnApprovedRequestThatNamesNoToolUseId() throws {
+        let asked = try AgentHook.event(agent: .claude, payload: """
+            {"session_id":"0a93","prompt_id":"2421","permission_mode":"default","hook_event_name":"PermissionRequest",
+             "tool_name":"Bash","tool_input":{"command":"touch approved.txt","description":"Create empty approved.txt file"},
+             "permission_suggestions":[{"type":"setMode","mode":"acceptEdits","destination":"session"}]}
+            """)
+        #expect(asked.waitsOn != nil)
+        let ran = try AgentHook.outcome(agent: .claude, payload: """
+            {"session_id":"0a93","prompt_id":"2421","permission_mode":"default","hook_event_name":"PostToolUse",
+             "tool_name":"Bash","tool_input":{"command":"touch approved.txt","description":"Create empty approved.txt file"},
+             "tool_response":"","tool_use_id":"toolu_01JVNJbCN3PGDewBqRhsM384","duration_ms":55}
+            """)
+        #expect(ran == .clear(AgentHook.Clear(id: "claude:0a93", tool: asked.waitsOn, alsoTool: "toolu_01JVNJbCN3PGDewBqRhsM384")))
+        // Another command is another call.
+        let elsewhere = try AgentHook.outcome(agent: .claude, payload: """
+            {"session_id":"0a93","prompt_id":"2421","hook_event_name":"PostToolUse","tool_name":"Bash",
+             "tool_input":{"command":"rm approved.txt"},"tool_use_id":"toolu_02"}
+            """)
+        guard case let .clear(clear) = elsewhere else { Issue.record("no clear"); return }
+        #expect(clear.tool != asked.waitsOn)
     }
 
     @Test func aToolThatRanClearsOnlyTheCardWaitingOnIt() throws {
