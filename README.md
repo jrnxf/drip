@@ -356,7 +356,9 @@ machine; nothing connects in.
    It needs to log in without a prompt, with a key or an agent: it runs ssh with `BatchMode=yes`.
 
 4. To keep it running, have launchd start it at login. `drip follow devbox --launchd` prints the
-   launchd agent, with the terminal you ran it from as the app a click brings forward:
+   launchd agent, with the terminal you ran it from as the app a click brings forward, and the
+   `PATH`, `DRIP_*` settings (all but `DRIP_HOOK`), `XDG_CONFIG_HOME` and `XDG_STATE_HOME` set
+   where you run it, so remote cards follow the same settings, config and `drip pause` as the rest:
 
    ```sh
    drip follow devbox --launchd > ~/Library/LaunchAgents/co.jrnxf.drip.follow.devbox.plist
@@ -368,13 +370,20 @@ machine; nothing connects in.
 
 **The queue.** Each event is one line of JSON in `$XDG_STATE_HOME/drip/remote.jsonl` on the machine,
 or `~/.local/state/drip/remote.jsonl`, or `$DRIP_QUEUE` when set there: the hook's payload, the
-agent, the machine's name (`$DRIP_MACHINE`, or `uname -n`), the time, and the session's `DRIP_HOOK`,
+agent, the machine's name (`$DRIP_MACHINE`, or `uname -n`, in letters, digits, `.`, `_` and `-`,
+starting with a letter or digit), the time, and the session's `DRIP_HOOK`,
 Claude Code's attendance variables, and herdr's `HERDR_PANE_ID`, `HERDR_TAB_ID` and
 `HERDR_WORKSPACE_ID`. The hook takes a lock with `flock` when the machine has it, so lines from
 sessions at once never mix, and once the queue passes 8 MB it moves it to `remote.jsonl.1`,
 replacing the one before: the two never take much more than 16 MB. The file is readable only by
 you. The hook prints nothing and always exits 0, so it never fails or holds up a turn, even when
 it cannot write the queue. `drip follow --queue <path>` reads another path.
+
+`drip follow` reads the queue from a non-interactive shell on the machine, which skips most of
+your shell's startup files: set `DRIP_QUEUE` or `XDG_STATE_HOME`, if you set them at all, where
+such a shell sees them too (`~/.zshenv` for zsh, or `~/.bashrc` above its interactive check for
+bash), or pass `--queue`. When there is no queue at the path it reads, `drip follow` says so in
+its log, and again once there is. Anything that shell prints, such as a welcome line, is ignored.
 
 **Following.** `drip follow` checks the queue every second, reconnects when the connection drops,
 after 1 second and then up to a minute between tries, and takes up after the last event it

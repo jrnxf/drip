@@ -80,25 +80,43 @@ struct RemoteEventTests {
     @Test func theStreamKeepsThePlaceInTheQueue() throws {
         var stream = FollowReader.Stream(position: nil)
         let line = Self.line + "\n"
-        var lines = stream.read(Array("#drip-follow 1\n#file 42 100\n".utf8) + Array(line.utf8.prefix(10)))
+        var lines = stream.read(Array("#drip-follow 2\n#file 42 100\n=".utf8) + Array(line.utf8.prefix(10)))
         #expect(lines.map(\.0) == [.hello, .file(FollowPosition(inode: "42", offset: 100))])
         // Half a line waits for the rest.
-        lines = stream.read(Array(line.utf8.dropFirst(10)) + Array("#\nnot json\n".utf8))
-        #expect(lines.count == 3)
+        lines = stream.read(Array(line.utf8.dropFirst(10)) + Array("#\n=not json\n#missing /home/user/q.jsonl\n".utf8))
+        #expect(lines.count == 4)
         guard case .event(.success)? = lines.first?.0 else { Issue.record("\(lines)"); return }
+        // The place moves by the queue's own line, not the `=` before it.
         #expect(lines[0].1 == FollowPosition(inode: "42", offset: 100 + line.utf8.count))
         #expect(lines[1].0 == .heartbeat)
         // A line that is no event still moves the place past it.
         #expect(lines[2].0 == .event(.failure(UsageError("not a JSON object"))))
+        #expect(lines[3].0 == .missing("/home/user/q.jsonl"))
         #expect(stream.position == FollowPosition(inode: "42", offset: 100 + line.utf8.count + 9))
+    }
+
+    @Test func whatTheRemoteShellPrintsNeverMovesThePlace() throws {
+        var stream = FollowReader.Stream(position: FollowPosition(inode: "42", offset: 0))
+        // A banner from the shell's startup files, before the reader starts, even one that looks
+        // like the reader's own lines; then stray output while it runs.
+        let lines = stream.read(Array("Welcome to devbox\n#file 7 900\n=\(Self.line)\n#drip-follow 2\nstray output\n#later\n".utf8))
+        #expect(lines.map(\.0) == [
+            .noise("Welcome to devbox"), .noise("#file 7 900"), .noise("=\(Self.line)"), .hello, .noise("stray output"),
+            .noise("#later"),
+        ])
+        #expect(stream.position == FollowPosition(inode: "42", offset: 0))
     }
 
     @Test func aLineTooLongIsSkippedToItsEnd() {
         var stream = FollowReader.Stream(position: FollowPosition(inode: "1", offset: 0))
         let long = [UInt8](repeating: UInt8(ascii: "x"), count: FollowReader.Stream.lineLimit + 5)
-        let lines = stream.read(long + Array("\n".utf8))
-        #expect(lines.count == 1)
-        guard case .event(.failure)? = lines.first?.0 else { Issue.record("\(lines)"); return }
+        var lines = stream.read(Array("#drip-follow 2\n=".utf8) + long + Array("\n".utf8))
+        #expect(lines.count == 2)
+        guard case .event(.failure)? = lines.last?.0 else { Issue.record("\(lines)"); return }
+        #expect(stream.position?.offset == long.count + 1)
+        // Output as long that is not the queue's moves nothing.
+        lines = stream.read(long + Array("\n".utf8))
+        guard case .noise? = lines.last?.0 else { Issue.record("\(lines)"); return }
         #expect(stream.position?.offset == long.count + 1)
     }
 
@@ -169,6 +187,12 @@ struct RemoteFollowTests {
             shift 2
             exec "$@"
             """)
+        // Prints a banner, as a shell's startup files can, before the command runs.
+        try write(script: "banner-ssh", """
+            #!/bin/sh
+            echo "Welcome to devbox"
+            exec "\(root)/ssh" "$@"
+            """)
         // Fails to connect once, then connects.
         try write(script: "flaky-ssh", """
             #!/bin/sh
@@ -227,14 +251,14 @@ struct RemoteFollowTests {
     /// every event too.
     func follow(
         count: Int, ssh: String = "ssh", now: Date = Date(), handle: ((RemoteEvent, Bool) -> Void)? = nil,
-        whileFollowing: (() throws -> Void)? = nil
+        log: ((String) -> Void)? = nil, whileFollowing: (() throws -> Void)? = nil
     ) throws -> (sessions: [String], stale: [String], delays: [Double]) {
         var sessions: [String] = []
         var stale: [String] = []
         var delays: [Double] = []
         let settings = RemoteFollower.Settings(
             target: "devbox", queue: queue, ssh: ["\(root)/\(ssh)"], positionPath: positionPath)
-        let follower = RemoteFollower(settings: settings, handle: { _, _ in }, log: { _ in })
+        let follower = RemoteFollower(settings: settings, handle: { _, _ in }, log: { log?($0) })
         follower.now = { now }
         follower.sleep = { delays.append($0) }
         follower.handle = { event, tooOld in
@@ -282,6 +306,13 @@ struct RemoteFollowTests {
         // Nothing left behind but the queue and its lock.
         let left = try FileManager.default.contentsOfDirectory(atPath: (queue as NSString).deletingLastPathComponent)
         #expect(Set(left).isSubset(of: ["remote.jsonl", "remote.jsonl.lock"]))
+    }
+
+    @Test func theMachinesNameStartsWithALetterOrDigit() throws {
+        // A name herdr would not take loses what comes before its first letter or digit.
+        try hook(["gemini", #"{"hook_event_name":"AfterTool"}"#], environment: ["DRIP_MACHINE": "_-.dev"])
+        try hook(["gemini", #"{"hook_event_name":"AfterTool"}"#], environment: ["DRIP_MACHINE": "..."])
+        #expect(try queueLines().map { try RemoteEvent(line: $0).machine } == ["dev", "remote"])
     }
 
     @Test func theHookNeverFailsTheAgentsTurn() throws {
@@ -368,6 +399,32 @@ struct RemoteFollowTests {
         try FileManager.default.moveItem(atPath: queue, toPath: queue + ".1")
         try append([Self.line(session: "s5", time: now.timeIntervalSince1970)])
         #expect(try follow(count: 2, now: now).sessions == ["s4", "s5"])
+    }
+
+    @Test func aBannerFromTheRemoteShellNeverMovesThePlace() throws {
+        let now = Date()
+        let line = Self.line(session: "s1", time: now.timeIntervalSince1970)
+        try append([line])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        var logs: [String] = []
+        #expect(try follow(count: 1, ssh: "banner-ssh", now: now, log: { logs.append($0) }).sessions == ["s1"])
+        #expect(FollowPosition.load(from: positionPath) == FollowPosition(inode: try inode(queue), offset: line.utf8.count + 1))
+        #expect(logs == ["ignored what devbox's shell printed: Welcome to devbox"])
+        // The next connection takes up after the event, banner and all.
+        try append([Self.line(session: "s2", time: now.timeIntervalSince1970)])
+        #expect(try follow(count: 1, ssh: "banner-ssh", now: now).sessions == ["s2"])
+    }
+
+    @Test func aMissingQueueIsSaidOnceAndSoIsItsArrival() throws {
+        var logs: [String] = []
+        let result = try follow(count: 1, log: { logs.append($0) }) {
+            try hook(["codex"], stdin: #"{"hook_event_name":"UserPromptSubmit","session_id":"first"}"#)
+        }
+        // A queue that comes after the first follow started is read from its start.
+        #expect(result.sessions == ["first"])
+        #expect(logs.count == 2)
+        #expect(logs.first?.hasPrefix("devbox has no queue at \(queue) yet") == true)
+        #expect(logs.last == "devbox has its queue now")
     }
 
     @Test func aDroppedConnectionReconnectsAfterAPause() throws {
@@ -533,20 +590,29 @@ struct RemoteDecisionTests {
 }
 
 struct FollowAgentTests {
-    @Test func theLaunchdAgentRunsFollowAndKeepsItRunning() {
+    @Test func theLaunchdAgentRunsFollowAndKeepsItRunning() throws {
         let plist = FollowAgent.plist(
             command: ["/opt/homebrew/bin/drip", "follow", "me@devbox", "--activate", "com.apple.Terminal"],
-            target: "me@devbox", environment: ["HOME": "/Users/me", "PATH": "/opt/homebrew/bin:/usr/bin:/bin"])
+            target: "me@devbox", environment: [
+                "HOME": "/Users/me", "PATH": "/opt/homebrew/bin:/usr/bin:/opt/homebrew/bin", "DRIP_SOUND": "none",
+                "DRIP_AGENT_CARDS": "attention", "DRIP_HOOK": "off", "XDG_CONFIG_HOME": "/Users/me/.dotfiles/config",
+                "XDG_STATE_HOME": "/Users/me/.state", "SHELL": "/bin/zsh", "DRIP_SECONDS": "",
+            ])
+        let agent = try #require(
+            try PropertyListSerialization.propertyList(from: Data(plist.utf8), format: nil) as? [String: Any])
         #expect(FollowAgent.label(target: "me@devbox") == "co.jrnxf.drip.follow.me-devbox")
-        #expect(plist.contains("<string>co.jrnxf.drip.follow.me-devbox</string>"))
-        #expect(plist.contains("""
-                    <string>/opt/homebrew/bin/drip</string>
-                    <string>follow</string>
-                    <string>me@devbox</string>
-            """))
-        #expect(plist.contains("<string>/opt/homebrew/bin:/usr/bin:/bin</string>"))
-        #expect(plist.contains("<string>/Users/me/Library/Logs/co.jrnxf.drip.follow.me-devbox.log</string>"))
-        #expect(plist.contains("<key>KeepAlive</key>\n    <true/>"))
+        #expect(agent["Label"] as? String == "co.jrnxf.drip.follow.me-devbox")
+        #expect(agent["ProgramArguments"] as? [String] == [
+            "/opt/homebrew/bin/drip", "follow", "me@devbox", "--activate", "com.apple.Terminal",
+        ])
+        // drip's settings and where its config and state are, but not one session's DRIP_HOOK.
+        #expect(agent["EnvironmentVariables"] as? [String: String] == [
+            "PATH": "/opt/homebrew/bin:/usr/bin", "DRIP_SOUND": "none", "DRIP_AGENT_CARDS": "attention",
+            "XDG_CONFIG_HOME": "/Users/me/.dotfiles/config", "XDG_STATE_HOME": "/Users/me/.state",
+        ])
+        #expect(agent["StandardErrorPath"] as? String == "/Users/me/Library/Logs/co.jrnxf.drip.follow.me-devbox.log")
+        #expect(agent["KeepAlive"] as? Bool == true)
+        #expect(agent["RunAtLoad"] as? Bool == true)
     }
 }
 #endif

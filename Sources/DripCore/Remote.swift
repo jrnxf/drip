@@ -58,7 +58,8 @@ public enum RemoteHook {
                 size=$(wc -c <"$event.payload" | tr -d ' ')
                 # drip reads up to 4 MB of payload.
                 [ "$size" -gt 0 ] && [ "$size" -le 4194304 ] || return 1
-                machine=$(printf '%s' "${DRIP_MACHINE:-$(uname -n)}" | tr -cd 'A-Za-z0-9._-' | cut -c 1-64)
+                # Letters, digits and . _ - only, starting with a letter or digit, as herdr names machines.
+                machine=$(printf '%s' "${DRIP_MACHINE:-$(uname -n)}" | tr -cd 'A-Za-z0-9._-' | sed 's/^[^A-Za-z0-9]*//' | cut -c 1-64)
                 {
                     printf '{"drip":1,"time":%s,"agent":"%s","machine":"%s","env":{\#(variables)},"payload":' \
                         "$(date +%s)" "$agent" "${machine:-remote}" \#(values)
@@ -229,9 +230,11 @@ public struct FollowPosition: Codable, Equatable, Sendable {
 
 /// What `drip follow` runs on the remote machine, with `sh -s`, and how it reads what comes back.
 ///
-/// The reader checks the queue every second and prints the whole lines added since it last looked,
-/// so a line being written never comes out in halves. It says which file it reads with
-/// `#file <inode> <offset>` when it starts on one, and prints `#` every 15 seconds when there is
+/// The reader starts with `#drip-follow 2`, then checks the queue every second and prints the whole
+/// lines added since it last looked, each after a `=`, so a line being written never comes out in
+/// halves, and nothing else the remote shell prints, such as a banner from its startup files, is
+/// taken for one. It says which file it reads with `#file <inode> <offset>` when it starts on one,
+/// `#missing <path>` when there is no queue to read, and prints `#` every 15 seconds when there is
 /// nothing new, so a connection gone quiet is told from one that died. When the queue has moved to
 /// `<queue>.1` it finishes that file first.
 public enum FollowReader {
@@ -249,6 +252,8 @@ public enum FollowReader {
             \#(queueLine)
             inode=\#(inode)
             off=\#(position?.offset ?? 0)
+            started=
+            missing=
             tmp=$(mktemp) || exit 1
             trap 'rm -f "$tmp" "$tmp.lines"' EXIT
             trap 'exit 0' HUP INT TERM PIPE
@@ -271,15 +276,20 @@ public enum FollowReader {
                 fi
                 n=$(wc -c <"$tmp.lines" | tr -d ' ')
                 [ "$n" -gt 0 ] || return 0
-                cat "$tmp.lines" || exit 0
+                sed 's/^/=/' "$tmp.lines" || exit 0
                 off=$((off + n))
             }
 
-            echo '#drip-follow 1'
+            echo '#drip-follow 2'
             quiet=0
             while :; do
                 found=$(identify "$queue")
+                if [ -z "$found" ] && [ -z "$missing" ]; then
+                    echo "#missing $queue"
+                    missing=1
+                fi
                 if [ -n "$found" ]; then
+                    missing=
                     now=${found% *}
                     size=${found#* }
                     if [ "$now" != "$inode" ]; then
@@ -323,20 +333,28 @@ public enum FollowReader {
         case heartbeat
         /// The reader reads the queue file with this inode, from this offset.
         case file(FollowPosition)
+        /// There is no queue at this path on the machine.
+        case missing(String)
         /// A line of the queue: the event, or why it is not one.
         case event(Result<RemoteEvent, UsageError>)
+        /// Something else the remote shell printed, such as a banner from its startup files, which
+        /// is no part of the queue.
+        case noise(String)
     }
 
     /// Splits what the reader prints into lines, and keeps the position in the queue: past each
-    /// line of it, however it reads.
+    /// line of it, however it reads, and past nothing else.
     public struct Stream {
         /// The longest line drip reads: an event with a payload of `AgentHook.payloadLimit`.
         public static let lineLimit = AgentHook.payloadLimit + 64 * 1024
 
         public private(set) var position: FollowPosition?
         private var buffer: [UInt8] = []
-        /// Bytes of a line too long to read, which is skipped to its end.
-        private var skipped: Int?
+        /// Bytes of a line too long to read, which is skipped to its end, and whether it is a line of
+        /// the queue.
+        private var skipped: (count: Int, queued: Bool)?
+        /// Whether the reader said it started: what comes before is the remote shell's.
+        private var started = false
 
         public init(position: FollowPosition?) {
             self.position = position
@@ -347,39 +365,52 @@ public enum FollowReader {
             var lines: [(Line, FollowPosition?)] = []
             for byte in bytes {
                 if byte != UInt8(ascii: "\n") {
-                    if let count = skipped {
-                        skipped = count + 1
+                    if let line = skipped {
+                        skipped = (line.count + 1, line.queued)
                     } else if buffer.count < Self.lineLimit {
                         buffer.append(byte)
                     } else {
-                        skipped = buffer.count + 1
+                        skipped = (buffer.count + 1, started && buffer.first == Self.queued)
                         buffer = []
                     }
                     continue
                 }
-                if let count = skipped {
+                if let line = skipped {
                     skipped = nil
-                    advance(by: count + 1)
-                    lines.append((.event(.failure(UsageError("a line longer than \(Self.lineLimit) bytes"))), position))
+                    if line.queued {
+                        // The queue's own line, without the `=` before it, and its line break.
+                        advance(by: line.count)
+                        lines.append((.event(.failure(UsageError("a line longer than \(Self.lineLimit) bytes"))), position))
+                    } else {
+                        lines.append((.noise("a line longer than \(Self.lineLimit) bytes"), position))
+                    }
                     continue
                 }
-                let text = String(decoding: buffer, as: UTF8.self)
-                let size = buffer.count + 1
+                let line = buffer
                 buffer = []
-                if text.hasPrefix("#") {
-                    lines.append((control(text), position))
-                    continue
-                }
-                advance(by: size)
-                do {
-                    lines.append((.event(.success(try RemoteEvent(line: text))), position))
-                } catch let error as UsageError {
-                    lines.append((.event(.failure(error)), position))
-                } catch {
-                    lines.append((.event(.failure(UsageError("\(error)"))), position))
-                }
+                lines.append((self.line(line), position))
             }
             return lines
+        }
+
+        /// What comes before a line of the queue.
+        static let queued = UInt8(ascii: "=")
+
+        private mutating func line(_ bytes: [UInt8]) -> Line {
+            let text = String(decoding: bytes, as: UTF8.self)
+            guard started else {
+                if text == "#drip-follow 2" { started = true; return .hello }
+                return .noise(text)
+            }
+            guard bytes.first == Self.queued else { return control(text) }
+            advance(by: bytes.count)
+            do {
+                return .event(.success(try RemoteEvent(line: String(text.dropFirst()))))
+            } catch let error as UsageError {
+                return .event(.failure(error))
+            } catch {
+                return .event(.failure(UsageError("\(error)")))
+            }
         }
 
         private mutating func advance(by count: Int) {
@@ -387,12 +418,14 @@ public enum FollowReader {
         }
 
         private mutating func control(_ text: String) -> Line {
+            if text == "#" { return .heartbeat }
+            if text.hasPrefix("#missing ") { return .missing(String(text.dropFirst(9))) }
             let words = text.split(separator: " ")
-            if words.first == "#file", words.count == 3, let offset = Int(words[2]) {
+            if words.first == "#file", words.count == 3, words[1].allSatisfy(\.isNumber), let offset = Int(words[2]) {
                 position = FollowPosition(inode: String(words[1]), offset: offset)
                 return .file(FollowPosition(inode: String(words[1]), offset: offset))
             }
-            return text.hasPrefix("#drip-follow") ? .hello : .heartbeat
+            return .noise(text)
         }
     }
 }

@@ -64,7 +64,7 @@ public final class RemoteFollower {
     /// went away noticed within a minute.
     public static let sshOptions = [
         "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15",
-        "-o", "ServerAliveCountMax=3",
+        "-o", "ServerAliveCountMax=3", "-o", "RemoteCommand=none",
     ]
 
     public var settings: Settings
@@ -76,6 +76,9 @@ public final class RemoteFollower {
     public var sleep: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) }
 
     private var stopped = false
+    /// The path of the queue the machine said is missing, until it is there: said once, not on every
+    /// connection.
+    private var missingQueue: String?
     private var process: Process?
 
     public init(settings: Settings, handle: @escaping (_ event: RemoteEvent, _ stale: Bool) -> Void, log: @escaping (String) -> Void) {
@@ -146,6 +149,7 @@ public final class RemoteFollower {
         var stream = FollowReader.Stream(position: position)
         var saved = position
         var connected = false
+        var noisy = false
         var stale = 0
         var heard = now()
         let descriptor = output.fileHandleForReading.fileDescriptor
@@ -176,7 +180,23 @@ public final class RemoteFollower {
                         stale = 0
                     }
                 case .file:
-                    break
+                    if missingQueue != nil {
+                        log("\(settings.target) has its queue now")
+                        missingQueue = nil
+                    }
+                case let .missing(path):
+                    if missingQueue != path {
+                        log("\(settings.target) has no queue at \(path) yet: drip-remote-hook writes it at the agent's first event. "
+                            + "If agents already ran there, check that their hooks run drip-remote-hook, and that DRIP_QUEUE or "
+                            + "XDG_STATE_HOME, when set, are set where a non-interactive shell sees them, or pass --queue")
+                        missingQueue = path
+                    }
+                case let .noise(text):
+                    // Once a connection: the same banner comes with each.
+                    if !noisy {
+                        log("ignored what \(settings.target)'s shell printed: \(text.prefix(200))")
+                        noisy = true
+                    }
                 case let .event(.success(event)):
                     let tooOld = event.age(now: now().timeIntervalSince1970) > settings.maxAge
                     if tooOld { stale += 1 }
@@ -246,9 +266,16 @@ public enum FollowAgent {
         "co.jrnxf.drip.follow." + String(target.map { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == ".") ? $0 : "-" })
     }
 
-    /// The agent's plist, which runs `command`. launchd starts it with almost no `PATH`, so it gets
-    /// the `PATH` of `environment`, where drip finds herdr for clicks; it logs to
-    /// `~/Library/Logs/<label>.log`.
+    /// The variables of `environment` the agent keeps, besides `PATH`: drip's settings, but not
+    /// `DRIP_HOOK`, which is about one session, and where drip's config and state are, so remote cards
+    /// follow the settings, the config and the pause that cards from `drip hook` do.
+    public static func keeps(_ name: String) -> Bool {
+        (name.hasPrefix("DRIP_") && name != "DRIP_HOOK") || name == "XDG_CONFIG_HOME" || name == "XDG_STATE_HOME"
+    }
+
+    /// The agent's plist, which runs `command`. launchd starts it with almost no environment, so it
+    /// gets the `PATH` of `environment`, where drip finds herdr for clicks, and the variables
+    /// `keeps(_:)` names; it logs to `~/Library/Logs/<label>.log`.
     public static func plist(command: [String], target: String, environment: [String: String]) -> String {
         let label = label(target: target)
         let home = environment["HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? NSHomeDirectory()
@@ -258,6 +285,10 @@ public enum FollowAgent {
         let path = environment["PATH"].flatMap { $0.isEmpty ? nil : $0 }
             .map { $0.split(separator: ":").filter { seen.insert($0).inserted }.joined(separator: ":") }
             ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        let kept = environment.filter { keeps($0.key) && !$0.value.isEmpty }.sorted { $0.key < $1.key }
+        let variables = ([("PATH", path)] + kept.map { ($0.key, $0.value) })
+            .map { "        <key>\(escaped($0.0))</key>\n        <string>\(escaped($0.1))</string>" }
+            .joined(separator: "\n")
         return """
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -271,8 +302,7 @@ public enum FollowAgent {
                 </array>
                 <key>EnvironmentVariables</key>
                 <dict>
-                    <key>PATH</key>
-                    <string>\(escaped(path))</string>
+            \(variables)
                 </dict>
                 <key>RunAtLoad</key>
                 <true/>
