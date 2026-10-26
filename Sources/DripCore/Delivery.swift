@@ -157,10 +157,12 @@ public enum LockedScreen: Equatable, Sendable {
     case wait(record: Bool)
 
     /// Adds the cards to `history`, unless they are kept out of it.
-    public func record(_ cards: [Card], missed: Bool, in history: CardHistory) throws {
+    public func record(
+        _ cards: [Card], missed: Bool, in history: CardHistory, shown: (Card) -> ShownText? = { _ in nil }
+    ) throws {
         switch self {
         case let .pool(record), let .wait(record):
-            if record { try history.record(cards, missed: missed) }
+            if record { try history.record(cards, missed: missed, shown: shown) }
         }
     }
 }
