@@ -26,6 +26,51 @@ struct AgentStateTests {
         #expect(state.waiting(id: "claude:s1", now: now) == nil)
     }
 
+    @Test func aToolCallKnownByTwoNamesTakesTheCardWaitingOnEither() throws {
+        try state.noteWaiting(id: "claude:s1", tool: "toolu_01", now: now)
+        #expect(!state.takeWaiting(AgentHook.Clear(id: "claude:s1", tool: "p1 Bash 1f", alsoTool: "toolu_02"), now: now))
+        #expect(state.takeWaiting(AgentHook.Clear(id: "claude:s1", tool: "p1 Bash 1f", alsoTool: "toolu_01"), now: now))
+    }
+
+    /// You approve a Claude Code permission prompt in the terminal, so its tool runs: the card that
+    /// said Claude needs you goes then, not at the end of the turn. The pair Claude Code 2.1.310
+    /// sent, whose `PermissionRequest` names no `tool_use_id`.
+    @Test func approvingAClaudePromptTakesItsCardAwayWhenTheToolRuns() throws {
+        let ask = """
+            {"session_id":"0a93","cwd":"/work/api","prompt_id":"2421","permission_mode":"default",
+             "hook_event_name":"PermissionRequest","tool_name":"Bash",
+             "tool_input":{"command":"touch approved.txt","description":"Create empty approved.txt file"}}
+            """
+        func ran(_ command: String, _ toolUseId: String) -> String {
+            """
+            {"session_id":"0a93","cwd":"/work/api","prompt_id":"2421","permission_mode":"default",
+             "hook_event_name":"PostToolUse","tool_name":"Bash",
+             "tool_input":{"command":"\(command)","description":"Create empty approved.txt file"},
+             "tool_response":"","tool_use_id":"\(toolUseId)","duration_ms":55}
+            """
+        }
+        guard case let .card(asked) = try AgentHook.outcome(agent: .claude, payload: ask), let id = asked.id else {
+            Issue.record("no card for the request")
+            return
+        }
+        try state.noteWaiting(id: id, tool: asked.waitsOn, now: now)
+        // Another command that ran alongside leaves the card.
+        guard case let .clear(other) = try AgentHook.outcome(agent: .claude, payload: ran("ls", "toolu_02")) else {
+            Issue.record("no clear for another command")
+            return
+        }
+        #expect(!state.takeWaiting(other, now: now))
+        #expect(state.waiting(id: id, now: now) != nil)
+        guard case let .clear(approved) = try AgentHook.outcome(
+            agent: .claude, payload: ran("touch approved.txt", "toolu_01JVNJbCN3PGDewBqRhsM384"))
+        else {
+            Issue.record("no clear for the approved command")
+            return
+        }
+        #expect(state.takeWaiting(approved, now: now))
+        #expect(state.waiting(id: id, now: now) == nil)
+    }
+
     @Test func aPromptTakesWhateverTheSessionWaitsOn() throws {
         try state.noteWaiting(id: "gemini:g1", tool: nil, now: now)
         // A clear for one tool call never takes a card that names none.
@@ -93,7 +138,7 @@ struct AgentStateTests {
         let attention = ["DRIP_HOOK": "attention"]
         let turns: [(AgentHook.Agent, ask: String, done: String)] = [
             (.claude,
-             #"{"hook_event_name":"PermissionRequest","session_id":"s","tool_name":"Bash","tool_use_id":"u"}"#,
+             #"{"hook_event_name":"PermissionRequest","session_id":"s","tool_name":"Bash"}"#,
              #"{"hook_event_name":"Stop","session_id":"s"}"#),
             (.codex,
              #"{"hook_event_name":"PermissionRequest","session_id":"s","turn_id":"t","tool_name":"Bash"}"#,

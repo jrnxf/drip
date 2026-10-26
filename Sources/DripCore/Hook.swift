@@ -112,10 +112,13 @@ public enum AgentHook {
         /// The tool call that ran: only a card waiting on that call goes. Nil for any card that waits,
         /// as when you sent the agent a prompt.
         public var tool: String?
+        /// Another name for the same call, which a card waiting on that name goes for too.
+        public var alsoTool: String?
 
-        public init(id: String, tool: String? = nil) {
+        public init(id: String, tool: String? = nil, alsoTool: String? = nil) {
             self.id = id
             self.tool = tool
+            self.alsoTool = alsoTool
         }
     }
 
@@ -233,10 +236,10 @@ public enum AgentHook {
                 kind: kind.name, title: "\(project()) \(title)", detail: detail, id: id, stays: stays,
                 waitsOn: stays ? waitsOn : nil, isPermissionNotice: isPermissionNotice, directory: directory))
         }
-        func clear(tool: String? = nil, keyed: Bool = false) -> Outcome {
+        func clear(tool: String? = nil, alsoTool: String? = nil, keyed: Bool = false) -> Outcome {
             // A clear for one tool call that names none could take the wrong card: nothing then.
             guard let id, !keyed || tool != nil else { return .nothing }
-            return .clear(Clear(id: id, tool: tool))
+            return .clear(Clear(id: id, tool: tool, alsoTool: alsoTool))
         }
 
         switch agent {
@@ -251,7 +254,7 @@ public enum AgentHook {
             case "PermissionRequest":
                 return card(
                     .info, "needs you", request(object, agent: agent, directory: directory), stays: true,
-                    waitsOn: string("tool_use_id"))
+                    waitsOn: string("tool_use_id") ?? toolCall(object, scope: "prompt_id"))
             case "Stop":
                 return card(.ok, "is done", string("last_assistant_message").map(plainText))
             case "StopFailure":
@@ -260,7 +263,11 @@ public enum AgentHook {
                     ?? string("error").map { $0.replacing("_", with: " ") }
                 return card(.fail, "stopped", reason)
             case "PostToolUse", "PostToolUseFailure":
-                return clear(tool: string("tool_use_id"), keyed: true)
+                // Claude's `PermissionRequest` names no `tool_use_id`, so its card waits on the call's
+                // fingerprint; one that did name it is cleared by that.
+                let call = toolCall(object, scope: "prompt_id")
+                return clear(
+                    tool: call ?? string("tool_use_id"), alsoTool: call == nil ? nil : string("tool_use_id"), keyed: true)
             case "UserPromptSubmit", "ElicitationResult":
                 return clear()
             case let name:
@@ -288,11 +295,11 @@ public enum AgentHook {
             case "PermissionRequest":
                 return card(
                     .info, "needs you", request(object, agent: agent, directory: directory), stays: true,
-                    waitsOn: codexCall(object))
+                    waitsOn: toolCall(object, scope: "turn_id"))
             case "Stop":
                 return card(.ok, "is done", string("last_assistant_message").map(plainText))
             case "PostToolUse":
-                return clear(tool: codexCall(object), keyed: true)
+                return clear(tool: toolCall(object, scope: "turn_id"), keyed: true)
             case "UserPromptSubmit":
                 return clear()
             default:
@@ -313,12 +320,14 @@ public enum AgentHook {
         }
     }
 
-    /// The tool call a Codex hook is about. Codex's `PermissionRequest` carries no `tool_use_id`, so
-    /// the call is its turn, its tool and the tool's input, which `PostToolUse` repeats less the
-    /// `description` only the request adds (the question it asks you). Every other input field stays
-    /// in, so two calls of one turn with different inputs never match. Nil without a turn or a tool.
-    static func codexCall(_ object: JSONValue) -> String? {
-        guard let turn = object["turn_id"].flatMap(nonBlank), let tool = object["tool_name"].flatMap(nonBlank)
+    /// The tool call a permission request and its `PostToolUse` are both about. Neither Codex's nor
+    /// Claude Code's `PermissionRequest` carries a `tool_use_id`, so the call is the field that scopes
+    /// it (Codex's `turn_id`, Claude Code's `prompt_id`), its tool and the tool's input, which
+    /// `PostToolUse` repeats less any `description` only the request adds (the question it asks you).
+    /// Every other input field stays in, so two calls of one turn with different inputs never match.
+    /// Nil without a scope or a tool.
+    static func toolCall(_ object: JSONValue, scope: String) -> String? {
+        guard let turn = object[scope].flatMap(nonBlank), let tool = object["tool_name"].flatMap(nonBlank)
         else { return nil }
         var input = object["tool_input"] ?? .null
         if case let .object(members) = input {
