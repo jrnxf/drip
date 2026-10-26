@@ -302,6 +302,15 @@ enum Agent: String, CaseIterable {
         }
     }
 
+    /// What the agent's screen shows when the account's quota is used up: Gemini CLI stops at a
+    /// "Usage limit reached" dialog (Keep trying / Stop) and waits for a key.
+    var quotaScreen: String? {
+        switch self {
+        case .gemini: return geminiQuotaWords
+        case .claude, .codex: return nil
+        }
+    }
+
     /// The first prompt: a shell command the agent has to ask to run.
     var firstPrompt: String {
         switch self {
@@ -639,15 +648,23 @@ func hasGeminiKey(_ options: Options) -> Bool {
     run([options.security, "find-generic-password", "-s", options.service, "-a", "gemini"], timeout: 30).status == 0
 }
 
+/// What Gemini CLI says, on its screen or in its errors, when the key's quota is used up.
+let geminiQuotaWords = #"(?i)(\b(code|status)\W{0,3}429\b|RESOURCE_EXHAUSTED|TerminalQuotaError|exhausted your (daily )?quota|usage limit reached)"#
+
+/// A quota used up is a problem with the account, not with drip's hooks or the key: what is wrong, and its fix.
+let geminiQuotaReason = "Gemini API quota used up"
+let geminiQuotaFix = "turn on billing for the key in AI Studio, or wait for the daily reset"
+
+func isGeminiQuota(_ text: String) -> Bool {
+    text.range(of: geminiQuotaWords, options: .regularExpression) != nil
+}
+
 /// What an agent's output says went wrong, for a reason line: a plain one when the API's quota is used
 /// up, else the API's own message when it has one, as JSON (`"message": "..."`) or as Gemini CLI prints
 /// its errors (`message: '...'`), else the first line that is no warning or startup note (Gemini CLI
 /// prints those first).
 func reasonLine(_ text: String) -> String {
-    let quota = #"(?i)(\b(code|status)\W{0,3}429\b|RESOURCE_EXHAUSTED|TerminalQuotaError|exhausted your daily quota)"#
-    if text.range(of: quota, options: .regularExpression) != nil {
-        return "Gemini API quota used up: turn on billing for the key in AI Studio, or wait for the daily reset"
-    }
+    if isGeminiQuota(text) { return "\(geminiQuotaReason): \(geminiQuotaFix)" }
     let lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
     let message = try? NSRegularExpression(pattern: #""message":\s*"([^"]+)"|\bmessage:\s*'([^']+)'"#)
     for line in lines {
@@ -701,6 +718,10 @@ func checkLogin(_ world: World) -> Login {
         if ran.status == 0 { return .ready }
         if ran.status == 97 {
             return .needsLogin(reason: "the Keychain would not give up the Gemini API key (is it locked?)", fix: "unlock the Keychain, or run \(options.setupHint)")
+        }
+        // A quota used up (a 429) is no bad key: it is looked for first.
+        if isGeminiQuota(ran.err + ran.out) {
+            return .needsLogin(reason: geminiQuotaReason, fix: geminiQuotaFix)
         }
         if (ran.out + ran.err).range(of: authWords + #"|API key|PERMISSION_DENIED|UNSUPPORTED_CLIENT|IneligibleTier"#, options: .regularExpression) != nil {
             return .needsLogin(reason: "Gemini CLI turned the saved API key down: \(reasonLine(ran.err + ran.out))", fix: "run \(options.setupHint)")
@@ -848,6 +869,9 @@ final class Session {
     /// Waiting cards the check put there itself, by replaying a request.
     var replayed = 0
     var screens: [String] = []
+    /// Why the session was stopped short, as when the account's quota ran out: nothing more to drive.
+    var stopped: Login?
+    private var lastLook = Date.distantPast
 
     init(world: World, contract: Contract) {
         self.world = world
@@ -863,6 +887,20 @@ final class Session {
 
     func screen() -> String {
         redacted(tmux(["capture-pane", "-p", "-t", "agent"]).out)
+    }
+
+    /// Whether the agent waits at a quota dialog, looked for at most every two seconds. Once it does,
+    /// the session is `stopped`: the dialog waits for a key, and no hook comes while it does.
+    func quotaShown() -> Bool {
+        if stopped != nil { return true }
+        guard let words = agent.quotaScreen, Date().timeIntervalSince(lastLook) >= 2 else { return false }
+        lastLook = Date()
+        let shown = screen()
+        guard shown.range(of: words, options: .regularExpression) != nil else { return false }
+        keepScreen("the agent stopped at a quota dialog")
+        stopped = .needsLogin(reason: geminiQuotaReason, fix: geminiQuotaFix)
+        say("  \(agent.name) stopped at its usage limit dialog")
+        return true
     }
 
     func keepScreen(_ why: String) {
@@ -900,7 +938,7 @@ final class Session {
         var found: Captured?
         waitFor(seconds) {
             found = payloads().first { $0.stem > stem && !handled.contains($0.stem) && matches($0) }
-            return found != nil
+            return found != nil || quotaShown()
         }
         if let found { handled.insert(found.stem) }
         return found
@@ -964,6 +1002,7 @@ final class Session {
             promptEvent = next(after: start, within: 30) { $0.event == self.contract.prompt }
         }
         guard let promptPayload = promptEvent else {
+            if stopped != nil { return nil }
             check("turn \(number): the prompt reaches drip", false, "no \(contract.prompt) within 45 seconds of the prompt")
             return nil
         }
@@ -983,6 +1022,7 @@ final class Session {
             guard let payload = next(after: promptPayload.stem, within: 0, {
                 self.contract.isPermission($0.payload) || $0.event == self.contract.done || $0.event == "StopFailure"
             }) else {
+                if stopped != nil { return nil }
                 if number == 1, !asked, now() - sentAt > 150 {
                     check("turn 1: the agent asks before it runs the command", false,
                           "no \(contract.permission) reached drip within 150 seconds")
@@ -1299,6 +1339,8 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
     let started = session.start()
     guard case .ready = started else { return skip(started, session) }
     session.drive()
+    // An account problem says nothing of the hooks: no checks, no drift.
+    if let stopped = session.stopped { return skip(stopped, session) }
     session.finish()
 
     let all = session.payloads()

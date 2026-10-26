@@ -141,12 +141,12 @@ struct HarnessTests {
 
     /// A check of Gemini CLI alone, with a stand-in Keychain that holds a made-up key, whose stand-in
     /// fails its login session with `message`.
-    static func geminiLogin(failingWith message: String) throws -> (status: Int32, gemini: [String: Any]) {
+    static func geminiLogin(failingWith message: String, keyInKeychain: Bool = true) throws -> (status: Int32, gemini: [String: Any]) {
         let cache = try scratch()
         defer { try? FileManager.default.removeItem(at: cache) }
         let fake = cache.appendingPathComponent("fake")
         let security = fake.appendingPathComponent("security")
-        try script("echo AIzaNotARealKey\n", at: security)
+        try script(keyInKeychain ? "echo AIzaNotARealKey\n" : "exit 44\n", at: security)
         try FileManager.default.createDirectory(at: fake.appendingPathComponent("messages"), withIntermediateDirectories: true)
         let messageFile = fake.appendingPathComponent("messages/gemini.txt")
         try message.write(to: messageFile, atomically: true, encoding: .utf8)
@@ -187,10 +187,67 @@ struct HarnessTests {
               }
             """
         let (status, gemini) = try Self.geminiLogin(failingWith: output)
-        #expect(status == 1)
-        #expect(gemini["status"] as? String == "failed")
-        #expect(gemini["reason"] as? String
-            == "gemini -p exited 1: Gemini API quota used up: turn on billing for the key in AI Studio, or wait for the daily reset")
+        // An account problem, which the check never mistakes for a failure of drip's hooks.
+        #expect(status == 2)
+        #expect(gemini["status"] as? String == "skipped")
+        #expect(gemini["reason"] as? String == "needs login: Gemini API quota used up")
+        #expect(gemini["fix"] as? String == "turn on billing for the key in AI Studio, or wait for the daily reset")
+    }
+
+    /// A 429 that also says "API key" or 403 is still the quota, not a key turned down.
+    @Test func aGeminiQuotaIsNeverAKeyTurnedDown() throws {
+        let (status, gemini) = try Self.geminiLogin(
+            failingWith: "API key ok, but 403 on this project: { code: 429, status: 'RESOURCE_EXHAUSTED' }")
+        #expect(status == 2)
+        #expect(gemini["reason"] as? String == "needs login: Gemini API quota used up")
+    }
+
+    /// No key in the Keychain: the check asks for none to be made up, and runs no Gemini CLI.
+    @Test func aGeminiWithNoKeyNeedsALogin() throws {
+        let (status, gemini) = try Self.geminiLogin(failingWith: "never run", keyInKeychain: false)
+        #expect(status == 2)
+        #expect(gemini["status"] as? String == "skipped")
+        #expect((gemini["reason"] as? String)?.contains("no Gemini API key in the Keychain") == true)
+    }
+
+    /// A stand-in for Gemini CLI in its terminal that takes the first prompt, then stops at the usage
+    /// limit dialog and waits for a key, with no hook ever running.
+    static let geminiAtItsLimit = """
+        case "$1" in --version) echo "0.0.0"; exit 0 ;; -p) echo ok; exit 0 ;; esac
+        echo "Type your message"
+        read -r prompt
+        echo "Usage limit reached for all Gemini models."
+        echo "  1. Keep trying"
+        echo "  2. Stop"
+        exec sleep 600
+
+        """
+
+    /// The quota dialog stops the check at once, as an account problem: not the five minutes' wait, a
+    /// failed turn or a drift on the end of the turn.
+    @Test(.enabled(if: tmux != nil && CGSessionCopyCurrentDictionary() != nil, "needs tmux and a GUI session, where drip records cards"))
+    func aGeminiQuotaDialogStopsTheCheckAtOnce() throws {
+        let cache = try Self.scratch()
+        defer { try? FileManager.default.removeItem(at: cache) }
+        let fake = cache.appendingPathComponent("fake")
+        let security = fake.appendingPathComponent("security")
+        try Self.script("echo AIzaNotARealKey\n", at: security)
+        try Self.script(Self.geminiAtItsLimit, at: fake.appendingPathComponent("gemini"))
+
+        let began = Date()
+        let status = try Self.execute(try Self.harness.get(), [
+            "run", "--repo", Self.repo.path, "--cache", cache.path, "--tools", fake.path, "--tmux", try #require(Self.tmux),
+            "--npm", try Self.npm(in: cache).path, "--drip", Self.drip.path, "--node-bin", "/usr/bin", "--only", "gemini",
+            "--security", security.path, "--gui-session", "yes",
+        ])
+        #expect(status == 2)
+        #expect(Date().timeIntervalSince(began) < 120)
+        let agents = try #require(try Self.last(cache)["agents"] as? [[String: Any]])
+        let gemini = try #require(agents.first)
+        #expect(gemini["status"] as? String == "skipped")
+        #expect(gemini["reason"] as? String == "needs login: Gemini API quota used up")
+        #expect((gemini["drift"] as? [Any])?.isEmpty == true)
+        #expect((gemini["checks"] as? [Any])?.isEmpty == true)
     }
 
     /// Any other error Gemini CLI prints with its JS-style message: the reason is that message.
