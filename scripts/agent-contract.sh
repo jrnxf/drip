@@ -7,7 +7,7 @@
 #   scripts/agent-contract.sh                  every agent
 #   scripts/agent-contract.sh --only codex     some of them: claude, codex, gemini
 #   scripts/agent-contract.sh --keep           keeps each agent's scratch world (homes, state, sessions)
-#   scripts/agent-contract.sh --setup          the one-time sign-ins, then a check
+#   scripts/agent-contract.sh --setup          the one-time logins (a Claude Code token, a Gemini API key), then a check
 #   scripts/agent-contract.sh --drift DIR      the drift report alone, for the payloads a run kept
 #
 # Exits 0 when every agent passed, 1 when any failed or the check itself could not run (last.json
@@ -19,10 +19,10 @@
 # ~/.cache/drip-agent-contract too: it says running while a check runs.
 #
 # Everything lives in ~/.cache/drip-agent-contract: the agents, installed afresh with npm every run,
-# drip's state and the agents' homes, and Gemini CLI's own Google sign-in. Your own agents, their
-# settings and your PATH stay as they are. Claude Code's long-lived token is in the Keychain
-# (service drip-agent-contract, account claude), and Codex uses your own login, through a link to
-# ~/.codex/auth.json.
+# drip's state and the agents' homes. Your own agents, their settings and your PATH stay as they
+# are. Claude Code's long-lived token and Gemini CLI's API key are in the Keychain (service
+# drip-agent-contract, accounts claude and gemini), and Codex uses your own login, through a link
+# to ~/.codex/auth.json.
 set -eu
 
 # --drift DIR is where you ran this from.

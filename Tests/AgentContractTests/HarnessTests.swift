@@ -139,17 +139,23 @@ struct HarnessTests {
         #expect(!Self.ran(cache, "tmux"))
     }
 
-    /// A check of Gemini CLI alone, whose stand-in fails its login session with `message`.
+    /// A check of Gemini CLI alone, with a stand-in Keychain that holds a made-up key, whose stand-in
+    /// fails its login session with `message`.
     static func geminiLogin(failingWith message: String) throws -> (status: Int32, gemini: [String: Any]) {
         let cache = try scratch()
         defer { try? FileManager.default.removeItem(at: cache) }
         let fake = cache.appendingPathComponent("fake")
-        try script("case \"$1\" in --version) echo 0.0.0; exit 0 ;; esac\necho '\(message)' >&2\nexit 1\n",
+        let security = fake.appendingPathComponent("security")
+        try script("echo AIzaNotARealKey\n", at: security)
+        try FileManager.default.createDirectory(at: fake.appendingPathComponent("messages"), withIntermediateDirectories: true)
+        let messageFile = fake.appendingPathComponent("messages/gemini.txt")
+        try message.write(to: messageFile, atomically: true, encoding: .utf8)
+        try script("case \"$1\" in --version) echo 0.0.0; exit 0 ;; esac\ncat '\(messageFile.path)' >&2\nexit 1\n",
                    at: fake.appendingPathComponent("gemini"))
         let signIn = cache.appendingPathComponent("gemini/.gemini")
         try FileManager.default.createDirectory(at: signIn, withIntermediateDirectories: true)
         try "{}\n".write(to: signIn.appendingPathComponent("oauth_creds.json"), atomically: true, encoding: .utf8)
-        let status = try check(cache, npm: try npm(in: cache), more: ["--gui-session", "yes", "--only", "gemini", "--node-bin", "/usr/bin"])
+        let status = try check(cache, npm: try npm(in: cache), more: ["--gui-session", "yes", "--only", "gemini", "--node-bin", "/usr/bin", "--security", security.path])
         let agents = try #require(try last(cache)["agents"] as? [[String: Any]])
         return (status, try #require(agents.first))
     }
@@ -166,6 +172,37 @@ struct HarnessTests {
         #expect(status == 1)
         #expect(gemini["status"] as? String == "failed")
         #expect((gemini["reason"] as? String)?.contains("gemini -p exited 1") == true)
+    }
+
+    /// Gemini CLI's error when the key's quota is used up, as it prints it: the reason says so plainly.
+    @Test func aGeminiQuotaUsedUpSaysSo() throws {
+        let output = """
+            Error when talking to Gemini API Full report available at: /tmp/gemini-client-error.json
+            TerminalQuotaError: You have exhausted your daily quota on this model.
+                at classifyGoogleError (file:///gemini/dist/index.js:1:2)
+              cause: {
+                code: 429,
+                message: 'Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20',
+                status: 'RESOURCE_EXHAUSTED'
+              }
+            """
+        let (status, gemini) = try Self.geminiLogin(failingWith: output)
+        #expect(status == 1)
+        #expect(gemini["status"] as? String == "failed")
+        #expect(gemini["reason"] as? String
+            == "gemini -p exited 1: Gemini API quota used up: turn on billing for the key in AI Studio, or wait for the daily reset")
+    }
+
+    /// Any other error Gemini CLI prints with its JS-style message: the reason is that message.
+    @Test func aGeminiErrorGivesItsOwnMessage() throws {
+        let output = """
+            Warning: something at startup
+            Error when talking to Gemini API Full report available at: /tmp/gemini-client-error.json
+              cause: { code: 500, message: 'Internal error encountered.', status: 'INTERNAL' }
+            """
+        let (status, gemini) = try Self.geminiLogin(failingWith: output)
+        #expect(status == 1)
+        #expect(gemini["reason"] as? String == "gemini -p exited 1: Internal error encountered.")
     }
 
     /// The script, stopped before the harness by a harness that does not build, while another check

@@ -800,12 +800,17 @@ the agent sent is a shape drip cannot read. `--only codex` runs some agents, and
 agent's scratch world.
 
 The one-time setup takes about 5 minutes: run `scripts/agent-contract.sh --setup` in a terminal. It
-opens the browser twice, to approve a long-lived Claude Code token from `claude setup-token`, which
+opens the browser once, to approve a long-lived Claude Code token from `claude setup-token`, which
 goes straight into the Keychain (service `drip-agent-contract`, account `claude`) without being
-shown, and for a Google sign-in for Gemini CLI. Codex uses your own login: run `codex login` first if
-you have none. Setup checks each login with a tiny session, prints what is ready, then runs the check
-once. After that a check never prompts and never opens a browser: an agent whose login is missing or
-no longer works is skipped with the one line that fixes it.
+shown. Gemini CLI needs an API key, because Google no longer serves it to free-tier Google accounts:
+create one at <https://aistudio.google.com/apikey> and turn billing on for it, so Google does not use
+the check's prompts to improve its products (a weekly check costs a few cents). Setup asks for it
+with the terminal's echo off and saves it in the Keychain (same service, account `gemini`), or you
+save it yourself with `security add-generic-password -s drip-agent-contract -a gemini -U -w`. Codex
+uses your own login: run `codex login` first if you have none. Setup checks each login with a tiny
+session, prints what is ready, then runs the check once. After that a check never prompts and never
+opens a browser: an agent whose login is missing or no longer works is skipped with the one line
+that fixes it.
 
 This repo ships the check only: no schedule and no alert. Running it, weekly say, and telling you
 when it fails or needs a login are up to your own scheduler, which runs `scripts/agent-contract.sh`
@@ -835,12 +840,12 @@ noted. `--drift DIR` prints the report for the payloads a run kept, each agent's
 `/home/user`, so a fix can add them to the tests as they are; update `contract.json` with it.
 
 Everything it uses lives in `~/.cache/drip-agent-contract`: the agents, drip's state, each agent's
-home and settings, and Gemini CLI's own sign-in. Your own agents, their settings and your PATH stay as
+home and settings. Your own agents, their settings and your PATH stay as
 they are. The Codex session links your `~/.codex/auth.json` rather than copying it, and trusts drip's
 hooks for that session alone (`--dangerously-bypass-hook-trust`), where you would trust them once in
 `/hooks`. A refresh of that login in the check goes to your own file, through the link; if your own
 Codex refreshes it at the same moment, Codex may ask you to run `codex login` again. Any program you
-run can read the Claude Code token in the Keychain without asking, as an unattended check must.
+run can read the Claude Code token and the Gemini API key in the Keychain without asking, as an unattended check must.
 
 ### Releases
 
