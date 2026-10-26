@@ -601,9 +601,9 @@ final class Helper {
         build = fileManager.contents(atPath: path(app, "Contents/MacOS/helper"))
             .map { Data(SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined().utf8) }
         let away = screenIsAway()
-        let wanted = shouldAsk(prompt: prompt, build: build, asked: fileManager.contents(atPath: marker), away: false)
-        let ask = wanted && !away
-        if wanted, away {
+        let previous = fileManager.contents(atPath: marker)
+        let ask = shouldAsk(prompt: prompt, build: build, asked: previous, away: away)
+        if away, shouldAsk(prompt: prompt, build: build, asked: previous, away: false) {
             say("mac-e2e: the screen is locked or asleep, so the helper did not ask for Accessibility: wake it and run scripts/mac-e2e.sh again")
         }
         // Asking brings the helper to the front (no -g), so its system prompt does not sit behind the
@@ -620,7 +620,7 @@ final class Helper {
         trusted = object["trusted"] as? Bool ?? false
         asked = ask && !trusted
         // Already granted: record it, so the next run launches the helper in the background.
-        if ask, trusted, recordsAsked(trusted: true, away: false) { fileManager.createFile(atPath: marker, contents: build) }
+        if ask, trusted { fileManager.createFile(atPath: marker, contents: build) }
     }
 
     /// Waits up to `timeout` seconds for the person to grant the prompt the helper opened. The marker
@@ -637,8 +637,8 @@ final class Helper {
             say("mac-e2e: the screen locked or slept with the Accessibility prompt open: wake it and run scripts/mac-e2e.sh again")
         } else {
             trusted = stopped != nil
-            if recordsAsked(trusted: trusted, away: false) { fileManager.createFile(atPath: marker, contents: build) }
         }
+        if recordsAsked(trusted: trusted, away: away) { fileManager.createFile(atPath: marker, contents: build) }
     }
 
     func call(_ request: [String: Any]) -> [String: Any] {

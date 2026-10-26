@@ -55,6 +55,10 @@ built() {
 harness="$cache/harness"
 if stale scripts/mac-e2e/Harness.swift "$harness"; then
     swiftc -O -o "$harness" scripts/mac-e2e/Harness.swift
+    if ! result=$("$harness" --self-test); then
+        printf '%s\n' "$result" >&2
+        exit 1
+    fi
     built scripts/mac-e2e/Harness.swift "$harness"
 fi
 
