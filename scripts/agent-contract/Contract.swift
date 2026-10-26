@@ -379,6 +379,8 @@ struct Options {
     /// The Keychain items that hold Claude Code's token and Gemini CLI's API key: this service, account
     /// `claude` and account `gemini`.
     var service = "drip-agent-contract"
+    /// The program that reads them; the tests hand it a stand-in.
+    var security = "/usr/bin/security"
     var codexAuth = (NSHomeDirectoryForUser(NSUserName()) ?? NSHomeDirectory()) + "/.codex/auth.json"
 
     var contractFile: String { path(repo, "scripts/agent-contract/contract.json") }
@@ -407,6 +409,7 @@ struct Options {
             case "--swift": options.swift = value(argument)
             case "--drip": options.drip = value(argument)
             case "--keychain-service": options.service = value(argument)
+            case "--security": options.security = value(argument)
             case "--codex-auth": options.codexAuth = value(argument)
             case "--keep": options.keep = true
             case "--gui-session":
@@ -606,30 +609,37 @@ let realHome = NSHomeDirectoryForUser(NSUserName()) ?? NSHomeDirectory()
 /// Shell that reads Claude Code's token from the Keychain into the environment of the shell that
 /// starts the agent: the token is never on a command line, in a file or in this process.
 func readClaudeToken(_ options: Options) -> String {
-    "CLAUDE_CODE_OAUTH_TOKEN=$(HOME=\(quoted(realHome)) /usr/bin/security find-generic-password -s \(quoted(options.service)) -a claude -w 2>/dev/null)"
+    "CLAUDE_CODE_OAUTH_TOKEN=$(HOME=\(quoted(realHome)) \(quoted(options.security)) find-generic-password -s \(quoted(options.service)) -a claude -w 2>/dev/null)"
 }
 
 func hasClaudeToken(_ options: Options) -> Bool {
-    run(["/usr/bin/security", "find-generic-password", "-s", options.service, "-a", "claude"], timeout: 30).status == 0
+    run([options.security, "find-generic-password", "-s", options.service, "-a", "claude"], timeout: 30).status == 0
 }
 
 /// The same for Gemini CLI's API key, in account `gemini`.
 func readGeminiKey(_ options: Options) -> String {
-    "GEMINI_API_KEY=$(HOME=\(quoted(realHome)) /usr/bin/security find-generic-password -s \(quoted(options.service)) -a gemini -w 2>/dev/null)"
+    "GEMINI_API_KEY=$(HOME=\(quoted(realHome)) \(quoted(options.security)) find-generic-password -s \(quoted(options.service)) -a gemini -w 2>/dev/null)"
 }
 
 func hasGeminiKey(_ options: Options) -> Bool {
-    run(["/usr/bin/security", "find-generic-password", "-s", options.service, "-a", "gemini"], timeout: 30).status == 0
+    run([options.security, "find-generic-password", "-s", options.service, "-a", "gemini"], timeout: 30).status == 0
 }
 
-/// What an agent's output says went wrong, for a reason line: the API's own message when it has one,
-/// else the first line that is no warning or startup note (Gemini CLI prints those first).
+/// What an agent's output says went wrong, for a reason line: a plain one when the API's quota is used
+/// up, else the API's own message when it has one, as JSON (`"message": "..."`) or as Gemini CLI prints
+/// its errors (`message: '...'`), else the first line that is no warning or startup note (Gemini CLI
+/// prints those first).
 func reasonLine(_ text: String) -> String {
+    let quota = #"(?i)(\b(code|status)\W{0,3}429\b|RESOURCE_EXHAUSTED|TerminalQuotaError|exhausted your daily quota)"#
+    if text.range(of: quota, options: .regularExpression) != nil {
+        return "Gemini API quota used up: turn on billing for the key in AI Studio, or wait for the daily reset"
+    }
     let lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
-    let message = try? NSRegularExpression(pattern: #""message":\s*"([^"]+)""#)
+    let message = try? NSRegularExpression(pattern: #""message":\s*"([^"]+)"|\bmessage:\s*'([^']+)'"#)
     for line in lines {
         let range = NSRange(line.startIndex..., in: line)
-        if let match = message?.firstMatch(in: line, range: range), let found = Range(match.range(at: 1), in: line) {
+        if let match = message?.firstMatch(in: line, range: range),
+           let found = Range(match.range(at: 1), in: line) ?? Range(match.range(at: 2), in: line) {
             return firstLine(String(line[found]))
         }
     }
