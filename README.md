@@ -477,7 +477,7 @@ drip hook claude|codex|gemini [options] [payload]
 drip setup claude|codex|gemini [--print | --remote]
 drip setup remote
 drip follow <ssh-target> [options]
-drip history [--missed] [--json | --replay]
+drip history [--missed] [-n N | --all] [--json | --replay]
 drip dismiss [--id ID]
 drip pause [DURATION]
 drip resume
@@ -640,13 +640,33 @@ Every card is also kept in `$XDG_STATE_HOME/drip/history.jsonl`, or
 the last 1000 cards.
 
 ```sh
-drip history                  # every kept card, oldest first
+drip history                  # the last 20 cards, newest first, as they showed
+drip history -n 50            # the last 50
+drip history --all            # every kept card
 drip history --missed         # only those that came up while the screen was locked or drip was paused
-drip history --json           # one JSON object per line, for scripts
+drip history --json           # every card, oldest first, one JSON object per line, for scripts
 drip history --missed --replay   # show the missed cards again
 ```
 
-A listed line reads `2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)`. A `--json` line
+The listing shows each card as it showed on screen, newest first: how long ago it came up, then a
+bar in the color of its kind (green `ok`, yellow `warn`, red `fail`, blue `info`) on every line, the
+title in bold and the lines of detail the card had room for, with a rule between cards. A card
+that came up while the screen was locked or drip was paused has `missed` after its title.
+
+```text
+2m ago    ┃ drip is done
+          ┃ Split it. Pane awareness for herdr belongs in drip. Your
+          ┃ firstmate and worker rules belong in dotfiles. How your…
+────────────────────────────────────────────────────────────────
+20m ago   ┃ deploy failed  missed
+          ┃ api 1.4.2
+```
+
+The lines are the ones the card wrapped to, measured as the card was recorded, so a long agent
+message lists as the few lines you saw, not as all of it. Entries recorded by an earlier drip are
+wrapped from their text the same way, by the width of an average character instead of measured.
+Color is for a terminal and off when `NO_COLOR` is set; the layout is the same without it. `--json`
+and `--replay` take every card in full, unless `-n` limits them. A `--json` line
 writes each setting the way its flag takes it, and leaves out `detail`, `button`, `open`, `id` and
 `activate` when the card had none:
 

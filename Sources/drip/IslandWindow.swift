@@ -119,14 +119,7 @@ final class IslandLayers {
         }
         // The text column depends only on the size, the icon and the button.
         let column = CGFloat(islandMetrics(textSize: .zero, titleLines: 0, detailLines: 0).textColumn)
-        let titleText = Self.lines(
-            card.title, font: .systemFont(ofSize: 14 * sizeScale, weight: .semibold), color: .white, width: column,
-            maxLines: Defaults.titleLines)
-        let detailText = card.detail.map {
-            Self.lines(
-                $0, font: .systemFont(ofSize: 12 * sizeScale, weight: .regular), color: NSColor(white: 0.62, alpha: 1),
-                width: column, maxLines: Defaults.detailLines)
-        } ?? []
+        let (titleText, detailText) = Self.wrapped(card, column: column)
         let titleSizes = titleText.map { Self.measure($0, maxWidth: column) }
         let detailSizes = detailText.map { Self.measure($0, maxWidth: column) }
         let spacing = detailText.isEmpty ? 0 : 3 * sizeScale
@@ -454,6 +447,41 @@ final class IslandLayers {
         track.frame = parent.bounds
         parent.addSublayer(track)
         parent.addSublayer(ringProgress)
+    }
+
+    /// The card's title and detail as the island lays them out in a text column `column` points wide.
+    private static func wrapped(_ card: Card, column: CGFloat) -> (title: [NSAttributedString], detail: [NSAttributedString]) {
+        let sizeScale = CGFloat(card.size.scale)
+        let title = lines(
+            card.title, font: .systemFont(ofSize: 14 * sizeScale, weight: .semibold), color: .white, width: column,
+            maxLines: Defaults.titleLines)
+        let detail = card.detail.map {
+            lines(
+                $0, font: .systemFont(ofSize: 12 * sizeScale, weight: .regular), color: NSColor(white: 0.62, alpha: 1),
+                width: column, maxLines: Defaults.detailLines)
+        } ?? []
+        return (title, detail)
+    }
+
+    /// The lines the island shows for `card`, laid out as `init` does with the card's icon and
+    /// buttons, so the history keeps what was on screen. The icon is taken to load; one that cannot
+    /// leaves the column a little wider on screen.
+    static func shownText(for card: Card) -> ShownText {
+        let sizeScale = CGFloat(card.size.scale)
+        func buttonWidth(_ text: String) -> Double {
+            let label = NSAttributedString(string: text, attributes: [
+                .font: NSFont.systemFont(ofSize: 12.5 * sizeScale, weight: .semibold),
+            ])
+            return Double(ceil(label.size().width) + 24 * sizeScale)
+        }
+        let yes = card.action.map { buttonWidth($0.label) }
+        let no = card.action?.decline.map(buttonWidth)
+        let metrics = IslandMetrics(
+            notchWidth: 0, notchHeight: 0, scale: Double(sizeScale), textWidth: 0, textHeight: 0, hasIcon: card.showsIconAtNotch,
+            actionWidth: yes.map { IslandMetrics.buttonsWidth(yes: $0, no: no, scale: Double(sizeScale)) } ?? 0,
+            declineWidth: no ?? 0)
+        let (title, detail) = wrapped(card, column: CGFloat(metrics.textColumn))
+        return ShownText(title: title.map(\.string), detail: detail.map(\.string))
     }
 
     /// `text` broken into at most `maxLines` lines, each cut to fit `width`, the last with an ellipsis

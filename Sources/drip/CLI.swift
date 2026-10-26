@@ -330,18 +330,25 @@ struct DripCLI {
         return outcome.status
     }
 
-    /// Lists the cards in the history, or shows them again, oldest first.
+    /// Lists the cards in the history, newest first, or prints them as JSON or shows them again,
+    /// oldest first.
     private func history(_ command: HistoryCommand) -> Int32 {
         let console = Console()
-        let entries = HistoryListing.select(
-            CardHistory(environment: ProcessInfo.processInfo.environment).entries(), missed: command.missed)
+        let environment = ProcessInfo.processInfo.environment
+        // The listing is the last cards; JSON and replay are all of them, unless -n limits them.
+        let count = command.all ? nil : command.number ?? (command.json || command.replay ? nil : HistoryListing.defaultCount)
+        let entries = HistoryListing.newest(
+            HistoryListing.select(CardHistory(environment: environment).entries(), missed: command.missed), count: count)
         if command.replay {
             guard !entries.isEmpty else { return ExitStatus.shown }
             return deliver(entries.map(HistoryListing.replay), wait: false, record: false, console: console)
         }
         do {
-            for entry in entries {
-                print(command.json ? try HistoryListing.publicJSON(entry) : HistoryListing.line(entry))
+            if command.json {
+                for entry in entries { print(try HistoryListing.publicJSON(entry)) }
+            } else if !entries.isEmpty {
+                let color = isatty(STDOUT_FILENO) != 0 && (environment["NO_COLOR"] ?? "").isEmpty
+                print(HistoryListing.render(entries, color: color))
             }
         } catch {
             return report(error, console)

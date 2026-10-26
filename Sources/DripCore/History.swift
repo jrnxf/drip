@@ -39,6 +39,45 @@ public struct StateError: Error, Equatable, CustomStringConvertible {
     public var description: String { message }
 }
 
+/// The lines a card showed on screen, or would have shown to someone at the screen: the title's
+/// lines and the detail's, wrapped as the card wraps them, the last of each ending in an ellipsis
+/// when the text ran on.
+public struct ShownText: Equatable, Sendable, Codable {
+    public var title: [String]
+    public var detail: [String]
+
+    public init(title: [String], detail: [String] = []) {
+        self.title = title
+        self.detail = detail
+    }
+
+    /// The lines the card would show, estimated from the width of an average character instead of
+    /// measured. For cards recorded before the history kept `shown`, and where there is no window
+    /// server to measure with, as in a WebAssembly build or over ssh.
+    public init(estimating card: Card) {
+        let scale = card.size.scale
+        // The card's own text column, for a card with its icon and the width of its buttons.
+        func buttonWidth(_ label: String) -> Double { (Double(label.count) * 7.5 + 24) * scale }
+        let yes = card.action.map { buttonWidth($0.label) }
+        let no = card.action?.decline.map(buttonWidth)
+        let column = IslandMetrics(
+            notchWidth: 0, notchHeight: 0, scale: scale, textWidth: 0, textHeight: 0, hasIcon: card.showsIconAtNotch,
+            actionWidth: yes.map { IslandMetrics.buttonsWidth(yes: $0, no: no, scale: scale) } ?? 0,
+            declineWidth: no ?? 0
+        ).textColumn
+        func lines(_ text: String, points: Double, maxLines: Int) -> [String] {
+            let size = points * scale
+            let cap = max(maxLines, 1) * 400
+            let text = text.index(text.startIndex, offsetBy: cap, limitedBy: text.endIndex).map { String(text[..<$0]) } ?? text
+            return CardText.wrap(text, width: column, maxLines: maxLines) { string in
+                string.reduce(0) { $0 + ($1.unicodeScalars.first.map { $0.value >= 0x2E80 } == true ? 1.0 : 0.56) * size }
+            }
+        }
+        title = lines(card.title, points: 14, maxLines: Defaults.titleLines)
+        detail = card.detail.map { lines($0, points: 12, maxLines: Defaults.detailLines) } ?? []
+    }
+}
+
 /// One card in the history.
 public struct HistoryEntry: Equatable, Sendable, Codable {
     /// When the card came up.
@@ -47,12 +86,18 @@ public struct HistoryEntry: Equatable, Sendable, Codable {
     /// the unlock and the end of the pause.
     public var missed: Bool
     public var card: Card
+    /// What the card showed, measured as it was recorded; nil in entries recorded before drip kept it.
+    public var shown: ShownText?
 
-    public init(time: Date, missed: Bool, card: Card) {
+    public init(time: Date, missed: Bool, card: Card, shown: ShownText? = nil) {
         self.time = time
         self.missed = missed
         self.card = card
+        self.shown = shown
     }
+
+    /// The lines the card showed: the recorded ones, or an estimate from its text.
+    public var shownText: ShownText { shown ?? ShownText(estimating: card) }
 }
 
 /// Every card drip showed or held, newest last, as one JSON object per line. The oldest entries go
@@ -78,13 +123,18 @@ public struct CardHistory {
     }
 
     /// Adds the cards, dropping the oldest entries beyond `limit`. Safe to call from many drips at once.
-    public func record(_ cards: [Card], missed: Bool, at time: Date = Date()) throws {
+    ///
+    /// - Parameter shown: The lines a card shows, measured with the card's own fonts and width;
+    ///   without one, or when it answers nil, the entry keeps none and the listing estimates them.
+    public func record(
+        _ cards: [Card], missed: Bool, at time: Date = Date(), shown: (Card) -> ShownText? = { _ in nil }
+    ) throws {
         guard !cards.isEmpty else { return }
         let added = try cards.map { card in
             var kept = card
             kept.title = CardText.truncate(card.title, limit: Self.textLimit)
             kept.detail = card.detail.map { CardText.truncate($0, limit: Self.textLimit) }
-            return try HistoryListing.json(HistoryEntry(time: time, missed: missed, card: kept))
+            return try HistoryListing.json(HistoryEntry(time: time, missed: missed, card: kept, shown: shown(card)))
         }
         try StateFiles.locked(path) {
             let lines = StateFiles.lines(atPath: path) + added
@@ -107,23 +157,63 @@ public enum HistoryListing {
         entries.filter { !missed || $0.missed }
     }
 
-    /// `2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)`, in local time.
-    public static func line(_ entry: HistoryEntry, timeZone: TimeZone = .current) -> String {
-        #if os(WASI)
-        let style = Date.ISO8601FormatStyle(timeZone: timeZone).year().month().day().dateSeparator(.dash)
-            .time(includingFractionalSeconds: false).timeSeparator(.colon)
-        let stamp = String(entry.time.formatted(style).replacing("T", with: " ").prefix(16))
-        #else
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        let stamp = formatter.string(from: entry.time)
-        #endif
-        var line = "\(stamp)  \(entry.card.kind)  \(entry.card.title)"
-        if let detail = entry.card.detail { line += " - \(detail)" }
-        if entry.missed { line += "  (missed)" }
-        return line
+    /// How many cards `drip history` lists without `-n` or `--all`.
+    public static let defaultCount = 20
+    /// The columns the time takes, and the gap and bar after it.
+    static let timeWidth = 9
+    /// The least width of the text a rule spans.
+    static let ruleMinimum = 40
+
+    /// The newest `count` entries, or all of them when `count` is nil, oldest first.
+    public static func newest(_ entries: [HistoryEntry], count: Int?) -> [HistoryEntry] {
+        count.map { Array(entries.suffix($0)) } ?? entries
+    }
+
+    /// `2m ago`, `3h ago`, `1d ago`: how long before `now` the card came up.
+    public static func relativeTime(_ time: Date, now: Date) -> String {
+        let seconds = Int(now.timeIntervalSince(time))
+        if seconds < 60 { return "now" }
+        if seconds < 3600 { return "\(seconds / 60)m ago" }
+        if seconds < 86_400 { return "\(seconds / 3600)h ago" }
+        if seconds < 365 * 86_400 { return "\(seconds / 86_400)d ago" }
+        return "\(seconds / (365 * 86_400))y ago"
+    }
+
+    /// What `drip history` prints: the entries newest first, each as its time, a bar in the color
+    /// of its kind on every line, its title and the detail lines it showed, with a rule between
+    /// cards. `color` adds the escapes; without it the layout is the same in plain text.
+    public static func render(_ entries: [HistoryEntry], now: Date = Date(), color: Bool) -> String {
+        func style(_ text: String, _ code: String) -> String { color ? "\u{1B}[\(code)m\(text)\u{1B}[0m" : text }
+        let shown = entries.map(\.shownText)
+        // The rule spans the time column, the gap and bar after it, and the widest line shown.
+        let widest = shown.flatMap { $0.title + $0.detail }.map(\.count).max() ?? 0
+        let rule = style(String(repeating: "─", count: timeWidth + 3 + max(widest, ruleMinimum)), "2")
+        let blank = String(repeating: " ", count: timeWidth)
+        let cards = zip(entries, shown).reversed().map { entry, shown -> String in
+            let bar = style("┃", barColor(entry.card.kind))
+            let time = relativeTime(entry.time, now: now)
+            let first = style(time, "2") + String(repeating: " ", count: max(timeWidth - time.count, 1))
+            var lines: [String] = []
+            for (index, text) in (shown.title.isEmpty ? [entry.card.title] : shown.title).enumerated() {
+                lines.append((index == 0 ? first : blank) + " " + bar + " " + style(text, "1"))
+            }
+            if entry.missed { lines[lines.count - 1] += "  " + style("missed", "33") }
+            for text in shown.detail { lines.append(blank + " " + bar + " " + text) }
+            return lines.joined(separator: "\n")
+        }
+        return cards.joined(separator: "\n" + rule + "\n")
+    }
+
+    /// The bar's color: green for ok, yellow for warn, red for fail, blue for info; none for a kind
+    /// of the user's own.
+    private static func barColor(_ kind: String) -> String {
+        switch kind {
+        case Preset.ok.name: return "32"
+        case Preset.warn.name: return "33"
+        case Preset.fail.name: return "31"
+        case Preset.info.name: return "34"
+        default: return "39"
+        }
     }
 
     /// The entry as one line of JSON, as it is stored.

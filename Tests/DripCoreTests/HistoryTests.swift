@@ -149,15 +149,136 @@ final class HistoryTests {
         #expect(HistoryListing.select([], missed: true).isEmpty)
     }
 
-    @Test func listingLines() throws {
-        let utc = try #require(TimeZone(identifier: "UTC"))
-        let time = Date(timeIntervalSince1970: 1_792_332_120) // 2026-10-18 14:02 UTC
+    private let now = Date(timeIntervalSince1970: 1_792_332_120)
+
+    @Test func relativeTimes() {
+        func age(_ seconds: Double) -> String { HistoryListing.relativeTime(now.addingTimeInterval(-seconds), now: now) }
+        #expect(age(0) == "now")
+        #expect(age(59) == "now")
+        #expect(age(120) == "2m ago")
+        #expect(age(3599) == "59m ago")
+        #expect(age(3600) == "1h ago")
+        #expect(age(86_400) == "1d ago")
+        #expect(age(40 * 86_400) == "40d ago")
+        #expect(age(800 * 86_400) == "2y ago")
+        // A clock that moved back is not a time in the future.
+        #expect(age(-30) == "now")
+    }
+
+    @Test func listingIsNewestFirstOnEveryLineOfACard() {
         var deploy = card("deploy failed", kind: "fail")
         deploy.detail = "api 1.4.2"
-        #expect(HistoryListing.line(HistoryEntry(time: time, missed: true, card: deploy), timeZone: utc)
-            == "2026-10-18 14:02  fail  deploy failed - api 1.4.2  (missed)")
-        #expect(HistoryListing.line(HistoryEntry(time: time, missed: false, card: card("built")), timeZone: utc)
-            == "2026-10-18 14:02  info  built")
+        let entries = [
+            HistoryEntry(
+                time: now.addingTimeInterval(-1200), missed: true, card: deploy,
+                shown: ShownText(title: ["deploy failed"], detail: ["api 1.4.2"])),
+            HistoryEntry(
+                time: now.addingTimeInterval(-120), missed: false, card: card("drip is done", kind: "ok"),
+                shown: ShownText(title: ["drip is done"], detail: ["Split it. Pane awareness", "for herdr belongs in drip."])),
+        ]
+        let rule = String(repeating: "─", count: 52)
+        #expect(HistoryListing.render(entries, now: now, color: false) == """
+            2m ago    ┃ drip is done
+                      ┃ Split it. Pane awareness
+                      ┃ for herdr belongs in drip.
+            \(rule)
+            20m ago   ┃ deploy failed  missed
+                      ┃ api 1.4.2
+            """)
+    }
+
+    @Test func ruleIsAsWideAsTheWidestLine() {
+        let wide = String(repeating: "x", count: 60)
+        let entries = [
+            HistoryEntry(time: now, missed: false, card: card("a"), shown: ShownText(title: ["a"], detail: [wide])),
+            HistoryEntry(time: now, missed: false, card: card("b"), shown: ShownText(title: ["b"])),
+        ]
+        let lines = HistoryListing.render(entries, now: now, color: false).split(separator: "\n")
+        let rule = lines.first { $0.hasPrefix("─") }
+        #expect(rule?.count == lines.map(\.count).max())
+    }
+
+    @Test func listingColorsOnlyWhenAsked() {
+        let entries = [
+            HistoryEntry(time: now.addingTimeInterval(-60), missed: true, card: card("built", kind: "warn"),
+                         shown: ShownText(title: ["built"], detail: ["more"])),
+        ]
+        let plain = HistoryListing.render(entries, now: now, color: false)
+        #expect(!plain.contains("\u{1B}"))
+        let colored = HistoryListing.render(entries, now: now, color: true)
+        #expect(colored.contains("\u{1B}[2m1m ago\u{1B}[0m"), "dim time")
+        #expect(colored.contains("\u{1B}[33m┃\u{1B}[0m"), "yellow bar for warn")
+        #expect(colored.contains("\u{1B}[1mbuilt\u{1B}[0m  \u{1B}[33mmissed\u{1B}[0m"), "bold title, yellow missed")
+        // The bar is on the detail line too.
+        #expect(colored.split(separator: "\n").allSatisfy { $0.contains("┃") })
+        for (kind, code) in [("ok", "32"), ("fail", "31")] {
+            let one = HistoryListing.render(
+                [HistoryEntry(time: now, missed: false, card: card("x", kind: kind))], now: now, color: true)
+            #expect(one.contains("\u{1B}[\(code)m┃"), "\(kind)")
+        }
+    }
+
+    @Test func multiLineTitleKeepsMissedAfterItsLastLine() {
+        let entry = HistoryEntry(
+            time: now, missed: true, card: card("one two"), shown: ShownText(title: ["one", "two"]))
+        #expect(HistoryListing.render([entry], now: now, color: false) == "now       ┃ one\n          ┃ two  missed")
+    }
+
+    @Test func listsTheNewestCardsOnly() {
+        let entries = (1...30).map { HistoryEntry(time: Date(timeIntervalSince1970: Double($0)), missed: false, card: card("c\($0)")) }
+        #expect(HistoryListing.defaultCount == 20)
+        #expect(HistoryListing.newest(entries, count: 20).map(\.card.title) == (11...30).map { "c\($0)" })
+        #expect(HistoryListing.newest(entries, count: 3).map(\.card.title) == ["c28", "c29", "c30"])
+        #expect(HistoryListing.newest(entries, count: nil) == entries)
+        #expect(HistoryListing.newest(Array(entries.prefix(2)), count: 20).count == 2)
+    }
+
+    @Test func oldEntriesWithoutShownLinesAreWrappedFromTheirText() throws {
+        var long = card(String(repeating: "word ", count: 80))
+        long.detail = String(repeating: "detail text ", count: 400)
+        let stored = try HistoryListing.json(HistoryEntry(time: now, missed: false, card: long))
+        #expect(!stored.contains("\"shown\""))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let entry = try decoder.decode(HistoryEntry.self, from: Data(stored.utf8))
+        #expect(entry.shown == nil)
+        let shown = entry.shownText
+        #expect(shown.title.count == Defaults.titleLines)
+        #expect(shown.detail.count == Defaults.detailLines)
+        #expect(shown.title.last?.hasSuffix("…") == true)
+        #expect(shown.detail.last?.hasSuffix("…") == true)
+        // Never the whole text, which can be 16,384 characters.
+        #expect(HistoryListing.render([entry], now: now, color: false).count < 1000)
+    }
+
+    @Test func theLongestStoredTextIsEstimatedAsTheCardShowsIt() {
+        var long = card(String(repeating: "t", count: CardHistory.textLimit))
+        long.detail = String(repeating: "d", count: CardHistory.textLimit)
+        let shown = ShownText(estimating: long)
+        #expect(shown.title.count == Defaults.titleLines)
+        #expect(shown.detail.count == Defaults.detailLines)
+        #expect(shown.title.last?.hasSuffix("…") == true)
+        #expect(shown.detail.last?.hasSuffix("…") == true)
+    }
+
+    @Test func shortEstimatedTextComesBackWhole() {
+        var short = card("built")
+        short.detail = "api 1.4.2"
+        #expect(ShownText(estimating: short) == ShownText(title: ["built"], detail: ["api 1.4.2"]))
+        #expect(ShownText(estimating: card("no detail")).detail.isEmpty)
+    }
+
+    @Test func recordedShownLinesRoundTripAndWinOverTheText() throws {
+        let history = CardHistory(path: try scratch().appending("/state/history.jsonl"))
+        var big = card("a title")
+        big.detail = String(repeating: "x ", count: 9000)
+        try history.record([big], missed: true, shown: { _ in ShownText(title: ["a title"], detail: ["x x x…"]) })
+        let entry = try #require(history.entries().first)
+        #expect(entry.shown == ShownText(title: ["a title"], detail: ["x x x…"]))
+        #expect(entry.card.detail?.count == CardHistory.textLimit)
+        #expect(HistoryListing.render([entry], now: Date(), color: false).contains("┃ x x x…"))
+        // JSON keeps the full text.
+        #expect(try HistoryListing.publicJSON(entry).contains(String(repeating: "x ", count: 100)))
     }
 
     @Test func jsonIsOneStoredLine() throws {

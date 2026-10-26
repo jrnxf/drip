@@ -349,7 +349,11 @@ struct CommandTests {
         #expect(all.missed && all.replay)
         #expect(try history(["--json"]).json)
         assertUsageError(["history", "--json", "--replay"])
-        assertUsageError(["history", "-n", "3"])
+        #expect(try history([]).number == nil && !history([]).all)
+        #expect(try history(["-n", "3"]).number == 3)
+        #expect(try history(["--all"]).all)
+        assertUsageError(["history", "-n", "0"])
+        assertUsageError(["history", "-n", "3", "--all"])
         assertUsageError(["history", "extra"])
     }
 
@@ -415,7 +419,7 @@ struct CommandTests {
         #expect(help.contains("drip setup claude|codex|gemini [--print | --remote]"), "\(help)")
         #expect(help.contains("drip setup remote"), "\(help)")
         #expect(help.contains("drip follow <ssh-target> [options]"), "\(help)")
-        #expect(help.contains("drip history [--missed] [--json | --replay]"), "\(help)")
+        #expect(help.contains("drip history [--missed] [-n N | --all] [--json | --replay]"), "\(help)")
         #expect(help.contains("drip pause [DURATION]"), "\(help)")
         #expect(help.contains("drip resume"), "\(help)")
         let order = ["USAGE:", "EXAMPLES:", "ARGUMENTS:", "OPTIONS:", "SUBCOMMANDS:", "EXIT CODES:"].map {
