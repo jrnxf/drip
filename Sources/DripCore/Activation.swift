@@ -49,10 +49,16 @@ public struct TerminalPane: Equatable, Sendable, Codable {
     /// herdr's server socket, from `HERDR_SOCKET_PATH`, so a drip started elsewhere asks the same
     /// server; nil for herdr's own default.
     public var herdrSocket: String?
+    /// herdr's workspace id, such as `w1`, from `HERDR_WORKSPACE_ID`, for a pane on another machine.
+    public var herdrWorkspace: String?
+    /// The saved herdr machine the pane runs on, as `herdr --machine` names it, for an agent that
+    /// `drip follow` hears from over ssh; nil for a pane on this Mac.
+    public var herdrMachine: String?
 
     public init(
         tmuxSocket: String? = nil, tmuxPane: String? = nil, weztermPane: String? = nil,
-        herdrPane: String? = nil, herdrTab: String? = nil, herdrSocket: String? = nil
+        herdrPane: String? = nil, herdrTab: String? = nil, herdrSocket: String? = nil,
+        herdrWorkspace: String? = nil, herdrMachine: String? = nil
     ) {
         self.tmuxSocket = tmuxSocket
         self.tmuxPane = tmuxPane
@@ -60,6 +66,20 @@ public struct TerminalPane: Equatable, Sendable, Codable {
         self.herdrPane = herdrPane
         self.herdrTab = herdrTab
         self.herdrSocket = herdrSocket
+        self.herdrWorkspace = herdrWorkspace
+        self.herdrMachine = herdrMachine
+    }
+
+    /// A herdr pane on the saved herdr machine `machine`, from the `HERDR_PANE_ID`, `HERDR_TAB_ID`
+    /// and `HERDR_WORKSPACE_ID` its agent ran with; nil when they name no tab or workspace, or
+    /// `machine` is no machine label.
+    public init?(herdrMachine machine: String, environment: [String: String]) {
+        func id(_ name: String) -> String? {
+            environment[name].flatMap { Self.isHerdrID($0) ? $0 : nil }
+        }
+        let tab = id("HERDR_TAB_ID"), workspace = id("HERDR_WORKSPACE_ID")
+        guard Self.isMachineLabel(machine), tab != nil || workspace != nil else { return nil }
+        self.init(herdrPane: id("HERDR_PANE_ID"), herdrTab: tab, herdrWorkspace: workspace, herdrMachine: machine)
     }
 
     /// The pane the environment names; nil when it names none. The innermost comes first: tmux,
@@ -99,26 +119,43 @@ public struct TerminalPane: Equatable, Sendable, Codable {
         return text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == ":") }
     }
 
-    /// The `herdr` command line with `arguments`, against the pane's own server.
-    func herdr(_ arguments: [String]) -> [String] {
-        (herdrSocket.map { ["HERDR_SOCKET_PATH=\($0)"] } ?? []) + ["herdr"] + arguments
+    /// A saved herdr machine's label or id, as `herdr --machine` takes it: letters, digits, dots,
+    /// hyphens and underscores, starting with a letter or digit, so it is never read as an option.
+    public static func isMachineLabel(_ text: String) -> Bool {
+        guard let first = text.first, first.isASCII, first.isLetter || first.isNumber, text.count <= 64 else { return false }
+        return text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || ".-_".contains($0)) }
     }
 
-    /// The command whose output `isShowing(herdrPane:)` reads.
+    /// The `herdr` command line with `arguments`, against the pane's own server: on its machine, or
+    /// through its socket.
+    func herdr(_ arguments: [String]) -> [String] {
+        if let herdrMachine { return ["herdr", "--machine", herdrMachine] + arguments }
+        return (herdrSocket.map { ["HERDR_SOCKET_PATH=\($0)"] } ?? []) + ["herdr"] + arguments
+    }
+
+    /// The command whose output `isShowing(herdrPane:)` reads. None for a pane on another machine:
+    /// herdr marks it focused on that machine's server, whether or not this Mac's herdr shows that
+    /// machine.
     public var herdrShowingCommand: [String]? {
-        herdrPane.map { herdr(["pane", "get", $0]) }
+        guard herdrMachine == nil else { return nil }
+        return herdrPane.map { herdr(["pane", "get", $0]) }
     }
 
     /// The commands that bring this pane forward in its terminal, each as the program and its
     /// arguments. tmux: show the pane's window in the client attached to the pane's session, then
     /// the pane. herdr: show the pane's tab, then the agent in the pane, which a pane with no agent
-    /// refuses. WezTerm: activate the pane.
+    /// refuses; on another machine, its workspace, then its tab, as close as herdr lets a command
+    /// from another machine get. WezTerm: activate the pane.
     public var selectCommands: [[String]] {
         if let pane = tmuxPane, let socket = tmuxSocket {
             return [
                 ["tmux", "-S", socket, "select-window", "-t", pane],
                 ["tmux", "-S", socket, "select-pane", "-t", pane],
             ]
+        }
+        if herdrMachine != nil {
+            return (herdrWorkspace.map { [herdr(["workspace", "focus", $0])] } ?? [])
+                + (herdrTab.map { [herdr(["tab", "focus", $0])] } ?? [])
         }
         if let pane = herdrPane {
             return (herdrTab.map { [herdr(["tab", "focus", $0])] } ?? []) + [herdr(["agent", "focus", pane])]

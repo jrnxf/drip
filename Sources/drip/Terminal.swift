@@ -9,9 +9,9 @@ import AppKit
 /// herdr and WezTerm's command lines, which need no permission.
 enum Terminal {
     /// What `arguments`, a program found on `PATH` and its arguments, after any `NAME=value` for its
-    /// environment, prints, when it exits 0 within
-    /// a second; nil otherwise, as when the program is missing.
-    static func output(_ arguments: [String]) -> String? {
+    /// environment, prints, when it exits 0 within `timeout` seconds; nil otherwise, as when the
+    /// program is missing.
+    static func output(_ arguments: [String], timeout: Double = 1) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = arguments
@@ -25,7 +25,7 @@ enum Terminal {
             return nil
         }
         // A program that hangs never holds drip, or the click, up for long.
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
             if process.isRunning { process.terminate() }
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
@@ -48,14 +48,15 @@ enum Terminal {
 
     /// Brings the pane forward in its terminal, once the terminal app is in front: in tmux, the
     /// client that shows the pane's session, or else the one used last, switches to it, then its
-    /// window and the pane are selected; in WezTerm the pane is activated.
+    /// window and the pane are selected; in WezTerm the pane is activated. herdr on another machine
+    /// answers over ssh, so its commands get longer.
     static func select(_ pane: TerminalPane) {
         if let socket = pane.tmuxSocket, let id = pane.tmuxPane, let found = tmux(pane),
            let client = TerminalPane.client(for: found.session, among: found.clients), client.session != found.session
         {
             _ = output(["tmux", "-S", socket, "switch-client", "-c", client.name, "-t", id])
         }
-        for command in pane.selectCommands { _ = output(command) }
+        for command in pane.selectCommands { _ = output(command, timeout: pane.herdrMachine == nil ? 1 : 5) }
     }
 
     /// Whether the pane is the one its tmux client or herdr shows; nil when drip cannot tell, as

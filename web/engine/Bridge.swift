@@ -256,14 +256,19 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             return failure(error, status: ExitStatus.hookFailed, subcommand: HookCommand.configuration.commandName)
         }
     case let .invocation(.setup(command)):
-        if command.printOnly {
-            return send(["exit": ExitStatus.shown, "message": AgentSetup.snippet(for: command.agent)])
+        guard let agent = command.agent else {
+            return send(["exit": ExitStatus.shown, "message": RemoteHook.script])
+        }
+        if command.printOnly || command.remote {
+            return send(["exit": ExitStatus.shown, "message": AgentSetup.snippet(for: agent, remote: command.remote)])
         }
         return send([
             "exit": ExitStatus.setupFailed,
             "message": "drip: drip setup adds hooks to your agent's settings on your Mac, not in this page. "
-                + "drip setup \(command.agent.rawValue) --print shows them here.",
+                + "drip setup \(agent.rawValue) --print shows them here.",
         ])
+    case .invocation(.follow):
+        return send(["exit": ExitStatus.followFailed, "message": "drip: drip follow reads another machine over ssh from your Mac, not from this page"])
     case let .invocation(.dismiss(command)):
         // The page takes its own cards away, those with the id when one is given.
         return send(["dismiss": command.id.map { ["id": $0] } ?? [String: Any]()])

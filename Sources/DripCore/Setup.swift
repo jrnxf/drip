@@ -65,9 +65,11 @@ public enum AgentSetup {
         (settingsPath(for: .codex, environment: environment) as NSString).deletingLastPathComponent + "/config.toml"
     }
 
-    /// One of drip's hook groups, as the settings file holds it.
-    static func group(_ hook: Hook, agent: AgentHook.Agent) -> JSONValue {
-        var handler = [JSONMember("type", .string("command")), JSONMember("command", .string(command(for: agent)))]
+    /// One of drip's hook groups, as the settings file holds it; with `remote`, as it is on another
+    /// machine, where it runs `drip-remote-hook`.
+    static func group(_ hook: Hook, agent: AgentHook.Agent, remote: Bool = false) -> JSONValue {
+        let command = remote ? RemoteHook.command(for: agent) : command(for: agent)
+        var handler = [JSONMember("type", .string("command")), JSONMember("command", .string(command))]
         if agent == .gemini {
             // Gemini CLI names a hook in its /hooks list, and enables and disables it by that name.
             handler.insert(JSONMember("name", .string("drip")), at: 0)
@@ -79,9 +81,10 @@ public enum AgentSetup {
         return .object(members)
     }
 
-    /// drip's hooks as the settings file holds them, as `drip setup --print` shows them.
-    public static func snippet(for agent: AgentHook.Agent) -> String {
-        let events = hooks(for: agent).map { JSONMember($0.event, .array([group($0, agent: agent)])) }
+    /// drip's hooks as the settings file holds them, as `drip setup --print` shows them; with
+    /// `remote`, as `drip setup --remote` shows them for another machine.
+    public static func snippet(for agent: AgentHook.Agent, remote: Bool = false) -> String {
+        let events = hooks(for: agent).map { JSONMember($0.event, .array([group($0, agent: agent, remote: remote)])) }
         return JSONValue.object([JSONMember("hooks", .object(events))]).formatted() + "\n"
     }
 
