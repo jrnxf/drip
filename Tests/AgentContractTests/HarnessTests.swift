@@ -59,7 +59,9 @@ struct HarnessTests {
 
     /// A cache of its own, and in it a folder for the stand-ins.
     static func scratch() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("agent-contract-cache-\(UUID().uuidString)")
+        // In /tmp, not the long per-user temporary folder: there the agent's tmux socket would be too
+        // long for its cache and go to a folder all checks share, where two tests at once collide.
+        let directory = URL(fileURLWithPath: "/tmp").appendingPathComponent("agent-contract-cache-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory.appendingPathComponent("fake"), withIntermediateDirectories: true)
         return directory
     }
