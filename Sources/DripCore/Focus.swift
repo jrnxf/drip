@@ -7,8 +7,8 @@ public enum WhenFocused: String, CaseIterable, Sendable {
     /// As any other card.
     case show
     /// No card at all, not even one that waits for you, but only when drip knows the agent's own
-    /// tmux pane is the one in front and you used the keyboard or mouse within `away_after`;
-    /// when it only knows the terminal app is, as `quiet`.
+    /// tmux or herdr pane is the one in front and you used the keyboard or mouse within
+    /// `away_after`; when it only knows the terminal app is, as `quiet`.
     case skip
 
     public static let `default` = WhenFocused.quiet

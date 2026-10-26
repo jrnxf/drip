@@ -126,9 +126,9 @@ session's next card replaces it, or 10 minutes pass. Each session's card has the
 the waiting card turns into the done card in place. drip keeps the agent's Markdown out of the
 card: it shows the words, without code fences, heading or list markers, or emphasis marks.
 
-**Clicks.** A click on an agent's card brings back the terminal the agent runs in, and in tmux, herdr or
-WezTerm the agent's own pane. The × that takes the icon's place while the pointer is on the card,
-or a right-click, Control-click or Option-click anywhere on it, takes the card away and brings
+**Clicks.** A click on an agent's card brings back the terminal the agent runs in, and in tmux,
+herdr or WezTerm the agent's own pane. The × that takes the icon's place while the pointer is on the
+card, or a right-click, Control-click or Option-click anywhere on it, takes the card away and brings
 nothing forward, for when it is only in the way. `drip dismiss` does the same from the keyboard.
 
 **While you watch.** When the agent's terminal is the frontmost app, its done and stopped cards come
@@ -136,9 +136,9 @@ without a sound and count down 1.5 seconds: you are likely watching it already. 
 the [config](#config), or `DRIP_WHEN_FOCUSED`, changes that: `quiet`, the default; `show`, as any
 other card; or `skip`, no card at all, not even one that needs you, but only when drip knows from
 tmux or herdr that the agent's own pane is the one in front, since several sessions often share one
-terminal app. With `quiet`, a card that needs you always shows. Either way drip takes you to be watching only
-if you used the keyboard or mouse in the last minute, or the `away_after` you set: a terminal left
-in front while you are away raises its cards as usual.
+terminal app. With `quiet`, a card that needs you always shows. Either way drip takes you to be
+watching only if you used the keyboard or mouse in the last minute, or the `away_after` you set: a
+terminal left in front while you are away raises its cards as usual.
 
 **Fewer cards.** With many sessions at once, the done cards add up. `agent_cards = "attention"`
 shows only the cards that need you, a permission, a question or an error, from every session you
@@ -181,8 +181,8 @@ error to a payload it cannot read or an invalid config, exits 1: Claude Code and
 as "block", and Gemini CLI reads any code but 0 and 1 that way, which after a turn makes it run the
 turn again. drip reads up to 4 MB of payload, and prints nothing on success, as Gemini CLI needs.
 A hook that takes a waiting card away reads one small file when no card waits, so the hooks that run
-on every tool call cost next to nothing. drip keeps what each session waits on, and where it runs,
-in `$XDG_STATE_HOME/drip/agents`, or `~/.local/state/drip/agents`.
+on every tool call cost next to nothing. drip keeps what each session waits on, where it runs, and
+when its turn started, in `$XDG_STATE_HOME/drip/agents`, or `~/.local/state/drip/agents`.
 
 **By hand.** These are the hooks `drip setup claude` adds to `~/.claude/settings.json`, and that
 `drip setup claude --print` prints:
@@ -522,10 +522,10 @@ starts, and drip uses it; `--activate` names another app by its bundle identifie
 `--activate none` leaves a card without a button click-through; on a card with a button, a click off
 the button only takes the card away. In tmux, a click also selects the pane drip ran in, in the
 terminal that shows that tmux session now, which may not be the one that started tmux; in herdr, the
-pane's tab and then its agent; in WezTerm, the pane. None of them needs a permission. A card you can click holds while the pointer is on it, like a
-card with a button, for up to 5 seconds after the pointer last moved, so a pointer left resting on
-it never keeps it there. A card that waits for you is always clickable: a click takes it away, even
-with `--activate none`. The card itself never takes focus.
+pane's tab and then its agent; in WezTerm, the pane. None of them needs a permission. A card you
+can click holds while the pointer is on it, like a card with a button, for up to 5 seconds after
+the pointer last moved, so a pointer left resting on it never keeps it there. A card that waits for
+you is always clickable: a click takes it away, even with `--activate none`. The card itself never takes focus.
 
 **Out of the way.** While the pointer is on a card you can click, a × takes its icon's place, and a
 card that brings an app forward shows an arrow where its ring was. A click on the ×, or a
