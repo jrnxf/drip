@@ -34,13 +34,22 @@ struct AgentStateTests {
         #expect(state.turnStarted(id: "claude:s1", now: now.addingTimeInterval(Defaults.waitLimit)) == nil)
     }
 
-    @Test func anEndedTurnIsForgotten() throws {
+    @Test func aNewPromptDeletesTurnsGoneQuiet() throws {
+        let later = now.addingTimeInterval(Defaults.waitLimit)
+        try state.noteTurn(id: "claude:old", now: now)
+        try state.noteTurn(id: "claude:recent", now: later.addingTimeInterval(-1))
+        try state.noteTurn(id: "claude:new", now: later)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory).count == 2)
+        #expect(state.turnStarted(id: "claude:recent", now: later) != nil)
+        #expect(state.turnStarted(id: "claude:new", now: later) != nil)
+    }
+
+    /// Claude Code sends Stop again when another Stop hook keeps it going: the turn still counts
+    /// from the prompt.
+    @Test func aTurnOutlivesItsDoneCard() throws {
         try state.noteTurn(id: "claude:s1", now: now)
-        state.noteTurnEnded(id: "claude:s1")
-        #expect(state.turnStarted(id: "claude:s1", now: now) == nil)
-        #expect((try? FileManager.default.contentsOfDirectory(atPath: directory)) == [])
-        // Ending a turn drip never saw is no error.
-        state.noteTurnEnded(id: "claude:s2")
+        #expect(state.turnStarted(id: "claude:s1", now: now.addingTimeInterval(5)) == now.timeIntervalSince1970)
+        #expect(state.turnStarted(id: "claude:s1", now: now.addingTimeInterval(10)) == now.timeIntervalSince1970)
     }
 
     @Test func aTurnGoneQuietIsDeletedWithTheSessions() throws {

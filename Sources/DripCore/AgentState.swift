@@ -91,9 +91,22 @@ public struct AgentState {
         var time: Double
     }
 
-    /// Notes that you sent the session `id` a prompt, which starts a turn.
+    /// Notes that you sent the session `id` a prompt, which starts a turn, and forgets the turns gone quiet.
     public func noteTurn(id: String, now: Date = Date()) throws {
+        pruneTurns(now: now)
         try write(Turn(id: id, time: now.timeIntervalSince1970), to: path("turn", id))
+    }
+
+    private func pruneTurns(now: Date) {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
+        for name in names where name.hasPrefix("turn-") && name.hasSuffix(".json") {
+            pruneTurn(at: (directory as NSString).appendingPathComponent(name), now: now)
+        }
+    }
+
+    private func pruneTurn(at file: String, now: Date) {
+        if let turn = read(Turn.self, at: file), now.timeIntervalSince1970 - turn.time < Defaults.waitLimit { return }
+        unlink(file)
     }
 
     /// When the session's last turn started, in seconds since 1970; nil when drip saw none lately.
@@ -102,11 +115,6 @@ public struct AgentState {
               now.timeIntervalSince1970 - turn.time < Defaults.waitLimit
         else { return nil }
         return turn.time
-    }
-
-    /// Notes that the session's turn ended, so no later card counts from it.
-    public func noteTurnEnded(id: String) {
-        unlink(path("turn", id))
     }
 
     // MARK: Sessions
@@ -122,10 +130,7 @@ public struct AgentState {
         return names.filter { $0.hasSuffix(".json") }.compactMap { name in
             let file = (directory as NSString).appendingPathComponent(name)
             if name.hasPrefix("turn-") {
-                if let turn = read(Turn.self, at: file), now.timeIntervalSince1970 - turn.time < Defaults.waitLimit {
-                    return nil
-                }
-                unlink(file)
+                pruneTurn(at: file, now: now)
                 return nil
             }
             guard name.hasPrefix("session-"), let session = read(Session.self, at: file) else { return nil }

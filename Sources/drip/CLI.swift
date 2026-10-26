@@ -178,12 +178,8 @@ struct DripCLI {
             #if !os(WASI)
             // A done card you chose not to see still takes away the card the session waits on, as it
             // would have replaced it.
-            let turnStarted = event.id.flatMap { state.turnStarted(id: $0) }
-            if let id = event.id, !event.stays, event.kind == Preset.ok.name || event.kind == Preset.fail.name {
-                state.noteTurnEnded(id: id)
-            }
             if let id = event.id, AgentHook.skipsDone(
-                event, cards: resolver.agentCards, doneAfter: resolver.doneAfter, turnStarted: turnStarted,
+                event, cards: resolver.agentCards, doneAfter: resolver.doneAfter, turnStarted: state.turnStarted(id: id),
                 now: Date().timeIntervalSince1970)
             {
                 if state.takeWaiting(AgentHook.Clear(id: id)) { try DismissRequests(environment: environment).request(id: id) }
