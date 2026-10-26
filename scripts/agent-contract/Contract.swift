@@ -448,6 +448,10 @@ func tmuxSocket(_ options: Options, _ agent: Agent) -> String {
     return path(folder, name)
 }
 
+/// The variable the `drip` wrapper sets to the XDG_STATE_HOME the hook was started with, empty when
+/// it had none.
+let hookStateHome = "DRIP_CONTRACT_HOOK_XDG_STATE_HOME"
+
 /// One agent's scratch world: its home, drip's state, config and queue, the agent's settings, the
 /// project the session runs in, and the recorder that stands in for drip.
 struct World {
@@ -529,7 +533,17 @@ struct World {
                 return "cannot copy \(source): \(error.localizedDescription)"
             }
         }
-        write("#!/bin/sh\nexec \(quoted(recorder)) record \(quoted(capture)) \(quoted(drip)) \"$@\"\n", to: path(bin, "drip"), mode: 0o755)
+        // The world's state and queue are set here, whatever an agent leaves out of its hooks'
+        // environment: Claude Code's scrub removes every XDG_* variable. What the hook had is kept
+        // for the recorder to note.
+        write("""
+            #!/bin/sh
+            \(hookStateHome)="${XDG_STATE_HOME-}"
+            export \(hookStateHome)
+            exec env XDG_STATE_HOME=\(quoted(state)) DRIP_QUEUE_DIR=\(quoted(path(root, "queue"))) \
+                \(quoted(recorder)) record \(quoted(capture)) \(quoted(drip)) "$@"
+
+            """, to: path(bin, "drip"), mode: 0o755)
         // Codex runs hooks through your shell, which sets PATH afresh: drip comes first on it, as it
         // would once installed. A login shell runs macOS's path_helper after .zshenv, and .zprofile
         // and .zlogin after that.
@@ -700,7 +714,7 @@ func record(_ arguments: [String]) -> Never {
         let environment = ProcessInfo.processInfo.environment
         let meta: [String: Any] = [
             "status": process.terminationStatus, "stderr": String(decoding: errorData, as: UTF8.self),
-            "environment": environment.filter { ["CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_ENTRYPOINT", "DRIP_HOOK"].contains($0.key) },
+            "environment": environment.filter { ["CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_ENTRYPOINT", "DRIP_HOOK", hookStateHome].contains($0.key) },
             // Whether the hook could see Claude Code's token; never the token.
             "token": environment["CLAUDE_CODE_OAUTH_TOKEN"] != nil,
         ]
@@ -988,6 +1002,9 @@ final class Session {
         }
         if payload.environment["CLAUDE_CODE_SESSION_ATTENDED"] == "0" {
             return "the hook ran with CLAUDE_CODE_SESSION_ATTENDED=0, so drip took the session for one nobody attends"
+        }
+        if let seen = payload.environment[hookStateHome], seen != world.state {
+            return "the hook started with \(seen.isEmpty ? "no XDG_STATE_HOME" : "another XDG_STATE_HOME"), so a drip the agent ran itself would use another state folder than the world's; the wrapper pins it, so check how \(agent.rawValue) passes its environment to hooks"
         }
         let kinds = history(world).filter { $0.id == id }.map(\.kind)
         return "no \(wanted) in drip's history for \(id) after \(payload.event) (it has: \(kinds.isEmpty ? "nothing" : kinds.joined(separator: ", ")))"
