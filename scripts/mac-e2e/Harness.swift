@@ -76,6 +76,14 @@ func shouldAsk(prompt: Bool, build: Data?, asked: Data?, away: Bool) -> Bool {
     prompt && build != nil && asked != build && !away
 }
 
+/// Whether the asked-once marker is written after the helper asked: when it holds the grant, so later
+/// runs launch it in the background and leave the terminal's focus alone, and when the prompt went
+/// unanswered with the screen in front of the person. Not when the screen was away, since nobody saw
+/// the prompt and the next run has to ask again.
+func recordsAsked(trusted: Bool, away: Bool) -> Bool {
+    trusted || !away
+}
+
 if options.selfTest {
     let build = Data("a".utf8), other = Data("b".utf8)
     let cases: [(name: String, actual: Bool, expected: Bool)] = [
@@ -85,6 +93,9 @@ if options.selfTest {
         ("does not ask while the screen is away", shouldAsk(prompt: true, build: build, asked: nil, away: true), false),
         ("does not ask with --no-prompt", shouldAsk(prompt: false, build: build, asked: nil, away: false), false),
         ("does not ask without a helper build", shouldAsk(prompt: true, build: nil, asked: nil, away: false), false),
+        ("records the ask once the helper holds the grant", recordsAsked(trusted: true, away: false), true),
+        ("records the ask when the prompt went unanswered", recordsAsked(trusted: false, away: false), true),
+        ("does not record the ask when the screen was away", recordsAsked(trusted: false, away: true), false),
     ]
     for test in cases { print("\(test.actual == test.expected ? "ok  " : "FAIL")  \(test.name)") }
     exit(cases.allSatisfy { $0.actual == $0.expected } ? 0 : 1)
@@ -608,11 +619,13 @@ final class Helper {
         else { return nil }
         trusted = object["trusted"] as? Bool ?? false
         asked = ask && !trusted
+        // Already granted: record it, so the next run launches the helper in the background.
+        if ask, trusted, recordsAsked(trusted: true, away: false) { fileManager.createFile(atPath: marker, contents: build) }
     }
 
     /// Waits up to `timeout` seconds for the person to grant the prompt the helper opened. The marker
-    /// is written only when the prompt went unanswered with the screen in front of them the whole
-    /// time; when it locks or sleeps first, nobody saw the prompt, so the next run asks again.
+    /// is written when it is granted, or when the prompt went unanswered with the screen in front of
+    /// them the whole time; when it locks or sleeps first, nobody saw the prompt, so the next run asks again.
     func awaitAnswer(_ timeout: Double) {
         guard asked else { return }
         var away = false
@@ -622,10 +635,9 @@ final class Helper {
         })
         if away {
             say("mac-e2e: the screen locked or slept with the Accessibility prompt open: wake it and run scripts/mac-e2e.sh again")
-        } else if stopped != nil {
-            trusted = true
         } else {
-            fileManager.createFile(atPath: marker, contents: build)
+            trusted = stopped != nil
+            if recordsAsked(trusted: trusted, away: false) { fileManager.createFile(atPath: marker, contents: build) }
         }
     }
 
