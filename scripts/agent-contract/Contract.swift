@@ -1003,11 +1003,12 @@ final class Session {
         if payload.environment["CLAUDE_CODE_SESSION_ATTENDED"] == "0" {
             return "the hook ran with CLAUDE_CODE_SESSION_ATTENDED=0, so drip took the session for one nobody attends"
         }
-        if let seen = payload.environment[hookStateHome], seen != world.state {
-            return "the hook started with \(seen.isEmpty ? "no XDG_STATE_HOME" : "another XDG_STATE_HOME"), so a drip the agent ran itself would use another state folder than the world's; the wrapper pins it, so check how \(agent.rawValue) passes its environment to hooks"
-        }
         let kinds = history(world).filter { $0.id == id }.map(\.kind)
-        return "no \(wanted) in drip's history for \(id) after \(payload.event) (it has: \(kinds.isEmpty ? "nothing" : kinds.joined(separator: ", ")))"
+        let reason = "no \(wanted) in drip's history for \(id) after \(payload.event) (it has: \(kinds.isEmpty ? "nothing" : kinds.joined(separator: ", ")))"
+        if let seen = payload.environment[hookStateHome], seen != world.state {
+            return reason + "; note: the hook started with \(seen.isEmpty ? "no XDG_STATE_HOME" : "another XDG_STATE_HOME"), which the wrapper overrides with the world's"
+        }
+        return reason
     }
 
     /// The session from start to end, its checks in `checks`.
