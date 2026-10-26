@@ -303,10 +303,11 @@ enum Agent: String, CaseIterable {
     }
 
     /// What the agent's screen shows when the account's quota is used up: Gemini CLI stops at a
-    /// "Usage limit reached" dialog (Keep trying / Stop) and waits for a key.
+    /// "Usage limit reached" dialog (Keep trying / Stop) and waits for a key. A 429 it shows while it
+    /// retries on its own is no such stop.
     var quotaScreen: String? {
         switch self {
-        case .gemini: return geminiQuotaWords
+        case .gemini: return #"(?i)usage limit reached"#
         case .claude, .codex: return nil
         }
     }
@@ -1281,6 +1282,8 @@ struct AgentResult {
     var attempts = 1
     var payloads: String?
     var screens: [String] = []
+    /// Whether the account's quota cut the session short: a second try would only meet it again.
+    var stoppedShort = false
 
     var json: [String: Any] {
         var json: [String: Any] = [
@@ -1339,9 +1342,9 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
     let started = session.start()
     guard case .ready = started else { return skip(started, session) }
     session.drive()
-    // An account problem says nothing of the hooks: no checks, no drift.
-    if let stopped = session.stopped { return skip(stopped, session) }
-    session.finish()
+    let stopped = session.stopped
+    // A session cut short gets no checks over the whole of it.
+    if stopped == nil { session.finish() }
 
     let all = session.payloads()
     // Each try's own: a second try's payloads never mix with the first's.
@@ -1349,6 +1352,8 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
     keepPayloads(all, in: kept)
     result.payloads = kept
     result.drift = driftReport(savedPayloads(in: kept), contract: contract)
+    // The events a session cut short never got to send are no drift of its hooks.
+    if stopped != nil { result.drift.removeAll(where: \.missing) }
     for drift in result.drift {
         say("  \(drift.breaking ? "DRIFT" : "new  ") \(drift.event): \(drift.detail)")
     }
@@ -1358,7 +1363,17 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
     }
     result.checks = session.checks
     result.screens = session.screens
-    result.status = session.checks.allSatisfy(\.ok) && !result.drift.contains(where: \.breaking) ? "passed" : "failed"
+    let ok = session.checks.allSatisfy(\.ok) && !result.drift.contains(where: \.breaking)
+    if let stopped {
+        // An account problem says nothing of the hooks, but what the session got to before it still does.
+        guard !ok else { return skip(stopped, session) }
+        result.stoppedShort = true
+        if case let .needsLogin(reason, fix) = stopped {
+            result.reason = "then the session stopped short: \(reason)"
+            result.fix = fix
+        }
+    }
+    result.status = ok ? "passed" : "failed"
     return result
 }
 
@@ -1454,7 +1469,7 @@ func runCheck(_ options: Options, harness: String) -> Int32 {
         var result = attempt(agent, 1, options: options, runDirectory: runDirectory, harness: harness)
         // A live session can go wrong once for reasons of its own; a shape drip cannot read never
         // comes right on a second try.
-        if result.status == "failed", !result.drift.contains(where: { $0.breaking && !$0.missing }) {
+        if result.status == "failed", !result.stoppedShort, !result.drift.contains(where: { $0.breaking && !$0.missing }) {
             result = attempt(agent, 2, options: options, runDirectory: runDirectory, harness: harness)
         }
         results.append(result)

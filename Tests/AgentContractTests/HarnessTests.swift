@@ -250,6 +250,57 @@ struct HarnessTests {
         #expect((gemini["checks"] as? [Any])?.isEmpty == true)
     }
 
+    /// A stand-in for Gemini CLI whose first turn runs drip's hooks but never asks before it runs the
+    /// command, past a 429 it retries on its own, and whose second turn stops at the usage limit dialog.
+    static let geminiFailsThenAtItsLimit = """
+        case "$1" in --version) echo "0.0.0"; exit 0 ;; -p) echo ok; exit 0 ;; esac
+        hook() { printf '%s' "$1" | /bin/zsh -lc 'drip hook gemini'; }
+        base="\\"session_id\\":\\"gemini-session\\",\\"cwd\\":\\"$PWD\\""
+        echo "Type your message"
+        read -r prompt
+        echo "Attempt 1 failed with status 429 RESOURCE_EXHAUSTED. Retrying with backoff..."
+        sleep 5
+        hook "{\\"hook_event_name\\":\\"BeforeAgent\\",$base,\\"prompt\\":\\"go\\"}"
+        hook "{\\"hook_event_name\\":\\"AfterAgent\\",$base,\\"prompt\\":\\"go\\",\\"prompt_response\\":\\"done\\"}"
+        read -r prompt
+        echo "Usage limit reached for all Gemini models."
+        echo "  1. Keep trying"
+        echo "  2. Stop"
+        exec sleep 600
+
+        """
+
+    /// A failure the session got to before the quota dialog is still a failure, and the quota stop is
+    /// its context: not a skip that hides it, and no second try that would only meet the quota again.
+    @Test(.enabled(if: tmux != nil && CGSessionCopyCurrentDictionary() != nil, "needs tmux and a GUI session, where drip records cards"))
+    func aFailureBeforeTheGeminiQuotaDialogStillFails() throws {
+        let cache = try Self.scratch()
+        defer { try? FileManager.default.removeItem(at: cache) }
+        let fake = cache.appendingPathComponent("fake")
+        let security = fake.appendingPathComponent("security")
+        try Self.script("echo AIzaNotARealKey\n", at: security)
+        try Self.script(Self.geminiFailsThenAtItsLimit, at: fake.appendingPathComponent("gemini"))
+
+        let status = try Self.execute(try Self.harness.get(), [
+            "run", "--repo", Self.repo.path, "--cache", cache.path, "--tools", fake.path, "--tmux", try #require(Self.tmux),
+            "--npm", try Self.npm(in: cache).path, "--drip", Self.drip.path, "--node-bin", "/usr/bin", "--only", "gemini",
+            "--security", security.path, "--gui-session", "yes",
+        ])
+        #expect(status == 1)
+        let agents = try #require(try Self.last(cache)["agents"] as? [[String: Any]])
+        let gemini = try #require(agents.first)
+        #expect(gemini["status"] as? String == "failed")
+        #expect((gemini["attempts"] as? NSNumber)?.intValue == 1)
+        #expect(gemini["reason"] as? String == "then the session stopped short: Gemini API quota used up")
+        let checks = gemini["checks"] as? [[String: Any]] ?? []
+        let failed = checks.filter { $0["ok"] as? Bool != true }.compactMap { $0["name"] as? String }
+        #expect(failed == ["turn 1: the agent asks before it runs the command"])
+        // The 429 Gemini CLI retried past stopped nothing: the first turn ran to its end.
+        #expect(checks.contains { $0["name"] as? String == "turn 1: the done card shows" && $0["ok"] as? Bool == true })
+        // The events the quota cut off are no drift.
+        #expect((gemini["drift"] as? [[String: Any]] ?? []).filter { $0["breaking"] as? Bool == true }.isEmpty)
+    }
+
     /// Any other error Gemini CLI prints with its JS-style message: the reason is that message.
     @Test func aGeminiErrorGivesItsOwnMessage() throws {
         let output = """
