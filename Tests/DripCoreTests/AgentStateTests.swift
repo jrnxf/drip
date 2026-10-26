@@ -34,6 +34,24 @@ struct AgentStateTests {
         #expect(state.turnStarted(id: "claude:s1", now: now.addingTimeInterval(Defaults.waitLimit)) == nil)
     }
 
+    @Test func anEndedTurnIsForgotten() throws {
+        try state.noteTurn(id: "claude:s1", now: now)
+        state.noteTurnEnded(id: "claude:s1")
+        #expect(state.turnStarted(id: "claude:s1", now: now) == nil)
+        #expect((try? FileManager.default.contentsOfDirectory(atPath: directory)) == [])
+        // Ending a turn drip never saw is no error.
+        state.noteTurnEnded(id: "claude:s2")
+    }
+
+    @Test func aTurnGoneQuietIsDeletedWithTheSessions() throws {
+        try state.noteTurn(id: "claude:old", now: now)
+        try state.noteTurn(id: "claude:new", now: now.addingTimeInterval(Defaults.waitLimit))
+        _ = state.otherDirectories(than: "claude:a", now: now.addingTimeInterval(Defaults.waitLimit))
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory)
+        #expect(names.count == 1)
+        #expect(state.turnStarted(id: "claude:new", now: now.addingTimeInterval(Defaults.waitLimit)) != nil)
+    }
+
     @Test func aToolCallKnownByTwoNamesTakesTheCardWaitingOnEither() throws {
         try state.noteWaiting(id: "claude:s1", tool: "toolu_01", now: now)
         #expect(!state.takeWaiting(AgentHook.Clear(id: "claude:s1", tool: "p1 Bash 1f", alsoTool: "toolu_02"), now: now))

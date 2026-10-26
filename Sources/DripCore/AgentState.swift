@@ -104,6 +104,11 @@ public struct AgentState {
         return turn.time
     }
 
+    /// Notes that the session's turn ended, so no later card counts from it.
+    public func noteTurnEnded(id: String) {
+        unlink(path("turn", id))
+    }
+
     // MARK: Sessions
 
     /// Notes that the session `id` runs in `directory`.
@@ -111,12 +116,19 @@ public struct AgentState {
         try write(Session(id: id, directory: directory, time: now.timeIntervalSince1970), to: path("session", id))
     }
 
-    /// The folders other sessions than `id` ran in lately, and forgets those gone quiet.
+    /// The folders other sessions than `id` ran in lately, and forgets the sessions and turns gone quiet.
     public func otherDirectories(than id: String, now: Date = Date()) -> [String] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
-        return names.filter { $0.hasPrefix("session-") && $0.hasSuffix(".json") }.compactMap { name in
+        return names.filter { $0.hasSuffix(".json") }.compactMap { name in
             let file = (directory as NSString).appendingPathComponent(name)
-            guard let session = read(Session.self, at: file) else { return nil }
+            if name.hasPrefix("turn-") {
+                if let turn = read(Turn.self, at: file), now.timeIntervalSince1970 - turn.time < Defaults.waitLimit {
+                    return nil
+                }
+                unlink(file)
+                return nil
+            }
+            guard name.hasPrefix("session-"), let session = read(Session.self, at: file) else { return nil }
             if now.timeIntervalSince1970 - session.time >= Defaults.waitLimit {
                 unlink(file)
                 return nil
