@@ -54,11 +54,14 @@ public struct TerminalPane: Equatable, Sendable, Codable {
     /// The saved herdr machine the pane runs on, as `herdr --machine` names it, for an agent that
     /// `drip follow` hears from over ssh; nil for a pane on this Mac.
     public var herdrMachine: String?
+    /// That machine's own name, as the agent's hook gave it, which herdr's title for a terminal
+    /// that shows the machine starts with.
+    public var hostName: String?
 
     public init(
         tmuxSocket: String? = nil, tmuxPane: String? = nil, weztermPane: String? = nil,
         herdrPane: String? = nil, herdrTab: String? = nil, herdrSocket: String? = nil,
-        herdrWorkspace: String? = nil, herdrMachine: String? = nil
+        herdrWorkspace: String? = nil, herdrMachine: String? = nil, hostName: String? = nil
     ) {
         self.tmuxSocket = tmuxSocket
         self.tmuxPane = tmuxPane
@@ -68,18 +71,21 @@ public struct TerminalPane: Equatable, Sendable, Codable {
         self.herdrSocket = herdrSocket
         self.herdrWorkspace = herdrWorkspace
         self.herdrMachine = herdrMachine
+        self.hostName = hostName
     }
 
-    /// A herdr pane on the saved herdr machine `machine`, from the `HERDR_PANE_ID`, `HERDR_TAB_ID`
-    /// and `HERDR_WORKSPACE_ID` its agent ran with; nil when they name no tab or workspace, or
-    /// `machine` is no machine label.
-    public init?(herdrMachine machine: String, environment: [String: String]) {
+    /// A herdr pane on the saved herdr machine `machine`, named `hostName` there, from the
+    /// `HERDR_PANE_ID`, `HERDR_TAB_ID` and `HERDR_WORKSPACE_ID` its agent ran with; nil when they
+    /// name no tab or workspace, or `machine` is no machine label.
+    public init?(herdrMachine machine: String, hostName: String? = nil, environment: [String: String]) {
         func id(_ name: String) -> String? {
             environment[name].flatMap { Self.isHerdrID($0) ? $0 : nil }
         }
         let tab = id("HERDR_TAB_ID"), workspace = id("HERDR_WORKSPACE_ID")
         guard Self.isMachineLabel(machine), tab != nil || workspace != nil else { return nil }
-        self.init(herdrPane: id("HERDR_PANE_ID"), herdrTab: tab, herdrWorkspace: workspace, herdrMachine: machine)
+        self.init(
+            herdrPane: id("HERDR_PANE_ID"), herdrTab: tab, herdrWorkspace: workspace, herdrMachine: machine,
+            hostName: hostName.flatMap { Self.isMachineLabel($0) ? $0 : nil })
     }
 
     /// The pane the environment names; nil when it names none. The innermost comes first: tmux,
@@ -167,6 +173,37 @@ public struct TerminalPane: Equatable, Sendable, Codable {
 }
 
 extension TerminalPane {
+    /// Ghostty's bundle identifier.
+    public static let ghostty = "com.mitchellh.ghostty"
+
+    /// The AppleScript that brings forward the Ghostty terminal that shows herdr for a pane on
+    /// another machine, by herdr's default title, `<hostname>: <workspace>`: the one showing that
+    /// machine, else the one showing `localHost`, this Mac, whose herdr reaches the machine too. It
+    /// prints the title of the terminal it brought forward, or nothing when no title matches. Ghostty
+    /// switches to the Space the terminal is on. Nil for a pane on this Mac, or without the
+    /// machine's name.
+    public func ghosttyRaiseScript(localHost: String?) -> String? {
+        guard herdrMachine != nil, let hostName else { return nil }
+        let prefixes = ([hostName] + (localHost.map { [$0] } ?? []))
+            .map { "\"" + $0.replacing("\\", with: "\\\\").replacing("\"", with: "\\\"") + ": \"" }
+        return """
+            with timeout of 4 seconds
+                tell application id "\(Self.ghostty)"
+                    repeat with prefix in {\(prefixes.joined(separator: ", "))}
+                        repeat with candidate in terminals
+                            if name of candidate starts with (prefix as text) then
+                                activate
+                                focus candidate
+                                return name of candidate
+                            end if
+                        end repeat
+                    end repeat
+                end tell
+            end timeout
+            return ""
+            """
+    }
+
     /// A tmux client, as `tmuxClientFormat` lists it.
     public struct TmuxClient: Equatable, Sendable {
         public var pid: Int32

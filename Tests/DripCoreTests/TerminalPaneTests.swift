@@ -84,6 +84,23 @@ struct TerminalPaneTests {
             == "cannot bring the agent's pane forward: herdr --machine agents workspace focus wA6: no answer within 5s")
     }
 
+    @Test func ghosttyBringsForwardTheTerminalThatShowsHerdrForTheMachine() throws {
+        let pane = TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox.example.com", hostName: "devbox")
+        let script = try #require(pane.ghosttyRaiseScript(localHost: "my-mac.local"))
+        // herdr's title for a terminal showing the machine, then for one showing this Mac.
+        #expect(script.contains(#"repeat with prefix in {"devbox: ", "my-mac.local: "}"#))
+        #expect(script.contains(#"tell application id "com.mitchellh.ghostty""#))
+        #expect(script.contains("focus candidate"))
+        #expect(script.contains("with timeout of 4 seconds"))
+        #expect(pane.ghosttyRaiseScript(localHost: nil)?.contains(#"{"devbox: "}"#) == true)
+        // Quotes in this Mac's name stay inside the string.
+        #expect(pane.ghosttyRaiseScript(localHost: #"odd"mac\"#)?.contains(#""odd\"mac\\: ""#) == true)
+        // A pane on this Mac, or one without the machine's name: nothing for Ghostty to find.
+        #expect(TerminalPane(herdrPane: "w1:p1").ghosttyRaiseScript(localHost: "my-mac.local") == nil)
+        #expect(TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox").ghosttyRaiseScript(localHost: "my-mac.local") == nil)
+        #expect(TerminalPane(herdrMachine: "devbox", hostName: "-x", environment: ["HERDR_TAB_ID": "w1:t2"])?.hostName == nil)
+    }
+
     @Test func anythingElseNamesNoPane() {
         for environment in [
             [:], ["TMUX_PANE": "%3"], ["TMUX": "/tmp/t,1,0", "TMUX_PANE": "3"], ["TMUX": "relative,1,0", "TMUX_PANE": "%3"],

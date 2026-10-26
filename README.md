@@ -68,8 +68,10 @@ sudo cp .build/release/drip /usr/local/bin/
 drip ok "drip works"
 ```
 
-**No permissions.** drip asks macOS for none. It needs no Accessibility, Screen Recording,
-Notifications or Automation permission and adds no login item. Nothing runs in the background but the
+**No permissions.** drip asks macOS for none, but one, and only to follow
+[agents on another machine](#agents-on-another-machine) in Ghostty: the first click on such a card
+asks to let drip control Ghostty, to bring forward the terminal that shows herdr. It needs no
+Accessibility, Screen Recording or Notifications permission and adds no login item. Nothing runs in the background but the
 drip that is showing queued cards.
 
 **Which screen.** A card shows on the screen the pointer is on, with or without a notch, and falls
@@ -406,13 +408,17 @@ of the session on the machine decide whether it raises cards, not the variables 
 with.
 
 **Clicks.** A click brings forward the terminal you ran `drip follow` from, or the app
-`--activate` names, then, when the agent runs in herdr, focuses its workspace and tab on the machine
-with `herdr --machine <machine> workspace focus` and `tab focus`. That is as close as herdr lets a
+`--activate` names. In Ghostty, when the agent runs in herdr, Ghostty itself brings forward the
+terminal whose title herdr's default `window_title`, `{hostname}: {workspace}`, gives it: the one
+showing the machine, else the one showing this Mac, on whichever Space it is. The first such click
+asks you once to let drip control Ghostty. Then drip focuses the agent's workspace and tab on the
+machine with `herdr --machine <machine> workspace focus` and `tab focus`. That is as close as herdr lets a
 command get today: it cannot focus a pane on another machine by its id, nor switch the herdr on the
 Mac from Local to that machine, so you see the tab once your herdr shows the machine. herdr names
 the machine by the label you saved it under with `herdr machine`: by default, the one saved with the
 ssh target, else the one labeled with its host, else the host itself; `--herdr-machine <label>`
-names another. When herdr refuses a click's command, `drip follow`'s log says which and why.
+names another. `drip follow`'s log says how each click went: the app brought forward, or macOS
+refusing to, and any herdr command refused, with why.
 
 ## Alert when a command finishes
 
@@ -438,7 +444,7 @@ on Linux.
 | | drip | terminal-notifier | osascript | alerter |
 | --- | --- | --- | --- | --- |
 | Shows | its own card, from the notch or the top edge of the screen | a Notification Center banner | a Notification Center banner | a Notification Center alert that stays until dismissed |
-| Permission | none | Notifications, asked once | Notifications, for Script Editor | Notifications |
+| Permission | none; Automation of Ghostty for cards from another machine, asked once | Notifications, asked once | Notifications, for Script Editor | Notifications |
 | Focus and Do Not Disturb | shows anyway; `drip pause` holds cards | follows Focus | follows Focus | follows Focus |
 | Kept afterwards | `drip history` | Notification Center's list | Notification Center's list | Notification Center's list |
 | Buttons and answers | `--yes`, `--no`: exits 0, 1 or 5 | `-action`, `-reply` (version 3): prints the answer | none in a notification | actions, a dropdown or a reply: prints the answer |

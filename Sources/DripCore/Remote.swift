@@ -187,7 +187,7 @@ public struct RemoteEvent: Equatable, Sendable {
     public func origin(activate: String?, herdrMachine: String?) -> AgentHook.Origin {
         AgentHook.Origin(
             machine: machine, activate: activate,
-            pane: herdrMachine.flatMap { TerminalPane(herdrMachine: $0, environment: environment) })
+            pane: herdrMachine.flatMap { TerminalPane(herdrMachine: $0, hostName: machine, environment: environment) })
     }
 
     /// Seconds between the event and `now`; none for an event from a remote clock ahead of this one.

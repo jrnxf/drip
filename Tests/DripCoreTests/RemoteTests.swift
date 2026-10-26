@@ -64,6 +64,7 @@ struct RemoteEventTests {
         ])
         // That machine's herdr says whether the agent's pane is in front there.
         #expect(pane.herdrShowingCommand == ["herdr", "--machine", "devbox", "pane", "get", "w1:p2"])
+        #expect(pane.hostName == "devbox")
         #expect(origin.qualified("claude:s1") == "claude:s1@devbox")
         // Outside herdr, or without a machine to name: nothing to focus.
         #expect(RemoteEvent(time: 0, agent: .codex, machine: "devbox", environment: [:], payload: "{}")
@@ -528,7 +529,7 @@ struct RemoteDecisionTests {
         #expect(here.title == "api is done")
         #expect(there.title == "api on devbox is done")
         #expect(there.activate == "com.mitchellh.ghostty")
-        #expect(there.pane == TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox"))
+        #expect(there.pane == TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox", hostName: "devbox"))
         var same = there
         same.id = here.id
         same.title = here.title
@@ -571,7 +572,8 @@ struct RemoteDecisionTests {
         let skip = ["DRIP_WHEN_FOCUSED": "skip"]
         // The agent's pane in front on the machine: no card, as for a pane here.
         #expect(try there(skip, pane: true) == nil)
-        #expect(asked.panes.last == TerminalPane(herdrPane: "w1:p2", herdrTab: "w1:t2", herdrWorkspace: "w1", herdrMachine: "devbox"))
+        #expect(asked.panes.last == TerminalPane(
+            herdrPane: "w1:p2", herdrTab: "w1:t2", herdrWorkspace: "w1", herdrMachine: "devbox", hostName: "devbox"))
         #expect(try there([:], pane: true)?.sound == Sound.none)
         // You were away longer than away_after: it shows, with its sound.
         #expect(try there(skip, pane: true, idle: 120)?.sound != Sound.none)
