@@ -24,9 +24,16 @@ enum CardActions {
             open(bundleIdentifier, pane: pane, console: console)
             return
         }
+        // Ghostty activates itself only when it is not the active app already, and only activating
+        // switches to the Space its terminal is on: when its terminals are all on another Space, drip
+        // takes the activation first, so Ghostty's own takes it back there.
+        let yielded = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleIdentifier
+            && !hasWindowOnThisSpace(bundleIdentifier)
+        if yielded { NSApp.activate(ignoringOtherApps: true) }
         activations.enter()
         DispatchQueue.global().async {
             defer { CardActions.activations.leave() }
+            if yielded { Thread.sleep(forTimeInterval: 0.1) }
             switch Terminal.run(["osascript", "-e", script], timeout: 5) {
             case let .success(title) where !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
                 report(bundleIdentifier, as: "Ghostty's \(title.trimmingCharacters(in: .whitespacesAndNewlines))", console: console)
@@ -71,15 +78,31 @@ enum CardActions {
         }
     }
 
-    /// Says whether `bundleIdentifier`, brought forward as `what`, is the frontmost app a moment
-    /// later: macOS can refuse to activate an app for a process in the background without saying so.
+    /// Says whether `bundleIdentifier`, brought forward as `what`, is the frontmost app with a
+    /// window on the Space on screen a moment later: macOS can refuse to activate an app for a
+    /// process in the background without saying so, and an app already active stays on its Space.
     private static func report(_ bundleIdentifier: String, as what: String, console: Console) {
         Thread.sleep(forTimeInterval: 0.5)
         let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        if front == bundleIdentifier {
-            console.error("brought \(what) forward")
-        } else {
+        if front != bundleIdentifier {
             console.error("macOS did not bring \(what) forward: \(front ?? "no app") is in front")
+        } else if !hasWindowOnThisSpace(bundleIdentifier) {
+            console.error("macOS did not bring \(what) forward: it is in front, with no window on this Space")
+        } else {
+            console.error("brought \(what) forward")
+        }
+    }
+
+    /// Whether the app with `bundleIdentifier` has a window of the normal level on the Space on
+    /// screen, as the window list tells without the Screen Recording permission.
+    private static func hasWindowOnThisSpace(_ bundleIdentifier: String) -> Bool {
+        let apps = Set(NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).map(\.processIdentifier))
+        guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]]
+        else { return false }
+        return windows.contains { window in
+            (window[kCGWindowLayer as String] as? Int) == 0
+                && (window[kCGWindowOwnerPID as String] as? Int).map { apps.contains(pid_t($0)) } == true
         }
     }
 
