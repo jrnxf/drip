@@ -103,7 +103,7 @@ enum Terminal {
         }
         for command in pane.selectCommands {
             if case let .failure(failure) = run(command, timeout: pane.herdrMachine == nil ? 1 : remoteTimeout) {
-                console.error(TerminalPane.selectFailure(command, stderr: failure.stderr, reason: failure.reason))
+                console.click(TerminalPane.selectFailure(command, stderr: failure.stderr, reason: failure.reason))
             }
         }
     }

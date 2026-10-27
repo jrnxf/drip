@@ -45,6 +45,8 @@ extension CardDisplay {
 /// Writes messages to stderr.
 struct Console {
     var quiet = false
+    /// Set in the background drip that answers clicks, whose standard error is a log, if any.
+    var background = false
 
     /// Prints a warning unless --quiet was given.
     func warn(_ message: String) {
@@ -54,6 +56,16 @@ struct Console {
     /// Warns about card options that were given but say nothing, or are on their way out.
     func warnAbout(_ options: CardOptions) {
         options.warnings.forEach(warn)
+    }
+
+    /// Says how a click on a card went: in the background drip, always; elsewhere only when it
+    /// went wrong, as a warning.
+    func click(_ message: String, failed: Bool = true) {
+        if background {
+            error(message)
+        } else if failed {
+            warn(message)
+        }
     }
 
     func error(_ message: String) {
@@ -285,13 +297,14 @@ struct DripCLI {
         }
     }
 
-    /// The background drip a foreground one started: shows the cards from standard input, with
-    /// nowhere to print to.
+    /// The background drip a foreground one started: shows the cards from standard input, saying how
+    /// each click went only on a standard error that is a log, as `drip follow`'s.
     private func background() -> Int32 {
         #if canImport(AppKit)
         guard let request = BackgroundDrip.readRequest() else { return ExitStatus.usage }
-        if let handOff = request.handOff { return HUDDisplay().resume(handOff, console: Console(quiet: true)) }
-        return display.show(request.cards, locked: request.locked, console: Console(quiet: true))
+        let console = Console(quiet: true, background: true)
+        if let handOff = request.handOff { return HUDDisplay().resume(handOff, console: console) }
+        return display.show(request.cards, locked: request.locked, console: console)
         #else
         return ExitStatus.noGUISession
         #endif

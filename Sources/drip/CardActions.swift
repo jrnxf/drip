@@ -40,10 +40,10 @@ enum CardActions {
                 report(bundleIdentifier, as: "Ghostty's \(title.trimmingCharacters(in: .whitespacesAndNewlines))", console: console)
                 return
             case .success:
-                console.error("no Ghostty terminal shows herdr on \(pane.hostName ?? "the machine") or this Mac; bringing Ghostty forward")
+                console.click("no Ghostty terminal shows herdr on \(pane.hostName ?? "the machine") or this Mac; bringing Ghostty forward")
             case let .failure(failure):
                 let said = failure.stderr.split(whereSeparator: \.isNewline).first.map(String.init)
-                console.error("cannot bring Ghostty's herdr terminal forward: \(said ?? failure.reason)")
+                console.click("cannot bring Ghostty's herdr terminal forward: \(said ?? failure.reason)")
             }
             open(bundleIdentifier, pane: pane, console: console)
         }
@@ -61,7 +61,7 @@ enum CardActions {
     /// Brings the app forward through Launch Services, then `pane` in it.
     private static func open(_ bundleIdentifier: String, pane: TerminalPane?, console: Console) {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
-            console.error("cannot find the app \(bundleIdentifier) to bring forward")
+            console.click("cannot find the app \(bundleIdentifier) to bring forward")
             return
         }
         let configuration = NSWorkspace.OpenConfiguration()
@@ -69,7 +69,7 @@ enum CardActions {
         activations.enter()
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
             if let error {
-                console.error("cannot bring \(bundleIdentifier) forward: \(error.localizedDescription)")
+                console.click("cannot bring \(bundleIdentifier) forward: \(error.localizedDescription)")
             } else {
                 if let pane { Terminal.select(pane, console: console) }
                 report(bundleIdentifier, as: bundleIdentifier, console: console)
@@ -85,11 +85,11 @@ enum CardActions {
         Thread.sleep(forTimeInterval: 0.5)
         let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         if front != bundleIdentifier {
-            console.error("macOS did not bring \(what) forward: \(front ?? "no app") is in front")
+            console.click("macOS did not bring \(what) forward: \(front ?? "no app") is in front")
         } else if !hasWindowOnThisSpace(bundleIdentifier) {
-            console.error("macOS did not bring \(what) forward: it is in front, with no window on this Space")
+            console.click("macOS did not bring \(what) forward: it is in front, with no window on this Space")
         } else {
-            console.error("brought \(what) forward")
+            console.click("brought \(what) forward", failed: false)
         }
     }
 
