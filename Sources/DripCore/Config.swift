@@ -39,6 +39,8 @@ public struct Config: Equatable {
     public var agentCards: AgentHook.Cards?
     /// The shortest turn, in seconds, whose done card shows.
     public var doneAfter: Double?
+    /// Whether drip keeps its debug log, `DebugLog`.
+    public var debug: Bool?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
 
@@ -46,8 +48,9 @@ public struct Config: Equatable {
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
         awayAfter: Double? = nil, agentCards: AgentHook.Cards? = nil, doneAfter: Double? = nil,
-        presets: [String: PresetOverride] = [:]
+        debug: Bool? = nil, presets: [String: PresetOverride] = [:]
     ) {
+        self.debug = debug
         self.awayAfter = awayAfter
         self.agentCards = agentCards
         self.doneAfter = doneAfter
@@ -192,6 +195,7 @@ private struct ConfigReader {
             case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
             case "agent_cards": config.agentCards = try choice(item, key: key, AgentHook.Cards.self)
             case "done_after": config.doneAfter = try seconds(item, key: key, in: Defaults.doneAfterRange)
+            case "debug": config.debug = try boolean(item, key: key)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
             }
@@ -265,7 +269,7 @@ private struct ConfigReader {
     static let reservedNames: Set<String> = [
         "run", "hook", "history", "show", "help", "version", "setup", "config", "init", "install",
         "uninstall", "completion", "completions", "doctor", "mute", "pause", "resume", "listen",
-        "test", "dismiss", "clear",
+        "test", "dismiss", "clear", "debug",
     ]
 
     static func isValidPresetName(_ name: String) -> Bool {

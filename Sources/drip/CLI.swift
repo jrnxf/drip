@@ -91,13 +91,21 @@ struct DripCLI {
         case let .invocation(.run(command)):
             return run(command)
         case let .invocation(.hook(command)):
+            #if !os(WASI)
+            DebugLog.process = .hook
+            #endif
             return hook(command)
         case let .invocation(.setup(command)):
             return setup(command)
         case let .invocation(.follow(command)):
+            #if !os(WASI)
+            DebugLog.process = .follow
+            #endif
             return follow(command)
         case let .invocation(.history(command)):
             return history(command)
+        case let .invocation(.debug(command)):
+            return debug(command)
         case let .invocation(.dismiss(command)):
             return dismiss(command)
         case let .invocation(.pause(command)):
@@ -232,6 +240,33 @@ struct DripCLI {
         let directories = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
         return directories.map { ($0 as NSString).appendingPathComponent("drip") }
             .first { $0.hasPrefix("/") && ($0 as NSString).resolvingSymlinksInPath == resolved } ?? resolved
+    }
+
+    /// Prints the debug log, or empties it.
+    private func debug(_ command: DebugCommand) -> Int32 {
+        #if os(WASI)
+        Console().error("the debug log is kept on your Mac, which WebAssembly cannot reach")
+        return ExitStatus.usage
+        #else
+        let environment = ProcessInfo.processInfo.environment
+        if command.clear {
+            do {
+                try DebugLog.clear(environment: environment)
+                return ExitStatus.shown
+            } catch {
+                Console().error("cannot empty the debug log: \(error)")
+                return ExitStatus.usage
+            }
+        }
+        let text = DebugLog.contents(environment: environment)
+        if text.isEmpty {
+            let on = DebugLog.isEnabled(environment: environment)
+            Console().error(on ? "the debug log is empty so far" : "the debug log is off: set debug = true in the config or DRIP_DEBUG=1")
+        } else {
+            print(text, terminator: "")
+        }
+        return ExitStatus.shown
+        #endif
     }
 
     /// Asks every drip showing cards to take them away, those with `--id` only when it is given.

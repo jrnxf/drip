@@ -225,10 +225,11 @@ struct HUDDisplay: CardDisplay {
     func front(of card: Card) -> WhenFocused.Front {
         // In tmux, the terminal that shows the pane now, which `prepare` makes the click's target too.
         let target = card.pane.flatMap(Terminal.app(showing:)) ?? card.activate
-        let app = target.map { $0 == NSWorkspace.shared.frontmostApplication?.bundleIdentifier } ?? false
+        let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let app = target.map { $0 == frontmost } ?? false
         // Any keyboard or mouse event, which macOS tells without the Input Monitoring permission.
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
-        return WhenFocused.Front(app: app, idle: idle)
+        return WhenFocused.Front(app: app, idle: idle, frontmost: frontmost)
     }
 
     func paneShowing(_ card: Card) -> Bool? {

@@ -32,11 +32,14 @@ public enum WhenFocused: String, CaseIterable, Sendable {
         /// Seconds since the keyboard or mouse was last used; nil when drip cannot tell, which counts
         /// as just now.
         public var idle: Double?
+        /// The bundle identifier of the frontmost app, for the debug log; nil when drip cannot tell.
+        public var frontmost: String?
 
-        public init(app: Bool, pane: Bool? = nil, idle: Double? = nil) {
+        public init(app: Bool, pane: Bool? = nil, idle: Double? = nil, frontmost: String? = nil) {
             self.app = app
             self.pane = pane
             self.idle = idle
+            self.frontmost = frontmost
         }
 
         /// Whether you are likely at the screen, having used the keyboard or mouse within `awayAfter`

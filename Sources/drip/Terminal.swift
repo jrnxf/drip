@@ -102,7 +102,13 @@ enum Terminal {
             _ = output(["tmux", "-S", socket, "switch-client", "-c", client.name, "-t", id])
         }
         for command in pane.selectCommands {
-            if case let .failure(failure) = run(command, timeout: pane.herdrMachine == nil ? 1 : remoteTimeout) {
+            let result = run(command, timeout: pane.herdrMachine == nil ? 1 : remoteTimeout)
+            // The program only: its arguments name sockets and machines.
+            DebugLog.record("click", "pane_select", [
+                ("program", command.first), ("result", { if case .failure = result { return "failed" } else { return "ok" } }()),
+                ("reason", { if case let .failure(failure) = result { return failure.reason } else { return nil } }()),
+            ])
+            if case let .failure(failure) = result {
                 console.click(TerminalPane.selectFailure(command, stderr: failure.stderr, reason: failure.reason))
             }
         }
