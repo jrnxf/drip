@@ -451,6 +451,26 @@ struct RemoteFollowTests {
         #expect(result.delays == [RemoteFollower.delays[0]])
     }
 
+    @Test func aPaneQueryThatHangsHoldsTheNextEventUpNoLongerThanItsDeadline() throws {
+        let now = Date()
+        try append([Self.line(session: "s1", time: now.timeIntervalSince1970), Self.line(session: "s2", time: now.timeIntervalSince1970)])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        // As herdr on the machine would, asked whether the first event's pane shows: it ignores
+        // SIGTERM, and leaves a process holding its output open.
+        var handled: [Date] = []
+        let started = Date()
+        let result = try follow(count: 2, now: now, handle: { _, _ in
+            handled.append(Date())
+            if handled.count == 1 {
+                _ = TimedCommand.run(["sh", "-c", "trap '' TERM; sleep 30 & sleep 30"], timeout: 0.5)
+            }
+        })
+        #expect(result.sessions == ["s1", "s2"])
+        #expect(handled.count == 2)
+        // The deadline and the grace, and a second to connect.
+        #expect(handled.last.map { $0.timeIntervalSince(started) < 0.5 + TimedCommand.grace + 1 } == true)
+    }
+
     @Test func oneFollowerPerMachine() throws {
         let now = Date()
         try append([Self.line(session: "s1", time: now.timeIntervalSince1970)])
