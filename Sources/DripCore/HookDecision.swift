@@ -139,8 +139,9 @@ extension AgentHook {
             }
         }
         // You may be watching the agent's terminal already. Asking about the pane costs a round trip
-        // to another machine, so only when it matters: its terminal in front, and you at it. For an agent there, only that machine's herdr can say
-        // whether its pane is in front; when it cannot, drip takes you not to be watching.
+        // to another machine, so only when it matters: its terminal in front, and you at it. For an
+        // agent there, only that machine's herdr can say whether its pane is in front; when it
+        // cannot, drip takes you not to be watching.
         let whenFocused = resolver.whenFocused
         guard whenFocused != .show else { return card }
         var front = surroundings.front(card)

@@ -26,8 +26,8 @@ public enum WhenFocused: String, CaseIterable, Sendable {
     public struct Front: Equatable, Sendable {
         /// Whether the app a click on the card brings forward is the frontmost app.
         public var app: Bool
-        /// Whether the agent's own tmux pane is the one showing, in an attached client; nil when
-        /// drip cannot tell, as outside tmux.
+        /// Whether the agent's own tmux or herdr pane is the one showing, in an attached client; nil
+        /// when drip cannot tell, as outside tmux and herdr.
         public var pane: Bool?
         /// Seconds since the keyboard or mouse was last used; nil when drip cannot tell, which counts
         /// as just now.
