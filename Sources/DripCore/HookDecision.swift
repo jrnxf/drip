@@ -1,6 +1,18 @@
 #if !os(WASI)
 import Foundation
 
+/// The config file as one hook event reads it: loaded on first use, and the same afterwards, so the
+/// debug log and the card's settings agree. Each event makes its own, so an edit between two
+/// events is seen by the second.
+final class ConfigSnapshot {
+    private let load: () throws -> ConfigFile
+    private(set) lazy var file: Result<ConfigFile, Error> = Result(catching: load)
+
+    init(load: @escaping () throws -> ConfigFile) {
+        self.load = load
+    }
+}
+
 extension AgentHook {
     /// What drip can tell around a hook event, which decides whether and how its card shows: what
     /// `drip hook` reads on this Mac, and what `drip follow` hears from an agent on another machine.
@@ -17,8 +29,11 @@ extension AgentHook {
         /// Whether the card's pane is the one its terminal shows, which `front` leaves to this when
         /// it says nil; nil when drip cannot tell.
         public var paneShowing: (Card) -> Bool?
-        /// The settings from the config file and `environment`.
-        public var resolver: ([String: String]) throws -> CardResolver
+        /// Reads the config file `environment` points at. An event calls it at most once, whether for
+        /// the debug log or for the card's settings.
+        public var loadConfig: ([String: String]) throws -> ConfigFile
+        /// The settings from the config file `loadConfig` read and `environment`.
+        public var resolver: (ConfigFile, [String: String]) throws -> CardResolver
         /// The machine the event came from, for an agent `drip follow` hears from; nil for one on this Mac.
         public var origin: Origin?
         /// Whether the event may show a card: false for one too old when `drip follow` heard it,
@@ -31,7 +46,8 @@ extension AgentHook {
         public init(
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
             front: @escaping (Card) -> WhenFocused.Front, paneShowing: @escaping (Card) -> Bool? = { _ in nil },
-            resolver: @escaping ([String: String]) throws -> CardResolver, origin: Origin? = nil,
+            loadConfig: @escaping ([String: String]) throws -> ConfigFile = { try ConfigLoader.load(environment: $0) },
+            resolver: @escaping (ConfigFile, [String: String]) throws -> CardResolver, origin: Origin? = nil,
             showsCards: Bool = true, now: @escaping () -> Date = Date.init, process: DebugLog.Process = .hook
         ) {
             self.process = process
@@ -40,6 +56,7 @@ extension AgentHook {
             self.isInstalled = isInstalled
             self.front = front
             self.paneShowing = paneShowing
+            self.loadConfig = loadConfig
             self.resolver = resolver
             self.origin = origin
             self.showsCards = showsCards
@@ -58,7 +75,11 @@ extension AgentHook {
         agent: Agent, payload: String, flags: CardFlags = CardFlags(), in surroundings: Surroundings
     ) throws -> Card? {
         let environment = surroundings.environment
-        let log = DebugLog(environment: environment, process: surroundings.process)
+        // The config file is read once for the event, and only when something asks for it.
+        let config = ConfigSnapshot { try surroundings.loadConfig(environment) }
+        let log = DebugLog(
+            path: DebugLog.path(environment: environment), process: surroundings.process,
+            enabled: DebugLog.isEnabled(environment: environment) { try config.file.get() })
         func note(_ event: String, _ decision: String, _ fields: [(String, String?)] = []) {
             // A card decision that stopped before drip asked which app is in front says so.
             let unasked: [(String, String?)] = event == "card" && !fields.contains { $0.0 == "frontmost" }
@@ -144,7 +165,7 @@ extension AgentHook {
         if title.hasPrefix(name + " ") {
             title = project + (origin.map { " on \($0.machine)" } ?? "") + title.dropFirst(name.count)
         }
-        var resolver = try surroundings.resolver(environment)
+        var resolver = try surroundings.resolver(try config.file.get(), environment)
         if let origin {
             resolver.environment.sender = origin.activate
             resolver.environment.pane = origin.pane

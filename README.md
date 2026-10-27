@@ -182,8 +182,9 @@ nothing and exits 0, so the agent shows no hook error after every turn. Any fail
 error to a payload it cannot read or an invalid config, exits 1: Claude Code and Codex read exit 2
 as "block", and Gemini CLI reads any code but 0 and 1 that way, which after a turn makes it run the
 turn again. drip reads up to 4 MB of payload, and prints nothing on success, as Gemini CLI needs.
-A hook that takes a waiting card away reads one small file when no card waits, so the hooks that run
-on every tool call cost next to nothing. drip keeps what each session waits on, where it runs, and
+A hook that takes a waiting card away reads one small file when no card waits, and the config file
+unless `DRIP_DEBUG` is set, to see whether `debug` is on, so the hooks that run on every tool call
+cost next to nothing. drip keeps what each session waits on, where it runs, and
 when its turn started, in `$XDG_STATE_HOME/drip/agents`, or `~/.local/state/drip/agents`.
 
 **By hand.** These are the hooks `drip setup claude` adds to `~/.claude/settings.json`, and that
@@ -712,7 +713,7 @@ that came up while the screen was locked or drip was paused has `missed` after i
 The lines are the ones the card wrapped to, measured as the card was recorded, so a long agent
 message lists as the few lines you saw, not as all of it. Entries recorded by an earlier drip, or
 whose recorded lines drip cannot read, are wrapped from their text the same way, by the width of an average character instead of measured.
-Color is for a terminal and off when `NO_COLOR` is set; the layout is the same without it. `--json`
+Color is for a terminal and off when `NO_COLOR` is set and not empty; the layout is the same without it. `--json`
 and `--replay` take every card in full, unless `-n` limits them. A `--json` line
 writes each setting the way its flag takes it, and leaves out `detail`, `button`, `open`, `id` and
 `activate` when the card had none:
@@ -890,7 +891,9 @@ Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `D
 `DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`, `DRIP_AWAY_AFTER`,
 `DRIP_AGENT_CARDS`, `DRIP_DONE_AFTER`, `DRIP_DEBUG`;
 `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
-environment exits 2. A preset's own `seconds` and `sound` beat the top-level ones, except
+environment exits 2 when drip makes a card from it (1 for `drip hook`); a command that makes none,
+such as `drip history`, `drip debug` or `drip dismiss`, or a hook that shows nothing or only takes a
+card away, never reads it. An invalid `DRIP_DEBUG` counts as unset. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
 name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `setup`,

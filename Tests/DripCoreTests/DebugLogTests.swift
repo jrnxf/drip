@@ -35,13 +35,96 @@ struct DebugLogTests {
         AgentHook.Surroundings(
             environment: environment.merging(extra) { $1 }, hasGUISession: true, isInstalled: { _ in false },
             front: { _ in front }, paneShowing: { _ in paneShowing },
-            resolver: { CardResolver(config: Config(), environment: try EnvironmentSettings(environment: $0)) },
+            resolver: { _, environment in CardResolver(config: Config(), environment: try EnvironmentSettings(environment: environment)) },
             now: { now }, process: process)
     }
+
+    /// Surroundings that count how often the config file is read, and hand the resolver what was read.
+    func counting(_ extra: [String: String] = [:], loads: Loads) -> AgentHook.Surroundings {
+        var counted = surroundings(extra)
+        counted.loadConfig = { environment in
+            loads.count += 1
+            return try ConfigLoader.load(environment: environment)
+        }
+        counted.resolver = { file, environment in
+            CardResolver(config: file.config, environment: try EnvironmentSettings(environment: environment))
+        }
+        return counted
+    }
+
+    final class Loads {
+        var count = 0
+    }
+
+    static let clear = #"{"session_id":"0123456789abcdef-long-session","cwd":"/home/user/project","hook_event_name":"UserPromptSubmit"}"#
 
     static let secret = "SECRET-TITLE-TEXT"
     static let stop = #"{"session_id":"0123456789abcdef-long-session","cwd":"/home/user/private-project","hook_event_name":"Stop","last_assistant_message":"SECRET-TITLE-TEXT"}"#
     static let permission = #"{"session_id":"0123456789abcdef-long-session","cwd":"/home/user/private-project","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"rm -rf /secret/command-path"},"prompt":"SECRET-PROMPT"}"#
+
+    @Test func aResolvedEventReadsTheConfigOnceWhateverLogsIt() throws {
+        try writeConfig("debug = true\nwhen_focused = \"show\"\n")
+        let loads = Loads()
+        let card = try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(loads: loads))
+        #expect(card != nil)
+        #expect(loads.count == 1)
+        #expect(lines().count == 1)
+
+        // DRIP_DEBUG decides the log alone, so the resolver's read is the only one.
+        loads.count = 0
+        _ = try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(["DRIP_DEBUG": "0"], loads: loads))
+        #expect(loads.count == 1)
+    }
+
+    @Test func aDecisionThatResolvesNoCardReadsTheConfigOnlyForTheLog() throws {
+        try writeConfig("debug = true\n")
+        let loads = Loads()
+        _ = try AgentHook.card(agent: .claude, payload: Self.clear, in: counting(loads: loads))
+        #expect(loads.count == 1)
+        #expect(lines().count == 1)
+
+        loads.count = 0
+        _ = try AgentHook.card(agent: .claude, payload: Self.clear, in: counting(["DRIP_DEBUG": "1"], loads: loads))
+        _ = try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(["DRIP_DEBUG": "1", "DRIP_HOOK": "off"], loads: loads))
+        #expect(loads.count == 0)
+    }
+
+    @Test func aMalformedConfigFailsOnlyTheEventsThatResolveACard() throws {
+        try writeConfig("debug = \"yes\"\n")
+        let loads = Loads()
+        for (payload, extra) in [(Self.clear, [:]), (Self.stop, ["DRIP_HOOK": "off"]), (Self.stop, ["DRIP_HOOK": "attention"])] as [(String, [String: String])] {
+            #expect(try AgentHook.card(agent: .claude, payload: payload, in: counting(extra, loads: loads)) == nil)
+        }
+        #expect(!FileManager.default.fileExists(atPath: logPath))
+        #expect(throws: ConfigError.self) {
+            try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(loads: loads))
+        }
+        // A card that resolves fails the same with the log forced on, and the log still says nothing of the config.
+        #expect(throws: ConfigError.self) {
+            try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(["DRIP_DEBUG": "1"], loads: loads))
+        }
+    }
+
+    @Test func anInvalidSettingFailsOnlyTheEventsThatResolveACard() throws {
+        let loads = Loads()
+        let invalid = ["DRIP_SECONDS": "soon", "DRIP_DEBUG": "maybe"]
+        #expect(try AgentHook.card(agent: .claude, payload: Self.clear, in: counting(invalid, loads: loads)) == nil)
+        #expect(try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(invalid.merging(["DRIP_HOOK": "off"]) { $1 }, loads: loads)) == nil)
+        #expect(throws: UsageError.self) {
+            try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(invalid, loads: loads))
+        }
+    }
+
+    @Test func eachEventReadsTheConfigAsItIsThen() throws {
+        let loads = Loads()
+        try writeConfig("debug = false\n")
+        _ = try AgentHook.card(agent: .claude, payload: Self.clear, in: counting(loads: loads))
+        #expect(lines().isEmpty)
+        try writeConfig("debug = true\n")
+        _ = try AgentHook.card(agent: .claude, payload: Self.clear, in: counting(loads: loads))
+        #expect(lines().count == 1)
+        #expect(loads.count == 2)
+    }
 
     @Test func offByDefaultWritesNothing() throws {
         _ = try AgentHook.card(agent: .claude, payload: Self.stop, in: surroundings())
