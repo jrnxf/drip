@@ -141,18 +141,6 @@ public struct DebugLog {
     }
 }
 
-extension EnvironmentSettings {
-    /// `DRIP_DEBUG`: `1`, `true`, `on` or `yes`, or `0`, `false`, `off` or `no`; nil when unset or
-    /// empty. Throws a `UsageError` for anything else.
-    public static func debug(environment: [String: String]) throws -> Bool? {
-        guard let text = environment["DRIP_DEBUG"].flatMap({ $0.isEmpty ? nil : $0 }) else { return nil }
-        switch text.lowercased() {
-        case "1", "true", "on", "yes": return true
-        case "0", "false", "off", "no": return false
-        default: throw UsageError("DRIP_DEBUG must be 1 or 0, not '\(text)'")
-        }
-    }
-}
 #endif
 
 #if !os(WASI)
