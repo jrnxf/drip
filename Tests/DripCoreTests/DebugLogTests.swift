@@ -86,6 +86,16 @@ struct DebugLogTests {
             #expect(line.contains(field), "missing \(field) in \(line)")
         }
         #expect(line.contains("query_ms="))
+        // The unanswered pane query does not hide what drip noticed.
+        #expect(line.contains("frontmost=com.apple.Terminal") && line.contains("idle_seconds=3.0"))
+    }
+
+    @Test func aFrontmostAppMacOSDoesNotReportIsNone() throws {
+        let front = WhenFocused.Front(app: false, pane: nil, idle: 5, frontmost: "none")
+        _ = try AgentHook.card(
+            agent: .claude, payload: Self.stop, in: surroundings(["DRIP_DEBUG": "1", "DRIP_WHEN_FOCUSED": "skip"], front: front))
+        let line = try #require(lines().first)
+        #expect(line.contains("frontmost=none") && line.contains("idle_seconds=5.0") && line.contains("app_in_front=false"))
     }
 
     @Test func everyKindOfDecisionIsLogged() throws {
@@ -107,6 +117,10 @@ struct DebugLogTests {
             "reason=stale_event", "reason=no_gui_session", " clear clear ",
         ] {
             #expect(text.contains(expected), "missing \(expected) in \(text)")
+        }
+        // Every card line says which app was in front and how long you were idle, or that drip did not ask.
+        for line in lines() where line.contains(" card ") {
+            #expect(line.contains(" frontmost=unknown") && line.contains(" idle_seconds=unknown"), "\(line)")
         }
     }
 

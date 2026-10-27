@@ -229,7 +229,7 @@ struct HUDDisplay: CardDisplay {
         let app = target.map { $0 == frontmost } ?? false
         // Any keyboard or mouse event, which macOS tells without the Input Monitoring permission.
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
-        return WhenFocused.Front(app: app, idle: idle, frontmost: frontmost)
+        return WhenFocused.Front(app: app, idle: idle, frontmost: frontmost ?? "none")
     }
 
     func paneShowing(_ card: Card) -> Bool? {
