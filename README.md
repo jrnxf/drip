@@ -663,8 +663,8 @@ that came up while the screen was locked or drip was paused has `missed` after i
 ```
 
 The lines are the ones the card wrapped to, measured as the card was recorded, so a long agent
-message lists as the few lines you saw, not as all of it. Entries recorded by an earlier drip are
-wrapped from their text the same way, by the width of an average character instead of measured.
+message lists as the few lines you saw, not as all of it. Entries recorded by an earlier drip, or
+whose recorded lines drip cannot read, are wrapped from their text the same way, by the width of an average character instead of measured.
 Color is for a terminal and off when `NO_COLOR` is set; the layout is the same without it. `--json`
 and `--replay` take every card in full, unless `-n` limits them. A `--json` line
 writes each setting the way its flag takes it, and leaves out `detail`, `button`, `open`, `id` and

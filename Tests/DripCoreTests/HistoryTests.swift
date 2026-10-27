@@ -251,6 +251,18 @@ final class HistoryTests {
         #expect(HistoryListing.render([entry], now: now, color: false).count < 1000)
     }
 
+    @Test func shownLinesThatDoNotDecodeFallBackToTheEstimate() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let stored = try HistoryListing.json(HistoryEntry(time: now, missed: false, card: card("deploy failed")))
+        for bad in [#"{"title":["x"]}"#, #""wrong""#, #"{"title":"x","detail":1}"#] {
+            let line = String(stored.dropLast()) + #","shown":"# + bad + "}"
+            let entry = try decoder.decode(HistoryEntry.self, from: Data(line.utf8))
+            #expect(entry.shown == nil)
+            #expect(entry.shownText == ShownText(estimating: entry.card))
+        }
+    }
+
     @Test func theLongestStoredTextIsEstimatedAsTheCardShowsIt() {
         var long = card(String(repeating: "t", count: CardHistory.textLimit))
         long.detail = String(repeating: "d", count: CardHistory.textLimit)
