@@ -101,10 +101,12 @@ public enum TimedCommand {
             kill(-pid, SIGKILL)
             // In case it left its group.
             kill(pid, SIGKILL)
-            DispatchQueue.global().async {
+            // Reaped on a thread of its own: on a shared queue, blocking work queued ahead of it could
+            // leave the killed command a zombie for as long as that work takes.
+            Thread {
                 var code: Int32 = 0
                 while waitpid(pid, &code, 0) == -1, errno == EINTR {}
-            }
+            }.start()
             return .failure(Failure(stderr: stderr, reason: timedOut ? "no answer within \(describe(timeout))" : problem ?? "lost track of it"))
         }
         // The W* macros are not available in Swift: the low 7 bits hold the signal, if any.

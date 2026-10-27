@@ -88,6 +88,25 @@ struct TimedCommandTests {
         #expect(pid(at: path).map { ends($0, within: 5) } == true)
     }
 
+    @Test func aKilledCommandEndsWhileOtherWorkHoldsTheSharedQueue() {
+        let path = scratch()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        // More blocking work than the shared queue has threads for, as busy tests running alongside can
+        // queue: nothing on that queue runs until it is let go.
+        let busy = DispatchGroup(), release = DispatchSemaphore(value: 0)
+        let width = 512
+        for _ in 0..<width {
+            DispatchQueue.global().async(group: busy) { release.wait() }
+        }
+        defer {
+            for _ in 0..<width { release.signal() }
+            busy.wait()
+        }
+        let (result, _) = timed(["sh", "-c", "trap '' TERM; echo $$ > '\(path)'; sleep 30"], timeout: 0.5)
+        #expect(result == .failure(TimedCommand.Failure(stderr: "", reason: "no answer within 0.5s")))
+        #expect(pid(at: path).map { ends($0, within: 5) } == true)
+    }
+
     @Test func aProcessLeftBehindHoldingTheOutputEndsToo() {
         let path = scratch()
         defer { try? FileManager.default.removeItem(atPath: path) }
