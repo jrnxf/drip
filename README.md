@@ -504,7 +504,7 @@ or `click`. What it records, and nothing else:
 - the first 8 characters of the session id;
 - the settings that decided: `when_focused`, `away_after`, `agent_cards`, `done_after`, and `DRIP_HOOK`;
 - what drip noticed: the bundle identifier of the frontmost app and of the app a click brings
-  forward, seconds since the keyboard or mouse was last used, and whether the agent's pane is in front;
+  forward, seconds since the keyboard or mouse was last used (both on every card line, `unknown` when drip did not ask, and the frontmost `none` when no app is in front), and whether the agent's pane is in front;
 - the pane's id (`herdr:w1:p2`, `tmux:%3`), the herdr machine, the query run to ask whether it is in
   front (`herdr pane get w1:p2`, or `tmux display-message`), its answer and how long it took;
 - for a click: what drip tried to bring forward, whether macOS refused it and why, and whether
