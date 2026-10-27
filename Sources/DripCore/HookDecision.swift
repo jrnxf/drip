@@ -14,6 +14,9 @@ extension AgentHook {
         public var isInstalled: (String) -> Bool
         /// Where the terminal a click on the card brings forward is.
         public var front: (Card) -> WhenFocused.Front
+        /// Whether the card's pane is the one its terminal shows, which `front` leaves to this when
+        /// it says nil; nil when drip cannot tell.
+        public var paneShowing: (Card) -> Bool?
         /// The settings from the config file and `environment`.
         public var resolver: ([String: String]) throws -> CardResolver
         /// The machine the event came from, for an agent `drip follow` hears from; nil for one on this Mac.
@@ -25,7 +28,7 @@ extension AgentHook {
 
         public init(
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
-            front: @escaping (Card) -> WhenFocused.Front,
+            front: @escaping (Card) -> WhenFocused.Front, paneShowing: @escaping (Card) -> Bool? = { _ in nil },
             resolver: @escaping ([String: String]) throws -> CardResolver, origin: Origin? = nil,
             showsCards: Bool = true, now: @escaping () -> Date = Date.init
         ) {
@@ -33,6 +36,7 @@ extension AgentHook {
             self.hasGUISession = hasGUISession
             self.isInstalled = isInstalled
             self.front = front
+            self.paneShowing = paneShowing
             self.resolver = resolver
             self.origin = origin
             self.showsCards = showsCards
@@ -134,10 +138,18 @@ extension AgentHook {
                 state.noteDone(id: id)
             }
         }
-        // You may be watching the agent's terminal already. drip cannot tell whether this Mac shows
-        // a pane on another machine, so it takes you not to be watching one.
-        let front = origin == nil ? surroundings.front(card) : WhenFocused.Front(app: false, pane: false)
-        return resolver.whenFocused.apply(to: card, front: front, awayAfter: resolver.awayAfter)
+        // You may be watching the agent's terminal already. Asking about the pane costs a round trip
+        // to another machine, so only when it matters: its terminal in front, and you at it. For an
+        // agent there, only that machine's herdr can say whether its pane is in front; when it
+        // cannot, drip takes you not to be watching.
+        let whenFocused = resolver.whenFocused
+        guard whenFocused != .show else { return card }
+        var front = surroundings.front(card)
+        if front.pane == nil, front.app, front.present(awayAfter: resolver.awayAfter) {
+            front.pane = surroundings.paneShowing(card)
+        }
+        if origin != nil, front.pane == nil { front = WhenFocused.Front(app: false, pane: false) }
+        return whenFocused.apply(to: card, front: front, awayAfter: resolver.awayAfter)
     }
 }
 #endif

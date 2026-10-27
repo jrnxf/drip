@@ -62,8 +62,9 @@ struct RemoteEventTests {
             ["herdr", "--machine", "devbox", "workspace", "focus", "w1"],
             ["herdr", "--machine", "devbox", "tab", "focus", "w1:t3"],
         ])
-        // herdr marks a pane on another machine focused there, whatever this Mac shows.
-        #expect(pane.herdrShowingCommand == nil)
+        // That machine's herdr says whether the agent's pane is in front there.
+        #expect(pane.herdrShowingCommand == ["herdr", "--machine", "devbox", "pane", "get", "w1:p2"])
+        #expect(pane.hostName == "devbox")
         #expect(origin.qualified("claude:s1") == "claude:s1@devbox")
         // Outside herdr, or without a machine to name: nothing to focus.
         #expect(RemoteEvent(time: 0, agent: .codex, machine: "devbox", environment: [:], payload: "{}")
@@ -152,6 +153,15 @@ struct RemoteEventTests {
         ]) else { Issue.record(); return }
         #expect(full.maxAge == 3600)
         #expect(full.herdrMachine == "build-box")
+        // herdr's saved machines: the one saved for the target, by its label, unless one is named.
+        let saved = #"[{"id":"7fa0","label":"devbox.example.com","target":"devbox","enabled":true}]"#
+        #expect(full.herdrMachine(savedMachines: { saved }) == "build-box")
+        guard case let .invocation(.follow(target)) = CommandLineParser.parse(["follow", "devbox"]) else {
+            Issue.record(); return
+        }
+        #expect(target.herdrMachine(savedMachines: { saved }) == "devbox.example.com")
+        #expect(target.herdrMachine(savedMachines: { "[]" }) == "devbox")
+        #expect(target.herdrMachine(savedMachines: { nil }) == "devbox")
         #expect(full.activate == "com.apple.Terminal")
         #expect(full.queue == "/srv/queue.jsonl")
         for arguments in [
@@ -479,6 +489,14 @@ struct RemoteDecisionTests {
 
     /// What `drip hook` reads around an event on this Mac, with the terminal in front and you at it.
     func local(_ environment: [String: String] = [:], inFront: Bool = false) -> AgentHook.Surroundings {
+        local(environment) { _ in WhenFocused.Front(app: inFront, pane: inFront, idle: 0) }
+    }
+
+    /// What `drip hook` reads around an event on this Mac, with the terminal where `front` says.
+    func local(
+        _ environment: [String: String] = [:], front: @escaping (Card) -> WhenFocused.Front,
+        paneShowing: @escaping (Card) -> Bool? = { _ in nil }
+    ) -> AgentHook.Surroundings {
         AgentHook.Surroundings(
             environment: [
                 "XDG_STATE_HOME": state, "XDG_CONFIG_HOME": "\(state)/config", "HOME": state,
@@ -486,7 +504,7 @@ struct RemoteDecisionTests {
             ]
                 .merging(environment) { $1 },
             hasGUISession: true, isInstalled: { _ in false },
-            front: { _ in WhenFocused.Front(app: inFront, pane: inFront, idle: 0) },
+            front: front, paneShowing: paneShowing,
             resolver: { CardResolver(config: Config(), environment: try EnvironmentSettings(environment: $0)) },
             now: { now })
     }
@@ -514,7 +532,7 @@ struct RemoteDecisionTests {
         #expect(here.title == "api is done")
         #expect(there.title == "api on devbox is done")
         #expect(there.activate == "com.mitchellh.ghostty")
-        #expect(there.pane == TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox"))
+        #expect(there.pane == TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox", hostName: "devbox"))
         var same = there
         same.id = here.id
         same.title = here.title
@@ -543,11 +561,43 @@ struct RemoteDecisionTests {
         #expect(try card(remote(Self.stop), local(["DRIP_DONE_AFTER": "30"])) == nil)
     }
 
-    @Test func aRemoteCardIsNeverTakenForOneYouWatch() throws {
-        // Here, with the agent's pane in front: skipped. From the machine: drip cannot tell.
-        #expect(try AgentHook.card(agent: .claude, payload: Self.stop, in: local(["DRIP_WHEN_FOCUSED": "skip"], inFront: true)) == nil)
-        let there = try #require(try card(remote(Self.stop), local(["DRIP_WHEN_FOCUSED": "skip"], inFront: true)))
-        #expect(there.sound != Sound.none)
+    @Test func aRemoteCardFollowsWhenFocusedOnItsMachinesWord() throws {
+        let herdr = ["HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t2", "HERDR_WORKSPACE_ID": "w1"]
+        let asked = Asked()
+        /// The terminal in front, or not, and you at it `idle` seconds ago, with the agent's pane in
+        /// front on the machine as its herdr says, which is nil when it does not answer in time.
+        func there(_ environment: [String: String], pane: Bool?, app: Bool = true, idle: Double = 0) throws -> Card? {
+            try card(remote(Self.stop, environment: herdr), local(environment) { _ in
+                WhenFocused.Front(app: app, idle: idle)
+            } paneShowing: { card in
+                asked.panes.append(card.pane)
+                return pane
+            })
+        }
+        let skip = ["DRIP_WHEN_FOCUSED": "skip"]
+        // The agent's pane in front on the machine: no card, as for a pane here.
+        #expect(try there(skip, pane: true) == nil)
+        #expect(asked.panes.last == TerminalPane(
+            herdrPane: "w1:p2", herdrTab: "w1:t2", herdrWorkspace: "w1", herdrMachine: "devbox", hostName: "devbox"))
+        #expect(try there([:], pane: true)?.sound == Sound.none)
+        // You were away longer than away_after: it shows, with its sound.
+        #expect(try there(skip, pane: true, idle: 120)?.sound != Sound.none)
+        #expect(try there(skip.merging(["DRIP_AWAY_AFTER": "300"]) { $1 }, pane: true, idle: 120) == nil)
+        // Another pane in front there, or no answer in time: it shows, with its sound.
+        #expect(try there(skip, pane: false)?.sound != Sound.none)
+        #expect(try there(skip, pane: nil)?.sound != Sound.none)
+        #expect(try there([:], pane: nil)?.sound != Sound.none)
+        // With show, with the terminal not in front here, or with you away, drip never asks the machine.
+        let count = asked.panes.count
+        #expect(try there(["DRIP_WHEN_FOCUSED": "show"], pane: true)?.sound != Sound.none)
+        #expect(try there(skip, pane: true, app: false)?.sound != Sound.none)
+        #expect(try there(skip, pane: true, idle: 120)?.sound != Sound.none)
+        #expect(asked.panes.count == count)
+    }
+
+    /// The panes drip asked about, in order.
+    final class Asked {
+        var panes: [TerminalPane?] = []
     }
 
     @Test func answeringOnTheMachineTakesAwayOnlyItsCard() throws {

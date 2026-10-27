@@ -21,8 +21,11 @@ protocol CardDisplay {
     var hasGUISession: Bool { get }
 
     /// Where the terminal a click on `card` brings forward is: whether it is the frontmost app, and
-    /// whether the card's tmux pane is the one showing, when drip can tell.
+    /// how long since you last used the keyboard or mouse.
     func front(of card: Card) -> WhenFocused.Front
+
+    /// Whether the card's pane is the one its terminal shows; nil when drip cannot tell.
+    func paneShowing(_ card: Card) -> Bool?
 
     /// Draws the card offscreen into a PNG file; `at` seconds into its entrance, or its exit when
     /// `leaving`.
@@ -42,6 +45,8 @@ extension CardDisplay {
 /// Writes messages to stderr.
 struct Console {
     var quiet = false
+    /// Set in the background drip that answers clicks, whose standard error is a log, if any.
+    var background = false
 
     /// Prints a warning unless --quiet was given.
     func warn(_ message: String) {
@@ -51,6 +56,16 @@ struct Console {
     /// Warns about card options that were given but say nothing, or are on their way out.
     func warnAbout(_ options: CardOptions) {
         options.warnings.forEach(warn)
+    }
+
+    /// Says how a click on a card went: in the background drip, always; elsewhere only when it
+    /// went wrong, as a warning.
+    func click(_ message: String, failed: Bool = true) {
+        if background {
+            error(message)
+        } else if failed {
+            warn(message)
+        }
     }
 
     func error(_ message: String) {
@@ -182,9 +197,13 @@ struct DripCLI {
             target: target, queue: command.queue, maxAge: command.maxAge,
             ssh: [environment["DRIP_SSH"].flatMap { $0.isEmpty ? nil : $0 } ?? "/usr/bin/ssh"],
             positionPath: FollowPosition.path(target: target, environment: environment))
+        // herdr names a machine by the label it was saved under, which need not be the ssh target.
+        let herdrMachine = command.herdrMachine(savedMachines: {
+            Terminal.output(["herdr", "machine", "list", "--json"], timeout: 5)
+        })
         let follower = RemoteFollower(settings: settings, handle: { event, stale in
             let surroundings = event.surroundings(
-                self.surroundings(console), activate: activate, herdrMachine: command.herdrMachine, stale: stale)
+                self.surroundings(console), activate: activate, herdrMachine: herdrMachine, stale: stale)
             do {
                 guard let card = try AgentHook.card(agent: event.agent, payload: event.payload, in: surroundings) else {
                     return
@@ -194,7 +213,7 @@ struct DripCLI {
                 console.error("\(target): a \(event.agent.rawValue) event from \(event.machine): \(error)")
             }
         }, log: { console.error($0) })
-        console.error("following \(target)")
+        console.error("following \(target)" + (herdrMachine.map { ", which herdr calls \($0)" } ?? ""))
         do {
             try follower.run()
         } catch {
@@ -278,13 +297,14 @@ struct DripCLI {
         }
     }
 
-    /// The background drip a foreground one started: shows the cards from standard input, with
-    /// nowhere to print to.
+    /// The background drip a foreground one started: shows the cards from standard input, saying how
+    /// each click went only on a standard error that is a log, as `drip follow`'s.
     private func background() -> Int32 {
         #if canImport(AppKit)
         guard let request = BackgroundDrip.readRequest() else { return ExitStatus.usage }
-        if let handOff = request.handOff { return HUDDisplay().resume(handOff, console: Console(quiet: true)) }
-        return display.show(request.cards, locked: request.locked, console: Console(quiet: true))
+        let console = Console(quiet: true, background: true)
+        if let handOff = request.handOff { return HUDDisplay().resume(handOff, console: console) }
+        return display.show(request.cards, locked: request.locked, console: console)
         #else
         return ExitStatus.noGUISession
         #endif
@@ -416,7 +436,7 @@ struct DripCLI {
     private func surroundings(_ console: Console) -> AgentHook.Surroundings {
         AgentHook.Surroundings(
             environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
-            isInstalled: display.isInstalled, front: display.front(of:),
+            isInstalled: display.isInstalled, front: display.front(of:), paneShowing: display.paneShowing,
             resolver: { try makeResolver(console, environment: $0) })
     }
     #endif
@@ -471,6 +491,10 @@ struct UnavailableDisplay: CardDisplay {
 
     func front(of card: Card) -> WhenFocused.Front {
         WhenFocused.Front(app: false)
+    }
+
+    func paneShowing(_ card: Card) -> Bool? {
+        nil
     }
 
     func render(

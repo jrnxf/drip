@@ -527,7 +527,7 @@ public struct FollowCommand: ParsableCommand {
     public var activate: String?
 
     @Option(name: .customLong("herdr-machine"), help: ArgumentHelp(
-        "The machine as herdr on this Mac saved it, which a click focuses the agent's tab on. (default: the ssh target's host)",
+        "The machine as herdr on this Mac saved it, which a click focuses the agent's tab on. (default: the one herdr saved for the ssh target, else its host)",
         valueName: "label"))
     var herdrMachineName: String?
 
@@ -547,11 +547,22 @@ public struct FollowCommand: ParsableCommand {
     /// The saved herdr machine a click focuses the agent's tab on: `--herdr-machine`, else the
     /// target's host, without its user or port. Nil when it is no machine label.
     public var herdrMachine: String? {
-        var host = herdrMachineName ?? target ?? ""
-        if host.hasPrefix("ssh://") { host = String(host.dropFirst(6)) }
-        if herdrMachineName == nil {
-            host = String(host.split(separator: "@").last ?? "")
-            host = String(host.split(separator: ":").first ?? "")
+        herdrMachine(savedMachines: { nil })
+    }
+
+    /// The saved herdr machine a click focuses the agent's tab on and drip asks whether you watch
+    /// the agent's pane: `--herdr-machine`, else the one `savedMachines`, what `herdr machine list
+    /// --json` prints, saved for the target, else the target's host. Nil when it is no machine label.
+    public func herdrMachine(savedMachines: () -> String?) -> String? {
+        if let herdrMachineName { return TerminalPane.isMachineLabel(herdrMachineName) ? herdrMachineName : nil }
+        var target = target ?? ""
+        if target.hasPrefix("ssh://") { target = String(target.dropFirst(6)) }
+        var host = String(target.split(separator: "@").last ?? "")
+        host = String(host.split(separator: ":").first ?? "")
+        if let saved = savedMachines(), let machine = TerminalPane.herdrMachine(
+            forSSHTarget: target, host: host.isEmpty ? nil : host, inList: saved)
+        {
+            return machine
         }
         return TerminalPane.isMachineLabel(host) ? host : nil
     }

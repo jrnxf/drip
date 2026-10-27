@@ -17,8 +17,8 @@ enum BackgroundDrip {
     }
 
     /// Starts `drip __background` in its own session, waiting for a request on its standard input,
-    /// with nothing else inherited, so it outlives this process and never holds a caller's pipe open
-    /// (`out=$(drip ...)` would otherwise wait for it). One `handingOff` a stack says on its
+    /// with nothing else inherited but a standard error that is a file, so it outlives this process
+    /// and never holds a caller's pipe open (`out=$(drip ...)` would otherwise wait for it). One `handingOff` a stack says on its
     /// standard output when it shows the cards. A drip that asks starts one while its question
     /// shows, so the answer hands its stack on at once. Nil when it cannot be started.
     static func spawn(handingOff: Bool) -> Spawned? {
@@ -38,7 +38,14 @@ enum BackgroundDrip {
         } else {
             posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0)
         }
-        posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
+        // A file, as the log of a launchd agent that runs `drip follow`, nobody waits on: what goes
+        // wrong with a click, such as herdr refusing to focus the agent's tab, is said there.
+        var standardError = stat()
+        if fstat(2, &standardError) == 0, standardError.st_mode & S_IFMT == S_IFREG {
+            posix_spawn_file_actions_addinherit_np(&actions, 2)
+        } else {
+            posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
+        }
 
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)

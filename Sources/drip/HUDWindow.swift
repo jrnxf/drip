@@ -228,7 +228,11 @@ struct HUDDisplay: CardDisplay {
         let app = target.map { $0 == NSWorkspace.shared.frontmostApplication?.bundleIdentifier } ?? false
         // Any keyboard or mouse event, which macOS tells without the Input Monitoring permission.
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
-        return WhenFocused.Front(app: app, pane: card.pane.flatMap(Terminal.isShowing), idle: idle)
+        return WhenFocused.Front(app: app, idle: idle)
+    }
+
+    func paneShowing(_ card: Card) -> Bool? {
+        card.pane.flatMap(Terminal.isShowing)
     }
 
     /// Ends `NSApplication.run()`. `stop` takes effect only after the next event, so post one.

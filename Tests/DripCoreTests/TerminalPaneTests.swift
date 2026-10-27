@@ -47,6 +47,57 @@ struct TerminalPaneTests {
         #expect(TerminalPane.isShowing(herdrPane: "not json") == nil)
     }
 
+    @Test func herdrNamesTheMachineItSavedForTheSSHTarget() {
+        let list = #"""
+            [
+              {"id":"7fa0","label":"devbox.example.com","target":"devbox","enabled":true},
+              {"id":"91bc","label":"build","target":"me@build.example.com:2222","enabled":true},
+              {"id":"c3d4","label":"not a label","target":"odd","enabled":false}
+            ]
+            """#
+        func machine(_ target: String, _ host: String?) -> String? {
+            TerminalPane.herdrMachine(forSSHTarget: target, host: host, inList: list)
+        }
+        // Saved with that target, by its label.
+        #expect(machine("devbox", "devbox") == "devbox.example.com")
+        #expect(machine("me@build.example.com:2222", "build.example.com") == "build")
+        // Labeled with the target, or with its host.
+        #expect(machine("build", "build") == "build")
+        #expect(machine("me@devbox.example.com", "devbox.example.com") == "devbox.example.com")
+        // Saved with another target on the same host.
+        #expect(machine("build.example.com", "build.example.com") == "build")
+        // A label herdr would not take: its id.
+        #expect(machine("odd", "odd") == "c3d4")
+        #expect(machine("elsewhere", "elsewhere") == nil)
+        #expect(TerminalPane.herdrMachine(forSSHTarget: "devbox", host: "devbox", inList: "error: no herdr") == nil)
+        #expect(TerminalPane.herdrMachine(forSSHTarget: "devbox", host: nil, inList: "[]") == nil)
+    }
+
+    @Test func aFailedSelectCommandSaysWhatHerdrSaid() {
+        let command = ["herdr", "--machine", "agents", "workspace", "focus", "wA6"]
+        #expect(TerminalPane.selectFailure(
+            command, stderr: "error: unknown machine 'agents'; use `herdr machine list`\nmore\n", reason: "exit status 1")
+            == "cannot bring the agent's pane forward: herdr --machine agents workspace focus wA6: "
+            + "error: unknown machine 'agents'; use `herdr machine list`")
+        // Nothing on stderr: how it ended.
+        #expect(TerminalPane.selectFailure(command, stderr: "", reason: "no answer within 5s")
+            == "cannot bring the agent's pane forward: herdr --machine agents workspace focus wA6: no answer within 5s")
+    }
+
+    @Test func ghosttyLooksForTheTerminalThatShowsHerdrForTheMachine() {
+        let pane = TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox.example.com", hostName: "devbox")
+        // herdr's title for a terminal showing the machine, then for one showing this Mac.
+        #expect(pane.ghosttyTitlePrefixes(localHost: "my-mac.local") == [#""devbox: ""#, #""my-mac.local: ""#])
+        #expect(pane.ghosttyTitlePrefixes(localHost: nil) == [#""devbox: ""#])
+        // Quotes and backslashes in this Mac's name stay inside the string.
+        #expect(pane.ghosttyTitlePrefixes(localHost: #"odd"mac\"#) == [#""devbox: ""#, #""odd\"mac\\: ""#])
+        // A pane on this Mac, or one without the machine's name: nothing for Ghostty to find.
+        #expect(TerminalPane(herdrPane: "w1:p1").ghosttyTitlePrefixes(localHost: "my-mac.local") == nil)
+        #expect(TerminalPane(herdrPane: "w1:p1").ghosttyRaiseScript(localHost: "my-mac.local") == nil)
+        #expect(TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox").ghosttyTitlePrefixes(localHost: "my-mac.local") == nil)
+        #expect(TerminalPane(herdrMachine: "devbox", hostName: "-x", environment: ["HERDR_TAB_ID": "w1:t2"])?.hostName == nil)
+    }
+
     @Test func anythingElseNamesNoPane() {
         for environment in [
             [:], ["TMUX_PANE": "%3"], ["TMUX": "/tmp/t,1,0", "TMUX_PANE": "3"], ["TMUX": "relative,1,0", "TMUX_PANE": "%3"],
