@@ -150,15 +150,19 @@ extension AgentHook {
             resolver.environment.pane = origin.pane
         }
         // A done card you chose not to see still takes away the card the session waits on, as it
-        // would have replaced it.
-        if let id, skipsDone(
+        // would have replaced it. Which cards show does not depend on the session being known: only
+        // the lookups by its id do.
+        let turnStarted = id.flatMap { state.turnStarted(id: $0, now: surroundings.now()) }
+        if skipsDone(
             event, cards: resolver.agentCards, doneAfter: resolver.doneAfter,
-            turnStarted: state.turnStarted(id: id, now: surroundings.now()),
-            now: surroundings.now().timeIntervalSince1970)
+            turnStarted: turnStarted, now: surroundings.now().timeIntervalSince1970)
         {
-            let took = state.takeWaiting(Clear(id: id), now: surroundings.now())
-            if took { try surroundings.dismissals.request(id: id) }
-            let turn = state.turnStarted(id: id, now: surroundings.now()).map { surroundings.now().timeIntervalSince1970 - $0 }
+            var took = false
+            if let id, state.takeWaiting(Clear(id: id), now: surroundings.now()) {
+                took = true
+                try surroundings.dismissals.request(id: id)
+            }
+            let turn = turnStarted.map { surroundings.now().timeIntervalSince1970 - $0 }
             note("card", "skip", eventFields + [
                 ("reason", "done_card_filtered"), ("agent_cards", resolver.agentCards.rawValue),
                 ("done_after", "\(resolver.doneAfter)"), ("turn_seconds", turn.map { String(format: "%.1f", $0) }),

@@ -552,6 +552,38 @@ struct RemoteDecisionTests {
         #expect(throws: UsageError.self) { try card(remote(Self.stop, environment: ["DRIP_HOOK": "maybe"]), local()) }
     }
 
+    /// Which cards show under `agent_cards = "attention"` does not depend on the event naming a session.
+    @Test(arguments: [
+        (#"{"cwd":"/home/user/api","hook_event_name":"Stop"}"#, false),
+        (#"{"session_id":"","cwd":"/home/user/api","hook_event_name":"Stop"}"#, false),
+        (#"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"Stop"}"#, false),
+        (#"{"cwd":"/home/user/api","hook_event_name":"PermissionRequest","tool_name":"Bash"}"#, true),
+        (#"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"PermissionRequest","tool_name":"Bash"}"#, true),
+        (#"{"cwd":"/home/user/api","hook_event_name":"StopFailure","error":"rate_limit"}"#, true),
+        (#"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"StopFailure","error":"rate_limit"}"#, true),
+    ] as [(String, Bool)], [true, false])
+    func attentionFiltersDoneCardsWhetherOrNotTheEventNamesASession(
+        _ case: (payload: String, shows: Bool), viaConfig: Bool
+    ) throws {
+        var surroundings = local(viaConfig ? [:] : ["DRIP_AGENT_CARDS": "attention"])
+        if viaConfig {
+            surroundings.resolver = { CardResolver(config: Config(agentCards: .attention), environment: try EnvironmentSettings(environment: $0)) }
+        }
+        let direct = try AgentHook.card(agent: .claude, payload: `case`.payload, in: surroundings)
+        let viaRemote = try card(remote(`case`.payload), surroundings)
+        #expect((direct != nil) == `case`.shows, "\(`case`.payload)")
+        #expect((viaRemote != nil) == `case`.shows, "remote \(`case`.payload)")
+        // The default shows every card, with or without a session.
+        #expect(try AgentHook.card(agent: .claude, payload: `case`.payload, in: local()) != nil)
+    }
+
+    /// Without a session id there is no turn start to count `done_after` from: the done card shows.
+    @Test func aSessionlessDoneCardIsNotHeldBackByDoneAfter() throws {
+        var surroundings = local()
+        surroundings.resolver = { CardResolver(config: Config(doneAfter: 30), environment: try EnvironmentSettings(environment: $0)) }
+        #expect(try AgentHook.card(agent: .claude, payload: #"{"cwd":"/home/user/api","hook_event_name":"Stop"}"#, in: surroundings) != nil)
+    }
+
     @Test func theConfigOnThisMacDecides() throws {
         #expect(try card(remote(Self.stop), local(["DRIP_AGENT_CARDS": "attention"])) == nil)
         #expect(try card(remote(Self.permission), local(["DRIP_AGENT_CARDS": "attention"])) != nil)

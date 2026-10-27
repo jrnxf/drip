@@ -88,10 +88,10 @@ struct OverflowTests {
         let driver = stack(["a", "b", "c", "d", "e"], seconds: 6)
         var formedAt: Double?
         var lastSettled = 0.0
-        driver.run(for: 4) { time, _ in
+        driver.run(for: 4, step: { time, _ in
             if formedAt == nil, driver.stack.overflow != nil { formedAt = time }
             if formedAt == nil { lastSettled = driver.stack.live.last?.animator.end ?? 0 }
-        }
+        })
         let overflow = try #require(driver.stack.overflow)
         #expect(overflow.count == 2)
         #expect(driver.stack.live.map(\.card.title) == ["a", "b", "c"])
@@ -119,9 +119,9 @@ struct OverflowTests {
         driver.others = [card("e2", id: "x")]
         driver.replaced = [replacedCard]
         var counts: Set<Int> = []
-        driver.run(for: 1) { _, _ in
+        driver.run(for: 1, step: { _, _ in
             if let overflow = driver.stack.overflow { counts.insert(overflow.count) }
-        }
+        })
         #expect(counts == [2])
         #expect(try #require(driver.stack.overflow).titles == ["e2", "d"])
     }
@@ -151,13 +151,13 @@ struct OverflowTests {
         let driver = stack(["a", "b", "c", "d", "e", "f"], seconds: 3)
         var tops: Set<Double> = []
         var showed = false
-        driver.run(for: 3) { _, _ in }
+        driver.run(for: 3, step: { _, _ in })
         driver.others = [card("late")]
-        driver.run(for: 12) { _, _ in
+        driver.run(for: 12, step: { _, _ in
             guard let overflow = driver.stack.overflow, !overflow.isLeaving else { return }
             showed = true
             tops.insert((overflow.animator.targetTop * 100).rounded() / 100)
-        }
+        })
         #expect(showed)
         #expect(tops == [(slot(3) * 100).rounded() / 100])
         #expect(driver.releases.count >= 3)
@@ -169,12 +169,12 @@ struct OverflowTests {
         let driver = stack(["a", "b", "c", "d", "e"], seconds: 3)
         var leftAt: Double?
         var leaving: CardStack.Entry?
-        driver.run(for: 10) { time, changes in
+        driver.run(for: 10, step: { time, changes in
             if leftAt == nil, let left = changes.left.first {
                 leftAt = time
                 leaving = left.entry
             }
-        }
+        })
         let first = try #require(driver.releases.first)
         #expect(first.release.count == 2)
         #expect(!first.release.last)
@@ -214,7 +214,7 @@ struct OverflowTests {
         var counts: [Int] = []
         var seeded: Double?
         var traced = false
-        driver.run(for: 1.5) { time, _ in
+        driver.run(for: 1.5, step: { time, _ in
             guard let overflow = driver.stack.overflow else { return }
             if seeded == nil, !overflow.seeds.isEmpty { seeded = time }
             if counts.last != overflow.count { counts.append(overflow.count) }
@@ -223,7 +223,7 @@ struct OverflowTests {
                 if case .traced = $0 { return true }
                 return false
             }) { traced = true }
-        }
+        })
         #expect(seeded != nil)
         #expect(counts == [1, 2])
         #expect(traced)
@@ -249,7 +249,7 @@ struct OverflowTests {
         only.run(for: 2)
         only.others = [card("deployed", id: "deploy")]
         var formed = false
-        only.run(for: 2) { _, _ in formed = formed || updates.overflow != nil }
+        only.run(for: 2, step: { _, _ in formed = formed || updates.overflow != nil })
         #expect(!formed)
         #expect(only.swaps.map(\.title) == ["deployed"])
 
@@ -259,15 +259,15 @@ struct OverflowTests {
         driver.others = [card("deployed", seconds: 30, id: "deploy")]
         var counts: [Int] = []
         var gone = false
-        driver.run(for: 1.5) { _, _ in
+        driver.run(for: 1.5, step: { _, _ in
             if let count = stack.overflow?.count, counts.last != count { counts.append(count) }
-        }
+        })
         #expect(driver.swaps.isEmpty)
         stack.hover(false)
-        driver.run(for: 3) { _, _ in
+        driver.run(for: 3, step: { _, _ in
             if let count = stack.overflow?.count, counts.last != count { counts.append(count) }
             if stack.overflow == nil { gone = true }
-        }
+        })
         #expect(driver.swaps.map(\.title) == ["deployed"])
         #expect(counts.first == 1)
         #expect(counts.max() == 2)
@@ -288,11 +288,11 @@ struct OverflowTests {
         var left: Double?
         var gone: Double?
         var fillingKept = true
-        driver.run(for: 2) { time, _ in
+        driver.run(for: 2, step: { time, _ in
             if left == nil, drop.isLeaving { left = time }
             if gone == nil, stack.overflow == nil { gone = time }
             if left != nil, gone == nil, stack.live.isEmpty { fillingKept = false }
-        }
+        })
         #expect(drop.count == 0)
         #expect(drop.anchor === stack.live.last)
         #expect(try #require(gone) > (try #require(left)))
@@ -307,7 +307,7 @@ struct OverflowTests {
         var releasing = false
         var trailed = false
         var blank = false
-        driver.run(for: 14) { time, _ in
+        driver.run(for: 14, step: { time, _ in
             if !sent, driver.releases.count == 1 {
                 sent = true
                 driver.others = [self.card("late", seconds: 3)]
@@ -319,7 +319,7 @@ struct OverflowTests {
                 if overflow.count + inFlight != driver.stack.queued.count { trailed = true }
             }
             if overflow.count == 0, !driver.stack.queued.isEmpty { blank = true }
-        }
+        })
         #expect(releasing)
         #expect(!trailed)
         #expect(!blank)
@@ -427,10 +427,10 @@ struct OverflowTests {
         let drop = try #require(driver.stack.overflow)
         let top = drop.animator.targetTop
         var tops: [Double] = []
-        driver.run(for: 6, metrics: { $0.title == "tall" ? tall : self.metrics }) { _, _ in
+        driver.run(for: 6, metrics: { $0.title == "tall" ? tall : self.metrics }, step: { _, _ in
             guard driver.stack.overflow === drop, !drop.isLeaving else { return }
             if tops.last != drop.animator.targetTop { tops.append(drop.animator.targetTop) }
-        }
+        })
         // Once, as the tall card grew out of it into the third place, and no further.
         #expect(tops.count == 2)
         #expect(tops.first == top)
@@ -449,10 +449,10 @@ struct OverflowTests {
         #expect(driver.releases.isEmpty)
         let top = drop.animator.targetTop
         var tops: [Double] = [top]
-        driver.run(for: 8, metrics: { $0.title == "tall" ? tall : self.metrics }) { _, _ in
+        driver.run(for: 8, metrics: { $0.title == "tall" ? tall : self.metrics }, step: { _, _ in
             guard driver.stack.overflow === drop, !drop.isLeaving else { return }
             if tops.last != drop.animator.targetTop { tops.append(drop.animator.targetTop) }
-        }
+        })
         #expect(driver.releases.map(\.release.entry.card.title).prefix(2) == ["tall", "e"])
         #expect(tops.count == 3)
         #expect(tops.dropFirst().first.map { abs($0 - (slot(2) + tall.pillHeight + CardStack.gap)) < 0.01 } == true)
@@ -470,11 +470,11 @@ struct OverflowTests {
         var tops: Set<Double> = [top]
         driver.stack.hover(true)
         driver.stack.live[2].dismissed = true
-        driver.run(for: 2) { _, _ in tops.insert(drop.animator.targetTop) }
+        driver.run(for: 2, step: { _, _ in tops.insert(drop.animator.targetTop) })
         #expect(driver.stack.live.map(\.card.title) == ["a", "b"])
         #expect(driver.releases.isEmpty)
         driver.stack.hover(false)
-        driver.run(for: 2) { _, _ in tops.insert(drop.animator.targetTop) }
+        driver.run(for: 2, step: { _, _ in tops.insert(drop.animator.targetTop) })
         #expect(driver.releases.first?.release.entry.card.title == "d")
         #expect(driver.releases.first.map { abs($0.top - slot(2)) < 0.01 } == true)
         #expect(tops == [top])
