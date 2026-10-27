@@ -22,6 +22,12 @@ public enum WhenFocused: String, CaseIterable, Sendable {
     /// left in front while you are away still raises its cards.
     public static let defaultAwayAfter = 60.0
 
+    /// How long a waiting card skipped because you were watching is given, before drip looks again:
+    /// if the agent still waits and you are no longer watching, the card shows then. Long enough
+    /// for an answer typed in the terminal to take the card away first, short enough that an agent
+    /// left waiting after you looked away is not forgotten.
+    public static let resurfaceDelay = 30.0
+
     /// Where the agent's terminal is, as drip can tell.
     public struct Front: Equatable, Sendable {
         /// Whether the app a click on the card brings forward is the frontmost app.

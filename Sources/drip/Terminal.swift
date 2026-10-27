@@ -127,6 +127,16 @@ enum Terminal {
         return TerminalPane.isShowing(tmuxDisplay: output)
     }
 
+    /// Whether this Mac's herdr shows the machine the pane runs on; unknown when the pane is not on
+    /// another machine or herdr cannot say.
+    static func machineView(_ pane: TerminalPane) -> MachineView {
+        guard let machine = pane.herdrMachine else { return .unknown("not a remote pane") }
+        switch run(MachineView.listCommand, timeout: 3) {
+        case let .success(output): return MachineView(machineList: output, machine: machine)
+        case let .failure(failure): return .unknown(failure.reason)
+        }
+    }
+
     #if canImport(AppKit)
     /// The app the pane shows in: the terminal that runs the tmux client showing the pane's session.
     /// tmux keeps the environment of the terminal that started its server, so `__CFBundleIdentifier`

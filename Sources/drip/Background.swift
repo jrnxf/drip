@@ -102,9 +102,12 @@ enum BackgroundDrip {
         func send(_ request: BackgroundRequest) -> Bool {
             guard let writing, let data = try? request.encoded() else { return false }
             self.writing = nil
-            CardQueue.enqueue(
-                pid: pid, cards: request.cards, adoptable: true,
-                after: request.handOff != nil ? CardQueue.mine?.name : nil)
+            // A card that comes back later takes its turn then, not now, or it would hold up the queue.
+            if request.resurface == nil {
+                CardQueue.enqueue(
+                    pid: pid, cards: request.cards, adoptable: true,
+                    after: request.handOff != nil ? CardQueue.mine?.name : nil)
+            }
             // A closed pipe must fail the write, not kill drip.
             signal(SIGPIPE, SIG_IGN)
             let written = data.withUnsafeBytes { buffer -> Bool in

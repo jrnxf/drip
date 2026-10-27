@@ -294,3 +294,33 @@ extension TerminalPane {
         return focused
     }
 }
+
+/// Whether this Mac's herdr window shows a saved machine, as `herdr machine list --json` says with
+/// its `selected` field, which a machine's own herdr cannot tell: it only knows some client shows
+/// its pane.
+public enum MachineView: Equatable, Sendable {
+    case selected
+    case notSelected
+    /// The list could not be read or does not name the machine; why, for the debug log.
+    case unknown(String)
+
+    /// The command whose output `init(machineList:machine:)` reads.
+    public static let listCommand = ["herdr", "machine", "list", "--json"]
+
+    /// What `output`, from `listCommand`, says about the saved machine `machine`, by its label.
+    public init(machineList output: String, machine: String) {
+        guard let list = try? JSONValue(parsing: output), let machines = list.elements else {
+            self = .unknown("unreadable machine list")
+            return
+        }
+        guard let found = machines.first(where: { $0["label"]?.string == machine }) else {
+            self = .unknown("machine not in list")
+            return
+        }
+        guard case let .bool(selected)? = found["selected"] else {
+            self = .unknown("no selected field")
+            return
+        }
+        self = selected ? .selected : .notSelected
+    }
+}
