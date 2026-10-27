@@ -133,7 +133,7 @@ herdr or WezTerm the agent's own pane. The × that takes the icon's place while 
 card, or a right-click, Control-click or Option-click anywhere on it, takes the card away and brings
 nothing forward, for when it is only in the way. `drip dismiss` does the same from the keyboard.
 
-**While you watch.** When the agent's terminal is the frontmost app, its done and stopped cards come
+**While you watch.** When the agent's terminal is the frontmost app, or its window is the topmost one on screen (macOS keeps the app you last clicked active after you swipe to another Space), its done and stopped cards come
 without a sound and count down 1.5 seconds: you are likely watching it already. `when_focused` in
 the [config](#config), or `DRIP_WHEN_FOCUSED`, changes that: `quiet`, the default; `show`, as any
 other card; or `skip`, no card at all, not even one that needs you, but only when drip knows from
@@ -504,7 +504,7 @@ or `click`. What it records, and nothing else:
 - the first 8 characters of the session id;
 - the settings that decided: `when_focused`, `away_after`, `agent_cards`, `done_after`, and `DRIP_HOOK`;
 - what drip noticed: the bundle identifier of the frontmost app and of the app a click brings
-  forward, seconds since the keyboard or mouse was last used (both on every card line, `unknown` when drip did not ask, and the frontmost `none` when no app is in front), and whether the agent's pane is in front;
+  forward, seconds since the keyboard or mouse was last used (both on every card line, `unknown` when drip did not ask, and the frontmost `none` when no app is in front), `topmost_visible`, the terminal when its window is on top of a display, else `none`, and whether the agent's pane is in front;
 - the pane's id (`herdr:w1:p2`, `tmux:%3`), the herdr machine, the query run to ask whether it is in
   front (`herdr pane get w1:p2`, or `tmux display-message`), its answer and how long it took;
 - for a click: what drip tried to bring forward, whether macOS refused it and why, and whether
