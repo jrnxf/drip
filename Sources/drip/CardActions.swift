@@ -9,6 +9,12 @@ enum CardActions {
     /// Set when a question was answered no.
     static var declined = false
 
+    /// Notes how a click went in the debug log: what drip tried to bring forward, and whether macOS
+    /// refused. Never a window's title, or what a command printed.
+    static func record(_ decision: String, _ fields: [(String, String?)]) {
+        DebugLog.record("click", decision, fields)
+    }
+
     /// Activation requests still on their way to Launch Services.
     private static let activations = DispatchGroup()
 
@@ -18,6 +24,7 @@ enum CardActions {
     /// machine in Ghostty, Ghostty itself first brings forward the terminal that shows herdr, on
     /// whichever Space it is. Says on `console` how each attempt went, macOS refusing it too.
     static func activate(_ bundleIdentifier: String, pane: TerminalPane? = nil, console: Console) {
+        record("attempt", [("target", bundleIdentifier), ("pane", pane?.debugName), ("herdr_machine", pane?.herdrMachine)])
         guard bundleIdentifier == TerminalPane.ghostty, let pane,
               let script = pane.ghosttyRaiseScript(localHost: hostName)
         else {
@@ -36,12 +43,15 @@ enum CardActions {
             if yielded { Thread.sleep(forTimeInterval: 0.1) }
             switch Terminal.run(["osascript", "-e", script], timeout: raiseTimeout) {
             case let .success(title) where !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                record("ghostty_raise", [("result", "ok")])
                 Terminal.select(pane, console: console)
                 report(bundleIdentifier, as: "Ghostty's \(title.trimmingCharacters(in: .whitespacesAndNewlines))", console: console)
                 return
             case .success:
+                record("ghostty_raise", [("result", "no_terminal")])
                 console.click("no Ghostty terminal shows herdr on \(pane.hostName ?? "the machine") or this Mac; bringing Ghostty forward")
             case let .failure(failure):
+                record("ghostty_raise", [("result", "failed"), ("reason", failure.reason)])
                 let said = failure.stderr.split(whereSeparator: \.isNewline).first.map(String.init)
                 console.click("cannot bring Ghostty's herdr terminal forward: \(said ?? failure.reason)")
             }
@@ -61,6 +71,7 @@ enum CardActions {
     /// Brings the app forward through Launch Services, then `pane` in it.
     private static func open(_ bundleIdentifier: String, pane: TerminalPane?, console: Console) {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+            record("refused", [("target", bundleIdentifier), ("reason", "app_not_found")])
             console.click("cannot find the app \(bundleIdentifier) to bring forward")
             return
         }
@@ -69,6 +80,8 @@ enum CardActions {
         activations.enter()
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
             if let error {
+                let nsError = error as NSError
+                record("refused", [("target", bundleIdentifier), ("reason", "open_failed"), ("error", "\(nsError.domain):\(nsError.code)")])
                 console.click("cannot bring \(bundleIdentifier) forward: \(error.localizedDescription)")
             } else {
                 if let pane { Terminal.select(pane, console: console) }
@@ -84,11 +97,15 @@ enum CardActions {
     private static func report(_ bundleIdentifier: String, as what: String, console: Console) {
         Thread.sleep(forTimeInterval: 0.5)
         let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let window = hasWindowOnThisSpace(bundleIdentifier)
         if front != bundleIdentifier {
+            record("refused", [("target", bundleIdentifier), ("reason", "not_frontmost"), ("frontmost", front ?? "none")])
             console.click("macOS did not bring \(what) forward: \(front ?? "no app") is in front")
-        } else if !hasWindowOnThisSpace(bundleIdentifier) {
+        } else if !window {
+            record("refused", [("target", bundleIdentifier), ("reason", "no_window_on_space"), ("frontmost", front)])
             console.click("macOS did not bring \(what) forward: it is in front, with no window on this Space")
         } else {
+            record("brought", [("target", bundleIdentifier), ("frontmost", front)])
             console.click("brought \(what) forward", failed: false)
         }
     }

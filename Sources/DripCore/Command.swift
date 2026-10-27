@@ -277,6 +277,7 @@ public struct DripCommand: ParsableCommand {
             drip setup remote
             drip follow <ssh-target> [options]
             drip history [--missed] [-n N | --all] [--json | --replay]
+            drip debug [--clear]
             drip dismiss [--id ID]
             drip pause [DURATION]
             drip resume
@@ -284,7 +285,7 @@ public struct DripCommand: ParsableCommand {
         version: dripVersion,
         subcommands: [
             ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, FollowCommand.self,
-            HistoryCommand.self, DismissCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self,
+            HistoryCommand.self, DebugCommand.self, DismissCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self,
             BackgroundCommand.self,
         ],
         defaultSubcommand: ShowCommand.self
@@ -634,6 +635,29 @@ public struct HistoryCommand: ParsableCommand {
     }
 }
 
+/// `drip debug [--clear]`: shows or empties the debug log.
+public struct DebugCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "debug",
+        abstract: "Show the debug log, or empty it.",
+        usage: "drip debug [--clear]",
+        discussion: """
+            A diagnostic aid for finding out why a card showed or did not. The log is off until \
+            debug = true is in the config or DRIP_DEBUG=1 is set. It then keeps one line for each \
+            decision about an agent's card, with what drip knew when it decided, and for each click: \
+            never a card's title or detail, a prompt, a tool's input, a command or a path from an \
+            agent. It is $XDG_STATE_HOME/drip/debug.log, or ~/.local/state/drip/debug.log, readable \
+            only by you, and keeps about the last 1 MB. drip debug prints it; \
+            --clear empties it.
+            """
+    )
+
+    @Flag(help: "Empty the log.")
+    public var clear = false
+
+    public init() {}
+}
+
 /// `drip dismiss [--id ID]`: takes cards away without bringing anything forward.
 public struct DismissCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
@@ -780,6 +804,7 @@ public enum Invocation {
     case setup(SetupCommand)
     case follow(FollowCommand)
     case history(HistoryCommand)
+    case debug(DebugCommand)
     case dismiss(DismissCommand)
     case pause(PauseCommand)
     /// `drip resume`: ends a pause now.
@@ -815,6 +840,7 @@ public enum CommandLineParser {
             case let command as SetupCommand: return .invocation(.setup(command))
             case let command as FollowCommand: return .invocation(.follow(command))
             case let command as HistoryCommand: return .invocation(.history(command))
+            case let command as DebugCommand: return .invocation(.debug(command))
             case let command as DismissCommand: return .invocation(.dismiss(command))
             case let command as PauseCommand: return .invocation(.pause(command))
             case is ResumeCommand: return .invocation(.resume)

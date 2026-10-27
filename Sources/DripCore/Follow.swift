@@ -13,6 +13,7 @@ extension RemoteEvent {
         surroundings.environment = environment(over: local.environment)
         surroundings.origin = origin(activate: activate, herdrMachine: herdrMachine)
         surroundings.showsCards = local.showsCards && !stale
+        surroundings.process = .follow
         surroundings.now = { [time, now = local.now] in Date(timeIntervalSince1970: min(time, now().timeIntervalSince1970)) }
         return surroundings
     }

@@ -25,13 +25,16 @@ extension AgentHook {
         /// which still takes away what it would have taken away.
         public var showsCards: Bool
         public var now: () -> Date
+        /// The drip that asks, as the debug log names it.
+        public var process: DebugLog.Process
 
         public init(
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
             front: @escaping (Card) -> WhenFocused.Front, paneShowing: @escaping (Card) -> Bool? = { _ in nil },
             resolver: @escaping ([String: String]) throws -> CardResolver, origin: Origin? = nil,
-            showsCards: Bool = true, now: @escaping () -> Date = Date.init
+            showsCards: Bool = true, now: @escaping () -> Date = Date.init, process: DebugLog.Process = .hook
         ) {
+            self.process = process
             self.environment = environment
             self.hasGUISession = hasGUISession
             self.isInstalled = isInstalled
@@ -55,10 +58,18 @@ extension AgentHook {
         agent: Agent, payload: String, flags: CardFlags = CardFlags(), in surroundings: Surroundings
     ) throws -> Card? {
         let environment = surroundings.environment
+        let log = DebugLog(environment: environment, process: surroundings.process)
+        func note(_ event: String, _ decision: String, _ fields: [(String, String?)] = []) {
+            log.record(event, decision, [("agent", agent.rawValue), ("machine", surroundings.origin?.machine)] + fields)
+        }
         // A session nobody attends, such as `claude -p` in a pipeline, or one an orchestrator
         // silenced with DRIP_HOOK=off: nothing to show, nothing to take away, nothing to fail.
-        guard try speaks(for: agent, environment: environment) else { return nil }
+        guard try speaks(for: agent, environment: environment) else {
+            note("card", "skip", [("reason", (try? setting(environment: environment)) == .off ? "drip_hook_off" : "unattended")])
+            return nil
+        }
         if payload.utf8.count > payloadLimit {
+            note("card", "error", [("reason", "payload_too_large")])
             throw UsageError("the hook payload is larger than 4 MB")
         }
         let origin = surroundings.origin
@@ -68,12 +79,17 @@ extension AgentHook {
         // away the card the session waits on.
         switch try outcome(agent: agent, payload: payload, environment: environment) {
         case .nothing:
+            note("card", "skip", [("reason", "no_card")])
             return nil
         case var .clear(clear):
             if let origin { clear.id = origin.qualified(clear.id) }
             // You answered in the terminal: the card that said the agent needs you would only be
             // wrong now. One file read when no card waits, as on most tool calls.
-            if state.takeWaiting(clear, now: surroundings.now()) { try surroundings.dismissals.request(id: clear.id) }
+            let took = state.takeWaiting(clear, now: surroundings.now())
+            if took { try surroundings.dismissals.request(id: clear.id) }
+            note("clear", "clear", [
+                ("id", DebugLog.short(id: clear.id)), ("took_waiting", "\(took)"), ("starts_turn", "\(clear.startsTurn)"),
+            ])
             if clear.startsTurn { try? state.noteTurn(id: clear.id, now: surroundings.now()) }
             return nil
         case var .card(found):
@@ -81,18 +97,28 @@ extension AgentHook {
             event = found
         }
         let id = event.id
+        let eventFields: [(String, String?)] = [("kind", event.kind), ("id", id.map(DebugLog.short(id:)))]
         // Claude's permission_prompt notification, when a PermissionRequest hook already showed
         // the card for it, with what Claude wants to do.
         if event.isPermissionNotice, let id, state.waiting(id: id, now: surroundings.now())?.tool != nil {
+            note("card", "skip", eventFields + [("reason", "permission_already_shown")])
             return nil
         }
         // An event too old to show still takes away the card the session waits on, as its card
         // would have replaced it.
         guard surroundings.showsCards else {
-            if let id, state.takeWaiting(Clear(id: id), now: surroundings.now()) { try surroundings.dismissals.request(id: id) }
+            var took = false
+            if let id, state.takeWaiting(Clear(id: id), now: surroundings.now()) {
+                took = true
+                try surroundings.dismissals.request(id: id)
+            }
+            note("card", "skip", eventFields + [("reason", "stale_event"), ("took_waiting", "\(took)")])
             return nil
         }
-        guard surroundings.hasGUISession else { return nil }
+        guard surroundings.hasGUISession else {
+            note("card", "skip", eventFields + [("reason", "no_gui_session")])
+            return nil
+        }
         var flags = event.filling(flags)
         flags.icon = flags.icon ?? agent.icon(installed: surroundings.isInstalled)
         // The title starts with the project, or the agent's name when the payload names no folder.
@@ -127,7 +153,14 @@ extension AgentHook {
             turnStarted: state.turnStarted(id: id, now: surroundings.now()),
             now: surroundings.now().timeIntervalSince1970)
         {
-            if state.takeWaiting(Clear(id: id), now: surroundings.now()) { try surroundings.dismissals.request(id: id) }
+            let took = state.takeWaiting(Clear(id: id), now: surroundings.now())
+            if took { try surroundings.dismissals.request(id: id) }
+            let turn = state.turnStarted(id: id, now: surroundings.now()).map { surroundings.now().timeIntervalSince1970 - $0 }
+            note("card", "skip", eventFields + [
+                ("reason", "done_card_filtered"), ("agent_cards", resolver.agentCards.rawValue),
+                ("done_after", "\(resolver.doneAfter)"), ("turn_seconds", turn.map { String(format: "%.1f", $0) }),
+                ("took_waiting", "\(took)"),
+            ])
             return nil
         }
         let card = try resolver.resolve(kind: event.kind, title: title, flags: flags)
@@ -143,13 +176,37 @@ extension AgentHook {
         // agent there, only that machine's herdr can say whether its pane is in front; when it
         // cannot, drip takes you not to be watching.
         let whenFocused = resolver.whenFocused
-        guard whenFocused != .show else { return card }
-        var front = surroundings.front(card)
-        if front.pane == nil, front.app, front.present(awayAfter: resolver.awayAfter) {
-            front.pane = surroundings.paneShowing(card)
+        guard whenFocused != .show else {
+            note("card", "show", eventFields + [("reason", "when_focused_show"), ("waits", "\(card.waits)")])
+            return card
         }
-        if origin != nil, front.pane == nil { front = WhenFocused.Front(app: false, pane: false) }
-        return whenFocused.apply(to: card, front: front, awayAfter: resolver.awayAfter)
+        var front = surroundings.front(card)
+        var query: [(String, String?)] = []
+        if front.pane == nil, front.app, front.present(awayAfter: resolver.awayAfter) {
+            let asked = Date()
+            front.pane = surroundings.paneShowing(card)
+            if log.enabled {
+                query = [
+                    ("query", card.pane.flatMap(\.debugQuery)),
+                    ("answer", front.pane.map { $0 ? "showing" : "not_showing" } ?? "unknown"),
+                    ("query_ms", "\(Int(Date().timeIntervalSince(asked) * 1000))"),
+                ]
+            }
+        }
+        let unknownRemote = origin != nil && front.pane == nil
+        if unknownRemote { front = WhenFocused.Front(app: false, pane: false) }
+        let shown = whenFocused.apply(to: card, front: front, awayAfter: resolver.awayAfter)
+        if log.enabled {
+            let reason = shown == nil ? "focused_skip" : shown != card ? "focused_quiet" : "not_focused_or_away"
+            note("card", shown == nil ? "skip" : "show", eventFields + [
+                ("reason", reason), ("waits", "\(card.waits)"), ("when_focused", whenFocused.rawValue),
+                ("away_after", "\(resolver.awayAfter)"), ("idle_seconds", front.idle.map { String(format: "%.1f", $0) }),
+                ("frontmost", front.frontmost), ("activate", card.activate), ("app_in_front", "\(front.app)"),
+                ("pane", card.pane?.debugName), ("herdr_machine", card.pane?.herdrMachine),
+                ("pane_showing", front.pane.map { "\($0)" }), ("remote_pane_unknown", unknownRemote ? "true" : nil),
+            ] + query)
+        }
+        return shown
     }
 }
 #endif

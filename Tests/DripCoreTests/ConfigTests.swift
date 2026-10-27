@@ -231,10 +231,13 @@ struct PrecedenceTests {
         #expect(try EnvironmentSettings(environment: ["DRIP_SECONDS": ""]) == EnvironmentSettings())
         #expect(try EnvironmentSettings(environment: ["DRIP_STACK": "off", "DRIP_STACK_MAX": "6"])
             == EnvironmentSettings(stack: .off, stackMax: 6))
+        #expect(try EnvironmentSettings(environment: ["DRIP_DEBUG": "1"]) == EnvironmentSettings(debug: true))
+        #expect(try EnvironmentSettings(environment: ["DRIP_DEBUG": "off"]) == EnvironmentSettings(debug: false))
+        #expect(try EnvironmentSettings(environment: ["DRIP_DEBUG": ""]) == EnvironmentSettings())
         for (name, value) in [("DRIP_SECONDS", "abc"), ("DRIP_SECONDS", "99"), ("DRIP_MOTION", "lots"),
                               ("DRIP_SIZE", "huge"), ("DRIP_STACK", "psuh"), ("DRIP_STACK", "Push"),
                               ("DRIP_STACK_MAX", "0"), ("DRIP_STACK_MAX", "7"), ("DRIP_STACK_MAX", "2.5"),
-                              ("DRIP_STACK_MAX", "many")] {
+                              ("DRIP_STACK_MAX", "many"), ("DRIP_DEBUG", "maybe")] {
             let error = #expect(throws: UsageError.self) { try EnvironmentSettings(environment: [name: value]) }
             #expect(error?.message.hasPrefix(name) == true)
         }

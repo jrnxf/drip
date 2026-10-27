@@ -39,6 +39,8 @@ public struct Config: Equatable {
     public var agentCards: AgentHook.Cards?
     /// The shortest turn, in seconds, whose done card shows.
     public var doneAfter: Double?
+    /// Whether drip keeps its debug log, `DebugLog`.
+    public var debug: Bool?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
 
@@ -46,8 +48,9 @@ public struct Config: Equatable {
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
         awayAfter: Double? = nil, agentCards: AgentHook.Cards? = nil, doneAfter: Double? = nil,
-        presets: [String: PresetOverride] = [:]
+        debug: Bool? = nil, presets: [String: PresetOverride] = [:]
     ) {
+        self.debug = debug
         self.awayAfter = awayAfter
         self.agentCards = agentCards
         self.doneAfter = doneAfter
@@ -192,6 +195,7 @@ private struct ConfigReader {
             case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
             case "agent_cards": config.agentCards = try choice(item, key: key, AgentHook.Cards.self)
             case "done_after": config.doneAfter = try seconds(item, key: key, in: Defaults.doneAfterRange)
+            case "debug": config.debug = try boolean(item, key: key)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
             }
@@ -265,7 +269,7 @@ private struct ConfigReader {
     static let reservedNames: Set<String> = [
         "run", "hook", "history", "show", "help", "version", "setup", "config", "init", "install",
         "uninstall", "completion", "completions", "doctor", "mute", "pause", "resume", "listen",
-        "test", "dismiss", "clear",
+        "test", "dismiss", "clear", "debug",
     ]
 
     static func isValidPresetName(_ name: String) -> Bool {
@@ -367,13 +371,16 @@ public struct EnvironmentSettings: Equatable {
     /// The terminal pane drip was run in, from `TMUX` and `TMUX_PANE`, herdr's `HERDR_PANE_ID`, or
     /// `WEZTERM_PANE`.
     public var pane: TerminalPane?
+    /// Whether the debug log is on, from `DRIP_DEBUG`.
+    public var debug: Bool?
 
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
         awayAfter: Double? = nil, agentCards: AgentHook.Cards? = nil, doneAfter: Double? = nil,
-        sender: String? = nil
+        sender: String? = nil, debug: Bool? = nil
     ) {
+        self.debug = debug
         self.awayAfter = awayAfter
         self.agentCards = agentCards
         self.doneAfter = doneAfter
@@ -388,7 +395,7 @@ public struct EnvironmentSettings: Equatable {
     }
 
     /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK, DRIP_STACK_MAX,
-    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_AGENT_CARDS and DRIP_DONE_AFTER. Empty
+    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_AGENT_CARDS, DRIP_DONE_AFTER and DRIP_DEBUG. Empty
     /// values are ignored; invalid ones are usage errors. Also notes the app drip was run from, from
     /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
@@ -432,7 +439,21 @@ public struct EnvironmentSettings: Equatable {
             stackMax = max
         }
         sound = value("DRIP_SOUND").map(Sound.init(parsing:))
+        debug = try Self.debug(environment: environment)
         sender = CardActivation.sender(in: environment)
         pane = TerminalPane(environment: environment)
+    }
+}
+
+extension EnvironmentSettings {
+    /// `DRIP_DEBUG`: `1`, `true`, `on` or `yes`, or `0`, `false`, `off` or `no`; nil when unset or
+    /// empty. Throws a `UsageError` for anything else.
+    public static func debug(environment: [String: String]) throws -> Bool? {
+        guard let text = environment["DRIP_DEBUG"].flatMap({ $0.isEmpty ? nil : $0 }) else { return nil }
+        switch text.lowercased() {
+        case "1", "true", "on", "yes": return true
+        case "0", "false", "off", "no": return false
+        default: throw UsageError("DRIP_DEBUG must be 1 or 0, not '\(text)'")
+        }
     }
 }

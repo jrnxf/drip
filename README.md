@@ -472,12 +472,47 @@ for it, and on the machine delete `drip-remote-hook`, its queue and the hooks th
 drip makes no network connections of its own, sends nothing anywhere and collects no analytics:
 the one connection is the ssh that `drip follow` runs to the machine you name. It only reads and
 writes your config, the agents' settings that `drip setup` edits, its history, and small state
-files next to it: the pause, `drip dismiss`'s requests, which card each agent session waits on and
+files next to it: the opt-in [debug log](#debug-log), the pause, `drip dismiss`'s requests, which card each agent session waits on and
 the folder it runs in, each forgotten after 10 minutes, and where `drip follow` is in each
 machine's queue.
 The history, `~/.local/state/drip/history.jsonl`, is readable only by you and keeps the last 1000
 cards. It holds each card's title and detail, up to 16,384 characters of each, so a card from a
 coding agent keeps the agent's last message. Delete the file to clear it.
+
+## Debug log
+
+A diagnostic aid for working out why a card showed, or did not, such as a card that came up while
+its terminal was in front. It is off. Turn it on with `debug = true` in the config or `DRIP_DEBUG=1`
+(`DRIP_DEBUG=0` turns it off again); then `drip hook`, `drip follow` and the drip that shows a card
+add one line for each decision about an agent's card, and for each click on one:
+
+```
+2026-10-27T10:20:51.123+01:00 follow card show agent=claude machine=devbox kind=ok id=claude:1a2b3c4d reason=not_focused_or_away waits=false when_focused=skip away_after=60.0 idle_seconds=2.1 frontmost=com.mitchellh.ghostty activate=com.mitchellh.ghostty app_in_front=true pane=herdr:w1:p2 herdr_machine=devbox pane_showing=false query="herdr pane get w1:p2" answer=not_showing query_ms=412
+```
+
+`drip debug` prints the log and `drip debug --clear` empties it. It is `debug.log` next to the
+history, in `$XDG_STATE_HOME/drip` or `~/.local/state/drip`, readable only by you, and keeps about
+the last 1 MB. It is for you, or an agent you ask to look at it, and goes nowhere: drip sends it
+to no one.
+
+A line is `time process event decision key=value ...`. `process` is `hook`, `follow` or `cli`; the
+`event` is `card` (shown or skipped, and `reason`), `clear` (a card an agent's next step took away)
+or `click`. What it records, and nothing else:
+
+- the agent (`claude`, `codex` or `gemini`), the machine it ran on, the card's kind (`ok`, `warn`, ...)
+  and whether it waits for you;
+- the first 8 characters of the session id;
+- the settings that decided: `when_focused`, `away_after`, `agent_cards`, `done_after`, and `DRIP_HOOK`;
+- what drip noticed: the bundle identifier of the frontmost app and of the app a click brings
+  forward, seconds since the keyboard or mouse was last used, and whether the agent's pane is in front;
+- the pane's id (`herdr:w1:p2`, `tmux:%3`), the herdr machine, the query run to ask whether it is in
+  front (`herdr pane get w1:p2`, or `tmux display-message`), its answer and how long it took;
+- for a click: what drip tried to bring forward, whether macOS refused it and why, and whether
+  selecting the pane worked.
+
+It never records a card's title or detail, an agent's message or prompt, a tool's name or input, a
+command, a folder or file path from an agent, or a hook payload, and it holds no socket path or
+other address.
 
 ## Usage
 
@@ -489,6 +524,7 @@ drip setup claude|codex|gemini [--print | --remote]
 drip setup remote
 drip follow <ssh-target> [options]
 drip history [--missed] [-n N | --all] [--json | --replay]
+drip debug [--clear]
 drip dismiss [--id ID]
 drip pause [DURATION]
 drip resume
@@ -835,6 +871,7 @@ when_focused = "quiet"        # quiet | show | skip: an agent's card while you w
 away_after = 60               # seconds without keyboard or mouse before you count as away; 0: always away
 agent_cards = "all"           # all | attention: only the cards that need you, and no done cards
 done_after = 0                # seconds: no done card for a turn shorter than this; 0 shows them all
+debug = false                 # true: keep the debug log, a diagnostic aid (see Debug log)
 
 [preset.ok]                  # override a built-in preset, any subset of keys
 sound = "Hero"
@@ -851,14 +888,14 @@ icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this fi
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
 `DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`, `DRIP_AWAY_AFTER`,
-`DRIP_AGENT_CARDS`, `DRIP_DONE_AFTER`;
+`DRIP_AGENT_CARDS`, `DRIP_DONE_AFTER`, `DRIP_DEBUG`;
 `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
 environment exits 2. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
 name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `setup`,
 `config`, `init`, `install`, `uninstall`, `completion`, `completions`, `doctor`, `mute`, `pause`,
-`resume`, `listen`, `test`, `dismiss` or `clear`. A custom preset's ring shows no state's mark. Unknown keys print a warning;
+`resume`, `listen`, `test`, `dismiss`, `clear` or `debug`. A custom preset's ring shows no state's mark. Unknown keys print a warning;
 wrong types exit 4.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
