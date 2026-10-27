@@ -212,9 +212,14 @@ struct DripCLI {
         let herdrMachine = command.herdrMachine(savedMachines: {
             Terminal.output(["herdr", "machine", "list", "--json"], timeout: 5)
         })
+        // The config is read with each event, but its warnings are said once.
+        let config = ConfigWarnedOnce(read: { try ConfigLoader.load(environment: $0) }, warn: console.warn)
+        var local = surroundings(console)
+        local.loadConfig = { try config.load(environment: $0) }
+        local.resolver = { try self.makeResolver(console, file: $0, environment: $1, warn: false) }
         let follower = RemoteFollower(settings: settings, handle: { event, stale in
             var surroundings = event.surroundings(
-                self.surroundings(console), activate: activate, herdrMachine: herdrMachine, stale: stale)
+                local, activate: activate, herdrMachine: herdrMachine, stale: stale)
             let looked = surroundings
             // This drip stays up, so it looks again itself.
             surroundings.resurface = { card, noted in
@@ -532,9 +537,12 @@ struct DripCLI {
         try makeResolver(console, file: ConfigLoader.load(environment: environment), environment: environment)
     }
 
-    /// The settings from a config file already read and the environment, printing the file's warnings.
-    private func makeResolver(_ console: Console, file: ConfigFile, environment: [String: String]) throws -> CardResolver {
-        file.warnings.forEach(console.warn)
+    /// The settings from a config file already read and the environment, printing the file's warnings
+    /// unless `warn` is false, for a caller that printed them when it read the file.
+    private func makeResolver(
+        _ console: Console, file: ConfigFile, environment: [String: String], warn: Bool = true
+    ) throws -> CardResolver {
+        if warn { file.warnings.forEach(console.warn) }
         let settings = try EnvironmentSettings(environment: environment)
         return CardResolver(config: file.config, environment: settings)
     }
