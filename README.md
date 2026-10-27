@@ -859,7 +859,7 @@ runs at once, and the cards still in the stack play out without it.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown; a question was answered yes, the moment it was clicked. |
-| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason but no GUI session; `drip setup` left the agent's settings alone, or could not write them; `drip pause` or `drip resume` could not write the pause; `drip dismiss` could not write its request; or `drip follow` could not start, as when another follows the machine already. |
+| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason but no GUI session; `drip setup` left the agent's settings alone, or could not write them; `drip pause` or `drip resume` could not write the pause; `drip dismiss` could not write its request; or `drip follow` could not start, as when it cannot write its state directory. |
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh; `drip hook` exits 0 then. |
 | 4 | The config file is invalid; the message names the key and line. |
