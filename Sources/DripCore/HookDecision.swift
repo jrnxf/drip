@@ -29,6 +29,13 @@ extension AgentHook {
         /// Whether the card's pane is the one its terminal shows, which `front` leaves to this when
         /// it says nil; nil when drip cannot tell.
         public var paneShowing: (Card) -> Bool?
+        /// Whether this Mac's herdr shows the machine a remote card's agent runs on, which its own
+        /// herdr says is in front whichever machine this Mac's window is on.
+        public var machineView: (Card) -> MachineView
+        /// Called with a waiting card skipped because you were watching, and when the session's
+        /// waiting record was written, so the card can come back with `resurfaced` if the agent
+        /// still waits `WhenFocused.resurfaceDelay` seconds on.
+        public var resurface: (Card, Double) -> Void
         /// Reads the config file `environment` points at. An event calls it at most once, whether for
         /// the debug log or for the card's settings.
         public var loadConfig: ([String: String]) throws -> ConfigFile
@@ -46,6 +53,8 @@ extension AgentHook {
         public init(
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
             front: @escaping (Card) -> WhenFocused.Front, paneShowing: @escaping (Card) -> Bool? = { _ in nil },
+            machineView: @escaping (Card) -> MachineView = { _ in .selected },
+            resurface: @escaping (Card, Double) -> Void = { _, _ in },
             loadConfig: @escaping ([String: String]) throws -> ConfigFile = { try ConfigLoader.load(environment: $0) },
             resolver: @escaping (ConfigFile, [String: String]) throws -> CardResolver, origin: Origin? = nil,
             showsCards: Bool = true, now: @escaping () -> Date = Date.init, process: DebugLog.Process = .hook
@@ -56,6 +65,8 @@ extension AgentHook {
             self.isInstalled = isInstalled
             self.front = front
             self.paneShowing = paneShowing
+            self.machineView = machineView
+            self.resurface = resurface
             self.loadConfig = loadConfig
             self.resolver = resolver
             self.origin = origin
@@ -199,6 +210,41 @@ extension AgentHook {
                 state.noteDone(id: id)
             }
         }
+        return decideFocus(
+            card, surroundings: surroundings, resolver: resolver, log: log, fields: eventFields, resurfacing: false, note: note)
+    }
+
+    /// The card a waiting card skipped while you were watching becomes `WhenFocused.resurfaceDelay`
+    /// seconds on, or nil: the agent moved on (a later event for the session took its waiting record
+    /// away or replaced it, whose time then differs from `noted`), or you are watching still.
+    public static func resurfaced(
+        _ card: Card, agent: Agent, noted: Double, in surroundings: Surroundings
+    ) throws -> Card? {
+        let environment = surroundings.environment
+        let config = ConfigSnapshot { try surroundings.loadConfig(environment) }
+        let log = DebugLog(
+            path: DebugLog.path(environment: environment), process: surroundings.process,
+            enabled: DebugLog.isEnabled(environment: environment) { try config.file.get() })
+        func note(_ event: String, _ decision: String, _ fields: [(String, String?)] = []) {
+            log.record(event, decision, [("agent", agent.rawValue), ("machine", surroundings.origin?.machine)] + fields)
+        }
+        let fields: [(String, String?)] = [("id", card.id.map(DebugLog.short(id:)))]
+        guard let id = card.id, surroundings.state.waiting(id: id, now: surroundings.now())?.time == noted else {
+            note("resurface", "skip", fields + [("reason", "no_longer_waiting")])
+            return nil
+        }
+        let resolver = try surroundings.resolver(try config.file.get(), environment)
+        return decideFocus(
+            card, surroundings: surroundings, resolver: resolver, log: log, fields: fields, resurfacing: true, note: note)
+    }
+
+    /// `card` as it shows given where the terminal is, or nil when you are watching. A waiting card
+    /// skipped for it is handed to `surroundings.resurface`, unless this is already its second look.
+    private static func decideFocus(
+        _ card: Card, surroundings: Surroundings, resolver: CardResolver, log: DebugLog, fields eventFields: [(String, String?)],
+        resurfacing: Bool, note: (String, String, [(String, String?)]) -> Void
+    ) -> Card? {
+        let origin = surroundings.origin
         // You may be watching the agent's terminal already. Asking about the pane costs a round trip
         // to another machine, so only when it matters: its terminal in front, and you at it. For an
         // agent there, only that machine's herdr can say whether its pane is in front; when it
@@ -221,17 +267,38 @@ extension AgentHook {
                 ]
             }
         }
+        // A remote card's pane showing on its machine is not enough: this Mac's herdr must show that
+        // machine too, or the window you watch is on Local. When it cannot say, you are not taken
+        // to be watching.
+        var machineSelected: String?
+        if origin != nil, front.pane == true {
+            switch surroundings.machineView(card) {
+            case .selected: machineSelected = "true"
+            case .notSelected:
+                machineSelected = "false"
+                front.pane = false
+            case let .unknown(reason):
+                machineSelected = "unknown: \(reason)"
+                front.pane = false
+            }
+        }
         let unknownRemote = origin != nil && front.pane == nil
         if unknownRemote { front = WhenFocused.Front(app: false, pane: false, idle: front.idle, frontmost: front.frontmost, topmostVisible: front.topmostVisible) }
         let shown = whenFocused.apply(to: card, front: front, awayAfter: resolver.awayAfter)
+        // A waiting card you were watching comes back once, if the agent still waits and you are not.
+        if shown == nil, !resurfacing, card.waits, let id = card.id,
+           let noted = surroundings.state.waiting(id: id, now: surroundings.now())?.time
+        {
+            surroundings.resurface(card, noted)
+        }
         if log.enabled {
             let reason = shown == nil ? "focused_skip" : shown != card ? "focused_quiet" : "not_focused_or_away"
-            note("card", shown == nil ? "skip" : "show", eventFields + [
+            note(resurfacing ? "resurface" : "card", shown == nil ? "skip" : "show", eventFields + [
                 ("reason", reason), ("waits", "\(card.waits)"), ("when_focused", whenFocused.rawValue),
                 ("away_after", "\(resolver.awayAfter)"), ("idle_seconds", front.idle.map { String(format: "%.1f", $0) } ?? "unknown"),
                 ("frontmost", front.frontmost ?? "unknown"), ("topmost_visible", front.topmostVisible ?? "unknown"), ("activate", card.activate), ("app_in_front", "\(front.app)"),
                 ("pane", card.pane?.debugName), ("herdr_machine", card.pane?.herdrMachine),
-                ("pane_showing", front.pane.map { "\($0)" }), ("remote_pane_unknown", unknownRemote ? "true" : nil),
+                ("pane_showing", front.pane.map { "\($0)" }), ("remote_pane_unknown", unknownRemote ? "true" : nil), ("machine_selected", machineSelected),
             ] + query)
         }
         return shown

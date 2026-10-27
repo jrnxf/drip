@@ -133,14 +133,18 @@ herdr or WezTerm the agent's own pane. The × that takes the icon's place while 
 card, or a right-click, Control-click or Option-click anywhere on it, takes the card away and brings
 nothing forward, for when it is only in the way. `drip dismiss` does the same from the keyboard.
 
-**While you watch.** When the agent's terminal is the frontmost app, or its window is the topmost one on screen (macOS keeps the app you last clicked active after you swipe to another Space), its done and stopped cards come
+**While you watch.** When one of the agent's terminal's windows is the topmost one on a screen (macOS keeps the app you last clicked active after you swipe to another Space, so the active app alone does not count), its done and stopped cards come
 without a sound and count down 1.5 seconds: you are likely watching it already. `when_focused` in
 the [config](#config), or `DRIP_WHEN_FOCUSED`, changes that: `quiet`, the default; `show`, as any
 other card; or `skip`, no card at all, not even one that needs you, but only when drip knows from
 tmux or herdr that the agent's own pane is the one in front, since several sessions often share one
 terminal app. With `quiet`, a card that needs you always shows. Either way drip takes you to be
 watching only if you used the keyboard or mouse in the last minute, or the `away_after` you set: a
-terminal left in front while you are away raises its cards as usual.
+terminal left in front while you are away raises its cards as usual. For an agent on another
+machine, the pane showing there is not enough: your herdr window must show that machine too
+(`herdr machine list` marks it `selected`), and if herdr cannot say, the card shows. A card that
+needs you and was skipped because you were watching comes back 30 seconds later, once, if the
+agent still waits and you are no longer watching.
 
 **Fewer cards.** With many sessions at once, the done cards add up. `agent_cards = "attention"`
 shows only the cards that need you, a permission, a question or an error, from every session you
@@ -505,7 +509,7 @@ or `click`. What it records, and nothing else:
 - the first 8 characters of the session id;
 - the settings that decided: `when_focused`, `away_after`, `agent_cards`, `done_after`, and `DRIP_HOOK`;
 - what drip noticed: the bundle identifier of the frontmost app and of the app a click brings
-  forward, seconds since the keyboard or mouse was last used (both on every card line, `unknown` when drip did not ask, and the frontmost `none` when no app is in front), `topmost_visible`, the terminal when its window is on top of a display, else `none`, and whether the agent's pane is in front;
+  forward, seconds since the keyboard or mouse was last used (both on every card line, `unknown` when drip did not ask, and the frontmost `none` when no app is in front), `topmost_visible`, the terminal when its window is on top of a display, else `none`, whether the agent's pane is in front, and, for a remote agent, `machine_selected`, whether your herdr window shows its machine;
 - the pane's id (`herdr:w1:p2`, `tmux:%3`), the herdr machine, the query run to ask whether it is in
   front (`herdr pane get w1:p2`, or `tmux display-message`), its answer and how long it took;
 - for a click: what drip tried to bring forward, whether macOS refused it and why, and whether

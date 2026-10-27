@@ -495,7 +495,9 @@ struct RemoteDecisionTests {
     /// What `drip hook` reads around an event on this Mac, with the terminal where `front` says.
     func local(
         _ environment: [String: String] = [:], front: @escaping (Card) -> WhenFocused.Front,
-        paneShowing: @escaping (Card) -> Bool? = { _ in nil }
+        paneShowing: @escaping (Card) -> Bool? = { _ in nil },
+        machineView: @escaping (Card) -> MachineView = { _ in .selected },
+        resurface: @escaping (Card, Double) -> Void = { _, _ in }
     ) -> AgentHook.Surroundings {
         AgentHook.Surroundings(
             environment: [
@@ -504,7 +506,7 @@ struct RemoteDecisionTests {
             ]
                 .merging(environment) { $1 },
             hasGUISession: true, isInstalled: { _ in false },
-            front: front, paneShowing: paneShowing,
+            front: front, paneShowing: paneShowing, machineView: machineView, resurface: resurface,
             resolver: { _, environment in CardResolver(config: Config(), environment: try EnvironmentSettings(environment: environment)) },
             now: { now })
     }
@@ -625,6 +627,77 @@ struct RemoteDecisionTests {
         #expect(try there(skip, pane: true, app: false)?.sound != Sound.none)
         #expect(try there(skip, pane: true, idle: 120)?.sound != Sound.none)
         #expect(asked.panes.count == count)
+    }
+
+    @Test func aRemoteCardIsOnlySkippedWhileThisMacsHerdrShowsItsMachine() throws {
+        let herdr = ["HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t2", "HERDR_WORKSPACE_ID": "w1"]
+        let skip = ["DRIP_WHEN_FOCUSED": "skip", "DRIP_DEBUG": "1"]
+        func there(_ view: MachineView) throws -> Card? {
+            try card(remote(Self.stop, environment: herdr), local(skip) { _ in
+                WhenFocused.Front(app: true, idle: 0)
+            } paneShowing: { _ in true } machineView: { _ in view })
+        }
+        // The pane shows on the machine and so does this Mac's herdr window: no card.
+        #expect(try there(.selected) == nil)
+        // The window shows Local, though the machine's pane is the one in front there: the card shows.
+        #expect(try there(.notSelected)?.sound != Sound.none)
+        // herdr cannot say: the card shows, and the log says why.
+        #expect(try there(.unknown("no answer within 3s"))?.sound != Sound.none)
+        let log = (try? String(contentsOfFile: "\(state)/drip/debug.log", encoding: .utf8)) ?? ""
+        #expect(log.contains("machine_selected=false"))
+        #expect(log.contains("machine_selected=\"unknown: no answer within 3s\"") || log.contains("machine_selected=unknown:"))
+    }
+
+    @Test func aMachineListNamesWhichSavedMachineTheWindowShows() {
+        func view(_ selected: String) -> MachineView {
+            MachineView(
+                machineList: #"[{"id":"a","label":"devbox","target":"dev","session":"default","enabled":true,\#(selected)}]"#,
+                machine: "devbox")
+        }
+        #expect(view(#""selected":true"#) == .selected)
+        #expect(view(#""selected":false"#) == .notSelected)
+        #expect(view(#""other":1"#) == .unknown("no selected field"))
+        #expect(MachineView(machineList: "[]", machine: "devbox") == .unknown("machine not in list"))
+        #expect(MachineView(machineList: "not json", machine: "devbox") == .unknown("unreadable machine list"))
+    }
+
+    @Test func aWaitingCardSkippedWhileWatchingComesBackIfTheAgentStillWaits() throws {
+        let skip = ["DRIP_WHEN_FOCUSED": "skip"]
+        var asked: [(Card, Double)] = []
+        let watching = local(skip, front: { _ in WhenFocused.Front(app: true, pane: true, idle: 0) }, resurface: { asked.append(($0, $1)) })
+        #expect(try AgentHook.card(agent: .claude, payload: Self.permission, in: watching) == nil)
+        let (card, noted) = try #require(asked.first)
+        #expect(asked.count == 1 && card.waits && card.id == "claude:s1")
+        func again(_ front: WhenFocused.Front) throws -> Card? {
+            try AgentHook.resurfaced(card, agent: .claude, noted: noted, in: local(skip, front: { _ in front }))
+        }
+        // Still watching: nothing, and no third look.
+        let stillWatching = local(skip, front: { _ in WhenFocused.Front(app: true, pane: true, idle: 0) }, resurface: { asked.append(($0, $1)) })
+        #expect(try AgentHook.resurfaced(card, agent: .claude, noted: noted, in: stillWatching) == nil)
+        #expect(asked.count == 1)
+        // Looked away, or the terminal left: it shows, with its sound.
+        #expect(try again(WhenFocused.Front(app: false, idle: 0)) == card)
+        #expect(try again(WhenFocused.Front(app: true, pane: false, idle: 0)) == card)
+        #expect(try again(WhenFocused.Front(app: true, pane: true, idle: 600)) == card)
+        // A later event for the session took the waiting card away: it never returns.
+        let ran = #"{"session_id":"s1","hook_event_name":"UserPromptSubmit"}"#
+        #expect(try AgentHook.card(agent: .claude, payload: ran, in: watching) == nil)
+        #expect(try again(WhenFocused.Front(app: false, idle: 0)) == nil)
+    }
+
+    @Test func aNewerWaitingCardIsNotReplacedByTheOlderOne() throws {
+        let skip = ["DRIP_WHEN_FOCUSED": "skip"]
+        var asked: [(Card, Double)] = []
+        let watching = local(skip, front: { _ in WhenFocused.Front(app: true, pane: true, idle: 0) }, resurface: { asked.append(($0, $1)) })
+        #expect(try AgentHook.card(agent: .claude, payload: Self.permission, in: watching) == nil)
+        let older = try #require(asked.first)
+        var later = watching
+        later.now = { self.now.addingTimeInterval(5) }
+        #expect(try AgentHook.card(agent: .claude, payload: Self.permission, in: later) == nil)
+        // The agent asked again since: the first look finds a different waiting record.
+        let away = local(skip) { _ in WhenFocused.Front(app: false, idle: 0) }
+        #expect(try AgentHook.resurfaced(older.0, agent: .claude, noted: older.1, in: away) == nil)
+        #expect(try AgentHook.resurfaced(asked[1].0, agent: .claude, noted: asked[1].1, in: away) == asked[1].0)
     }
 
     /// The panes drip asked about, in order.

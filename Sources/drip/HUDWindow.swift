@@ -227,7 +227,9 @@ struct HUDDisplay: CardDisplay {
         let target = card.pane.flatMap(Terminal.app(showing:)) ?? card.activate
         let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         let topmost = target.flatMap(topmostVisible)
-        let app = target.map { $0 == frontmost || $0 == topmost } ?? false
+        // The active app alone is not enough: after a swipe to another Space it stays active while
+        // none of its windows is in sight.
+        let app = target.map { $0 == topmost } ?? false
         // Any keyboard or mouse event, which macOS tells without the Input Monitoring permission.
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
         return WhenFocused.Front(app: app, idle: idle, frontmost: frontmost ?? "none",
@@ -253,6 +255,10 @@ struct HUDDisplay: CardDisplay {
 
     func paneShowing(_ card: Card) -> Bool? {
         card.pane.flatMap(Terminal.isShowing)
+    }
+
+    func machineView(_ card: Card) -> MachineView {
+        card.pane.map(Terminal.machineView) ?? .unknown("no pane")
     }
 
     /// Ends `NSApplication.run()`. `stop` takes effect only after the next event, so post one.

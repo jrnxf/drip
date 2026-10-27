@@ -27,6 +27,9 @@ protocol CardDisplay {
     /// Whether the card's pane is the one its terminal shows; nil when drip cannot tell.
     func paneShowing(_ card: Card) -> Bool?
 
+    /// Whether this Mac's herdr shows the machine the card's pane runs on.
+    func machineView(_ card: Card) -> MachineView
+
     /// Draws the card offscreen into a PNG file; `at` seconds into its entrance, or its exit when
     /// `leaving`.
     func render(
@@ -167,7 +170,7 @@ struct DripCLI {
             let card = try makeResolver(console).resolve(kind: event.kind, title: event.title, flags: cardFlags)
             #else
             guard let card = try AgentHook.card(
-                agent: command.agent, payload: payload, flags: flags, in: surroundings(console))
+                agent: command.agent, payload: payload, flags: flags, in: surroundings(console, resurfacing: command.agent))
             else {
                 return ExitStatus.shown
             }
@@ -210,8 +213,21 @@ struct DripCLI {
             Terminal.output(["herdr", "machine", "list", "--json"], timeout: 5)
         })
         let follower = RemoteFollower(settings: settings, handle: { event, stale in
-            let surroundings = event.surroundings(
+            var surroundings = event.surroundings(
                 self.surroundings(console), activate: activate, herdrMachine: herdrMachine, stale: stale)
+            let looked = surroundings
+            // This drip stays up, so it looks again itself.
+            surroundings.resurface = { card, noted in
+                DispatchQueue.global().asyncAfter(deadline: .now() + WhenFocused.resurfaceDelay) {
+                    do {
+                        guard let shown = try AgentHook.resurfaced(card, agent: event.agent, noted: noted, in: looked)
+                        else { return }
+                        _ = self.deliver([shown], wait: false, remind: false, console: console)
+                    } catch {
+                        console.error("\(target): a \(event.agent.rawValue) event from \(event.machine): \(error)")
+                    }
+                }
+            }
             do {
                 guard let card = try AgentHook.card(agent: event.agent, payload: event.payload, in: surroundings) else {
                     return
@@ -338,12 +354,36 @@ struct DripCLI {
         #if canImport(AppKit)
         guard let request = BackgroundDrip.readRequest() else { return ExitStatus.usage }
         let console = Console(quiet: true, background: true)
+        if let resurface = request.resurface {
+            return resurfaceSkipped(request, resurface, console: console)
+        }
         if let handOff = request.handOff { return HUDDisplay().resume(handOff, console: console) }
         return display.show(request.cards, locked: request.locked, console: console)
         #else
         return ExitStatus.noGUISession
         #endif
     }
+
+    #if canImport(AppKit)
+    /// Waits, then shows the waiting card a hook skipped because you were watching, if its agent still
+    /// waits and you are no longer watching.
+    private func resurfaceSkipped(
+        _ request: BackgroundRequest, _ resurface: BackgroundRequest.Resurface, console: Console
+    ) -> Int32 {
+        guard let card = request.cards.first, let agent = AgentHook.Agent(rawValue: resurface.agent) else {
+            return ExitStatus.usage
+        }
+        Thread.sleep(forTimeInterval: resurface.delay)
+        do {
+            guard let shown = try AgentHook.resurfaced(
+                card, agent: agent, noted: resurface.noted, in: surroundings(console))
+            else { return ExitStatus.shown }
+            return display.show(display.prepare([shown], console: console), locked: .wait(record: true), console: console)
+        } catch {
+            return report(error, console)
+        }
+    }
+    #endif
 
     /// Runs the command first, whatever happens to the card after, and exits with its code. A bad
     /// config or environment still gets reported, and the card falls back to the defaults.
@@ -468,10 +508,19 @@ struct DripCLI {
 
     #if !os(WASI)
     /// What an agent's hook reads around its event on this Mac.
-    private func surroundings(_ console: Console) -> AgentHook.Surroundings {
+    private func surroundings(_ console: Console, resurfacing agent: AgentHook.Agent? = nil) -> AgentHook.Surroundings {
         AgentHook.Surroundings(
             environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
             isInstalled: display.isInstalled, front: display.front(of:), paneShowing: display.paneShowing,
+            machineView: display.machineView(_:),
+            resurface: { card, noted in
+                #if canImport(AppKit)
+                guard let agent else { return }
+                // A background drip waits for the card; this hook returns at once.
+                _ = BackgroundDrip.start(BackgroundRequest(
+                    cards: [card], resurface: .init(agent: agent.rawValue, noted: noted)))
+                #endif
+            },
             resolver: { try makeResolver(console, file: $0, environment: $1) })
     }
     #endif
@@ -534,6 +583,10 @@ struct UnavailableDisplay: CardDisplay {
 
     func paneShowing(_ card: Card) -> Bool? {
         nil
+    }
+
+    func machineView(_ card: Card) -> MachineView {
+        .unknown("no GUI session")
     }
 
     func render(

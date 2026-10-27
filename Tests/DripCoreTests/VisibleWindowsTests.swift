@@ -29,4 +29,14 @@ import Testing
         let covered = list + [win(ghostty, pid: 10, display: 0)]
         #expect(VisibleWindows.topmost(covered, target: "com.apple.Notes", ownPID: 1) == nil)
     }
+
+    @Test func anActiveAppWithNoWindowOnTheCurrentSpaceIsNotInFront() {
+        // After a swipe to another Space the terminal stays the active app, but the window list of
+        // what is on screen holds none of its windows.
+        let list = [win("com.apple.Safari", pid: 12)]
+        #expect(VisibleWindows.topmost(list, target: ghostty, ownPID: 1) == nil)
+        let front = WhenFocused.Front(app: VisibleWindows.topmost(list, target: ghostty, ownPID: 1) != nil, pane: true, idle: 0)
+        let card = Card(preset: .ok, title: "api is done")
+        #expect(WhenFocused.skip.apply(to: card, front: front) == card)
+    }
 }

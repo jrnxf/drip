@@ -34,10 +34,36 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
     /// Set when the cards are already on screen in a stack that hands them on, to show where they
     /// are instead of dropping them in again.
     public var handOff: StackHandOff?
+    /// Set for a waiting card skipped because you were watching: the background drip waits, then
+    /// looks again and shows the card only if the agent still waits and you are not watching.
+    public var resurface: Resurface?
+
+    /// What a background drip needs to look again at a skipped waiting card.
+    public struct Resurface: Equatable, Sendable, Codable {
+        /// The agent, as `AgentHook.Agent` names it.
+        public var agent: String
+        /// When the session's waiting record was written, which a later event changes or removes.
+        public var noted: Double
+        /// Seconds to wait before looking.
+        public var delay: Double
+
+        public init(agent: String, noted: Double, delay: Double = WhenFocused.resurfaceDelay) {
+            self.agent = agent
+            self.noted = noted
+            self.delay = delay
+        }
+    }
 
     public init(cards: [Card], record: Bool = true) {
         self.cards = cards
         self.record = record
+    }
+
+    /// A request to look again at `cards`, the waiting card a hook skipped, after a delay.
+    public init(cards: [Card], resurface: Resurface) {
+        self.cards = cards
+        record = true
+        self.resurface = resurface
     }
 
     /// A request for the cards `handOff` hands on, which are recorded already.
@@ -48,7 +74,7 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case cards, record, handOff
+        case cards, record, handOff, resurface
     }
 
     /// A request from a drip that predates `record` is recorded, and one that predates `handOff`
@@ -58,6 +84,7 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
         cards = try container.decode([Card].self, forKey: .cards)
         record = try container.decodeIfPresent(Bool.self, forKey: .record) ?? true
         handOff = try container.decodeIfPresent(StackHandOff.self, forKey: .handOff)
+        resurface = try container.decodeIfPresent(Resurface.self, forKey: .resurface)
     }
 
     /// What the background drip does with the cards while the screen is locked.
