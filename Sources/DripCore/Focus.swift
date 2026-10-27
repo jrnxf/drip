@@ -34,12 +34,18 @@ public enum WhenFocused: String, CaseIterable, Sendable {
         public var idle: Double?
         /// The bundle identifier of the frontmost app, for the debug log, `none` when macOS reports no app in front; nil when drip cannot tell.
         public var frontmost: String?
+        /// The agent's terminal when one of its windows is the topmost ordinary window on a display,
+        /// even though another app is still the active one; `none` when it is not; nil when drip cannot tell.
+        public var topmostVisible: String?
 
-        public init(app: Bool, pane: Bool? = nil, idle: Double? = nil, frontmost: String? = nil) {
+        public init(
+            app: Bool, pane: Bool? = nil, idle: Double? = nil, frontmost: String? = nil, topmostVisible: String? = nil
+        ) {
             self.app = app
             self.pane = pane
             self.idle = idle
             self.frontmost = frontmost
+            self.topmostVisible = topmostVisible
         }
 
         /// Whether you are likely at the screen, having used the keyboard or mouse within `awayAfter`

@@ -62,7 +62,7 @@ extension AgentHook {
         func note(_ event: String, _ decision: String, _ fields: [(String, String?)] = []) {
             // A card decision that stopped before drip asked which app is in front says so.
             let unasked: [(String, String?)] = event == "card" && !fields.contains { $0.0 == "frontmost" }
-                ? [("idle_seconds", "unknown"), ("frontmost", "unknown")] : []
+                ? [("idle_seconds", "unknown"), ("frontmost", "unknown"), ("topmost_visible", "unknown")] : []
             log.record(event, decision, [("agent", agent.rawValue), ("machine", surroundings.origin?.machine)] + fields + unasked)
         }
         // A session nobody attends, such as `claude -p` in a pipeline, or one an orchestrator
@@ -197,14 +197,14 @@ extension AgentHook {
             }
         }
         let unknownRemote = origin != nil && front.pane == nil
-        if unknownRemote { front = WhenFocused.Front(app: false, pane: false, idle: front.idle, frontmost: front.frontmost) }
+        if unknownRemote { front = WhenFocused.Front(app: false, pane: false, idle: front.idle, frontmost: front.frontmost, topmostVisible: front.topmostVisible) }
         let shown = whenFocused.apply(to: card, front: front, awayAfter: resolver.awayAfter)
         if log.enabled {
             let reason = shown == nil ? "focused_skip" : shown != card ? "focused_quiet" : "not_focused_or_away"
             note("card", shown == nil ? "skip" : "show", eventFields + [
                 ("reason", reason), ("waits", "\(card.waits)"), ("when_focused", whenFocused.rawValue),
                 ("away_after", "\(resolver.awayAfter)"), ("idle_seconds", front.idle.map { String(format: "%.1f", $0) } ?? "unknown"),
-                ("frontmost", front.frontmost ?? "unknown"), ("activate", card.activate), ("app_in_front", "\(front.app)"),
+                ("frontmost", front.frontmost ?? "unknown"), ("topmost_visible", front.topmostVisible ?? "unknown"), ("activate", card.activate), ("app_in_front", "\(front.app)"),
                 ("pane", card.pane?.debugName), ("herdr_machine", card.pane?.herdrMachine),
                 ("pane_showing", front.pane.map { "\($0)" }), ("remote_pane_unknown", unknownRemote ? "true" : nil),
             ] + query)

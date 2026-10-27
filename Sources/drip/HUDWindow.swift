@@ -226,10 +226,29 @@ struct HUDDisplay: CardDisplay {
         // In tmux, the terminal that shows the pane now, which `prepare` makes the click's target too.
         let target = card.pane.flatMap(Terminal.app(showing:)) ?? card.activate
         let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        let app = target.map { $0 == frontmost } ?? false
+        let topmost = target.flatMap(topmostVisible)
+        let app = target.map { $0 == frontmost || $0 == topmost } ?? false
         // Any keyboard or mouse event, which macOS tells without the Input Monitoring permission.
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
-        return WhenFocused.Front(app: app, idle: idle, frontmost: frontmost ?? "none")
+        return WhenFocused.Front(app: app, idle: idle, frontmost: frontmost ?? "none",
+                                topmostVisible: topmost ?? "none")
+    }
+
+    /// `target` when one of its windows is the topmost ordinary window on a display, as the window
+    /// list tells front to back without the Screen Recording permission.
+    private func topmostVisible(_ target: String) -> String? {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]]
+        else { return nil }
+        let windows = list.compactMap { info -> VisibleWindow? in
+            guard let pid = info[kCGWindowOwnerPID as String] as? Int else { return nil }
+            let bounds = (info[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0) }
+            let display = NSScreen.screens.firstIndex { bounds.map($0.frame.intersects) ?? false } ?? 0
+            return VisibleWindow(
+                bundleIdentifier: NSRunningApplication(processIdentifier: pid_t(pid))?.bundleIdentifier, pid: Int32(pid),
+                layer: info[kCGWindowLayer as String] as? Int ?? 0, display: display)
+        }
+        return VisibleWindows.topmost(windows, target: target, ownPID: ProcessInfo.processInfo.processIdentifier)
     }
 
     func paneShowing(_ card: Card) -> Bool? {
