@@ -28,8 +28,8 @@ public enum TimedCommand {
     /// environment, prints, when it exits 0 and closes its output within `timeout` seconds; else why
     /// not. A command still going then gets SIGTERM, with the processes it started, and SIGKILL once
     /// it has closed its output, or `grace` seconds after SIGTERM at the latest, and does not answer
-    /// even when it exits 0 meanwhile. Its stdout and
-    /// stderr are read together, so one it fills never holds it up.
+    /// even when it exits 0 meanwhile. Its stdout and stderr are read together, so one it fills never
+    /// holds it up.
     public static func run(_ arguments: [String], timeout: Double, grace: Double = grace) -> Result<String, Failure> {
         var output: [Int32] = [-1, -1], errors: [Int32] = [-1, -1]
         guard pipe(&output) == 0 else { return .failure(Failure(stderr: "", reason: String(cString: strerror(errno)))) }
