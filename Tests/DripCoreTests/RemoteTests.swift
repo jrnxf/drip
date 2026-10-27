@@ -375,7 +375,7 @@ struct RemoteFollowTests {
         let mac = AgentHook.Surroundings(
             environment: environment, hasGUISession: true, isInstalled: { _ in false },
             front: { _ in WhenFocused.Front(app: false, pane: false) },
-            resolver: { CardResolver(config: Config(), environment: try EnvironmentSettings(environment: $0)) })
+            resolver: { _, environment in CardResolver(config: Config(), environment: try EnvironmentSettings(environment: environment)) })
         var cards: [Card?] = []
         let show: (RemoteEvent, Bool) -> Void = { event, stale in
             cards.append(try? AgentHook.card(
@@ -505,7 +505,7 @@ struct RemoteDecisionTests {
                 .merging(environment) { $1 },
             hasGUISession: true, isInstalled: { _ in false },
             front: front, paneShowing: paneShowing,
-            resolver: { CardResolver(config: Config(), environment: try EnvironmentSettings(environment: $0)) },
+            resolver: { _, environment in CardResolver(config: Config(), environment: try EnvironmentSettings(environment: environment)) },
             now: { now })
     }
 
@@ -567,7 +567,7 @@ struct RemoteDecisionTests {
     ) throws {
         var surroundings = local(viaConfig ? [:] : ["DRIP_AGENT_CARDS": "attention"])
         if viaConfig {
-            surroundings.resolver = { CardResolver(config: Config(agentCards: .attention), environment: try EnvironmentSettings(environment: $0)) }
+            surroundings.resolver = { _, environment in CardResolver(config: Config(agentCards: .attention), environment: try EnvironmentSettings(environment: environment)) }
         }
         let direct = try AgentHook.card(agent: .claude, payload: `case`.payload, in: surroundings)
         let viaRemote = try card(remote(`case`.payload), surroundings)
@@ -580,7 +580,7 @@ struct RemoteDecisionTests {
     /// Without a session id there is no turn start to count `done_after` from: the done card shows.
     @Test func aSessionlessDoneCardIsNotHeldBackByDoneAfter() throws {
         var surroundings = local()
-        surroundings.resolver = { CardResolver(config: Config(doneAfter: 30), environment: try EnvironmentSettings(environment: $0)) }
+        surroundings.resolver = { _, environment in CardResolver(config: Config(doneAfter: 30), environment: try EnvironmentSettings(environment: environment)) }
         #expect(try AgentHook.card(agent: .claude, payload: #"{"cwd":"/home/user/api","hook_event_name":"Stop"}"#, in: surroundings) != nil)
     }
 

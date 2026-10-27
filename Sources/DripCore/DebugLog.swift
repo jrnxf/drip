@@ -58,8 +58,14 @@ public struct DebugLog {
     /// `DRIP_DEBUG`, then the config's `debug`, then off. A setting that cannot be read counts as off:
     /// the log is not worth failing over.
     public static func isEnabled(environment: [String: String]) -> Bool {
+        isEnabled(environment: environment) { try ConfigLoader.load(environment: environment) }
+    }
+
+    /// As above, with the config file read by `loadConfig`, which is called only when `DRIP_DEBUG`
+    /// does not decide.
+    public static func isEnabled(environment: [String: String], loadConfig: () throws -> ConfigFile) -> Bool {
         if let setting = (try? EnvironmentSettings.debug(environment: environment)) ?? nil { return setting }
-        return (try? ConfigLoader.load(environment: environment))?.config.debug ?? false
+        return (try? loadConfig())?.config.debug ?? false
     }
 
     /// Adds a line, when the log is on. A field with no value is left out.

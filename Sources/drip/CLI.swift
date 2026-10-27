@@ -472,7 +472,7 @@ struct DripCLI {
         AgentHook.Surroundings(
             environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
             isInstalled: display.isInstalled, front: display.front(of:), paneShowing: display.paneShowing,
-            resolver: { try makeResolver(console, environment: $0) })
+            resolver: { try makeResolver(console, file: $0, environment: $1) })
     }
     #endif
 
@@ -480,7 +480,11 @@ struct DripCLI {
     private func makeResolver(
         _ console: Console, environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> CardResolver {
-        let file = try ConfigLoader.load(environment: environment)
+        try makeResolver(console, file: ConfigLoader.load(environment: environment), environment: environment)
+    }
+
+    /// The settings from a config file already read and the environment, printing the file's warnings.
+    private func makeResolver(_ console: Console, file: ConfigFile, environment: [String: String]) throws -> CardResolver {
         file.warnings.forEach(console.warn)
         let settings = try EnvironmentSettings(environment: environment)
         return CardResolver(config: file.config, environment: settings)
