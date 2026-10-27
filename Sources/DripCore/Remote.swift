@@ -53,7 +53,7 @@ public enum RemoteHook {
                 umask 077
                 mkdir -p "$dir" || return 1
                 event=$(mktemp "$dir/.event.XXXXXX") || return 1
-                trap 'rm -f "$event" "$event.payload"' EXIT
+                trap 'rm -f "$event" "$event.payload"; [ -z "${held-}" ] || rm -rf "$held"' EXIT
                 if [ $# -ge 2 ]; then printf '%s' "$2"; else cat; fi >"$event.payload" || return 1
                 size=$(wc -c <"$event.payload" | tr -d ' ')
                 # drip reads up to 4 MB of payload.
@@ -70,8 +70,32 @@ public enum RemoteHook {
                 if command -v flock >/dev/null 2>&1; then
                     (flock -w 2 9 && append) 9>>"$queue.lock"
                 else
-                    append
+                    # The lock is released when this subshell ends, by the trap above.
+                    lock_dir && append
                 fi
+            }
+
+            # Takes the lock where there is no flock, as on macOS and with busybox: mkdir makes the
+            # directory or fails in one step. Waits 2 seconds, like flock -w 2. A holder that died
+            # leaves its directory behind: after the wait it is taken over unless its process lives.
+            lock_dir() {
+                lockdir="$queue.lockdir"
+                tries=0
+                broke=
+                until mkdir "$lockdir" 2>/dev/null; do
+                    if sleep 0.1 2>/dev/null; then tries=$((tries + 1)); else sleep 1; tries=$((tries + 10)); fi
+                    if [ "$tries" -gt 20 ]; then
+                        [ -z "$broke" ] || return 1
+                        pid=$(cat "$lockdir/pid" 2>/dev/null)
+                        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then return 1; fi
+                        broke=1
+                        tries=0
+                        rm -rf "$lockdir"
+                    fi
+                done
+                held=$lockdir
+                echo $$ >"$lockdir/pid"
+                return 0
             }
 
             # A value as it goes in the line: letters, digits and . _ : @ - only, so it needs no quoting.
@@ -196,16 +220,26 @@ public struct RemoteEvent: Equatable, Sendable {
     }
 }
 
-/// Where `drip follow` is in the remote queue: the queue file, by its inode, and how many bytes of
-/// it it has handled. It keeps it in `<state>/follow`, so a new connection takes up after the last
-/// line handled.
+/// Where `drip follow` is in the remote queue: the queue file, by its inode and a fingerprint of its
+/// first line, and how many bytes of it it has handled. It keeps it in `<state>/follow`, so a new
+/// connection takes up after the last line handled.
 public struct FollowPosition: Codable, Equatable, Sendable {
     public var inode: String
     public var offset: Int
+    /// The fingerprint of the queue's first line, which tells a new queue from the one read before
+    /// when it takes the inode a rotated one freed. Nil until the queue has a whole line, and in a
+    /// position kept by an older drip, which the inode alone identifies.
+    public var id: String?
 
-    public init(inode: String, offset: Int) {
+    public init(inode: String, offset: Int, id: String? = nil) {
         self.inode = inode
         self.offset = offset
+        self.id = id
+    }
+
+    /// Whether `text` is a fingerprint the reader prints: digits and hyphens.
+    static func isID(_ text: some StringProtocol) -> Bool {
+        !text.isEmpty && text.allSatisfy { $0.isASCII && ($0.isNumber || $0 == "-") }
     }
 
     #if !os(WASI)
@@ -230,13 +264,15 @@ public struct FollowPosition: Codable, Equatable, Sendable {
 
 /// What `drip follow` runs on the remote machine, with `sh -s`, and how it reads what comes back.
 ///
-/// The reader starts with `#drip-follow 2`, then checks the queue every second and prints the whole
-/// lines added since it last looked, each after a `=`, so a line being written never comes out in
-/// halves, and nothing else the remote shell prints, such as a banner from its startup files, is
-/// taken for one. It says which file it reads with `#file <inode> <offset>` when it starts on one,
-/// `#missing <path>` when there is no queue to read, and prints `#` every 15 seconds when there is
-/// nothing new, so a connection gone quiet is told from one that died. When the queue has moved to
-/// `<queue>.1` it finishes that file first.
+/// The reader starts with `#drip-follow 2 <time>`, then checks the queue every second and prints the
+/// whole lines added since it last looked, each after a `=`, so a line being written never comes out
+/// in halves, and nothing else the remote shell prints, such as a banner from its startup files, is
+/// taken for one. It says which file it reads with `#file <inode> <offset> <id>` when it starts on
+/// one (`<id>` is left out until the file has a whole first line), `#missing <path>` when there is
+/// no queue to read, and prints `# <time>` every 15 seconds when there is nothing new, so a
+/// connection gone quiet is told from one that died. `<time>` is the machine's own clock, seconds
+/// since 1970, which tells `drip follow` how far it is from this Mac's; a line without it says
+/// nothing of the clock. When the queue has moved to `<queue>.1` it finishes that file first.
 public enum FollowReader {
     /// How often the reader says it is still there.
     public static let heartbeat = 15.0
@@ -248,14 +284,16 @@ public enum FollowReader {
         let queueLine = queue.map { "queue=\(ShellWord.singleQuoted($0))" }
             ?? "queue=${DRIP_QUEUE:-\(RemoteHook.defaultQueue)}"
         let inode = position.map(\.inode).flatMap { $0.allSatisfy(\.isNumber) ? $0 : nil } ?? ""
+        let id = position?.id.flatMap { FollowPosition.isID($0) ? $0 : nil } ?? ""
         return #"""
             \#(queueLine)
             inode=\#(inode)
+            fid=\#(id)
             off=\#(position?.offset ?? 0)
             started=
             missing=
             tmp=$(mktemp) || exit 1
-            trap 'rm -f "$tmp" "$tmp.lines"' EXIT
+            trap 'rm -f "$tmp" "$tmp.lines" "$tmp.id"' EXIT
             trap 'exit 0' HUP INT TERM PIPE
 
             # The file's inode and size, or nothing when it is missing.
@@ -263,6 +301,16 @@ public enum FollowReader {
                 [ -f "$1" ] || return 0
                 set -- $(ls -iln "$1")
                 echo "$1 $6"
+            }
+
+            # A fingerprint of the file's first line, nothing until it has a whole one: a new queue can
+            # take the inode a rotated one freed, which the inode alone would not tell apart.
+            fileid() {
+                [ -f "$1" ] || return 0
+                head -n 1 "$1" >"$tmp.id" 2>/dev/null || return 0
+                [ "$(wc -l <"$tmp.id" | tr -d ' ')" -eq 1 ] || return 0
+                set -- $(cksum <"$tmp.id")
+                echo "$1-$2"
             }
 
             # Prints the whole lines of the file from byte $off on, and moves $off past them.
@@ -280,7 +328,7 @@ public enum FollowReader {
                 off=$((off + n))
             }
 
-            echo '#drip-follow 2'
+            echo "#drip-follow 2 $(date +%s)"
             quiet=0
             while :; do
                 found=$(identify "$queue")
@@ -292,22 +340,40 @@ public enum FollowReader {
                     missing=
                     now=${found% *}
                     size=${found#* }
+                    id=
+                    if [ "$now" != "$inode" ] || [ -z "$started" ] || [ -z "$fid" ]; then id=$(fileid "$queue"); fi
+                    moved=
                     if [ "$now" != "$inode" ]; then
+                        moved=1
+                    elif [ -n "$id" ] && [ -n "$fid" ] && [ "$id" != "$fid" ]; then
+                        # Another file with the inode of the one read: it was rotated away and replaced.
+                        moved=1
+                    fi
+                    if [ -n "$moved" ]; then
                         if [ -z "$inode" ] && [ -z "$started" ]; then
                             # A first follow starts at the end: only what comes next.
                             off=$size
                         else
                             # The queue moved to .1 since: the rest of it first, when it is still there.
                             old=$(identify "$queue.1")
-                            if [ -n "$inode" ] && [ "${old% *}" = "$inode" ]; then emit "$queue.1"; fi
+                            oldid=$(fileid "$queue.1")
+                            if [ -n "$inode" ] && [ "${old% *}" = "$inode" ] \
+                                && { [ -z "$fid" ] || [ -z "$oldid" ] || [ "$oldid" = "$fid" ]; }; then
+                                emit "$queue.1"
+                            fi
                             off=0
                         fi
                         inode=$now
-                        echo "#file $inode $off"
+                        fid=$id
+                        echo "#file $inode $off${fid:+ $fid}"
                     elif [ "$size" -lt "$off" ]; then
                         # Cut short in place: it starts over.
                         off=0
-                        echo "#file $inode $off"
+                        echo "#file $inode $off${fid:+ $fid}"
+                    elif [ -z "$fid" ] && [ -n "$id" ]; then
+                        # The queue has a whole first line now.
+                        fid=$id
+                        echo "#file $inode $off $fid"
                     fi
                     before=$off
                     emit "$queue"
@@ -316,7 +382,7 @@ public enum FollowReader {
                 started=1
                 quiet=$((quiet + 1))
                 if [ "$quiet" -ge \#(Int(heartbeat)) ]; then
-                    echo '#' || exit 0
+                    echo "# $(date +%s)" || exit 0
                     quiet=0
                 fi
                 sleep 1
@@ -327,11 +393,11 @@ public enum FollowReader {
 
     /// What one line from the reader says.
     public enum Line: Equatable {
-        /// The reader started.
-        case hello
-        /// The reader is still there, with nothing new.
-        case heartbeat
-        /// The reader reads the queue file with this inode, from this offset.
+        /// The reader started, with the machine's clock when it said it: seconds since 1970.
+        case hello(time: Double?)
+        /// The reader is still there, with nothing new, and the machine's clock when it said it.
+        case heartbeat(time: Double?)
+        /// The reader reads the queue file with this inode and first line, from this offset.
         case file(FollowPosition)
         /// There is no queue at this path on the machine.
         case missing(String)
@@ -399,7 +465,11 @@ public enum FollowReader {
         private mutating func line(_ bytes: [UInt8]) -> Line {
             let text = String(decoding: bytes, as: UTF8.self)
             guard started else {
-                if text == "#drip-follow 2" { started = true; return .hello }
+                if text == "#drip-follow 2" { started = true; return .hello(time: nil) }
+                if text.hasPrefix("#drip-follow 2 ") {
+                    started = true
+                    return .hello(time: Self.clock(text.dropFirst(15)))
+                }
                 return .noise(text)
             }
             guard bytes.first == Self.queued else { return control(text) }
@@ -418,14 +488,22 @@ public enum FollowReader {
         }
 
         private mutating func control(_ text: String) -> Line {
-            if text == "#" { return .heartbeat }
+            if text == "#" { return .heartbeat(time: nil) }
+            if text.hasPrefix("# ") { return .heartbeat(time: Self.clock(text.dropFirst(2))) }
             if text.hasPrefix("#missing ") { return .missing(String(text.dropFirst(9))) }
             let words = text.split(separator: " ")
-            if words.first == "#file", words.count == 3, words[1].allSatisfy(\.isNumber), let offset = Int(words[2]) {
-                position = FollowPosition(inode: String(words[1]), offset: offset)
-                return .file(FollowPosition(inode: String(words[1]), offset: offset))
+            if words.first == "#file", words.count == 3 || words.count == 4, words[1].allSatisfy(\.isNumber),
+               let offset = Int(words[2]), words.count == 3 || FollowPosition.isID(words[3]) {
+                let file = FollowPosition(inode: String(words[1]), offset: offset, id: words.count == 4 ? String(words[3]) : nil)
+                position = file
+                return .file(file)
             }
             return .noise(text)
+        }
+
+        /// The machine's clock in a line of the reader; nil for none, or something else.
+        private static func clock(_ text: Substring) -> Double? {
+            text.allSatisfy { $0.isASCII && $0.isNumber } ? Double(text) : nil
         }
     }
 }

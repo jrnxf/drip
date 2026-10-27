@@ -28,8 +28,7 @@ public enum ExitStatus {
     public static let pauseFailed: Int32 = 1
     /// `drip dismiss` could not write its request to the state directory.
     public static let dismissFailed: Int32 = 1
-    /// `drip follow` could not start: another one follows the machine already, or the state
-    /// directory cannot be written.
+    /// `drip follow` could not start: the state directory cannot be written.
     public static let followFailed: Int32 = 1
 
     /// What a drip that waited for its cards exits with: 5 when a card with a button went without a

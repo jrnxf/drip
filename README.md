@@ -380,8 +380,9 @@ or `~/.local/state/drip/remote.jsonl`, or `$DRIP_QUEUE` when set there: the hook
 agent, the machine's name (`$DRIP_MACHINE`, or `uname -n`, in letters, digits, `.`, `_` and `-`,
 starting with a letter or digit), the time, and the session's `DRIP_HOOK`,
 Claude Code's attendance variables, and herdr's `HERDR_PANE_ID`, `HERDR_TAB_ID` and
-`HERDR_WORKSPACE_ID`. The hook takes a lock with `flock` when the machine has it, so lines from
-sessions at once never mix, and once the queue passes 8 MB it moves it to `remote.jsonl.1`,
+`HERDR_WORKSPACE_ID`. The hook takes a lock, with `flock` when the machine has it and else with a
+`remote.jsonl.lockdir` directory, so lines from sessions at once never mix, and once the queue
+passes 8 MB it moves it to `remote.jsonl.1`,
 replacing the one before: the two never take much more than 16 MB. The file is readable only by
 you. The hook prints nothing and always exits 0, so it never fails or holds up a turn, even when
 it cannot write the queue. `drip follow --queue <path>` reads another path.
@@ -398,8 +399,17 @@ handled: it keeps its place in `$XDG_STATE_HOME/drip/follow` on the Mac, so a ne
 replays nothing it showed. The first time, it starts at the end of the queue. An event older than
 5 minutes when it arrives, as one queued while the Mac slept, shows no card rather than one in a
 burst of others, but still takes away the card its session waits on, as after you answered on the
-machine: `--max-age 30m` sets another limit. Age is from the machine's clock, so keep both
-clocks set by the network. One `drip follow` per machine runs at a time.
+machine: `--max-age 30m` sets another limit. Age is by the machine's own clock: its reader tells
+`drip follow` the time there when it connects and every 15 seconds, so a clock that runs behind or
+ahead of the Mac's, as in a VM or WSL2, hides no stale events and none that are new, and `drip follow`
+says so in its log when it is a minute or more off. It reads the config once, when it starts, and
+says its warnings once: restart it after you edit the config.
+
+One `drip follow` per machine runs at a time, counted by the name you give it: `drip follow devbox`
+and `drip follow me@devbox`, or an ssh alias for the same machine, are two machines to drip, and
+run together show every card twice, each with its sound. Follow a machine by one name. A second
+`drip follow` of the same name waits, and says so in its log, until the first ends and then
+takes over, so a launchd agent started at login while another is running does not restart in a loop.
 
 **Its cards.** A card from the machine names it, as in `api on devbox is done`, and its id is
 `<agent>:<session>@<machine>`, so it never replaces a card of a session on the Mac. When the agent

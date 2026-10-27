@@ -82,18 +82,43 @@ struct RemoteEventTests {
         var stream = FollowReader.Stream(position: nil)
         let line = Self.line + "\n"
         var lines = stream.read(Array("#drip-follow 2\n#file 42 100\n=".utf8) + Array(line.utf8.prefix(10)))
-        #expect(lines.map(\.0) == [.hello, .file(FollowPosition(inode: "42", offset: 100))])
+        #expect(lines.map(\.0) == [.hello(time: nil), .file(FollowPosition(inode: "42", offset: 100))])
         // Half a line waits for the rest.
         lines = stream.read(Array(line.utf8.dropFirst(10)) + Array("#\n=not json\n#missing /home/user/q.jsonl\n".utf8))
         #expect(lines.count == 4)
         guard case .event(.success)? = lines.first?.0 else { Issue.record("\(lines)"); return }
         // The place moves by the queue's own line, not the `=` before it.
         #expect(lines[0].1 == FollowPosition(inode: "42", offset: 100 + line.utf8.count))
-        #expect(lines[1].0 == .heartbeat)
+        #expect(lines[1].0 == .heartbeat(time: nil))
         // A line that is no event still moves the place past it.
         #expect(lines[2].0 == .event(.failure(UsageError("not a JSON object"))))
         #expect(lines[3].0 == .missing("/home/user/q.jsonl"))
         #expect(stream.position == FollowPosition(inode: "42", offset: 100 + line.utf8.count + 9))
+    }
+
+    @Test func theReaderSaysItsClockWithHelloAndHeartbeat() {
+        var stream = FollowReader.Stream(position: nil)
+        let lines = stream.read(Array("#drip-follow 2 1800000000\n#\n# 1800000015\n# soon\n#drip-follow 2 soon\n".utf8))
+        // A line without a time, or with something else for one, says nothing of the clock.
+        #expect(lines.map(\.0) == [
+            .hello(time: 1_800_000_000), .heartbeat(time: nil), .heartbeat(time: 1_800_000_015), .heartbeat(time: nil),
+            .noise("#drip-follow 2 soon"),
+        ])
+        var older = FollowReader.Stream(position: nil)
+        #expect(older.read(Array("#drip-follow 2 soon\n".utf8)).map(\.0) == [.hello(time: nil)])
+    }
+
+    @Test func thePlaceKeepsTheFilesFirstLineWithItsInode() throws {
+        var stream = FollowReader.Stream(position: nil)
+        let lines = stream.read(Array("#drip-follow 2\n#file 42 100 3245-210\n#file 43 0\n#file 44 0 x1\n#file 45 0 1-2 3\n".utf8))
+        #expect(lines.map(\.0) == [
+            .hello(time: nil), .file(FollowPosition(inode: "42", offset: 100, id: "3245-210")),
+            .file(FollowPosition(inode: "43", offset: 0)), .noise("#file 44 0 x1"), .noise("#file 45 0 1-2 3"),
+        ])
+        #expect(stream.position == FollowPosition(inode: "43", offset: 0))
+        // A position kept by a drip that did not know the id still reads, and has none.
+        let old = try JSONDecoder().decode(FollowPosition.self, from: Data(#"{"inode":"42","offset":7}"#.utf8))
+        #expect(old == FollowPosition(inode: "42", offset: 7, id: nil))
     }
 
     @Test func whatTheRemoteShellPrintsNeverMovesThePlace() throws {
@@ -102,7 +127,7 @@ struct RemoteEventTests {
         // like the reader's own lines; then stray output while it runs.
         let lines = stream.read(Array("Welcome to devbox\n#file 7 900\n=\(Self.line)\n#drip-follow 2\nstray output\n#later\n".utf8))
         #expect(lines.map(\.0) == [
-            .noise("Welcome to devbox"), .noise("#file 7 900"), .noise("=\(Self.line)"), .hello, .noise("stray output"),
+            .noise("Welcome to devbox"), .noise("#file 7 900"), .noise("=\(Self.line)"), .hello(time: nil), .noise("stray output"),
             .noise("#later"),
         ])
         #expect(stream.position == FollowPosition(inode: "42", offset: 0))
@@ -191,13 +216,31 @@ struct RemoteFollowTests {
         environment = ["HOME": root, "XDG_STATE_HOME": "\(root)/mac", "XDG_CONFIG_HOME": "\(root)/mac-config"]
         try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
         try RemoteHook.script.write(toFile: "\(root)/drip-remote-hook", atomically: false, encoding: .utf8)
-        // ssh's options, then `--`, the target, and the command, which runs here.
+        // The remote machine's clock: what `date +%s` prints there is whatever `remote-now` holds.
+        try FileManager.default.createDirectory(atPath: "\(root)/clock", withIntermediateDirectories: true)
+        try write(script: "clock/date", """
+            #!/bin/sh
+            # The reader asks once, as it starts: that it is up is noted.
+            if [ "$1" = "+%s" ]; then : >"\(root)/reader-up"; fi
+            if [ "$1" = "+%s" ] && [ -s "\(root)/remote-now" ]; then cat "\(root)/remote-now"; else exec /bin/date "$@"; fi
+            """)
+        // ssh's options, then `--`, the target, and the command, which runs here, on that clock.
         try write(script: "ssh", """
             #!/bin/sh
             while [ "$1" != "--" ]; do shift; done
             shift 2
+            PATH="\(root)/clock:$PATH"
+            export PATH
             exec "$@"
             """)
+        // The tools the hook runs and no flock, as on macOS and with busybox.
+        try FileManager.default.createDirectory(atPath: "\(root)/noflock", withIntermediateDirectories: true)
+        for tool in ["dirname", "mkdir", "mktemp", "wc", "tr", "sed", "cut", "uname", "date", "ls", "cat", "mv", "rm", "sleep", "kill"] {
+            guard let path = ["/usr/bin", "/bin"].map({ "\($0)/\(tool)" }).first(where: FileManager.default.isExecutableFile) else {
+                continue
+            }
+            try FileManager.default.createSymbolicLink(atPath: "\(root)/noflock/\(tool)", withDestinationPath: path)
+        }
         // Prints a banner, as a shell's startup files can, before the command runs.
         try write(script: "banner-ssh", """
             #!/bin/sh
@@ -238,6 +281,9 @@ struct RemoteFollowTests {
         return process.terminationStatus
     }
 
+    /// The PATH of a machine with no flock.
+    var noFlock: [String: String] { ["PATH": "\(root)/noflock"] }
+
     func queueLines(_ path: String? = nil) -> [String] {
         ((try? String(contentsOfFile: path ?? queue, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
     }
@@ -265,9 +311,13 @@ struct RemoteFollowTests {
     /// enough to show, of the stale ones, and the pauses before each reconnection. `handle` sees
     /// every event too.
     func follow(
-        count: Int, ssh: String = "ssh", now: Date = Date(), handle: ((RemoteEvent, Bool) -> Void)? = nil,
-        log: ((String) -> Void)? = nil, whileFollowing: (() throws -> Void)? = nil
+        count: Int, ssh: String = "ssh", now: Date = Date(), remoteNow: String? = nil,
+        handle: ((RemoteEvent, Bool) -> Void)? = nil, log: ((String) -> Void)? = nil,
+        whileFollowing: (() throws -> Void)? = nil
     ) throws -> (sessions: [String], stale: [String], delays: [Double]) {
+        // The machine's clock is this Mac's, unless the test says otherwise.
+        try (remoteNow ?? String(Int(now.timeIntervalSince1970))).write(toFile: "\(root)/remote-now", atomically: false, encoding: .utf8)
+        try? FileManager.default.removeItem(atPath: "\(root)/reader-up")
         var sessions: [String] = []
         var stale: [String] = []
         var delays: [Double] = []
@@ -286,7 +336,15 @@ struct RemoteFollowTests {
         // Never longer than this, whatever happens.
         DispatchQueue.global().asyncAfter(deadline: .now() + 20) { follower.stop() }
         if let whileFollowing {
-            DispatchQueue.global().asyncAfter(deadline: .now() + 2) { try? whileFollowing() }
+            // Once the reader is up and has looked at the queue, however long a busy machine takes.
+            DispatchQueue.global().async {
+                let deadline = Date().addingTimeInterval(15)
+                while !FileManager.default.fileExists(atPath: "\(root)/reader-up"), Date() < deadline {
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+                Thread.sleep(forTimeInterval: 1.5)
+                try? whileFollowing()
+            }
         }
         try follower.run()
         return (sessions, stale, delays)
@@ -423,7 +481,9 @@ struct RemoteFollowTests {
         try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
         var logs: [String] = []
         #expect(try follow(count: 1, ssh: "banner-ssh", now: now, log: { logs.append($0) }).sessions == ["s1"])
-        #expect(FollowPosition.load(from: positionPath) == FollowPosition(inode: try inode(queue), offset: line.utf8.count + 1))
+        // The place is kept with the first line's fingerprint, which the reader learned on the way.
+        let place = try #require(FollowPosition.load(from: positionPath))
+        #expect(place.inode == (try inode(queue)) && place.offset == line.utf8.count + 1 && place.id != nil)
         #expect(logs == ["ignored what devbox's shell printed: Welcome to devbox"])
         // The next connection takes up after the event, banner and all.
         try append([Self.line(session: "s2", time: now.timeIntervalSince1970)])
@@ -471,15 +531,183 @@ struct RemoteFollowTests {
         #expect(handled.last.map { $0.timeIntervalSince(started) < 0.5 + TimedCommand.grace + 1 } == true)
     }
 
-    @Test func oneFollowerPerMachine() throws {
+    @Test func aClockBehindThisMacsAgesEventsByItsOwnTime() throws {
+        // The machine's clock is 2 hours behind this Mac's: its events are still the age it says.
+        let remote = 1_800_000_000.0
+        let now = Date(timeIntervalSince1970: remote + 7200)
+        try append([
+            Self.line(session: "old", time: remote - FollowCommand.defaultMaxAge - 1),
+            Self.line(session: "recent", time: remote - FollowCommand.defaultMaxAge + 1),
+            Self.line(session: "ahead", time: remote + 100),
+        ])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        var logs: [String] = []
+        var times: [String: Double] = [:]
+        let result = try follow(count: 3, now: now, remoteNow: String(Int(remote)), handle: { event, _ in
+            times[(try? JSONValue(parsing: event.payload))?["session_id"]?.string ?? "?"] = event.time
+        }, log: { logs.append($0) })
+        #expect(result.sessions == ["recent", "ahead"])
+        #expect(result.stale == ["old"])
+        // Handed on at the time it happened on this Mac's clock.
+        #expect(times["recent"] == remote - FollowCommand.defaultMaxAge + 1 + 7200)
+        #expect(logs.first == "devbox's clock is 2h behind this Mac's: its events are aged by its own clock")
+    }
+
+    @Test func aClockAheadOfThisMacsDoesNotHideStaleEvents() throws {
+        // 1 hour ahead: an event 6 minutes old reads as 54 minutes in the future by the Mac's clock.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let remote = now.timeIntervalSince1970 + 3600
+        try append([
+            Self.line(session: "old", time: remote - 360),
+            Self.line(session: "recent", time: remote - 240),
+        ])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        var logs: [String] = []
+        let result = try follow(count: 2, now: now, remoteNow: String(Int(remote)), log: { logs.append($0) })
+        #expect(result.sessions == ["recent"])
+        #expect(result.stale == ["old"])
+        #expect(logs.first == "devbox's clock is 1h ahead of this Mac's: its events are aged by its own clock")
+    }
+
+    @Test func aReaderWithoutAClockCorrectsNothing() throws {
+        // `date +%s` prints no number there: the events are aged by this Mac's clock, as before.
+        let remote = 1_800_000_000.0
+        let now = Date(timeIntervalSince1970: remote + 7200)
+        try append([Self.line(session: "behind", time: remote), Self.line(session: "now", time: remote + 7200)])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        let result = try follow(count: 2, now: now, remoteNow: "unknown")
+        #expect(result.sessions == ["now"])
+        #expect(result.stale == ["behind"])
+    }
+
+    @Test func aQueueThatTookTheInodeOfAnotherIsReadFromItsStart() throws {
+        let now = Date()
+        try append([Self.line(session: "old1", time: now.timeIntervalSince1970)])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        #expect(try follow(count: 1, now: now).sessions == ["old1"])
+        let place = try #require(FollowPosition.load(from: positionPath))
+        #expect(place.id != nil)
+        // Rotated away twice while the Mac was off, and the third queue took the first one's inode:
+        // here, the same file written over, with lines as long as the one read, so the offset is
+        // a line's end in it too.
+        let handle = try #require(FileHandle(forWritingAtPath: queue))
+        try handle.truncate(atOffset: 0)
+        try handle.close()
+        try append((1...3).map { Self.line(session: "new\($0)", time: now.timeIntervalSince1970) })
+        #expect(try inode(queue) == place.inode)
+        #expect(place.offset < (try FileManager.default.attributesOfItem(atPath: queue)[.size] as? Int ?? 0))
+        #expect(try follow(count: 3, now: now).sessions == ["new1", "new2", "new3"])
+        // The same file read again resumes where it was, with its id.
+        try append([Self.line(session: "new4", time: now.timeIntervalSince1970)])
+        #expect(try follow(count: 1, now: now).sessions == ["new4"])
+    }
+
+    @Test func aPlaceKeptBeforeFilesHadIDsStillResumes() throws {
+        let now = Date()
+        let first = Self.line(session: "s1", time: now.timeIntervalSince1970)
+        try append([first, Self.line(session: "s2", time: now.timeIntervalSince1970)])
+        // No id: the inode alone says it is the same file, and the id is learned for next time.
+        try FollowPosition(inode: inode(queue), offset: first.utf8.count + 1).save(to: positionPath)
+        #expect(try follow(count: 1, now: now).sessions == ["s2"])
+        #expect(FollowPosition.load(from: positionPath)?.id != nil)
+    }
+
+    @Test func aFirstLineStillBeingWrittenGetsItsIDWhenItIsDone() throws {
+        let now = Date()
+        let line = Self.line(session: "s1", time: now.timeIntervalSince1970)
+        // A queue whose first line has no end yet has no id, and none is saved with its place.
+        try FileManager.default.createDirectory(atPath: (queue as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        try String(line.prefix(20)).write(toFile: queue, atomically: false, encoding: .utf8)
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        let result = try follow(count: 1, now: now, whileFollowing: {
+            let handle = try #require(FileHandle(forWritingAtPath: queue))
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data((line.dropFirst(20) + "\n").utf8))
+            try handle.close()
+        })
+        #expect(result.sessions == ["s1"])
+        #expect(FollowPosition.load(from: positionPath)?.id != nil)
+    }
+
+    @Test func withoutFlockTheHookLocksWithMkdir() throws {
+        #expect(!FileManager.default.fileExists(atPath: "\(root)/noflock/flock"))
+        #expect(try hook(["codex"], stdin: #"{"hook_event_name":"Stop","session_id":"s1"}"#, environment: noFlock) == 0)
+        #expect(queueLines().count == 1)
+        // Nothing left behind but the queue.
+        let left = try FileManager.default.contentsOfDirectory(atPath: (queue as NSString).deletingLastPathComponent)
+        #expect(left == ["remote.jsonl"])
+    }
+
+    @Test func withoutFlockBigEventsFromSessionsAtOnceStayWhole() throws {
+        // GNU cat writes 128 KiB at a time: a line this big is several writes.
+        let filler = String(repeating: "x", count: 600_000)
+        DispatchQueue.concurrentPerform(iterations: 4) { index in
+            _ = try? hook(["codex"], stdin: #"{"hook_event_name":"UserPromptSubmit","session_id":"s\#(index)","prompt":"\#(filler)"}"#, environment: noFlock)
+        }
+        let events = try queueLines().map { try RemoteEvent(line: $0) }
+        #expect(events.count == 4)
+        #expect(Set(events.compactMap { (try? JSONValue(parsing: $0.payload))?["session_id"]?.string }) == ["s0", "s1", "s2", "s3"])
+    }
+
+    @Test func withoutFlockTwoHooksNeverRotateTheQueueTwice() throws {
+        try append([String(repeating: "x", count: RemoteHook.rotateSize)])
+        DispatchQueue.concurrentPerform(iterations: 6) { index in
+            _ = try? hook(["codex"], stdin: #"{"hook_event_name":"Stop","session_id":"s\#(index)"}"#, environment: noFlock)
+        }
+        // The queue moved aside once: the second hook found a small queue, and left the unread one alone.
+        let aside = queueLines(queue + ".1")
+        #expect(aside.count == 1 && aside[0].utf8.count == RemoteHook.rotateSize)
+        let events = try queueLines().map { try RemoteEvent(line: $0) }
+        #expect(events.count == 6)
+    }
+
+    @Test func withoutFlockALockLeftByADeadHookIsTakenOver() throws {
+        let gone = Process()
+        gone.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try gone.run()
+        gone.waitUntilExit()
+        try FileManager.default.createDirectory(atPath: queue + ".lockdir", withIntermediateDirectories: true)
+        try "\(gone.processIdentifier)\n".write(toFile: queue + ".lockdir/pid", atomically: false, encoding: .utf8)
+        #expect(try hook(["codex"], stdin: #"{"hook_event_name":"Stop","session_id":"s1"}"#, environment: noFlock) == 0)
+        #expect(queueLines().count == 1)
+        #expect(!FileManager.default.fileExists(atPath: queue + ".lockdir"))
+        // A lock whose hook never wrote its pid is no one's either.
+        try FileManager.default.createDirectory(atPath: queue + ".lockdir", withIntermediateDirectories: true)
+        #expect(try hook(["codex"], stdin: #"{"hook_event_name":"Stop","session_id":"s2"}"#, environment: noFlock) == 0)
+        #expect(queueLines().count == 2)
+    }
+
+    @Test func withoutFlockALockAHookLiveHoldsIsLeftAlone() throws {
+        try FileManager.default.createDirectory(atPath: queue + ".lockdir", withIntermediateDirectories: true)
+        try "\(ProcessInfo.processInfo.processIdentifier)\n".write(toFile: queue + ".lockdir/pid", atomically: false, encoding: .utf8)
+        // After the 2 seconds it waits, it gives up without the event, and without failing the turn.
+        #expect(try hook(["codex"], stdin: #"{"hook_event_name":"Stop","session_id":"s1"}"#, environment: noFlock) == 0)
+        #expect(queueLines().isEmpty)
+        #expect(FileManager.default.fileExists(atPath: queue + ".lockdir/pid"))
+    }
+
+    @Test func aSecondFollowerWaitsForTheFirstAndTakesOver() throws {
         let now = Date()
         try append([Self.line(session: "s1", time: now.timeIntervalSince1970)])
         try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        try String(Int(now.timeIntervalSince1970)).write(toFile: "\(root)/remote-now", atomically: false, encoding: .utf8)
         let settings = RemoteFollower.Settings(target: "devbox", queue: queue, ssh: ["\(root)/ssh"], positionPath: positionPath)
         // The first holds the lock once it hands on an event: it takes the lock before it connects.
         let following = DispatchSemaphore(value: 0)
         let first = RemoteFollower(settings: settings, handle: { _, _ in following.signal() }, log: { _ in })
-        let second = RemoteFollower(settings: settings, handle: { _, _ in }, log: { _ in })
+        first.now = { now }
+        let waiting = DispatchSemaphore(value: 0)
+        let took = DispatchSemaphore(value: 0)
+        var logs: [String] = []
+        var sessions: [String] = []
+        let second = RemoteFollower(settings: settings, handle: { event, _ in
+            sessions.append((try? JSONValue(parsing: event.payload))?["session_id"]?.string ?? "?")
+            took.signal()
+        }, log: { line in
+            logs.append(line)
+            if line.contains("waiting") { waiting.signal() }
+        })
+        second.now = { now }
         // Never longer than this, whatever happens.
         DispatchQueue.global().asyncAfter(deadline: .now() + 20) {
             first.stop()
@@ -487,7 +715,57 @@ struct RemoteFollowTests {
         }
         DispatchQueue.global().async { try? first.run() }
         #expect(following.wait(timeout: .now() + 20) == .success)
-        #expect(throws: StateError.self) { try second.run(connections: 1) }
+        // It does not end, as it would to be started again by launchd, but says it waits, once.
+        var ended = false
+        let finished = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            try? second.run()
+            ended = true
+            finished.signal()
+        }
+        #expect(waiting.wait(timeout: .now() + 20) == .success)
+        Thread.sleep(forTimeInterval: 2 * RemoteFollower.lockPoll)
+        #expect(!ended)
+        #expect(logs == ["another drip follow follows devbox already; waiting for it to end"])
+        // The first ends: the second follows on from where it was.
+        first.stop()
+        try append([Self.line(session: "s2", time: now.timeIntervalSince1970)])
+        #expect(took.wait(timeout: .now() + 20) == .success)
+        #expect(sessions == ["s2"])
+        second.stop()
+        #expect(finished.wait(timeout: .now() + 20) == .success)
+    }
+
+    @Test func aFollowerStoppedWhileWaitingEndsWithoutFollowing() throws {
+        let now = Date()
+        try append([Self.line(session: "s1", time: now.timeIntervalSince1970)])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        try String(Int(now.timeIntervalSince1970)).write(toFile: "\(root)/remote-now", atomically: false, encoding: .utf8)
+        let settings = RemoteFollower.Settings(target: "devbox", queue: queue, ssh: ["\(root)/ssh"], positionPath: positionPath)
+        let following = DispatchSemaphore(value: 0)
+        let first = RemoteFollower(settings: settings, handle: { _, _ in following.signal() }, log: { _ in })
+        first.now = { now }
+        let waiting = DispatchSemaphore(value: 0)
+        var connected = false
+        let second = RemoteFollower(settings: settings, handle: { _, _ in connected = true }, log: { line in
+            if line.contains("waiting") { waiting.signal() }
+        })
+        // Never longer than this, whatever happens.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 20) {
+            first.stop()
+            second.stop()
+        }
+        DispatchQueue.global().async { try? first.run() }
+        #expect(following.wait(timeout: .now() + 20) == .success)
+        let finished = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            #expect(throws: Never.self) { try second.run() }
+            finished.signal()
+        }
+        #expect(waiting.wait(timeout: .now() + 20) == .success)
+        second.stop()
+        #expect(finished.wait(timeout: .now() + 20) == .success)
+        #expect(!connected)
         first.stop()
     }
 
@@ -771,6 +1049,37 @@ struct RemoteDecisionTests {
         // A folder of the same name on this Mac is not one of them.
         let here = #"{"session_id":"s3","cwd":"/Users/me/api","hook_event_name":"Stop"}"#
         #expect(try AgentHook.card(agent: .claude, payload: here, in: local())?.title == "api is done")
+    }
+}
+
+struct ConfigOnceTests {
+    @Test func theConfigIsReadAndItsWarningsSaidOnceForAllEvents() throws {
+        var reads = 0
+        var warnings: [String] = []
+        let config = ConfigOnce(
+            read: { _ in reads += 1; return ConfigFile(config: Config(), warnings: ["config.toml:2: unknown key 'colour'"]) },
+            warn: { warnings.append($0) })
+        for _ in 1...5 { _ = try config.load(environment: [:]) }
+        #expect(reads == 1)
+        #expect(warnings == ["config.toml:2: unknown key 'colour'"])
+    }
+
+    @Test func aConfigThatFailsIsReadAgainWithTheNextEvent() throws {
+        var reads = 0
+        var warnings: [String] = []
+        let config = ConfigOnce(
+            read: { _ in
+                reads += 1
+                if reads == 1 { throw ConfigError(path: "config.toml", line: 1, key: nil, message: "not TOML") }
+                return ConfigFile(config: Config(), warnings: ["config.toml:2: unknown key 'colour'"])
+            },
+            warn: { warnings.append($0) })
+        #expect(throws: ConfigError.self) { try config.load(environment: [:]) }
+        #expect(warnings.isEmpty)
+        _ = try config.load(environment: [:])
+        _ = try config.load(environment: [:])
+        #expect(reads == 2)
+        #expect(warnings.count == 1)
     }
 }
 

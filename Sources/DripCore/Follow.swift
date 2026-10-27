@@ -58,6 +58,9 @@ public final class RemoteFollower {
     /// One second, doubling to a minute.
     public static let delays: [Double] = [1, 2, 4, 8, 16, 32, 60]
 
+    /// The difference between the machine's clock and this Mac's, in seconds, that the log mentions.
+    static let skewWorthSaying = 60.0
+
     /// How long a connection must have lasted for the next one to start over from the shortest pause.
     public static let steadyAfter = 30.0
 
@@ -93,10 +96,15 @@ public final class RemoteFollower {
         settings.ssh + Self.sshOptions + ["--", settings.target, "sh", "-s"]
     }
 
-    /// Follows the machine until `stop()`, or for `connections` connections when given. Throws a
-    /// `StateError` when another `drip follow` follows the same machine.
+    /// How often a `drip follow` waiting for the machine checks whether the one following it ended.
+    public static let lockPoll = 0.5
+
+    /// Follows the machine until `stop()`, or for `connections` connections when given. While
+    /// another `drip follow` follows the same machine it waits, saying so once, and takes over
+    /// when that one ends: launchd starts a follower at login whatever else runs, and a follower
+    /// that exits instead is started again in a loop.
     public func run(connections: Int? = nil) throws {
-        let lock = try FollowLock(path: settings.positionPath + ".lock")
+        guard let lock = try acquireLock() else { return }
         defer { lock.release() }
         var attempt = 0
         var count = 0
@@ -113,6 +121,21 @@ public final class RemoteFollower {
             log("lost \(settings.target); reconnecting in \(Int(delay))s")
             sleep(delay)
         }
+    }
+
+    /// The lock that makes this the only follower of the machine, once the one holding it lets go;
+    /// nil when stopped first.
+    private func acquireLock() throws -> FollowLock? {
+        var told = false
+        while !stopped {
+            if let lock = try FollowLock(path: settings.positionPath + ".lock") { return lock }
+            if !told {
+                log("another drip follow follows \(settings.target) already; waiting for it to end")
+                told = true
+            }
+            Thread.sleep(forTimeInterval: Self.lockPoll)
+        }
+        return nil
     }
 
     /// Ends `run`, from `handle` or another thread.
@@ -153,6 +176,9 @@ public final class RemoteFollower {
         var connected = false
         var noisy = false
         var stale = 0
+        // How far the machine's clock is ahead of this Mac's, from the reader's latest word of it;
+        // none, when it gives no time, as when it cannot print one.
+        var skew = 0.0
         var heard = now()
         let descriptor = output.fileHandleForReading.fileDescriptor
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
@@ -173,10 +199,18 @@ public final class RemoteFollower {
             heard = now()
             for (line, after) in stream.read(Array(buffer[0..<count])) {
                 switch line {
-                case .hello:
+                case let .hello(time):
                     connected = true
                     if reported { log("following \(settings.target) again") }
-                case .heartbeat:
+                    if let time {
+                        skew = time - now().timeIntervalSince1970
+                        if abs(skew) >= Self.skewWorthSaying {
+                            log("\(settings.target)'s clock is \(Self.describe(abs(skew))) \(skew < 0 ? "behind" : "ahead of") this Mac's: "
+                                + "its events are aged by its own clock")
+                        }
+                    }
+                case let .heartbeat(time):
+                    if let time { skew = time - now().timeIntervalSince1970 }
                     if stale > 0 {
                         log(dropped(stale))
                         stale = 0
@@ -199,7 +233,10 @@ public final class RemoteFollower {
                         log("ignored what \(settings.target)'s shell printed: \(text.prefix(200))")
                         noisy = true
                     }
-                case let .event(.success(event)):
+                case var .event(.success(event)):
+                    // On this Mac's timeline, so a clock set wrong there neither makes every event
+                    // stale nor later than it is; the age is the same on either.
+                    event.time -= skew
                     let tooOld = event.age(now: now().timeIntervalSince1970) > settings.maxAge
                     if tooOld { stale += 1 }
                     handle(event, tooOld)
@@ -244,20 +281,46 @@ public final class RemoteFollower {
     }
 }
 
+/// The config file `drip follow` reads: once, for all its events, with its warnings said once. A
+/// file that fails to read is tried again with the next event, so fixing it needs no restart.
+public final class ConfigOnce {
+    private let read: ([String: String]) throws -> ConfigFile
+    private let warn: (String) -> Void
+    private var file: ConfigFile?
+
+    public init(read: @escaping ([String: String]) throws -> ConfigFile, warn: @escaping (String) -> Void) {
+        self.read = read
+        self.warn = warn
+    }
+
+    /// The file, read on the first call that succeeds.
+    public func load(environment: [String: String]) throws -> ConfigFile {
+        if let file { return file }
+        let loaded = try read(environment)
+        loaded.warnings.forEach(warn)
+        file = loaded
+        return loaded
+    }
+}
+
 /// An exclusive lock on a file for as long as the process holds it, so only one `drip follow`
 /// follows a machine.
 struct FollowLock {
     let descriptor: Int32
 
-    init(path: String) throws {
+    /// Takes the lock on the file at `path`; nil when another process holds it.
+    init?(path: String) throws {
         try FileManager.default.createDirectory(
             atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
         descriptor = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
         guard descriptor >= 0 else { throw StateError("cannot open \(path): \(String(cString: strerror(errno)))") }
         guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+            let held = errno == EWOULDBLOCK
+            let reason = String(cString: strerror(errno))
             close(descriptor)
-            throw StateError("another drip follow follows this machine already")
+            if held { return nil }
+            throw StateError("cannot lock \(path): \(reason)")
         }
     }
 
