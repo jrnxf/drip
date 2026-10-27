@@ -77,20 +77,31 @@ public enum RemoteHook {
 
             # Takes the lock where there is no flock, as on macOS and with busybox: mkdir makes the
             # directory or fails in one step. Waits 2 seconds, like flock -w 2. A holder that died
-            # leaves its directory behind: after the wait it is taken over unless its process lives.
+            # leaves its directory behind: after the wait it is taken over unless its process lives,
+            # and one with no pid yet gets another wait, as it may be between its mkdir and its pid.
             lock_dir() {
                 lockdir="$queue.lockdir"
                 tries=0
-                broke=
+                waits=0
                 until mkdir "$lockdir" 2>/dev/null; do
                     if sleep 0.1 2>/dev/null; then tries=$((tries + 1)); else sleep 1; tries=$((tries + 10)); fi
-                    if [ "$tries" -gt 20 ]; then
-                        [ -z "$broke" ] || return 1
-                        pid=$(cat "$lockdir/pid" 2>/dev/null)
-                        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then return 1; fi
-                        broke=1
-                        tries=0
-                        rm -rf "$lockdir"
+                    [ "$tries" -gt 20 ] || continue
+                    tries=0
+                    waits=$((waits + 1))
+                    [ "$waits" -le 2 ] || return 1
+                    pid=$(cat "$lockdir/pid" 2>/dev/null)
+                    if [ -n "$pid" ]; then
+                        if kill -0 "$pid" 2>/dev/null; then return 1; fi
+                    elif [ "$waits" -eq 1 ]; then
+                        continue
+                    fi
+                    # One waiter at a time breaks it, and only while it is still the one found dead.
+                    if mkdir "$lockdir/break" 2>/dev/null; then
+                        if [ "$(cat "$lockdir/pid" 2>/dev/null)" = "$pid" ] && mv "$lockdir" "$lockdir.$$" 2>/dev/null; then
+                            rm -rf "$lockdir.$$"
+                        else
+                            rmdir "$lockdir/break" 2>/dev/null
+                        fi
                     fi
                 done
                 held=$lockdir
@@ -367,8 +378,9 @@ public enum FollowReader {
                         fid=$id
                         echo "#file $inode $off${fid:+ $fid}"
                     elif [ "$size" -lt "$off" ]; then
-                        # Cut short in place: it starts over.
+                        # Cut short in place: it starts over, and its first line is another.
                         off=0
+                        fid=
                         echo "#file $inode $off${fid:+ $fid}"
                     elif [ -z "$fid" ] && [ -n "$id" ]; then
                         # The queue has a whole first line now.

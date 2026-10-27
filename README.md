@@ -402,8 +402,8 @@ burst of others, but still takes away the card its session waits on, as after yo
 machine: `--max-age 30m` sets another limit. Age is by the machine's own clock: its reader tells
 `drip follow` the time there when it connects and every 15 seconds, so a clock that runs behind or
 ahead of the Mac's, as in a VM or WSL2, hides no stale events and none that are new, and `drip follow`
-says so in its log when it is a minute or more off. It reads the config once, when it starts, and
-says its warnings once: restart it after you edit the config.
+says so in its log when it is a minute or more off. It reads the config with each event, so an edit
+applies to the next, and says each of its warnings once.
 
 One `drip follow` per machine runs at a time, counted by the name you give it: `drip follow devbox`
 and `drip follow me@devbox`, or an ssh alias for the same machine, are two machines to drip, and

@@ -212,8 +212,8 @@ struct DripCLI {
         let herdrMachine = command.herdrMachine(savedMachines: {
             Terminal.output(["herdr", "machine", "list", "--json"], timeout: 5)
         })
-        // The config is read once, not with each event, so its warnings are said once.
-        let config = ConfigOnce(read: { try ConfigLoader.load(environment: $0) }, warn: console.warn)
+        // The config is read with each event, but its warnings are said once.
+        let config = ConfigWarnedOnce(read: { try ConfigLoader.load(environment: $0) }, warn: console.warn)
         var local = surroundings(console)
         local.loadConfig = { try config.load(environment: $0) }
         local.resolver = { try self.makeResolver(console, file: $0, environment: $1, warn: false) }

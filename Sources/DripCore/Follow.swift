@@ -281,24 +281,22 @@ public final class RemoteFollower {
     }
 }
 
-/// The config file `drip follow` reads: once, for all its events, with its warnings said once. A
-/// file that fails to read is tried again with the next event, so fixing it needs no restart.
-public final class ConfigOnce {
+/// The config file `drip follow` reads: again with each event, so an edit applies to the next,
+/// with each of its warnings said once.
+public final class ConfigWarnedOnce {
     private let read: ([String: String]) throws -> ConfigFile
     private let warn: (String) -> Void
-    private var file: ConfigFile?
+    private var said: Set<String> = []
 
     public init(read: @escaping ([String: String]) throws -> ConfigFile, warn: @escaping (String) -> Void) {
         self.read = read
         self.warn = warn
     }
 
-    /// The file, read on the first call that succeeds.
+    /// The file as it is now, saying only the warnings not said before.
     public func load(environment: [String: String]) throws -> ConfigFile {
-        if let file { return file }
         let loaded = try read(environment)
-        loaded.warnings.forEach(warn)
-        file = loaded
+        for warning in loaded.warnings where said.insert(warning).inserted { warn(warning) }
         return loaded
     }
 }

@@ -602,6 +602,24 @@ struct RemoteFollowTests {
         #expect(try follow(count: 1, now: now).sessions == ["new4"])
     }
 
+    @Test func aQueueCutShortWhileFollowedResumesAfterReconnecting() throws {
+        let now = Date()
+        try append([Self.line(session: "old1", time: now.timeIntervalSince1970), Self.line(session: "old2", time: now.timeIntervalSince1970)])
+        try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
+        #expect(try follow(count: 2, now: now).sessions == ["old1", "old2"])
+        // Emptied in place while followed, as with `: > remote.jsonl`, and written again.
+        let result = try follow(count: 1, now: now, whileFollowing: {
+            let handle = try #require(FileHandle(forWritingAtPath: queue))
+            try handle.truncate(atOffset: 0)
+            try handle.close()
+            try append([Self.line(session: "new1", time: now.timeIntervalSince1970)])
+        })
+        #expect(result.sessions == ["new1"])
+        // The connection drops: the next one resumes after what was shown, and shows it no more.
+        try append([Self.line(session: "new2", time: now.timeIntervalSince1970)])
+        #expect(try follow(count: 1, now: now).sessions == ["new2"])
+    }
+
     @Test func aPlaceKeptBeforeFilesHadIDsStillResumes() throws {
         let now = Date()
         let first = Self.line(session: "s1", time: now.timeIntervalSince1970)
@@ -1052,22 +1070,29 @@ struct RemoteDecisionTests {
     }
 }
 
-struct ConfigOnceTests {
-    @Test func theConfigIsReadAndItsWarningsSaidOnceForAllEvents() throws {
+struct ConfigWarnedOnceTests {
+    @Test func theConfigIsReadWithEachEventAndEachWarningSaidOnce() throws {
         var reads = 0
         var warnings: [String] = []
-        let config = ConfigOnce(
-            read: { _ in reads += 1; return ConfigFile(config: Config(), warnings: ["config.toml:2: unknown key 'colour'"]) },
+        let config = ConfigWarnedOnce(
+            read: { _ in
+                reads += 1
+                let said = ["config.toml:2: unknown key 'colour'"] + (reads < 3 ? [] : ["config.toml:3: unknown key 'tone'"])
+                return ConfigFile(config: Config(), warnings: said)
+            },
             warn: { warnings.append($0) })
-        for _ in 1...5 { _ = try config.load(environment: [:]) }
-        #expect(reads == 1)
-        #expect(warnings == ["config.toml:2: unknown key 'colour'"])
+        var files: [ConfigFile] = []
+        for _ in 1...5 { files.append(try config.load(environment: [:])) }
+        #expect(reads == 5)
+        // An edit applies to the next event.
+        #expect(files.map(\.warnings.count) == [1, 1, 2, 2, 2])
+        #expect(warnings == ["config.toml:2: unknown key 'colour'", "config.toml:3: unknown key 'tone'"])
     }
 
     @Test func aConfigThatFailsIsReadAgainWithTheNextEvent() throws {
         var reads = 0
         var warnings: [String] = []
-        let config = ConfigOnce(
+        let config = ConfigWarnedOnce(
             read: { _ in
                 reads += 1
                 if reads == 1 { throw ConfigError(path: "config.toml", line: 1, key: nil, message: "not TOML") }
@@ -1078,7 +1103,7 @@ struct ConfigOnceTests {
         #expect(warnings.isEmpty)
         _ = try config.load(environment: [:])
         _ = try config.load(environment: [:])
-        #expect(reads == 2)
+        #expect(reads == 3)
         #expect(warnings.count == 1)
     }
 }
