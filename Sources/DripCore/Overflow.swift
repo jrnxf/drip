@@ -174,9 +174,9 @@ extension CardStack {
     /// down: up into the place the card leaving frees. A card that left rising gives its place up at
     /// once, so the cards below close up as it gathers and the new card spreads, the count rolling
     /// with them, all on `handOver` from `time`; one still gathering in place holds it, and the new
-    /// card waits until its drop starts to rise. The drop stays where it is, joined to the new card until the neck
-    /// between them pinches off. The last card waiting is the drop itself, spreading into the card. In
-    /// push mode the card drops from the notch as any card does.
+    /// card waits until its drop starts to rise. The drop stays where it is, joined to the new card
+    /// until the neck between them pinches off. The last card waiting is the drop itself, spreading
+    /// into the card. In push mode the card drops from the notch as any card does.
     @discardableResult
     public func release(_ card: Card, metrics: IslandMetrics, own: Bool, at time: Double) -> Release? {
         guard let overflow, !overflow.isLeaving else { return nil }
