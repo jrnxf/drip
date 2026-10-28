@@ -171,9 +171,10 @@ extension CardStack {
     public static let handOver = Spring(duration: 0.5, bounce: 0.12)
 
     /// Grows `card`, laid out as `metrics`, out of the overflow drop from `time`, as the count rolls
-    /// down: up into the place the card leaving frees. That card gives its place up at once, so the
-    /// cards below close up as it gathers and the new card spreads, the count rolling with them, all
-    /// on `handOver` from `time`. The drop stays where it is, joined to the new card until the neck
+    /// down: up into the place the card leaving frees. A card that left rising gives its place up at
+    /// once, so the cards below close up as it gathers and the new card spreads, the count rolling
+    /// with them, all on `handOver` from `time`; one still gathering in place holds it, and the new
+    /// card waits until its drop starts to rise. The drop stays where it is, joined to the new card until the neck
     /// between them pinches off. The last card waiting is the drop itself, spreading into the card. In
     /// push mode the card drops from the notch as any card does.
     @discardableResult
@@ -190,9 +191,10 @@ extension CardStack {
         if settings.mode == .push {
             return Release(entry: enter(card, metrics: metrics, own: own, decided: time, at: time), count: count, last: false)
         }
-        for entry in entries where entry.isLeaving && entry.holdsPlaceUntil.isFinite { entry.holdsPlaceUntil = -.infinity }
-        place(at: time, with: Self.handOver)
-        let start = time
+        let holding = entries.filter { $0.isLeaving && $0.holdsPlaceUntil.isFinite }
+        for entry in holding where entry.rises { entry.holdsPlaceUntil = -.infinity }
+        if holding.contains(where: \.rises) { place(at: time, with: Self.handOver) }
+        let start = holding.filter { !$0.rises }.map(\.holdsPlaceUntil).reduce(time, max)
         var slot: Double?
         for entry in live { slot = (slot ?? entry.metrics.pillTop) + entry.metrics.pillHeight + Self.gap }
         var animator = last ? overflow.animator : IslandAnimator(metrics: metrics, from: overflow.animator.shape(at: time))

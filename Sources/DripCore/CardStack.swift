@@ -33,6 +33,9 @@ public final class CardStack {
         /// A leaving card keeps its place until its drop starts to rise, so the cards below never
         /// run into it while it gathers.
         var holdsPlaceUntil = Double.infinity
+        /// Whether it left rising at once, as the next card grows out of the overflow drop, so it
+        /// can give its place up the moment that card starts to.
+        var rises = false
         /// Set when the card should go as soon as nothing is still flowing into it; whether by a
         /// click on its button.
         public var dismissed: Bool?
@@ -342,6 +345,7 @@ public final class CardStack {
         entry.exit = (time, entry.animator.shape(at: time).pillTop)
         let cues = entry.animator.exit(at: time, into: anchor, rising: rising)
         entry.holdsPlaceUntil = entry.animator.riseTime ?? time
+        entry.rises = rising
         entry.phase = .leaving(until: entry.animator.end)
         // The cards that grew out of this one now hang from whatever is above it.
         for other in entries where other.anchor === entry { other.anchor = above }

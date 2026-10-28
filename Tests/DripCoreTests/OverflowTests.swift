@@ -221,6 +221,39 @@ struct OverflowTests {
         #expect(abs(first.release.entry.animator.shape(at: first.time).pillTop - slot(3)) < 1)
     }
 
+    /// A card clicked away under the pointer gathers in place, as it does without a drop: let go a
+    /// moment later, the next card waits to grow out until that card's drop starts to rise, and the
+    /// cards below never run into it.
+    @Test func aCardStillGatheringHoldsItsPlaceAsTheNextGrowsOut() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 6)
+        driver.run(for: 4)
+        #expect(driver.stack.overflow?.phase == .shown)
+        let leaving = driver.stack.live[0]
+        let below = driver.stack.live[1]
+        driver.stack.hover(true, at: driver.time)
+        leaving.dismissed = true
+        var leftAt: Double?
+        var closest = Double.infinity
+        driver.run(for: 3, step: { time, changes in
+            if leftAt == nil, changes.left.contains(where: { $0.entry === leaving }) {
+                leftAt = time
+                driver.stack.hover(false, at: time)
+            }
+            guard leftAt != nil, driver.stack.entries.contains(where: { $0 === leaving }) else { return }
+            let above = leaving.animator.shape(at: time)
+            closest = min(closest, below.animator.shape(at: time).pillTop - (above.pillTop + above.pillHeight))
+        })
+        let left = try #require(leftAt)
+        let rise = try #require(leaving.animator.riseTime)
+        let first = try #require(driver.releases.first)
+        #expect(rise - left > 0.1)
+        #expect(first.time > left)
+        #expect(first.start >= rise - 0.001)
+        #expect(abs(below.animator.shape(at: rise - 0.02).pillTop - slot(1)) < 0.01)
+        #expect(closest > 0)
+        #expect(abs(first.top - slot(2)) < 0.01)
+    }
+
     @Test func theLastCardWaitingIsTheDropItself() throws {
         let driver = stack(["a", "b", "c", "d"], seconds: 3)
         driver.run(for: 3)
