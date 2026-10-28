@@ -320,12 +320,15 @@ public struct IslandAnimator: Sendable {
     /// How a drop spreads into its capsule once it has broken free.
     public static let grow = Spring(duration: 0.5, bounce: 0.15)
 
+    /// How far open a capsule is when its text starts to fade in.
+    public static let textOpen = 0.8
+
     /// When the content fades in, in seconds after `start`, for a capsule spreading on `grow` from
-    /// `spread`: text waits until the capsule is wide enough to hold it, then fades in line by line,
-    /// the detail a little after the title.
-    private func cues(spreading grow: Spring, from spread: Double, start: Double) -> IslandCues {
+    /// `spread`: text waits until the capsule is `open` of the way open, wide enough to hold it,
+    /// then fades in line by line, the detail a little after the title.
+    private func cues(spreading grow: Spring, from spread: Double, start: Double, open: Double = textOpen) -> IslandCues {
         let m = metrics
-        let roomy = Self.firstTime(after: spread) { grow.progress(at: $0 - spread) >= 0.8 } - start
+        let roomy = Self.firstTime(after: spread) { grow.progress(at: $0 - spread) >= open } - start
         let step = IslandCues.lineStagger
         return IslandCues(
             sides: roomy, title: IslandCues.lines(m.titleLines, from: roomy, step: step),
@@ -350,15 +353,18 @@ public struct IslandAnimator: Sendable {
     /// top at `top`, starting at `time`, as a card's drop spreads once it has broken free: a card
     /// growing out of the overflow drop, or the overflow drop itself turning into the last card that
     /// waited. Returns when the content fades in.
-    public mutating func spread(into metrics: IslandMetrics, top: Double, at time: Double) -> IslandCues {
+    /// `textAt` is how far open the capsule is when its text starts to fade in.
+    public mutating func spread(
+        into metrics: IslandMetrics, top: Double, at time: Double, with grow: Spring = IslandAnimator.grow,
+        textAt open: Double = IslandAnimator.textOpen
+    ) -> IslandCues {
         self.metrics = metrics
         contentWidth.jump(to: metrics.pillWidth)
-        let grow = Self.grow
         dropCenter.animate(to: top + metrics.pillHeight / 2, with: grow, at: time)
         pillWidth.animate(to: metrics.pillWidth, with: grow, at: time)
         pillHeight.animate(to: metrics.pillHeight, with: grow, at: time)
         progress.animate(to: 1, with: grow, at: time)
-        return cues(spreading: grow, from: time, start: time)
+        return cues(spreading: grow, from: time, start: time, open: open)
     }
 
     /// Swells the open capsule by `amount` points each way from `time`, and lets it settle back, on
@@ -380,9 +386,10 @@ public struct IslandAnimator: Sendable {
     }
 
     /// Starts the exit at `time`, faster than the entrance and without bounce, back into the notch,
-    /// or into the capsule above it when given that capsule's `anchor`. Returns when the content
-    /// fades out.
-    public mutating func exit(at time: Double, into anchor: DropletAnchor? = nil) -> IslandCues {
+    /// or into the capsule above it when given that capsule's `anchor`. `rising` at once, the drop
+    /// rises as it gathers rather than once it is round: a card leaving as the next one grows out of
+    /// the overflow drop, which the cards below follow up. Returns when the content fades out.
+    public mutating func exit(at time: Double, into anchor: DropletAnchor? = nil, rising: Bool = false) -> IslandCues {
         let m = metrics
         // The capsule gathers back into a round drop, which only then rises; the notch reaches for it,
         // they merge and the notch swallows it.
@@ -393,7 +400,7 @@ public struct IslandAnimator: Sendable {
         progress.animate(to: 0, with: shrink, at: gather)
         // Round to the eye once both sides are within 2 points of the drop's.
         let (width, tall) = (pillWidth, pillHeight)
-        let rise = Self.firstTime(after: gather) { t in
+        let rise = rising ? gather : Self.firstTime(after: gather) { t in
             max(abs(width.value(at: t) - m.dropSize), abs(tall.value(at: t) - m.dropSize)) <= 2 * m.scale
         }
         blend.animate(to: m.blend, with: Spring(duration: 0.3), at: rise)

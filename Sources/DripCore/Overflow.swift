@@ -27,6 +27,8 @@ extension CardStack {
         /// The count before it last changed, and when it changed.
         public internal(set) var previous = 0
         public internal(set) var changedAt = -Double.infinity
+        /// Whether it last changed as a card grew out of it, so the count rolls with that card.
+        public internal(set) var handedOver = false
         /// Whether it is spread wide to list the waiting cards' titles, and since when, or since when
         /// it went back to its count.
         public internal(set) var peeking = false
@@ -163,27 +165,52 @@ extension CardStack {
         return hasRoom && !hovering && !overflow.peeking
     }
 
-    /// Grows `card`, laid out as `metrics`, out of the overflow drop from `time`, as the count ticks
-    /// down: up into the place the card leaving frees, starting the moment that card's drop starts to
-    /// rise and the cards below close up, so the two move as one. The drop stays where it is, joined
-    /// to the new card until the neck between them pinches off. The last card waiting is the drop
-    /// itself, spreading into the card. In push mode the card drops from the notch as any card does.
+    /// How everything moves as the next card grows out of the overflow drop: the cards below the one
+    /// leaving close up, the new card spreads into the place at the bottom, and the drop's count rolls
+    /// to its new number, all on this one spring and from the same moment, as one motion.
+    public static let handOver = Spring(duration: 0.5, bounce: 0.12)
+    /// How far open a card growing out of the overflow drop is when its text starts to fade in:
+    /// sooner than a card dropping in, so it is never an empty capsule while the stack moves.
+    public static let handOverText = 0.65
+    /// How long before the overflow drop has spread its count fades in, as it rounds out under the
+    /// last card rather than after.
+    public static let countLead = 0.2
+
+    /// When the overflow drop forming from `start`, with `cues`, fades its count in: seconds after
+    /// `start`.
+    public static func countCue(_ cues: IslandCues) -> Double { max(cues.sides - countLead, 0) }
+
+    /// Grows `card`, laid out as `metrics`, out of the overflow drop from `time`, as the count rolls
+    /// down: up into the place the card leaving frees. A card that left rising gives its place up at
+    /// once, so the cards below close up as it gathers and the new card spreads, the count rolling
+    /// with them, all on `handOver` from `time`; one still gathering in place holds it, and the new
+    /// card waits until its drop starts to rise. The drop stays where it is, joined to the new card
+    /// until the neck between them pinches off. The last card waiting is the drop itself, spreading
+    /// into the card. In push mode the card drops from the notch as any card does.
     @discardableResult
     public func release(_ card: Card, metrics: IslandMetrics, own: Bool, at time: Double) -> Release? {
         guard let overflow, !overflow.isLeaving else { return nil }
         let count = overflow.count
         let last = settings.mode == .chain && queued.count <= 1 && overflow.inFlight == 0
+        let holding = settings.mode == .chain ? entries.filter { $0.isLeaving && $0.holdsPlaceUntil.isFinite } : []
+        // The new card, and the count with it, wait for a card still gathering in place to rise.
+        let start = holding.filter { !$0.rises }.map(\.holdsPlaceUntil).reduce(time, max)
         // From the cards still waiting rather than the count shown, which a card that came while no
         // seed could drip in may not have caught up with yet.
-        tick(overflow, to: max(queued.count - 1 - overflow.inFlight, 0), at: time)
+        tick(overflow, to: max(queued.count - 1 - overflow.inFlight, 0), at: start, handingOver: true)
+        // No longer waiting, from now rather than the next step: it can grow out as a card leaves,
+        // after the step has looked at the cards waiting.
+        if let index = queued.firstIndex(of: card) { queued.remove(at: index) }
         if settings.mode == .push {
             return Release(entry: enter(card, metrics: metrics, own: own, decided: time, at: time), count: count, last: false)
         }
-        let start = entries.filter { $0.isLeaving && $0.holdsPlaceUntil.isFinite }.map(\.holdsPlaceUntil).reduce(time, max)
+        for entry in holding where entry.rises { entry.holdsPlaceUntil = -.infinity }
+        if holding.contains(where: \.rises) { place(at: time, with: Self.handOver) }
         var slot: Double?
         for entry in live { slot = (slot ?? entry.metrics.pillTop) + entry.metrics.pillHeight + Self.gap }
         var animator = last ? overflow.animator : IslandAnimator(metrics: metrics, from: overflow.animator.shape(at: time))
-        let cues = animator.spread(into: metrics, top: slot ?? metrics.pillTop, at: start)
+        let cues = animator.spread(
+            into: metrics, top: slot ?? metrics.pillTop, at: start, with: Self.handOver, textAt: Self.handOverText)
         let entry = Entry(id: nextID, card: card, own: own, metrics: metrics, animator: animator)
         nextID += 1
         entry.anchor = live.last
@@ -336,19 +363,23 @@ extension CardStack {
     }
 
     /// Sets the overflow drop's count to `count` at `time`: the drop widens or narrows to fit it, and
-    /// swells as a card merges into it or gives a little as one leaves it.
-    func tick(_ overflow: Overflow, to count: Int, at time: Double) {
+    /// swells as a card merges into it or gives a little as one leaves it. `handingOver` when a card
+    /// grows out of it: the count then rolls with that card on `handOver`, and the drop holds still.
+    func tick(_ overflow: Overflow, to count: Int, at time: Double, handingOver: Bool = false) {
         guard count != overflow.count else { return }
         let up = count > overflow.count
         overflow.previous = overflow.count
         overflow.count = count
         overflow.changedAt = time
+        overflow.handedOver = handingOver
         let metrics = overflowMetrics(count: count, like: overflow.metrics)
         if abs(metrics.pillWidth - overflow.metrics.pillWidth) > 0.5 {
             overflow.metrics = metrics
-            if !overflow.peeking { overflow.animator.resize(to: metrics, at: time) }
+            if !overflow.peeking {
+                overflow.animator.resize(to: metrics, at: time, with: handingOver ? Self.handOver : IslandUpdate.resize)
+            }
         }
-        if !overflow.peeking, count > 0 { overflow.animator.swell(by: (up ? 3 : -3) * metrics.scale, at: time) }
+        if !overflow.peeking, !handingOver, count > 0 { overflow.animator.swell(by: (up ? 3 : -3) * metrics.scale, at: time) }
     }
 
     /// Whether the overflow drop going back in is hidden inside what it went into.

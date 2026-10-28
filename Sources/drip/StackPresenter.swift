@@ -340,9 +340,9 @@ final class StackPresenter: CardPresenting {
         show(entry, layers: layers, decided: decided)
     }
 
-    /// Grows the next card waiting out of the overflow drop: this drip's own first, then the oldest
-    /// newer drip's that does not show in place of a card on screen.
-    private func release() {
+    /// Grows the next card waiting out of the overflow drop, decided at `decided`: this drip's own
+    /// first, then the oldest newer drip's that does not show in place of a card on screen.
+    private func release(decided: Double) {
         let card: Card
         let own: Bool
         if let next = stack.nextOwn() {
@@ -363,13 +363,12 @@ final class StackPresenter: CardPresenting {
         } else {
             return
         }
-        let decided = now
         let layers = makeLayers(for: card)
         guard let release = stack.release(card, metrics: layers.metrics, own: own, at: decided + lead) else { return }
-        if release.last, let overflowLayers {
+        if release.last, let overflowLayers, case let .entering(start, _) = release.entry.phase {
             // The drop itself spreads into the card, and its last number rolls out over it.
-            spreadInto = (release.entry.id, decided + lead + 0.3)
-            overflowLayers.rollOut(from: release.count, at: started + decided + lead)
+            spreadInto = (release.entry.id, start + CardStack.handOver.duration)
+            overflowLayers.rollOut(from: release.count, at: started + start)
         }
         show(release.entry, layers: layers, decided: decided)
     }
@@ -562,7 +561,7 @@ final class StackPresenter: CardPresenting {
                 return
             }
         }
-        if stack.canRelease(at: time) { release() }
+        if stack.canRelease(at: time) { release(decided: time) }
     }
 
     // MARK: Every tick
@@ -587,6 +586,9 @@ final class StackPresenter: CardPresenting {
             drawings[left.entry.id]?.layers.showPointer(nil)
             drawings[left.entry.id]?.layers.fade(left.cues, into: false, at: started + left.time)
         }
+        // A card leaving makes room for the next card waiting in the overflow drop, which grows out
+        // of it from the same moment, so the two and the count move as one.
+        if !changes.left.isEmpty, stack.canRelease(at: time) { release(decided: time) }
         if !changes.gone.isEmpty {
             let kept = Set(stack.entries.map(\.id) + stack.tucked.map(\.entry))
             arrivals = arrivals.filter { kept.contains($0.key) }

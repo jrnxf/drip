@@ -33,6 +33,9 @@ public final class CardStack {
         /// A leaving card keeps its place until its drop starts to rise, so the cards below never
         /// run into it while it gathers.
         var holdsPlaceUntil = Double.infinity
+        /// Whether it left rising at once, as the next card grows out of the overflow drop, so it
+        /// can give its place up the moment that card starts to.
+        var rises = false
         /// Set when the card should go as soon as nothing is still flowing into it; whether by a
         /// click on its button.
         public var dismissed: Bool?
@@ -169,7 +172,7 @@ public final class CardStack {
             HandedCard(
                 card: entry.card, top: entry.exit?.top ?? entry.animator.targetTop,
                 remaining: max(entry.remaining, 0), isWaiting: entry.isWaiting,
-                leaving: entry.exit.map { max(time - $0.time, 0) },
+                leaving: entry.exit.map { max(time - $0.time, 0) }, rises: entry.exit == nil ? nil : entry.rises,
                 glide: entry.exit == nil && entry.isShown ? entry.animator.glide(at: time) : [])
         }
     }
@@ -191,7 +194,7 @@ public final class CardStack {
         entry.countdownFrom = time
         entries.append(entry)
         lastEntrance = time
-        let exit = handed.leaving.flatMap { leave(entry, at: time - $0) }
+        let exit = handed.leaving.flatMap { leave(entry, at: time - $0, rising: handed.rises ?? false) }
         place(at: time)
         return (entry, exit)
     }
@@ -329,18 +332,20 @@ public final class CardStack {
         return high
     }
 
-    /// Takes `entry` back into the card above it, or into the notch, at `time`. Returns when its
-    /// content fades out; nil when it was already leaving.
+    /// Takes `entry` back into the card above it, or into the notch, at `time`, `rising` at once as
+    /// the next card grows out of the overflow drop. Returns when its content fades out; nil when it
+    /// was already leaving.
     @discardableResult
-    public func leave(_ entry: Entry, at time: Double) -> IslandCues? {
+    public func leave(_ entry: Entry, at time: Double, rising: Bool = false) -> IslandCues? {
         guard !entry.isLeaving else { return nil }
         let position = entries.firstIndex { $0 === entry } ?? 0
         let above = entries[..<position].last { !$0.isLeaving }
         entry.anchor = above
         let anchor = above.map { DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.metrics) }
         entry.exit = (time, entry.animator.shape(at: time).pillTop)
-        let cues = entry.animator.exit(at: time, into: anchor)
+        let cues = entry.animator.exit(at: time, into: anchor, rising: rising)
         entry.holdsPlaceUntil = entry.animator.riseTime ?? time
+        entry.rises = rising
         entry.phase = .leaving(until: entry.animator.end)
         // The cards that grew out of this one now hang from whatever is above it.
         for other in entries where other.anchor === entry { other.anchor = above }
@@ -422,15 +427,38 @@ public final class CardStack {
             entry.remaining = min(entry.remaining, entry.card.seconds)
             entry.countdownFrom = max(entry.countdownFrom, time + lead)
         }
+        for entry in entries where entry.isShown {
+            if !hovering, time >= entry.countdownFrom { entry.remaining -= elapsed }
+        }
+        // A card whose time is up while the overflow drop is still forming, or a card still growing
+        // out of it, waits the moment until the drop is ready, so the next card grows out of it in
+        // one motion with this one leaving rather than after it.
+        let dropBusy = settings.mode == .chain && !hovering && overflow.map { drop in
+            switch drop.phase {
+            case .forming, .releasing: return !drop.peeking
+            case .shown, .leaving: return false
+            }
+        } ?? false
+        let goes = { (entry: Entry) in
+            entry.isShown && (entry.remaining <= 0 || entry.dismissed != nil) && !self.isFilling(entry)
+                && !(dropBusy && entry.dismissed == nil)
+        }
+        // A card leaving rises straight away, so the cards below follow it up at once, and the next
+        // card waiting in the overflow drop grows out of it in the same motion. Only when it is the
+        // one card leaving: cards leaving together, as when the pointer leaves and they all run out
+        // at once, would rise into each other's places, so they gather first, and so does a card
+        // leaving while another still gathers in place or while the drop is busy.
+        let due = entries.filter(goes)
+        let rises = due.count == 1 && settings.mode == .chain && !hovering
+            && !entries.contains { $0.isLeaving && $0.holdsPlaceUntil.isFinite && $0.holdsPlaceUntil > time + lead }
+            && overflow.map { $0.phase == .shown && !$0.peeking } ?? true
         for entry in entries {
             switch entry.phase {
             case let .entering(start, cues):
                 let last = max(cues.sides, (cues.title + cues.detail).max() ?? 0) + 0.25
                 if time - start >= last { entry.phase = .shown }
             case .shown:
-                if !hovering, time >= entry.countdownFrom { entry.remaining -= elapsed }
-                if entry.remaining <= 0 || entry.dismissed != nil, !isFilling(entry),
-                   let cues = leave(entry, at: time + lead)
+                if goes(entry), let cues = leave(entry, at: time + lead, rising: rises)
                 {
                     changes.left.append((entry, cues, time + lead, entry.dismissed ?? false))
                 }
