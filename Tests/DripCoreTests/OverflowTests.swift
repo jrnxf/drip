@@ -28,6 +28,8 @@ struct OverflowTests {
         /// cards on screen right after.
         var releases: [(time: Double, release: CardStack.Release, start: Double, top: Double, live: [String])] = []
         var swaps: [(time: Double, title: String)] = []
+        /// Whether no card grows out of the overflow drop, as when the next card waiting was replaced.
+        var holdsReleases = false
 
         init(_ stack: CardStack, metrics: IslandMetrics) {
             self.stack = stack
@@ -36,7 +38,7 @@ struct OverflowTests {
 
         /// Grows the next card waiting out of the overflow drop, when it can: this drip's own first.
         private func release(_ layout: (Card) -> IslandMetrics) {
-            guard stack.canRelease(at: time) else { return }
+            guard !holdsReleases, stack.canRelease(at: time) else { return }
             var next = stack.nextOwn()
             var own = true
             if let card = next, replaced.contains(card) { next = nil }
@@ -305,6 +307,37 @@ struct OverflowTests {
         var most = 0
         let closest = closestGap(driver, for: 4, step: { _, changes in most = max(most, changes.left.count) })
         #expect(most >= 2)
+        #expect(closest > 0)
+    }
+
+    /// A card that runs out just after others started to gather in place, with the drop still
+    /// shown because no card could grow out of it yet, gathers too, rather than rising at once
+    /// through them.
+    @Test func aCardLeavingWhileOthersGatherGathersToo() throws {
+        let driver = stack(["a", "b", "c", "d", "e", "f"], seconds: 8)
+        driver.run(for: 4)
+        #expect(driver.stack.overflow?.phase == .shown)
+        driver.holdsReleases = true
+        let together = Array(driver.stack.live.prefix(2))
+        let later = driver.stack.live[2]
+        for entry in together { entry.dismissed = true }
+        var leftAt: Double?
+        var phase: CardStack.Overflow.Phase?
+        let closest = closestGap(driver, for: 3, step: { time, changes in
+            if leftAt == nil, changes.left.count == 2 { leftAt = time }
+            if let left = leftAt, later.dismissed == nil, time >= left + 0.1 {
+                later.dismissed = true
+                phase = driver.stack.overflow?.phase
+            }
+        })
+        let left = try #require(leftAt)
+        #expect(phase == .shown)
+        let exit = try #require(later.exit)
+        #expect(exit.time - left < 0.2)
+        for entry in together + [later] {
+            let exit = try #require(entry.exit)
+            #expect(try #require(entry.animator.riseTime) - exit.time > 0.1)
+        }
         #expect(closest > 0)
     }
 

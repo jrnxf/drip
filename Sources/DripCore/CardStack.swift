@@ -433,9 +433,11 @@ public final class CardStack {
         // A card leaving now makes room for the next card waiting in the overflow drop, which grows
         // out of it at once: the leaving card rises straight away, so the cards below can follow it.
         // Only when it is the one card leaving: cards leaving together, as when the pointer leaves
-        // and they all run out at once, would rise into each other's places, so they gather first.
+        // and they all run out at once, would rise into each other's places, so they gather first,
+        // and so does a card leaving while another still gathers in place.
         let due = entries.filter { $0.isShown && ($0.remaining <= 0 || $0.dismissed != nil) && !isFilling($0) }
         let handsOver = due.count == 1 && settings.mode == .chain && !hovering
+            && !entries.contains { $0.isLeaving && $0.holdsPlaceUntil.isFinite && $0.holdsPlaceUntil > time + lead }
             && overflow.map { $0.phase == .shown && !$0.peeking } ?? false
         for entry in entries {
             switch entry.phase {
