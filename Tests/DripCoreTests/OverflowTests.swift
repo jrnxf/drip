@@ -254,6 +254,60 @@ struct OverflowTests {
         #expect(abs(first.top - slot(2)) < 0.01)
     }
 
+    /// The smallest gap, over `seconds` of `driver`, between each card leaving and every card below
+    /// it in the stack that stays, while both are there; `step` runs first at each step.
+    private func closestGap(_ driver: Driver, for seconds: Double, step: @escaping (Double, CardStack.Changes) -> Void = { _, _ in }) -> Double {
+        var closest = Double.infinity
+        driver.run(for: seconds, step: { time, changes in
+            step(time, changes)
+            let entries = driver.stack.entries
+            for (index, leaving) in entries.enumerated() where leaving.isLeaving {
+                let above = leaving.animator.shape(at: time)
+                for below in entries[(index + 1)...] where !below.isLeaving {
+                    closest = min(closest, below.animator.shape(at: time).pillTop - (above.pillTop + above.pillHeight))
+                }
+            }
+        })
+        return closest
+    }
+
+    /// Cards leaving in the same step, with cards waiting in the drop, gather in place before they
+    /// rise, as they do without a drop: none rises into the place another just gave up, and the
+    /// cards below and the card growing out of the drop never run into them.
+    @Test(arguments: [2, 3]) func cardsLeavingTogetherGatherFirst(count: Int) throws {
+        let driver = stack(["a", "b", "c", "d", "e", "f"], seconds: 8)
+        driver.run(for: 4)
+        #expect(driver.stack.overflow?.phase == .shown)
+        let leaving = Array(driver.stack.live.prefix(count))
+        for entry in leaving { entry.dismissed = true }
+        var leftTogether = false
+        let closest = closestGap(driver, for: 3, step: { _, changes in
+            if changes.left.count == count { leftTogether = true }
+        })
+        #expect(leftTogether)
+        for entry in leaving {
+            let exit = try #require(entry.exit)
+            #expect(try #require(entry.animator.riseTime) - exit.time > 0.1)
+        }
+        #expect(closest > 0)
+        #expect(driver.releases.first?.release.entry.card.title == "d")
+    }
+
+    /// The pointer leaving gives every card with less than 1.5 seconds left 1.5 seconds, so they all
+    /// run out in the same step: they gather first and nothing runs into them.
+    @Test func cardsRunningOutTogetherAfterThePointerLeavesGatherFirst() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 3)
+        while driver.stack.overflow?.phase != .shown, driver.time < 5 { driver.run(for: 1.0 / 60) }
+        driver.stack.hover(true, at: driver.time)
+        driver.run(for: 1)
+        #expect(driver.stack.live.filter { $0.remaining < 1.5 }.count >= 2)
+        driver.stack.hover(false, at: driver.time)
+        var most = 0
+        let closest = closestGap(driver, for: 4, step: { _, changes in most = max(most, changes.left.count) })
+        #expect(most >= 2)
+        #expect(closest > 0)
+    }
+
     @Test func theLastCardWaitingIsTheDropItself() throws {
         let driver = stack(["a", "b", "c", "d"], seconds: 3)
         driver.run(for: 3)

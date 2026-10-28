@@ -662,7 +662,7 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
                     "handle": next.handle, "start": start, "cues": cues(entryCues),
                     "countdownFrom": release.entry.countdownFrom, "waits": release.entry.isWaiting,
                     "fromDrop": release.last ? release.count : 0,
-                    "handOver": [CardStack.handOver.duration, CardStack.handOver.bounce],
+                    "handOver": [CardStack.handOver.duration, CardStack.handOver.bounce, CardStack.handOver.settlingTime],
                 ])
             }
         }
@@ -699,14 +699,14 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
 }
 
 /// The overflow drop as the page paints its count: `count` and the `previous` count it rolled from
-/// at `changedAt`, on the `handOver` spring, as duration and bounce, when a card grew out of it;
+/// at `changedAt`, on the `handOver` spring, as duration, bounce and settling time, when a card grew out of it;
 /// `phase` "forming" from `start` with the count fading in at `cue`, "shown",
 /// "releasing" or "leaving" from `start`; `peeking` since `peekChangedAt`, or back to its count
 /// since then, listing `titles`. An empty object for no drop.
 func overflowState(_ overflow: CardStack.Overflow) -> [String: Any] {
     var state: [String: Any] = [
         "count": overflow.count, "previous": overflow.previous, "changedAt": overflow.changedAt,
-        "handOver": overflow.handedOver ? [CardStack.handOver.duration, CardStack.handOver.bounce] : [Double](),
+        "handOver": overflow.handedOver ? [CardStack.handOver.duration, CardStack.handOver.bounce, CardStack.handOver.settlingTime] : [Double](),
         "peeking": overflow.peeking, "peekChangedAt": overflow.peekChangedAt, "titles": overflow.peekText,
         "scale": overflow.metrics.scale,
     ]

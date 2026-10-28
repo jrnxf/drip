@@ -427,16 +427,22 @@ public final class CardStack {
             entry.remaining = min(entry.remaining, entry.card.seconds)
             entry.countdownFrom = max(entry.countdownFrom, time + lead)
         }
+        for entry in entries where entry.isShown {
+            if !hovering, time >= entry.countdownFrom { entry.remaining -= elapsed }
+        }
         // A card leaving now makes room for the next card waiting in the overflow drop, which grows
         // out of it at once: the leaving card rises straight away, so the cards below can follow it.
-        let handsOver = settings.mode == .chain && !hovering && overflow.map { $0.phase == .shown && !$0.peeking } ?? false
+        // Only when it is the one card leaving: cards leaving together, as when the pointer leaves
+        // and they all run out at once, would rise into each other's places, so they gather first.
+        let due = entries.filter { $0.isShown && ($0.remaining <= 0 || $0.dismissed != nil) && !isFilling($0) }
+        let handsOver = due.count == 1 && settings.mode == .chain && !hovering
+            && overflow.map { $0.phase == .shown && !$0.peeking } ?? false
         for entry in entries {
             switch entry.phase {
             case let .entering(start, cues):
                 let last = max(cues.sides, (cues.title + cues.detail).max() ?? 0) + 0.25
                 if time - start >= last { entry.phase = .shown }
             case .shown:
-                if !hovering, time >= entry.countdownFrom { entry.remaining -= elapsed }
                 if entry.remaining <= 0 || entry.dismissed != nil, !isFilling(entry),
                    let cues = leave(entry, at: time + lead, rising: handsOver)
                 {

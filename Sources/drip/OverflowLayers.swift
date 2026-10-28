@@ -16,9 +16,11 @@ final class OverflowLayers {
     /// Holds the count and the titles, clipped to the drop.
     private let content = CALayer()
     private let counts = CALayer()
-    /// The count, and the one it was, rolling out.
-    private let current = CATextLayer()
-    private let previous = CATextLayer()
+    /// The count, and the one it was, rolling out. They swap at every roll, so the one showing the
+    /// old number rolls it out as it is and only the hidden one takes a new number: a text layer
+    /// given new text while hidden can show its old text for a moment once it shows.
+    private var current = CATextLayer()
+    private var previous = CATextLayer()
     private let titles = CATextLayer()
     private let sizeScale: CGFloat
     private let centerX: CGFloat
@@ -208,8 +210,9 @@ final class OverflowLayers {
         for layer in [previous, current] {
             for key in ["roll", "fade", "pop"] { layer.removeAnimation(forKey: key) }
         }
+        swap(&previous, &current)
         if old > 0 {
-            previous.string = count(old)
+            if (previous.string as? NSAttributedString)?.string != String(old) { previous.string = count(old) }
             move(previous, from: 0, to: -distance, at: begin, on: handOver)
             fade(previous, from: 1, to: 0, over: handingOver ? Self.handOverFade : Self.rollFade, at: begin)
         }

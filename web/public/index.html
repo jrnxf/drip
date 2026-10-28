@@ -818,7 +818,7 @@ class Stage {
   paintCount(count, from, since, cy, s, alpha, handOver = null) {
     if (alpha <= 0.001) return;
     const { ctx } = this, dist = 11 * s, dir = handOver || count > from ? 1 : -1;
-    const span = handOver ? handOver[0] * 2 : 0.22, fade = handOver ? 0.25 : 0.12;
+    const span = handOver ? handOver[2] : 0.22, fade = handOver ? 0.25 : 0.12;
     const roll = handOver ? drip.spring(handOver[0], handOver[1], Math.max(since, 0)) : easeOut(clamp01(since / 0.22));
     ctx.font = fonts[2](s); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff";
     if (since < span && from > 0 && from !== count) {
