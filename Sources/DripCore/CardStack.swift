@@ -172,7 +172,7 @@ public final class CardStack {
             HandedCard(
                 card: entry.card, top: entry.exit?.top ?? entry.animator.targetTop,
                 remaining: max(entry.remaining, 0), isWaiting: entry.isWaiting,
-                leaving: entry.exit.map { max(time - $0.time, 0) },
+                leaving: entry.exit.map { max(time - $0.time, 0) }, rises: entry.exit == nil ? nil : entry.rises,
                 glide: entry.exit == nil && entry.isShown ? entry.animator.glide(at: time) : [])
         }
     }
@@ -194,7 +194,7 @@ public final class CardStack {
         entry.countdownFrom = time
         entries.append(entry)
         lastEntrance = time
-        let exit = handed.leaving.flatMap { leave(entry, at: time - $0) }
+        let exit = handed.leaving.flatMap { leave(entry, at: time - $0, rising: handed.rises ?? false) }
         place(at: time)
         return (entry, exit)
     }
@@ -430,23 +430,35 @@ public final class CardStack {
         for entry in entries where entry.isShown {
             if !hovering, time >= entry.countdownFrom { entry.remaining -= elapsed }
         }
-        // A card leaving now makes room for the next card waiting in the overflow drop, which grows
-        // out of it at once: the leaving card rises straight away, so the cards below can follow it.
-        // Only when it is the one card leaving: cards leaving together, as when the pointer leaves
-        // and they all run out at once, would rise into each other's places, so they gather first,
-        // and so does a card leaving while another still gathers in place.
-        let due = entries.filter { $0.isShown && ($0.remaining <= 0 || $0.dismissed != nil) && !isFilling($0) }
-        let handsOver = due.count == 1 && settings.mode == .chain && !hovering
+        // A card whose time is up while the overflow drop is still forming, or a card still growing
+        // out of it, waits the moment until the drop is ready, so the next card grows out of it in
+        // one motion with this one leaving rather than after it.
+        let dropBusy = settings.mode == .chain && !hovering && overflow.map { drop in
+            switch drop.phase {
+            case .forming, .releasing: return !drop.peeking
+            case .shown, .leaving: return false
+            }
+        } ?? false
+        let goes = { (entry: Entry) in
+            entry.isShown && (entry.remaining <= 0 || entry.dismissed != nil) && !self.isFilling(entry)
+                && !(dropBusy && entry.dismissed == nil)
+        }
+        // A card leaving rises straight away, so the cards below follow it up at once, and the next
+        // card waiting in the overflow drop grows out of it in the same motion. Only when it is the
+        // one card leaving: cards leaving together, as when the pointer leaves and they all run out
+        // at once, would rise into each other's places, so they gather first, and so does a card
+        // leaving while another still gathers in place or while the drop is busy.
+        let due = entries.filter(goes)
+        let rises = due.count == 1 && settings.mode == .chain && !hovering
             && !entries.contains { $0.isLeaving && $0.holdsPlaceUntil.isFinite && $0.holdsPlaceUntil > time + lead }
-            && overflow.map { $0.phase == .shown && !$0.peeking } ?? false
+            && overflow.map { $0.phase == .shown && !$0.peeking } ?? true
         for entry in entries {
             switch entry.phase {
             case let .entering(start, cues):
                 let last = max(cues.sides, (cues.title + cues.detail).max() ?? 0) + 0.25
                 if time - start >= last { entry.phase = .shown }
             case .shown:
-                if entry.remaining <= 0 || entry.dismissed != nil, !isFilling(entry),
-                   let cues = leave(entry, at: time + lead, rising: handsOver)
+                if goes(entry), let cues = leave(entry, at: time + lead, rising: rises)
                 {
                     changes.left.append((entry, cues, time + lead, entry.dismissed ?? false))
                 }

@@ -320,12 +320,15 @@ public struct IslandAnimator: Sendable {
     /// How a drop spreads into its capsule once it has broken free.
     public static let grow = Spring(duration: 0.5, bounce: 0.15)
 
+    /// How far open a capsule is when its text starts to fade in.
+    public static let textOpen = 0.8
+
     /// When the content fades in, in seconds after `start`, for a capsule spreading on `grow` from
-    /// `spread`: text waits until the capsule is wide enough to hold it, then fades in line by line,
-    /// the detail a little after the title.
-    private func cues(spreading grow: Spring, from spread: Double, start: Double) -> IslandCues {
+    /// `spread`: text waits until the capsule is `open` of the way open, wide enough to hold it,
+    /// then fades in line by line, the detail a little after the title.
+    private func cues(spreading grow: Spring, from spread: Double, start: Double, open: Double = textOpen) -> IslandCues {
         let m = metrics
-        let roomy = Self.firstTime(after: spread) { grow.progress(at: $0 - spread) >= 0.8 } - start
+        let roomy = Self.firstTime(after: spread) { grow.progress(at: $0 - spread) >= open } - start
         let step = IslandCues.lineStagger
         return IslandCues(
             sides: roomy, title: IslandCues.lines(m.titleLines, from: roomy, step: step),
@@ -350,8 +353,10 @@ public struct IslandAnimator: Sendable {
     /// top at `top`, starting at `time`, as a card's drop spreads once it has broken free: a card
     /// growing out of the overflow drop, or the overflow drop itself turning into the last card that
     /// waited. Returns when the content fades in.
+    /// `textAt` is how far open the capsule is when its text starts to fade in.
     public mutating func spread(
-        into metrics: IslandMetrics, top: Double, at time: Double, with grow: Spring = IslandAnimator.grow
+        into metrics: IslandMetrics, top: Double, at time: Double, with grow: Spring = IslandAnimator.grow,
+        textAt open: Double = IslandAnimator.textOpen
     ) -> IslandCues {
         self.metrics = metrics
         contentWidth.jump(to: metrics.pillWidth)
@@ -359,7 +364,7 @@ public struct IslandAnimator: Sendable {
         pillWidth.animate(to: metrics.pillWidth, with: grow, at: time)
         pillHeight.animate(to: metrics.pillHeight, with: grow, at: time)
         progress.animate(to: 1, with: grow, at: time)
-        return cues(spreading: grow, from: time, start: time)
+        return cues(spreading: grow, from: time, start: time, open: open)
     }
 
     /// Swells the open capsule by `amount` points each way from `time`, and lets it settle back, on

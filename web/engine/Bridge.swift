@@ -714,7 +714,7 @@ func overflowState(_ overflow: CardStack.Overflow) -> [String: Any] {
     case let .forming(start, cues):
         state["phase"] = "forming"
         state["start"] = start
-        state["cue"] = cues.sides
+        state["cue"] = CardStack.countCue(cues)
     case .shown:
         state["phase"] = "shown"
     case .releasing:

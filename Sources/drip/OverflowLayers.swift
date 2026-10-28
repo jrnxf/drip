@@ -150,7 +150,7 @@ final class OverflowLayers {
             shownIn = true
             current.string = count(overflow.count)
             var begin = started
-            if case let .forming(start, cues) = overflow.phase { begin += start + cues.sides }
+            if case let .forming(start, cues) = overflow.phase { begin += start + CardStack.countCue(cues) }
             fade(content, to: 1, over: 0.18, at: begin)
         }
         if overflow.changedAt != shownChange {

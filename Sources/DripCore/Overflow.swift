@@ -169,6 +169,16 @@ extension CardStack {
     /// leaving close up, the new card spreads into the place at the bottom, and the drop's count rolls
     /// to its new number, all on this one spring and from the same moment, as one motion.
     public static let handOver = Spring(duration: 0.5, bounce: 0.12)
+    /// How far open a card growing out of the overflow drop is when its text starts to fade in:
+    /// sooner than a card dropping in, so it is never an empty capsule while the stack moves.
+    public static let handOverText = 0.65
+    /// How long before the overflow drop has spread its count fades in, as it rounds out under the
+    /// last card rather than after.
+    public static let countLead = 0.2
+
+    /// When the overflow drop forming from `start`, with `cues`, fades its count in: seconds after
+    /// `start`.
+    public static func countCue(_ cues: IslandCues) -> Double { max(cues.sides - countLead, 0) }
 
     /// Grows `card`, laid out as `metrics`, out of the overflow drop from `time`, as the count rolls
     /// down: up into the place the card leaving frees. A card that left rising gives its place up at
@@ -182,23 +192,25 @@ extension CardStack {
         guard let overflow, !overflow.isLeaving else { return nil }
         let count = overflow.count
         let last = settings.mode == .chain && queued.count <= 1 && overflow.inFlight == 0
+        let holding = settings.mode == .chain ? entries.filter { $0.isLeaving && $0.holdsPlaceUntil.isFinite } : []
+        // The new card, and the count with it, wait for a card still gathering in place to rise.
+        let start = holding.filter { !$0.rises }.map(\.holdsPlaceUntil).reduce(time, max)
         // From the cards still waiting rather than the count shown, which a card that came while no
         // seed could drip in may not have caught up with yet.
-        tick(overflow, to: max(queued.count - 1 - overflow.inFlight, 0), at: time, handingOver: true)
+        tick(overflow, to: max(queued.count - 1 - overflow.inFlight, 0), at: start, handingOver: true)
         // No longer waiting, from now rather than the next step: it can grow out as a card leaves,
         // after the step has looked at the cards waiting.
         if let index = queued.firstIndex(of: card) { queued.remove(at: index) }
         if settings.mode == .push {
             return Release(entry: enter(card, metrics: metrics, own: own, decided: time, at: time), count: count, last: false)
         }
-        let holding = entries.filter { $0.isLeaving && $0.holdsPlaceUntil.isFinite }
         for entry in holding where entry.rises { entry.holdsPlaceUntil = -.infinity }
         if holding.contains(where: \.rises) { place(at: time, with: Self.handOver) }
-        let start = holding.filter { !$0.rises }.map(\.holdsPlaceUntil).reduce(time, max)
         var slot: Double?
         for entry in live { slot = (slot ?? entry.metrics.pillTop) + entry.metrics.pillHeight + Self.gap }
         var animator = last ? overflow.animator : IslandAnimator(metrics: metrics, from: overflow.animator.shape(at: time))
-        let cues = animator.spread(into: metrics, top: slot ?? metrics.pillTop, at: start, with: Self.handOver)
+        let cues = animator.spread(
+            into: metrics, top: slot ?? metrics.pillTop, at: start, with: Self.handOver, textAt: Self.handOverText)
         let entry = Entry(id: nextID, card: card, own: own, metrics: metrics, animator: animator)
         nextID += 1
         entry.anchor = live.last

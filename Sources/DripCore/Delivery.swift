@@ -143,18 +143,22 @@ public struct HandedCard: Equatable, Sendable, Codable {
     public var isWaiting: Bool
     /// How long ago it started to leave; nil while it shows.
     public var leaving: Double?
+    /// Whether it left rising at once rather than gathering in place first; nil for gathering, as
+    /// from a drip that did not say.
+    public var rises: Bool?
     /// The springs still taking its top there, as it glides into a gap; none at rest.
     public var glide: [SpringMotion]
 
     public init(
         card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil,
-        glide: [SpringMotion] = []
+        rises: Bool? = nil, glide: [SpringMotion] = []
     ) {
         self.card = card
         self.top = top
         self.remaining = remaining
         self.isWaiting = isWaiting
         self.leaving = leaving
+        self.rises = rises
         self.glide = glide
     }
 
