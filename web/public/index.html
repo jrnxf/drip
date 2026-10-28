@@ -849,7 +849,7 @@ class Stage {
       // A card that gave way and comes back drops in afresh.
       Object.assign(card, { start: entered.start, cues: entered.cues, visible: entered.countdownFrom - entered.start, waiting: entered.waits, exitCues: null, exitAt: undefined, swap: null });
       // The last card waiting is the overflow drop itself, spreading into it as its number rolls out.
-      if (entered.fromDrop) card.dropGhost = { count: entered.fromDrop, at: t, handOver: entered.handOver };
+      if (entered.fromDrop) card.dropGhost = { count: entered.fromDrop, at: entered.start, handOver: entered.handOver };
       st.newest = card; announce(card); this.emit("begin", card);
     }
     for (const swapped of changes.swapped ?? []) {

@@ -365,10 +365,10 @@ final class StackPresenter: CardPresenting {
         }
         let layers = makeLayers(for: card)
         guard let release = stack.release(card, metrics: layers.metrics, own: own, at: decided + lead) else { return }
-        if release.last, let overflowLayers {
+        if release.last, let overflowLayers, case let .entering(start, _) = release.entry.phase {
             // The drop itself spreads into the card, and its last number rolls out over it.
-            spreadInto = (release.entry.id, decided + lead + CardStack.handOver.duration)
-            overflowLayers.rollOut(from: release.count, at: started + decided + lead)
+            spreadInto = (release.entry.id, start + CardStack.handOver.duration)
+            overflowLayers.rollOut(from: release.count, at: started + start)
         }
         show(release.entry, layers: layers, decided: decided)
     }
