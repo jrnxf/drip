@@ -12,9 +12,10 @@ struct OverflowTests {
         return card
     }
 
-    /// Runs a stack as the Mac app and the web page run one, 60 steps a second: with the stack at
-    /// rest, another drip's card swaps into its card on screen, and with no overflow drop a card drops
-    /// in; whenever it can, the next card grows out of the overflow drop. `others` are other drips'
+    /// Runs a stack as the Mac app runs one, 60 steps a second: with the stack at rest, another
+    /// drip's card swaps into its card on screen, and with no overflow drop a card drops in; whenever
+    /// it can, the next card grows out of the overflow drop, and in the same step a card leaves when
+    /// that makes room for it. `others` are other drips'
     /// cards waiting for the stack, and `replaced` this drip's own a newer card with the same id
     /// replaced, which never show.
     private final class Driver {
@@ -31,6 +32,22 @@ struct OverflowTests {
         init(_ stack: CardStack, metrics: IslandMetrics) {
             self.stack = stack
             self.metrics = metrics
+        }
+
+        /// Grows the next card waiting out of the overflow drop, when it can: this drip's own first.
+        private func release(_ layout: (Card) -> IslandMetrics) {
+            guard stack.canRelease(at: time) else { return }
+            var next = stack.nextOwn()
+            var own = true
+            if let card = next, replaced.contains(card) { next = nil }
+            if next == nil, let index = others.firstIndex(where: { !stack.swapsInPlace($0) }) {
+                next = others.remove(at: index)
+                own = false
+            }
+            guard let next, let release = stack.release(next, metrics: layout(next), own: own, at: time) else { return }
+            var start = time
+            if case let .entering(begin, _) = release.entry.phase { start = begin }
+            releases.append((time, release, start, release.entry.animator.targetTop, stack.live.map(\.card.title)))
         }
 
         func run(for seconds: Double, metrics cardMetrics: ((Card) -> IslandMetrics)? = nil, step: (Double, CardStack.Changes) -> Void = { _, _ in }) {
@@ -53,21 +70,9 @@ struct OverflowTests {
                         }
                     }
                 }
-                if stack.canRelease(at: time) {
-                    var next = stack.nextOwn()
-                    var own = true
-                    if let card = next, replaced.contains(card) { next = nil }
-                    if next == nil, let index = others.firstIndex(where: { !stack.swapsInPlace($0) }) {
-                        next = others.remove(at: index)
-                        own = false
-                    }
-                    if let next, let release = stack.release(next, metrics: layout(next), own: own, at: time) {
-                        var start = time
-                        if case let .entering(begin, _) = release.entry.phase { start = begin }
-                        releases.append((time, release, start, release.entry.animator.targetTop, stack.live.map(\.card.title)))
-                    }
-                }
+                release(layout)
                 let changes = stack.advance(to: time, elapsed: 1.0 / 60, lead: 0, queued: others, replaced: replaced)
+                if !changes.left.isEmpty { release(layout) }
                 step(time, changes)
                 time += 1.0 / 60
             }
@@ -163,25 +168,53 @@ struct OverflowTests {
         #expect(driver.releases.count >= 3)
     }
 
-    /// The count ticks down the moment a card starts to leave, and the next card grows out of the
-    /// drop as the leaving card's drop starts to rise and the cards below close up: one motion.
+    /// The moment a card starts to leave, the count rolls down, the next card starts to grow out of
+    /// the drop and the cards below start to close up, all on `CardStack.handOver`: one motion. The
+    /// leaving card rises at once, so the cards below never run into it.
     @Test func theNextCardGrowsOutAsTheLeavingCardGoes() throws {
         let driver = stack(["a", "b", "c", "d", "e"], seconds: 3)
         var leftAt: Double?
         var leaving: CardStack.Entry?
+        var below: CardStack.Entry?
+        var count: (Int, Double, Bool)?
+        var overflow: CardStack.Overflow?
+        var closest = Double.infinity
         driver.run(for: 10, step: { time, changes in
             if leftAt == nil, let left = changes.left.first {
                 leftAt = time
                 leaving = left.entry
+                below = driver.stack.live.first
+                overflow = driver.stack.overflow
+                count = overflow.map { ($0.count, $0.changedAt, $0.handedOver) }
             }
+            guard let leaving, let below, leaving.isLeaving, driver.stack.entries.contains(where: { $0 === leaving })
+            else { return }
+            let above = leaving.animator.shape(at: time)
+            closest = min(closest, below.animator.shape(at: time).pillTop - (above.pillTop + above.pillHeight))
         })
         let first = try #require(driver.releases.first)
+        let left = try #require(leftAt)
         #expect(first.release.count == 2)
         #expect(!first.release.last)
         #expect(first.release.entry.card.title == "d")
-        // Released in the step the card started to leave, not once the stack had come to rest.
-        #expect(abs(first.time - (try #require(leftAt))) < 0.02)
-        #expect(abs(first.start - (try #require(leaving?.animator.riseTime))) < 0.001)
+        // In the very step the card started to leave, and growing from that moment.
+        #expect(first.time == left)
+        #expect(first.start == left)
+        #expect(try #require(leaving?.exit?.time) == left)
+        // It rises as it gathers, rather than once it is round, and the cards below follow it up at
+        // once without ever touching it.
+        #expect(try #require(leaving?.animator.riseTime) - left < 0.05)
+        #expect(try #require(below?.animator.shape(at: left + 0.1)).pillTop < slot(1) - 1)
+        #expect(closest > 0)
+        // The count rolls with it, from the same moment, with no swell of the drop.
+        let drop = try #require(overflow)
+        let (shown, changedAt, handedOver) = try #require(count)
+        #expect(shown == 1)
+        #expect(changedAt == left)
+        #expect(handedOver)
+        #expect(stride(from: left, through: left + 0.6, by: 0.01).allSatisfy {
+            abs(drop.animator.shape(at: $0).pillWidth - metrics.dropSize) < 0.5
+        })
         // Into the place the leaving card frees, at the bottom of the cards that stay.
         #expect(abs(first.top - slot(2)) < 0.01)
         // It grows out of the drop, where the drop is.
@@ -509,5 +542,50 @@ struct OverflowTests {
         #expect(widest > 27)
         #expect(abs(animator.shape(at: 3).pillWidth - 26) < 0.01)
         #expect(abs(animator.shape(at: 3).pillTop + 13 - (200 + 13)) < 0.01)
+    }
+
+    /// The shared spring is the new card's spread and the cards' move: both settle together.
+    @Test func theHandOverIsOneSpring() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 3)
+        var below: CardStack.Entry?
+        driver.run(for: 10, step: { _, changes in
+            if below == nil, !changes.left.isEmpty { below = driver.stack.live.first }
+        })
+        let first = try #require(driver.releases.first)
+        let moving = try #require(below)
+        // Each is as far along its way as the other at every moment, on the same curve.
+        let entry = first.release.entry
+        let middle = { (shape: IslandShape) in shape.pillTop + shape.pillHeight / 2 }
+        let from = middle(entry.animator.shape(at: first.start))
+        let to = slot(2) + metrics.pillHeight / 2
+        for t in [0.1, 0.2, 0.3, 0.6] {
+            let time = first.start + t
+            let progress = CardStack.handOver.progress(at: t)
+            #expect(abs(moving.animator.shape(at: time).pillTop - (slot(1) + (slot(0) - slot(1)) * progress)) < 0.5)
+            #expect(abs(middle(entry.animator.shape(at: time)) - (from + (to - from) * progress)) < 0.5)
+        }
+    }
+
+    /// With no card waiting, a card leaving still keeps its place until its drop rises, and the
+    /// count ticking for any other reason still swells the drop.
+    @Test func withoutAHandOverNothingChanges() throws {
+        let driver = stack(["a", "b"], seconds: 2)
+        var leaving: CardStack.Entry?
+        var leftAt = 0.0
+        driver.run(for: 6, step: { time, changes in
+            if leaving == nil, let left = changes.left.first { leaving = left.entry; leftAt = time }
+        })
+        let left = try #require(leaving)
+        #expect(try #require(left.animator.riseTime) - leftAt > 0.15)
+
+        let late = stack(["a", "b", "c", "d"], seconds: 6)
+        late.run(for: 3)
+        let drop = try #require(late.stack.overflow)
+        late.others = [card("late")]
+        var widest = 0.0
+        late.run(for: 1.5, step: { time, _ in widest = max(widest, drop.animator.shape(at: time).pillWidth) })
+        #expect(drop.count == 2)
+        #expect(!drop.handedOver)
+        #expect(widest > metrics.dropSize + 1)
     }
 }

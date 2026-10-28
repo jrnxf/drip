@@ -184,6 +184,9 @@ extension CardStack {
         // From the cards still waiting rather than the count shown, which a card that came while no
         // seed could drip in may not have caught up with yet.
         tick(overflow, to: max(queued.count - 1 - overflow.inFlight, 0), at: time, handingOver: true)
+        // No longer waiting, from now rather than the next step: it can grow out as a card leaves,
+        // after the step has looked at the cards waiting.
+        if let index = queued.firstIndex(of: card) { queued.remove(at: index) }
         if settings.mode == .push {
             return Release(entry: enter(card, metrics: metrics, own: own, decided: time, at: time), count: count, last: false)
         }

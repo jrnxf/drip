@@ -642,7 +642,8 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
             enter(session.tucked.removeFirst(), own: tucked.own)
         }
     }
-    if stack.canRelease(at: time) {
+    func release() {
+        guard stack.canRelease(at: time) else { return }
         var next: (handle: Int32, own: Bool)?
         if stack.nextOwn() != nil {
             next = (session.own.removeFirst(), true)
@@ -661,15 +662,20 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
                     "handle": next.handle, "start": start, "cues": cues(entryCues),
                     "countdownFrom": release.entry.countdownFrom, "waits": release.entry.isWaiting,
                     "fromDrop": release.last ? release.count : 0,
+                    "handOver": [CardStack.handOver.duration, CardStack.handOver.bounce],
                 ])
             }
         }
     }
+    release()
     // Later commands' cards still offered want room, and those the stack did not take want it to
     // finish; cards that wait for you give way to them.
     let changes = stack.advance(
         to: time, elapsed: elapsed, lead: 0, needsRoom: !session.adoptable.isEmpty, othersWaiting: othersWaiting != 0,
         queued: session.offered)
+    // As StackPresenter.tick: a card leaving makes room for the next card waiting in the overflow
+    // drop, which grows out of it from the same moment.
+    if !changes.left.isEmpty { release() }
     peek(stack, at: session.pointer, time: time)
     let stoppedWaiting = changes.stoppedWaiting.compactMap { session.islandOf[$0.id] }
     let left: [[String: Any]] = changes.left.compactMap { left in
@@ -693,12 +699,14 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
 }
 
 /// The overflow drop as the page paints its count: `count` and the `previous` count it rolled from
-/// at `changedAt`; `phase` "forming" from `start` with the count fading in at `cue`, "shown",
+/// at `changedAt`, on the `handOver` spring, as duration and bounce, when a card grew out of it;
+/// `phase` "forming" from `start` with the count fading in at `cue`, "shown",
 /// "releasing" or "leaving" from `start`; `peeking` since `peekChangedAt`, or back to its count
 /// since then, listing `titles`. An empty object for no drop.
 func overflowState(_ overflow: CardStack.Overflow) -> [String: Any] {
     var state: [String: Any] = [
         "count": overflow.count, "previous": overflow.previous, "changedAt": overflow.changedAt,
+        "handOver": overflow.handedOver ? [CardStack.handOver.duration, CardStack.handOver.bounce] : [Double](),
         "peeking": overflow.peeking, "peekChangedAt": overflow.peekChangedAt, "titles": overflow.peekText,
         "scale": overflow.metrics.scale,
     ]

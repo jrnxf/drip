@@ -803,7 +803,7 @@ class Stage {
     const since = t - (o.peekChangedAt ?? -Infinity);
     const titles = o.peeking ? easeOut(clamp01((since - UPDATE.fadeOut) / UPDATE.fadeIn)) : 1 - easeOut(clamp01(since / UPDATE.fadeOut));
     const count = o.peeking ? 1 - easeOut(clamp01(since / UPDATE.fadeOut)) : easeOut(clamp01(since / UPDATE.fadeIn));
-    this.paintCount(o.count, o.previous, t - (o.changedAt ?? -Infinity), cy, s, a * count);
+    this.paintCount(o.count, o.previous, t - (o.changedAt ?? -Infinity), cy, s, a * count, o.handOver?.length ? o.handOver : null);
     if (titles > 0.001 && o.titles) {
       ctx.globalAlpha = a * titles; ctx.fillStyle = "rgb(200,200,200)"; ctx.font = fonts[1](s); ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(fitted(o.titles, 1, s, f.pillWidth - 24 * s), 0, cy + 0.5);
@@ -812,19 +812,23 @@ class Stage {
     ctx.restore();
   }
   // A count on the drop `since` it changed from `from`: the old number rolls out one way and fades,
-  // the new one rolls in from the other and lands with a small pop, up as it goes up.
-  paintCount(count, from, since, cy, s, alpha) {
+  // the new one rolls in from the other and lands with a small pop, up as it goes up. As a card
+  // grows out of the drop, both roll up with that card on its `handOver` spring and crossfade, with
+  // no pop (OverflowLayers.roll).
+  paintCount(count, from, since, cy, s, alpha, handOver = null) {
     if (alpha <= 0.001) return;
-    const { ctx } = this, roll = easeOut(clamp01(since / 0.22)), dist = 11 * s, dir = count > from ? 1 : -1;
+    const { ctx } = this, dist = 11 * s, dir = handOver || count > from ? 1 : -1;
+    const span = handOver ? handOver[0] * 2 : 0.22, fade = handOver ? 0.25 : 0.12;
+    const roll = handOver ? drip.spring(handOver[0], handOver[1], Math.max(since, 0)) : easeOut(clamp01(since / 0.22));
     ctx.font = fonts[2](s); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff";
-    if (since < 0.22 && from > 0 && from !== count) {
-      ctx.globalAlpha = alpha * (1 - easeOut(clamp01(since / 0.12)));
+    if (since < span && from > 0 && from !== count) {
+      ctx.globalAlpha = alpha * (1 - easeOut(clamp01(since / fade)));
       ctx.fillText(String(from), 0, cy + 0.5 - dir * dist * roll);
     }
     if (count > 0) {
-      const pop = since < 1 ? lerp(UPDATE.popScale, 1, drip.spring(UPDATE.pop[0], UPDATE.pop[1], since)) : 1;
-      ctx.save(); ctx.globalAlpha = alpha * (since < 0.22 ? roll : 1);
-      ctx.translate(0, cy + 0.5 + (since < 0.22 ? dir * dist * (1 - roll) : 0)); ctx.scale(pop, pop);
+      const pop = !handOver && since < 1 ? lerp(UPDATE.popScale, 1, drip.spring(UPDATE.pop[0], UPDATE.pop[1], since)) : 1;
+      ctx.save(); ctx.globalAlpha = alpha * (since < span ? (handOver ? easeOut(clamp01(since / fade)) : roll) : 1);
+      ctx.translate(0, cy + 0.5 + (since < span ? dir * dist * (1 - roll) : 0)); ctx.scale(pop, pop);
       ctx.fillText(String(count), 0, 0); ctx.restore();
     }
     ctx.globalAlpha = 1; ctx.textAlign = "start";
@@ -845,7 +849,7 @@ class Stage {
       // A card that gave way and comes back drops in afresh.
       Object.assign(card, { start: entered.start, cues: entered.cues, visible: entered.countdownFrom - entered.start, waiting: entered.waits, exitCues: null, exitAt: undefined, swap: null });
       // The last card waiting is the overflow drop itself, spreading into it as its number rolls out.
-      if (entered.fromDrop) card.dropGhost = { count: entered.fromDrop, at: t };
+      if (entered.fromDrop) card.dropGhost = { count: entered.fromDrop, at: t, handOver: entered.handOver };
       st.newest = card; announce(card); this.emit("begin", card);
     }
     for (const swapped of changes.swapped ?? []) {
@@ -878,9 +882,9 @@ class Stage {
       this.paintCard(card, frame, ct, card.ring, W, H);
       card.lastFrame = frame; card.lastT = ct;
       const ghost = card.dropGhost;
-      if (ghost && t - ghost.at < 0.3) {
+      if (ghost && t - ghost.at < ghost.handOver[0]) {
         this.ctx.save(); roundedRect(this.ctx, -frame.pillWidth / 2, frame.pillTop, frame.pillWidth, frame.pillHeight, frame.pillRadius); this.ctx.clip();
-        this.paintCount(0, ghost.count, t - ghost.at, frame.pillTop + frame.pillHeight / 2, card.metrics.scale, 1);
+        this.paintCount(0, ghost.count, t - ghost.at, frame.pillTop + frame.pillHeight / 2, card.metrics.scale, 1, ghost.handOver);
         this.ctx.restore();
       } else card.dropGhost = null;
     }
