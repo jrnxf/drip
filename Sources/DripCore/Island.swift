@@ -350,10 +350,11 @@ public struct IslandAnimator: Sendable {
     /// top at `top`, starting at `time`, as a card's drop spreads once it has broken free: a card
     /// growing out of the overflow drop, or the overflow drop itself turning into the last card that
     /// waited. Returns when the content fades in.
-    public mutating func spread(into metrics: IslandMetrics, top: Double, at time: Double) -> IslandCues {
+    public mutating func spread(
+        into metrics: IslandMetrics, top: Double, at time: Double, with grow: Spring = IslandAnimator.grow
+    ) -> IslandCues {
         self.metrics = metrics
         contentWidth.jump(to: metrics.pillWidth)
-        let grow = Self.grow
         dropCenter.animate(to: top + metrics.pillHeight / 2, with: grow, at: time)
         pillWidth.animate(to: metrics.pillWidth, with: grow, at: time)
         pillHeight.animate(to: metrics.pillHeight, with: grow, at: time)
@@ -380,9 +381,10 @@ public struct IslandAnimator: Sendable {
     }
 
     /// Starts the exit at `time`, faster than the entrance and without bounce, back into the notch,
-    /// or into the capsule above it when given that capsule's `anchor`. Returns when the content
-    /// fades out.
-    public mutating func exit(at time: Double, into anchor: DropletAnchor? = nil) -> IslandCues {
+    /// or into the capsule above it when given that capsule's `anchor`. `rising` at once, the drop
+    /// rises as it gathers rather than once it is round: a card leaving as the next one grows out of
+    /// the overflow drop, which the cards below follow up. Returns when the content fades out.
+    public mutating func exit(at time: Double, into anchor: DropletAnchor? = nil, rising: Bool = false) -> IslandCues {
         let m = metrics
         // The capsule gathers back into a round drop, which only then rises; the notch reaches for it,
         // they merge and the notch swallows it.
@@ -393,7 +395,7 @@ public struct IslandAnimator: Sendable {
         progress.animate(to: 0, with: shrink, at: gather)
         // Round to the eye once both sides are within 2 points of the drop's.
         let (width, tall) = (pillWidth, pillHeight)
-        let rise = Self.firstTime(after: gather) { t in
+        let rise = rising ? gather : Self.firstTime(after: gather) { t in
             max(abs(width.value(at: t) - m.dropSize), abs(tall.value(at: t) - m.dropSize)) <= 2 * m.scale
         }
         blend.animate(to: m.blend, with: Spring(duration: 0.3), at: rise)

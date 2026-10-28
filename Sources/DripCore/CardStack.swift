@@ -329,17 +329,18 @@ public final class CardStack {
         return high
     }
 
-    /// Takes `entry` back into the card above it, or into the notch, at `time`. Returns when its
-    /// content fades out; nil when it was already leaving.
+    /// Takes `entry` back into the card above it, or into the notch, at `time`, `rising` at once as
+    /// the next card grows out of the overflow drop. Returns when its content fades out; nil when it
+    /// was already leaving.
     @discardableResult
-    public func leave(_ entry: Entry, at time: Double) -> IslandCues? {
+    public func leave(_ entry: Entry, at time: Double, rising: Bool = false) -> IslandCues? {
         guard !entry.isLeaving else { return nil }
         let position = entries.firstIndex { $0 === entry } ?? 0
         let above = entries[..<position].last { !$0.isLeaving }
         entry.anchor = above
         let anchor = above.map { DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.metrics) }
         entry.exit = (time, entry.animator.shape(at: time).pillTop)
-        let cues = entry.animator.exit(at: time, into: anchor)
+        let cues = entry.animator.exit(at: time, into: anchor, rising: rising)
         entry.holdsPlaceUntil = entry.animator.riseTime ?? time
         entry.phase = .leaving(until: entry.animator.end)
         // The cards that grew out of this one now hang from whatever is above it.
@@ -422,6 +423,9 @@ public final class CardStack {
             entry.remaining = min(entry.remaining, entry.card.seconds)
             entry.countdownFrom = max(entry.countdownFrom, time + lead)
         }
+        // A card leaving now makes room for the next card waiting in the overflow drop, which grows
+        // out of it at once: the leaving card rises straight away, so the cards below can follow it.
+        let handsOver = settings.mode == .chain && !hovering && overflow.map { $0.phase == .shown && !$0.peeking } ?? false
         for entry in entries {
             switch entry.phase {
             case let .entering(start, cues):
@@ -430,7 +434,7 @@ public final class CardStack {
             case .shown:
                 if !hovering, time >= entry.countdownFrom { entry.remaining -= elapsed }
                 if entry.remaining <= 0 || entry.dismissed != nil, !isFilling(entry),
-                   let cues = leave(entry, at: time + lead)
+                   let cues = leave(entry, at: time + lead, rising: handsOver)
                 {
                     changes.left.append((entry, cues, time + lead, entry.dismissed ?? false))
                 }

@@ -5,8 +5,9 @@ import QuartzCore
 
 /// The overflow drop's count and, with the pointer on the drop, the titles of the cards waiting,
 /// clipped to the drop as the stack draws it. The count rolls to its new number as it changes, the
-/// old one out one way and the new one in from the other, landing with a small pop; the titles
-/// crossfade with the count. The stack draws the drop's black shape with the rest of its outline.
+/// old one out one way and the new one in from the other, landing with a small pop, or, as a card
+/// grows out of the drop, rolling up with that card on its spring; the titles crossfade with the
+/// count. The stack draws the drop's black shape with the rest of its outline.
 ///
 /// The root layer is flipped, as an island's is, so y grows down from the top of the screen; x is
 /// offset so the notch's center is the layer's center.
@@ -35,6 +36,8 @@ final class OverflowLayers {
     /// How long the roll takes, and the old number's fade out.
     static let rollDuration = 0.22
     static let rollFade = 0.12
+    /// How long the two numbers crossfade as they roll with a card growing out of the drop.
+    static let handOverFade = 0.25
 
     /// The count's font at regular size, as the button's.
     static func makeCountFont(scale: CGFloat) -> NSFont { .systemFont(ofSize: 12.5 * scale, weight: .semibold) }
@@ -150,7 +153,9 @@ final class OverflowLayers {
         }
         if overflow.changedAt != shownChange {
             shownChange = overflow.changedAt
-            roll(from: overflow.previous, to: overflow.count, at: started + overflow.changedAt)
+            roll(
+                from: overflow.previous, to: overflow.count, at: started + overflow.changedAt,
+                handingOver: overflow.handedOver)
         }
         if overflow.peekText != shownTitles {
             shownTitles = overflow.peekText
@@ -184,7 +189,7 @@ final class OverflowLayers {
     func rollOut(from count: Int, at begin: CFTimeInterval) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        roll(from: count, to: 0, at: begin)
+        roll(from: count, to: 0, at: begin, handingOver: true)
         CATransaction.commit()
     }
 
@@ -193,26 +198,29 @@ final class OverflowLayers {
     }
 
     /// The old number rolls out one way and fades, and the new one rolls in from the other and lands
-    /// with a small pop: up as the count goes up, down as it goes down. At 0 only the old one rolls
-    /// out.
-    private func roll(from old: Int, to new: Int, at begin: CFTimeInterval) {
-        let direction: CGFloat = new > old ? 1 : -1
+    /// with a small pop: up as the count goes up, down as it goes down. `handingOver`, as a card grows
+    /// out of the drop, both roll up with that card on its spring and crossfade, with no pop. At 0
+    /// only the old one rolls out.
+    private func roll(from old: Int, to new: Int, at begin: CFTimeInterval, handingOver: Bool = false) {
+        let direction: CGFloat = handingOver || new > old ? 1 : -1
         let distance = CGFloat(Self.rollDistance) * sizeScale * direction
+        let handOver = handingOver ? CardStack.handOver : nil
         for layer in [previous, current] {
             for key in ["roll", "fade", "pop"] { layer.removeAnimation(forKey: key) }
         }
         if old > 0 {
             previous.string = count(old)
-            move(previous, from: 0, to: -distance, at: begin)
-            fade(previous, from: 1, to: 0, over: Self.rollFade, at: begin)
+            move(previous, from: 0, to: -distance, at: begin, on: handOver)
+            fade(previous, from: 1, to: 0, over: handingOver ? Self.handOverFade : Self.rollFade, at: begin)
         }
         guard new > 0 else {
             current.opacity = 0
             return
         }
         current.string = count(new)
-        move(current, from: distance, to: 0, at: begin)
-        fade(current, from: 0, to: 1, over: Self.rollDuration, at: begin)
+        move(current, from: distance, to: 0, at: begin, on: handOver)
+        fade(current, from: 0, to: 1, over: handingOver ? Self.handOverFade : Self.rollDuration, at: begin)
+        guard !handingOver else { return }
         let landing = CASpringAnimation(keyPath: "transform.scale")
         let spring = IslandUpdate.pop
         landing.mass = 1
@@ -227,13 +235,24 @@ final class OverflowLayers {
         current.add(landing, forKey: "pop")
     }
 
-    private func move(_ layer: CALayer, from: CGFloat, to: CGFloat, at begin: CFTimeInterval) {
-        let animation = CABasicAnimation(keyPath: "transform.translation.y")
+    /// Moves `layer` from `from` to `to` points down, eased out over `rollDuration`, or on `spring`.
+    private func move(_ layer: CALayer, from: CGFloat, to: CGFloat, at begin: CFTimeInterval, on spring: Spring? = nil) {
+        let animation: CABasicAnimation
+        if let spring {
+            let springing = CASpringAnimation(keyPath: "transform.translation.y")
+            springing.mass = 1
+            springing.stiffness = spring.stiffness
+            springing.damping = spring.damping
+            springing.duration = spring.settlingTime
+            animation = springing
+        } else {
+            animation = CABasicAnimation(keyPath: "transform.translation.y")
+            animation.duration = Self.rollDuration
+            animation.timingFunction = CardPresenters.easeOut
+        }
         animation.fromValue = from
         animation.toValue = to
         animation.beginTime = begin
-        animation.duration = Self.rollDuration
-        animation.timingFunction = CardPresenters.easeOut
         animation.fillMode = .both
         animation.isRemovedOnCompletion = false
         layer.add(animation, forKey: "roll")
