@@ -6,6 +6,12 @@
 /// drop itself spreading into a card. Once nothing waits, it goes back into the last card. With the
 /// pointer on it, it springs wide to list the waiting cards' titles, newest first, and holds the
 /// stack as a card under the pointer does.
+///
+/// A push stack, whose cards come out of the notch, has an overflow pill there instead: it drips out
+/// of the notch, lets go and floats just under it, and the stack moves down to make room. A card
+/// that comes while it shows drips into it from the notch. As room opens, the card leaving sinks
+/// away, the others move down a place, and the next card grows out of the pill into the top place,
+/// all as one motion. Once nothing waits, the pill goes back into the notch and the stack closes up.
 extension CardStack {
     public final class Overflow {
         public enum Phase: Equatable {
@@ -38,11 +44,11 @@ extension CardStack {
         /// The cards dripping into it.
         public internal(set) var seeds: [Seed] = []
         /// What it melts into: the card it formed under, the card growing out of it, or the card it
-        /// goes back into.
+        /// goes back into; nil for the notch, which a push stack's pill hangs from.
         public internal(set) weak var anchor: Entry?
         var lastSeed = -Double.infinity
 
-        init(metrics: IslandMetrics, animator: IslandAnimator, phase: Phase, count: Int, anchor: Entry) {
+        init(metrics: IslandMetrics, animator: IslandAnimator, phase: Phase, count: Int, anchor: Entry?) {
             self.metrics = metrics
             self.animator = animator
             self.phase = phase
@@ -66,15 +72,15 @@ extension CardStack {
     }
 
     /// A card that came while the overflow drop shows, as a small drop beading out of the bottom of
-    /// the last card and falling the gap into the overflow drop, melted into each while close: a
-    /// liquid bridge that pulses into the drop. Every value is a function of the time, so the
-    /// renderers sample it as they sample a card.
+    /// the last card, or of the notch above a push stack's pill, and falling the gap into the
+    /// overflow drop, melted into each while close: a liquid bridge that pulses into the drop. Every
+    /// value is a function of the time, so the renderers sample it as they sample a card.
     public struct Seed: Sendable {
         public let start: Double
         /// When it reaches the drop's middle: the count goes up.
         public let merge: Double
-        /// The card it drips out of, by `Entry.id`.
-        public let source: Int
+        /// The card it drips out of, by `Entry.id`; nil for the notch.
+        public let source: Int?
         private let from: Double
         private let to: Double
         private var size: SpringValue
@@ -86,9 +92,9 @@ extension CardStack {
         /// How it falls the gap.
         static let fall = Spring(duration: 0.55)
 
-        /// Drips out of the bottom of `card`, whose capsule ends at `bottom`, at `time`, into the
-        /// overflow drop whose capsule's top is `top` and middle `middle`.
-        init(from card: Entry, bottom: Double, into top: Double, middle: Double, metrics m: IslandMetrics, at time: Double) {
+        /// Drips out of the bottom of `card`, or of the notch for nil, which ends at `bottom`, at
+        /// `time`, into the overflow drop whose capsule's top is `top` and middle `middle`.
+        init(from card: Entry?, bottom: Double, into top: Double, middle: Double, metrics m: IslandMetrics, at time: Double) {
             let scale = m.scale
             // It beads out from just inside the card, and is fed as it hangs, as a card's drop is.
             let from = bottom - 10 * scale
@@ -103,7 +109,7 @@ extension CardStack {
             let joined = firstTime(after: time) { [size] in center($0) + size.value(at: $0) / 2 >= top - 12 * scale }
             joining.animate(to: m.blend, with: Spring(duration: 0.3), at: joined)
             start = time
-            source = card.id
+            source = card?.id
             self.from = from
             to = middle
             self.size = size
@@ -180,13 +186,28 @@ extension CardStack {
     /// `start`.
     public static func countCue(_ cues: IslandCues) -> Double { max(cues.sides - countLead, 0) }
 
+    /// How far under the notch a push stack's overflow pill floats, in points at regular size: far
+    /// enough to let go of it.
+    public static let pillGap = 14.0
+
+    /// The overflow pill's top over a push stack of cards laid out as `metrics`.
+    static func pillTop(_ metrics: IslandMetrics) -> Double { metrics.notchHeight + pillGap * metrics.scale }
+
+    /// The top card's top while the overflow pill shows over a push stack: under the pill, a gap
+    /// apart. Nil otherwise, for the top card's own place under the notch.
+    var pillStackTop: Double? {
+        guard settings.mode == .push, let overflow, !overflow.isLeaving else { return nil }
+        return Self.pillTop(overflow.metrics) + overflow.metrics.pillHeight + Self.gap
+    }
+
     /// Grows `card`, laid out as `metrics`, out of the overflow drop from `time`, as the count rolls
     /// down: up into the place the card leaving frees. A card that left rising gives its place up at
     /// once, so the cards below close up as it gathers and the new card spreads, the count rolling
     /// with them, all on `handOver` from `time`; one still gathering in place holds it, and the new
     /// card waits until its drop starts to rise. The drop stays where it is, joined to the new card
     /// until the neck between them pinches off. The last card waiting is the drop itself, spreading
-    /// into the card. In push mode the card drops from the notch as any card does.
+    /// into the card. In push mode the card grows down out of the pill into the top place instead, as
+    /// the cards move down a place on the same spring, and the pill stays until it goes back in.
     @discardableResult
     public func release(_ card: Card, metrics: IslandMetrics, own: Bool, at time: Double) -> Release? {
         guard let overflow, !overflow.isLeaving else { return nil }
@@ -201,9 +222,7 @@ extension CardStack {
         // No longer waiting, from now rather than the next step: it can grow out as a card leaves,
         // after the step has looked at the cards waiting.
         if let index = queued.firstIndex(of: card) { queued.remove(at: index) }
-        if settings.mode == .push {
-            return Release(entry: enter(card, metrics: metrics, own: own, decided: time, at: time), count: count, last: false)
-        }
+        if settings.mode == .push { return pushRelease(card, metrics: metrics, own: own, out: overflow, count: count, at: time) }
         for entry in holding where entry.rises { entry.holdsPlaceUntil = -.infinity }
         if holding.contains(where: \.rises) { place(at: time, with: Self.handOver) }
         var slot: Double?
@@ -226,6 +245,29 @@ extension CardStack {
             overflow.phase = .releasing(until: start + 0.4)
         }
         return Release(entry: entry, count: count, last: last)
+    }
+
+    /// Grows `card` out of `overflow`, the pill over a push stack, at `time`, into the top place, as
+    /// every card moves down a place on `handOver`. A card leaving gives its place up at once, so
+    /// none moves down into a place still held. `count` is what the pill showed before.
+    private func pushRelease(
+        _ card: Card, metrics: IslandMetrics, own: Bool, out overflow: Overflow, count: Int, at time: Double
+    ) -> Release {
+        for entry in entries where entry.isLeaving { entry.holdsPlaceUntil = -.infinity }
+        var animator = IslandAnimator(metrics: metrics, from: overflow.animator.shape(at: time))
+        let cues = animator.spread(
+            into: metrics, top: pillStackTop ?? metrics.pillTop, at: time, with: Self.handOver, textAt: Self.handOverText)
+        let entry = Entry(id: nextID, card: card, own: own, metrics: metrics, animator: animator)
+        nextID += 1
+        entry.phase = .entering(start: time, cues: cues)
+        entry.countdownFrom = time + (cues.title.first ?? cues.sides) + 0.25
+        entries.insert(entry, at: live.first.flatMap { first in entries.firstIndex { $0 === first } } ?? 0)
+        place(at: time, except: entry, with: Self.handOver)
+        lastEntrance = time
+        overflow.animator.melt(at: time)
+        overflow.anchor = entry
+        overflow.phase = .releasing(until: time + 0.4)
+        return Release(entry: entry, count: count, last: false)
     }
 
     /// Springs the overflow drop wide to list the waiting cards' titles, `width` points wide as drawn
@@ -286,7 +328,13 @@ extension CardStack {
            let holder = entries.last(where: { !$0.isLeaving || $0.holdsPlaceUntil.isFinite }),
            !holder.isLeaving, holder.animator.end <= time
         {
-            formOverflow(under: holder, at: start)
+            if settings.mode == .push {
+                // Out of the notch, once every card is at rest to move down out of its way.
+                guard entries.allSatisfy({ $0.animator.end <= time }) else { return changed }
+                formPill(like: holder.metrics, at: start)
+            } else {
+                formOverflow(under: holder, at: start)
+            }
             return true
         }
         guard let overflow, !overflow.isLeaving else { return changed }
@@ -305,12 +353,14 @@ extension CardStack {
             tick(overflow, to: max(target - inFlight, 0), at: start)
             changed = true
         }
+        // Over a push stack it drips from the notch; else from the last card, once at rest.
+        let source = settings.mode == .push ? nil : live.last
         if overflow.phase == .shown, overflow.count + inFlight < target, time - overflow.lastSeed >= 0.14,
-           let source = live.last, source.animator.end <= time
+           settings.mode == .push || source.map({ $0.animator.end <= time }) ?? false
         {
             overflow.lastSeed = time
             overflow.seeds.append(Seed(
-                from: source, bottom: source.animator.targetTop + source.metrics.pillHeight,
+                from: source, bottom: source.map { $0.animator.targetTop + $0.metrics.pillHeight } ?? overflow.metrics.notchHeight,
                 into: overflow.animator.targetTop,
                 middle: overflow.animator.targetTop + overflow.animator.metrics.pillHeight / 2,
                 metrics: overflow.metrics, at: start))
@@ -329,7 +379,9 @@ extension CardStack {
         }
         // The drop sits just below the bottom of the cards' places, and moves only when a card of
         // another height takes the bottom place: down for a taller one, back up for a shorter one. A
-        // place left with no card taking it leaves the drop where it is.
+        // place left with no card taking it leaves the drop where it is. A push stack's pill stays
+        // under the notch.
+        guard settings.mode == .chain else { return changed }
         let bottom = entries.filter { !$0.isLeaving || $0.holdsPlaceUntil.isFinite }
             .map { ($0.exit?.top ?? $0.animator.targetTop) + $0.metrics.pillHeight }.max()
         if !hasRoom, let bottom, abs(bottom + Self.gap - overflow.animator.targetTop) > 0.25 {
@@ -351,15 +403,33 @@ extension CardStack {
             anchor: holder)
     }
 
-    /// Takes the empty overflow drop back into the last card, or into the notch, at `time`.
+    /// Drips the overflow pill out of the notch over a push stack of cards laid out like `card`, at
+    /// `time`: the cards move down out of its way, and it falls, lets go of the notch and floats
+    /// under it.
+    private func formPill(like card: IslandMetrics, at time: Double) {
+        let metrics = overflowMetrics(count: queued.count, like: card)
+        let pill = Overflow(
+            metrics: metrics, animator: IslandAnimator(metrics: metrics), phase: .shown, count: queued.count, anchor: nil)
+        // Showing, it takes the room the cards make for it.
+        overflow = pill
+        place(at: time, with: IslandAnimator.makeRoom)
+        let top = Self.pillTop(metrics)
+        let delay = live.first.map { Self.delay(clearing: $0.animator, for: pill.animator, top: top, at: time) } ?? 0
+        let cues = pill.animator.enter(at: time + delay, top: top)
+        pill.phase = .forming(start: time + delay, cues: cues)
+    }
+
+    /// Takes the empty overflow drop back into the last card, or into the notch, at `time`. Over a
+    /// push stack the pill goes back into the notch, and the stack closes up under it.
     private func absorbOverflow(at time: Double) {
         guard let overflow else { return }
         peek(width: nil, at: time)
-        let into = live.last
+        let into = settings.mode == .push ? nil : live.last
         overflow.anchor = into
         _ = overflow.animator.exit(
             at: time, into: into.map { DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.metrics) })
         overflow.phase = .leaving(start: time, until: overflow.animator.end)
+        if settings.mode == .push { place(at: time) }
     }
 
     /// Sets the overflow drop's count to `count` at `time`: the drop widens or narrows to fit it, and

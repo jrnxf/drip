@@ -146,12 +146,15 @@ public struct HandedCard: Equatable, Sendable, Codable {
     /// Whether it left rising at once rather than gathering in place first; nil for gathering, as
     /// from a drip that did not say.
     public var rises: Bool?
+    /// Whether it left sinking away, as a push stack's card does as the next grows out of the
+    /// overflow pill; nil for not, as from a drip that did not say.
+    public var sinks: Bool?
     /// The springs still taking its top there, as it glides into a gap; none at rest.
     public var glide: [SpringMotion]
 
     public init(
         card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil,
-        rises: Bool? = nil, glide: [SpringMotion] = []
+        rises: Bool? = nil, sinks: Bool? = nil, glide: [SpringMotion] = []
     ) {
         self.card = card
         self.top = top
@@ -159,6 +162,7 @@ public struct HandedCard: Equatable, Sendable, Codable {
         self.isWaiting = isWaiting
         self.leaving = leaving
         self.rises = rises
+        self.sinks = sinks
         self.glide = glide
     }
 

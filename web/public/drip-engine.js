@@ -97,14 +97,14 @@ export async function loadDrip(source, measure) {
       // cards go, "dropped" when it was still to come and the page releases it, else "".
       dismiss: (id, handle) => ["", "shown", "dropped"][e.drip_stack_dismiss(id, handle)] ?? "",
       // Every card, top to bottom: its island's handle, the seconds left on its countdown, where its
-      // capsule's top is heading, and its frame.
+      // capsule's top is heading, how solid its black shape is, and its frame.
       frame(id, time) {
         const f = frameValues(e.drip_stack_frame(id, time));
         const cards = [];
         let i = 1;
         for (let n = f[0]; n > 0; n--) {
-          const [frame, next] = readFrame(f, i + 3);
-          cards.push({ handle: f[i], remaining: f[i + 1], targetTop: f[i + 2], frame });
+          const [frame, next] = readFrame(f, i + 4);
+          cards.push({ handle: f[i], remaining: f[i + 1], targetTop: f[i + 2], opacity: f[i + 3], frame });
           i = next;
         }
         return cards;

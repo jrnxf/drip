@@ -36,6 +36,9 @@ public final class CardStack {
         /// Whether it left rising at once, as the next card grows out of the overflow drop, so it
         /// can give its place up the moment that card starts to.
         var rises = false
+        /// Whether it left sinking away where it is, as the next card grows out of the overflow pill
+        /// above a push stack, giving its place up at once.
+        public internal(set) var sinks = false
         /// Set when the card should go as soon as nothing is still flowing into it; whether by a
         /// click on its button.
         public var dismissed: Bool?
@@ -173,6 +176,7 @@ public final class CardStack {
                 card: entry.card, top: entry.exit?.top ?? entry.animator.targetTop,
                 remaining: max(entry.remaining, 0), isWaiting: entry.isWaiting,
                 leaving: entry.exit.map { max(time - $0.time, 0) }, rises: entry.exit == nil ? nil : entry.rises,
+                sinks: entry.exit == nil ? nil : entry.sinks,
                 glide: entry.exit == nil && entry.isShown ? entry.animator.glide(at: time) : [])
         }
     }
@@ -194,7 +198,9 @@ public final class CardStack {
         entry.countdownFrom = time
         entries.append(entry)
         lastEntrance = time
-        let exit = handed.leaving.flatMap { leave(entry, at: time - $0, rising: handed.rises ?? false) }
+        let exit = handed.leaving.flatMap {
+            leave(entry, at: time - $0, rising: handed.rises ?? false, sinking: handed.sinks ?? false)
+        }
         place(at: time)
         return (entry, exit)
     }
@@ -243,10 +249,11 @@ public final class CardStack {
         return waiting.count != count
     }
 
-    /// Where each card that holds a place in the stack sits: its capsule's top, from the notch down.
+    /// Where each card that holds a place in the stack sits: its capsule's top, from the notch down,
+    /// or from under the overflow pill while it shows over a push stack.
     func tops() -> [ObjectIdentifier: Double] {
         var tops: [ObjectIdentifier: Double] = [:]
-        var top: Double?
+        var top = pillStackTop
         for entry in entries where !entry.isLeaving || entry.holdsPlaceUntil.isFinite {
             let at = top ?? entry.metrics.pillTop
             tops[ObjectIdentifier(entry)] = at
@@ -333,19 +340,22 @@ public final class CardStack {
     }
 
     /// Takes `entry` back into the card above it, or into the notch, at `time`, `rising` at once as
-    /// the next card grows out of the overflow drop. Returns when its content fades out; nil when it
-    /// was already leaving.
+    /// the next card grows out of the overflow drop, or `sinking` away where it is as the next card
+    /// grows out of the overflow pill above a push stack. Returns when its content fades out; nil
+    /// when it was already leaving.
     @discardableResult
-    public func leave(_ entry: Entry, at time: Double, rising: Bool = false) -> IslandCues? {
+    public func leave(_ entry: Entry, at time: Double, rising: Bool = false, sinking: Bool = false) -> IslandCues? {
         guard !entry.isLeaving else { return nil }
         let position = entries.firstIndex { $0 === entry } ?? 0
         let above = entries[..<position].last { !$0.isLeaving }
-        entry.anchor = above
-        let anchor = above.map { DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.metrics) }
+        // A card sinking away goes into nothing.
+        entry.anchor = sinking ? nil : above
+        let anchor = entry.anchor.map { DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.metrics) }
         entry.exit = (time, entry.animator.shape(at: time).pillTop)
-        let cues = entry.animator.exit(at: time, into: anchor, rising: rising)
+        let cues = sinking ? entry.animator.sink(at: time) : entry.animator.exit(at: time, into: anchor, rising: rising)
         entry.holdsPlaceUntil = entry.animator.riseTime ?? time
         entry.rises = rising
+        entry.sinks = sinking
         entry.phase = .leaving(until: entry.animator.end)
         // The cards that grew out of this one now hang from whatever is above it.
         for other in entries where other.anchor === entry { other.anchor = above }
@@ -433,7 +443,7 @@ public final class CardStack {
         // A card whose time is up while the overflow drop is still forming, or a card still growing
         // out of it, waits the moment until the drop is ready, so the next card grows out of it in
         // one motion with this one leaving rather than after it.
-        let dropBusy = settings.mode == .chain && !hovering && overflow.map { drop in
+        let dropBusy = !hovering && overflow.map { drop in
             switch drop.phase {
             case .forming, .releasing: return !drop.peeking
             case .shown, .leaving: return false
@@ -452,13 +462,17 @@ public final class CardStack {
         let rises = due.count == 1 && settings.mode == .chain && !hovering
             && !entries.contains { $0.isLeaving && $0.holdsPlaceUntil.isFinite && $0.holdsPlaceUntil > time + lead }
             && overflow.map { $0.phase == .shown && !$0.peeking } ?? true
+        // In push mode the next card waiting grows out of the overflow pill above the stack instead,
+        // and the one card leaving sinks away where it is, so everything moves down together.
+        let sinks = due.count == 1 && settings.mode == .push && !queued.isEmpty
+            && overflow.map { $0.phase == .shown && !$0.peeking } ?? false
         for entry in entries {
             switch entry.phase {
             case let .entering(start, cues):
                 let last = max(cues.sides, (cues.title + cues.detail).max() ?? 0) + 0.25
                 if time - start >= last { entry.phase = .shown }
             case .shown:
-                if goes(entry), let cues = leave(entry, at: time + lead, rising: rises)
+                if goes(entry), let cues = leave(entry, at: time + lead, rising: rises, sinking: sinks)
                 {
                     changes.left.append((entry, cues, time + lead, entry.dismissed ?? false))
                 }
@@ -471,7 +485,9 @@ public final class CardStack {
             }
         }
         changes.gone = entries.filter { entry in
-            if case let .leaving(until) = entry.phase { return time >= until + 0.02 || isSwallowed(entry, at: time) }
+            if case let .leaving(until) = entry.phase {
+                return time >= until + 0.02 || isSwallowed(entry, at: time) || entry.sinks && entry.animator.isFaded(at: time)
+            }
             return false
         }
         entries.removeAll { entry in changes.gone.contains { $0 === entry } }
@@ -560,6 +576,7 @@ public final class CardStack {
             overflow: overflow.map { overflow in
                 StackOutline.Drop(
                     animator: overflow.animator, anchor: index(overflow.anchor),
+                    hangsFromNotch: settings.mode == .push && overflow.anchor == nil,
                     seeds: overflow.seeds.map { seed in (seed, entries.firstIndex { $0.id == seed.source }) })
             })
     }
@@ -585,9 +602,12 @@ public struct StackOutline: Sendable {
     /// The overflow drop, and the cards dripping into it.
     public struct Drop: Sendable {
         public let animator: IslandAnimator
-        /// What it melts into, as an index into `cards`; nil for nothing.
+        /// What it melts into, as an index into `cards`; nil for nothing, or for the notch when it
+        /// `hangsFromNotch`, as a push stack's pill does.
         public let anchor: Int?
-        /// Each seed, with the card it drips out of as an index into `cards`.
+        public let hangsFromNotch: Bool
+        /// Each seed, with the card it drips out of as an index into `cards`; nil for one gone, or
+        /// for the notch when the seed's own `source` is nil.
         public let seeds: [(seed: CardStack.Seed, source: Int?)]
     }
 
@@ -622,8 +642,9 @@ public struct StackOutline: Sendable {
         let metrics = drop.animator.metrics
         let shape = drop.animator.shape(at: time)
         var pieces: [Piece] = []
-        if let anchor = drop.anchor, case let field = DropletField(metrics: metrics, shape: shape, anchor: capsule(anchor)),
-           field.touchesNotch
+        let notch = DropletAnchor.notch(metrics)
+        if let anchor = drop.anchor.map(capsule) ?? (drop.hangsFromNotch ? notch : nil),
+           case let field = DropletField(metrics: metrics, shape: shape, anchor: anchor), field.touchesNotch
         {
             pieces.append(.traced(field))
         } else {
@@ -633,8 +654,8 @@ public struct StackOutline: Sendable {
         for (seed, source) in drop.seeds where time >= seed.start && time < seed.end {
             var melted = false
             let leaving = seed.leavingBlend(at: time)
-            if let source, leaving > 0.01,
-               case let field = DropletField(metrics: metrics, shape: seed.shape(at: time, blend: leaving), anchor: capsule(source)),
+            if let from = source.map(capsule) ?? (seed.source == nil ? notch : nil), leaving > 0.01,
+               case let field = DropletField(metrics: metrics, shape: seed.shape(at: time, blend: leaving), anchor: from),
                field.touchesNotch
             {
                 pieces.append(.traced(field))

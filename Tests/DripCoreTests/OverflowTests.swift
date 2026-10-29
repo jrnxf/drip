@@ -1,4 +1,9 @@
 import DripCore
+#if os(WASI)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 import Testing
 
 /// The overflow drop under a full stack, which counts the cards waiting for room.
@@ -548,17 +553,208 @@ struct OverflowTests {
         #expect(driver.releases.allSatisfy { abs($0.top - slot(0)) < 0.01 })
     }
 
-    /// In push mode the drop hangs under the last card too, and the next card drops from the notch.
-    @Test func pushModeDripsTheDropUnderTheLastCard() throws {
-        let driver = stack(["a", "b", "c", "d"], seconds: 3, mode: .push)
-        driver.run(for: 3)
-        let drop = try #require(driver.stack.overflow)
-        #expect(abs(drop.animator.targetTop - slot(3)) < 0.01)
+    // MARK: Push mode's pill
+
+    /// The overflow pill's top over a push stack, and each place under it while it shows.
+    private var pillTop: Double { metrics.notchHeight + CardStack.pillGap }
+
+    private func pushedSlot(_ index: Int) -> Double {
+        pillTop + metrics.dropSize + CardStack.gap + Double(index) * (metrics.pillHeight + CardStack.gap)
+    }
+
+    /// In push mode a full stack drips the overflow pill out of the notch instead: it lets go and
+    /// floats just under the notch, and the stack moves down out of its way first, never touching it.
+    @Test func pushModeDripsThePillOutOfTheNotch() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 8, mode: .push)
+        var formedAt: Double?
+        var closest = Double.infinity
+        var touchedNotch = false
+        var letGo = false
+        driver.run(for: 4, step: { time, _ in
+            guard let pill = driver.stack.overflow, let top = driver.stack.live.first else { return }
+            if formedAt == nil { formedAt = time }
+            let shape = pill.animator.shape(at: time)
+            closest = min(closest, top.animator.shape(at: time).pillTop - (shape.pillTop + shape.pillHeight))
+            let piece = driver.stack.outline.overflowPieces(at: time).first
+            if case .traced = piece { touchedNotch = true } else if touchedNotch { letGo = true }
+        })
+        let pill = try #require(driver.stack.overflow)
+        #expect(formedAt != nil)
+        #expect(pill.count == 2)
+        #expect(pill.phase == .shown)
+        #expect(pill.anchor == nil)
+        #expect(abs(pill.animator.targetTop - pillTop) < 0.01)
+        #expect(pill.titles == ["e", "d"])
+        // Newest at the top, as push stacks them, each a place lower under the pill.
+        #expect(driver.stack.live.map(\.card.title) == ["c", "b", "a"])
+        for (index, entry) in driver.stack.live.enumerated() {
+            #expect(abs(entry.animator.targetTop - pushedSlot(index)) < 0.01)
+        }
+        #expect(closest > 0)
+        // Melted into the notch as it drips out, then apart from it.
+        #expect(touchedNotch)
+        #expect(letGo)
+    }
+
+    /// A card that comes while the pill shows drips into it from the notch, and the count goes up.
+    @Test func pushModeDripsLaterCardsFromTheNotchIntoThePill() throws {
+        let driver = stack(["a", "b", "c", "d"], seconds: 8, mode: .push)
+        driver.run(for: 3.5)
+        let pill = try #require(driver.stack.overflow)
+        #expect(pill.count == 1)
+        driver.others = [card("late")]
+        var seeds: [CardStack.Seed] = []
+        driver.run(for: 1, step: { _, _ in
+            for seed in pill.seeds where !seeds.contains(where: { $0.start == seed.start }) { seeds.append(seed) }
+        })
+        let seed = try #require(seeds.first)
+        #expect(seeds.count == 1)
+        #expect(seed.source == nil)
+        // From inside the notch down to the pill's middle.
+        #expect(seed.center(at: seed.start) < metrics.notchHeight)
+        #expect(abs(seed.center(at: seed.start + 2) - (pillTop + metrics.dropSize / 2)) < 0.5)
+        #expect(pill.count == 2)
+        #expect(pill.titles == ["late", "d"])
+        // The pill stays where it is.
+        #expect(abs(pill.animator.targetTop - pillTop) < 0.01)
+    }
+
+    /// With the pointer on it, the pill springs wide to list the titles waiting, and no card grows
+    /// out of it until the pointer leaves.
+    @Test func pushModePeekingAtThePillHoldsTheRelease() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 6, mode: .push)
+        driver.run(for: 4)
+        let pill = try #require(driver.stack.overflow)
+        let time = driver.time
+        #expect(driver.stack.isOnOverflow(IslandPoint(0, pillTop + metrics.dropSize / 2), time: time))
+        #expect(!driver.stack.isOnOverflow(IslandPoint(0, pushedSlot(0) + 4), time: time))
+        #expect(driver.stack.peek(width: 40, at: time))
+        #expect(pill.peeking)
+        #expect(pill.animator.metrics.pillWidth == 66)
+        #expect(!driver.stack.canRelease(at: time))
+        driver.stack.hover(true, at: time)
+        driver.run(for: 4)
+        #expect(driver.releases.isEmpty)
+        #expect(pill.count == 2)
+        driver.stack.hover(false, at: driver.time)
+        driver.stack.peek(width: nil, at: driver.time)
         driver.run(for: 6)
-        let release = try #require(driver.releases.first)
-        #expect(!release.release.last)
-        #expect(release.release.entry.anchor == nil)
-        #expect(release.live.first == "d")
+        #expect(!driver.releases.isEmpty)
+    }
+
+    /// The handover is one downward motion: in the very step the oldest card, at the bottom, starts
+    /// to go, it sinks and fades where it is, the other cards move down a place and the next card
+    /// grows out of the pill into the top place, both on `CardStack.handOver`, and the count goes
+    /// down with them.
+    @Test func pushModeHandsOverDownward() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 3, mode: .push)
+        var leftAt: Double?
+        var leaving: CardStack.Entry?
+        var moving: [CardStack.Entry] = []
+        var targets: [Double] = []
+        var count: (Int, Double, Bool)?
+        driver.run(for: 10, step: { time, changes in
+            guard leftAt == nil, let left = changes.left.first else { return }
+            leftAt = time
+            leaving = left.entry
+            moving = driver.stack.live.filter { $0 !== driver.releases.last?.release.entry }
+            targets = moving.map(\.animator.targetTop)
+            count = driver.stack.overflow.map { ($0.count, $0.changedAt, $0.handedOver) }
+        })
+        let left = try #require(leftAt)
+        let gone = try #require(leaving)
+        let first = try #require(driver.releases.first)
+        #expect(gone.card.title == "a")
+        #expect(gone.sinks)
+        #expect(gone.animator.riseTime == nil)
+        #expect(first.time == left)
+        #expect(first.start == left)
+        #expect(!first.release.last)
+        #expect(first.release.count == 2)
+        #expect(first.release.entry.card.title == "d")
+        #expect(first.live == ["d", "c", "b"])
+        // Out of the pill, where the pill is, into the top place under it.
+        #expect(abs(first.release.entry.animator.shape(at: left).pillTop - pillTop) < 1)
+        #expect(abs(first.top - pushedSlot(0)) < 0.01)
+        // The others move down a place on the same spring, from the same moment.
+        #expect(moving.map(\.card.title) == ["c", "b"])
+        for (index, entry) in moving.enumerated() {
+            #expect(abs(targets[index] - pushedSlot(index + 1)) < 0.01)
+            for t in [0.1, 0.25, 0.5] {
+                let progress = CardStack.handOver.progress(at: t)
+                let expected = pushedSlot(index) + (pushedSlot(index + 1) - pushedSlot(index)) * progress
+                #expect(abs(entry.animator.shape(at: left + t).pillTop - expected) < 0.5)
+            }
+        }
+        // The card going sinks a little and fades out, and is gone once it has.
+        let start = try #require(gone.exit)
+        #expect(abs(start.top - pushedSlot(2)) < 0.01)
+        let late = gone.animator.shape(at: left + 0.3)
+        #expect(late.pillTop > start.top + 5)
+        #expect(late.opacity < 0.5)
+        #expect(gone.animator.shape(at: left + 2).pillTop - start.top <= IslandAnimator.sinkDepth + 0.5)
+        #expect(!driver.stack.entries.contains { $0 === gone })
+        // The count goes down with the card, rolling rather than swelling.
+        let (shown, changedAt, handedOver) = try #require(count)
+        #expect(shown == 1)
+        #expect(changedAt == left)
+        #expect(handedOver)
+    }
+
+    /// Every card that waited grows out of the pill in turn, the last one included, which leaves
+    /// the empty pill to go back into the notch; the stack then closes up under the notch.
+    @Test func pushModeTakesTheEmptyPillBackIntoTheNotch() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 3, mode: .push)
+        var leftPill: CardStack.Overflow?
+        var leftAt: Double?
+        var sank: [String] = []
+        driver.run(for: 14, step: { time, changes in
+            sank += changes.left.filter(\.entry.sinks).map(\.entry.card.title)
+            if leftAt == nil, let pill = driver.stack.overflow, pill.isLeaving {
+                leftAt = time
+                leftPill = pill
+            }
+        })
+        #expect(driver.releases.map(\.release.entry.card.title) == ["d", "e"])
+        #expect(driver.releases.allSatisfy { !$0.release.last })
+        #expect(sank == ["a", "b"])
+        let pill = try #require(leftPill)
+        let left = try #require(leftAt)
+        #expect(pill.count == 0)
+        #expect(pill.anchor == nil)
+        #expect(driver.stack.overflow == nil)
+        // It rose back into the notch, and the cards went back up under it as it did.
+        #expect(pill.animator.targetTop < metrics.notchHeight)
+        #expect(try #require(driver.releases.last).time < left)
+    }
+
+    /// Once the pill has gone back in, the stack closes up under the notch.
+    @Test func pushModeClosesUpOnceThePillGoes() throws {
+        let driver = stack(["a", "b", "c", "d"], seconds: 6, mode: .push)
+        var shownTops: [Double] = []
+        var afterTops: [Double] = []
+        driver.run(for: 11, step: { _, _ in
+            if driver.stack.overflow?.phase == .shown { shownTops = driver.stack.live.map(\.animator.targetTop) }
+            if driver.stack.overflow?.isLeaving == true { afterTops = driver.stack.live.map(\.animator.targetTop) }
+        })
+        #expect(driver.releases.map(\.release.entry.card.title) == ["d"])
+        #expect(zip(shownTops, (0..<3).map(pushedSlot)).allSatisfy { abs($0 - $1) < 0.01 })
+        #expect(zip(afterTops, (0..<3).map(slot)).allSatisfy { abs($0 - $1) < 0.01 })
+        #expect(afterTops.count == 3)
+    }
+
+    /// A card handed on while it sinks away goes on sinking where the next drip shows it.
+    @Test func aSinkingCardHandedOnGoesOnSinking() throws {
+        let stack = CardStack(settings: StackSettings(mode: .push, max: 3))
+        let handed = HandedCard(card: card("a"), top: pushedSlot(2), remaining: 0, isWaiting: false, leaving: 0.1, sinks: true)
+        let decoded = try JSONDecoder().decode(HandedCard.self, from: JSONEncoder().encode(handed))
+        #expect(decoded.sinks == true)
+        let (entry, exit) = stack.resume(decoded, metrics: metrics, at: 1)
+        #expect(exit != nil)
+        #expect(entry.sinks)
+        #expect(entry.animator.riseTime == nil)
+        #expect(entry.animator.shape(at: 1).opacity < 1)
+        #expect(entry.animator.shape(at: 1).pillTop > pushedSlot(2))
     }
 
     /// The card summing up what came while the screen was locked counts as one.

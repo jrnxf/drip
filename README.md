@@ -846,7 +846,12 @@ widens to list the waiting cards' titles, newest first.
 A click on the drop does nothing. How they stack is `stack` in the config, or `DRIP_STACK`. With `chain`, the default, each new
 card drops out of the bottom of the last one and the oldest goes back into the notch first, the
 others moving up behind it. With `push` a new card drops out of the notch once the others have
-moved down out of its way. `off` shows one card at a time. While the pointer is on any card in the stack, nothing moves: every countdown
+moved down out of its way, and the cards waiting wait in a small pill that drips out of the notch
+and floats just under it instead, the stack moving down to make room. A card that comes later
+drips from the notch into the pill. When a card leaves while cards wait, it sinks away as it fades, the other cards
+move down, the next card grows out of the pill into the top place and the count goes down, again in
+one motion; once none waits, the pill goes back into the notch and the stack closes up under it.
+`off` shows one card at a time. While the pointer is on any card in the stack, nothing moves: every countdown
 stops, gaps stay open and new cards wait, though they still drip into the drop so its count stays
 true. Once the pointer has rested for 5 seconds, the stack lets go, and moving it holds the stack
 again. A click on a card dismisses it. Only the cards of drips

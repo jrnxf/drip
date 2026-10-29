@@ -821,8 +821,9 @@ public func dripStackDismiss(_ stackHandle: Int32, _ handle: Int32) -> Int32 {
 
 /// Every card of the stack at `time`, top to bottom, leaving cards included, as doubles: the card
 /// count, then for each card its island's handle, the seconds left on its countdown, where its
-/// capsule's top is heading, and its frame as `drip_frame` lays one out, the outline traced where its
-/// drop melts into the notch or the card above it. The page reads `drip_frame_length` doubles.
+/// capsule's top is heading, how solid its black shape is, and its frame as `drip_frame` lays one
+/// out, the outline traced where its drop melts into the notch or the card above it. The page reads
+/// `drip_frame_length` doubles.
 @_expose(wasm, "drip_stack_frame")
 @_cdecl("drip_stack_frame")
 public func dripStackFrame(_ stackHandle: Int32, _ time: Double) -> UnsafePointer<Double> {
@@ -832,8 +833,8 @@ public func dripStackFrame(_ stackHandle: Int32, _ time: Double) -> UnsafePointe
     let pieces = session?.stack.outline.pieces(at: time) ?? []
     frameBuffer.append(Double(entries.count))
     for (entry, piece) in zip(entries, pieces) {
-        frameBuffer += [Double(session?.islandOf[entry.id] ?? 0), entry.remaining, entry.animator.targetTop]
         let shape = entry.animator.shape(at: time)
+        frameBuffer += [Double(session?.islandOf[entry.id] ?? 0), entry.remaining, entry.animator.targetTop, shape.opacity]
         var field: DropletField?
         if case let .traced(traced) = piece { field = traced }
         appendFrame(shape: shape, metrics: entry.metrics, layout: entry.animator.content(for: shape), traced: field)

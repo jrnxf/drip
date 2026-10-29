@@ -186,7 +186,7 @@
       <div>
         <div class="lbl">02 / spec sheet</div>
         <h2 class="type-title mt-10 mx-0 mb-18">up to <b>three alerts at once.</b></h2>
-        <p class="m-0 max-w-[46ch] text-ink-2">Cards that arrive while one shows stack below it. In chain mode, the default, each new card drops out of the last one. In push mode it drops out of the notch and moves the others down. Cards past the most it shows wait in a drop under the last card, which counts them and lists them under the pointer; each grows out of it as room opens. This module runs DripCore's <code>CardStack</code>: pick a mode, or press PLAY.</p>
+        <p class="m-0 max-w-[46ch] text-ink-2">Cards that arrive while one shows stack below it. In chain mode, the default, each new card drops out of the last one. In push mode it drops out of the notch and moves the others down. Cards past the most it shows wait in a drop under the last card, or in push mode in a pill under the notch, which counts them and lists them under the pointer; each grows out of it as room opens. This module runs DripCore's <code>CardStack</code>: pick a mode, or press PLAY.</p>
         <table class="spec">
           <tr><th scope="row">kinds</th><td>ok, warn, fail, info, and presets from your config: the kind is the look</td></tr>
           <tr><th scope="row">text</th><td>a title of up to 2 lines and a detail of up to 3, wrapped by the engine; a card is at most 640 pt wide</td></tr>
@@ -874,7 +874,9 @@ class Stage {
 
     const frames = drip.stack.frame(st.id, t);
     const drop = st.overflow ? drip.stack.overflowFrame(st.id, t) : null;
-    for (const { frame } of frames) this.fillShape(frame);
+    // A push stack's card sinking away as the next grows out of the overflow pill fades as it goes.
+    for (const { frame, opacity } of frames) { this.ctx.globalAlpha = opacity; this.fillShape(frame); }
+    this.ctx.globalAlpha = 1;
     for (const piece of drop?.pieces ?? []) this.fillShape(piece);
     for (const { handle, remaining, frame } of frames) {
       const card = st.cards.get(handle), ct = t - card.start;
