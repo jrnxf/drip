@@ -264,8 +264,6 @@ extension CardStack {
         entries.insert(entry, at: live.first.flatMap { first in entries.firstIndex { $0 === first } } ?? 0)
         place(at: time, except: entry, with: Self.handOver)
         lastEntrance = time
-        overflow.animator.melt(at: time)
-        overflow.anchor = entry
         overflow.phase = .releasing(until: time + 0.4)
         return Release(entry: entry, count: count, last: false)
     }

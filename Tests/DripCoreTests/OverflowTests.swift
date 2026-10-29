@@ -653,6 +653,7 @@ struct OverflowTests {
         var moving: [CardStack.Entry] = []
         var targets: [Double] = []
         var count: (Int, Double, Bool)?
+        var outline: StackOutline?
         driver.run(for: 10, step: { time, changes in
             guard leftAt == nil, let left = changes.left.first else { return }
             leftAt = time
@@ -660,6 +661,7 @@ struct OverflowTests {
             moving = driver.stack.live.filter { $0 !== driver.releases.last?.release.entry }
             targets = moving.map(\.animator.targetTop)
             count = driver.stack.overflow.map { ($0.count, $0.changedAt, $0.handedOver) }
+            outline = driver.stack.outline
         })
         let left = try #require(leftAt)
         let gone = try #require(leaving)
@@ -699,6 +701,16 @@ struct OverflowTests {
         #expect(shown == 1)
         #expect(changedAt == left)
         #expect(handedOver)
+        // The pill stays whole under the notch as the card grows out of it, with no neck to the
+        // notch or to the card.
+        let drawn = try #require(outline)
+        for t in stride(from: 0.0, through: 0.5, by: 0.02) {
+            guard case let .capsule(shape, _) = drawn.overflowPieces(at: left + t).first else {
+                Issue.record("pill traced at \(t)")
+                continue
+            }
+            #expect(abs(shape.pillTop - pillTop) < 1)
+        }
     }
 
     /// Every card that waited grows out of the pill in turn, the last one included, which leaves
