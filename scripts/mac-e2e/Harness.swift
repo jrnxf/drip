@@ -1320,6 +1320,58 @@ check(10, "Codex's done card while its terminal is in front") { expect in
     expect.expect(kept?.sound == "none", "it comes without a sound, as when_focused = quiet says (\(kept?.sound ?? "none"))")
 }
 
+// 11. `drip follow` runs for days and spawns a background drip for every card it shows. Each that
+// has finished must be reaped: a zombie is one of the user's process slots until follow exits.
+check(11, "drip follow reaps the drips it spawns") { expect in
+    let remote = path(scratch, "remote")
+    let queue = path(remote, "remote.jsonl")
+    try? fileManager.createDirectory(atPath: remote, withIntermediateDirectories: true)
+    fileManager.createFile(atPath: queue, contents: nil)
+    // ssh's options, then `--`, the target, and the command, which runs here.
+    let ssh = path(remote, "ssh")
+    try? "#!/bin/sh\nwhile [ \"$1\" != \"--\" ]; do shift; done\nshift 2\nexec \"$@\"\n"
+        .write(toFile: ssh, atomically: false, encoding: .utf8)
+    chmod(ssh, 0o755)
+
+    let follow = Process()
+    follow.executableURL = URL(fileURLWithPath: drip)
+    follow.arguments = ["follow", "devbox", "--queue", queue, "--activate", "none"]
+    follow.environment = environment.merging(["DRIP_SSH": ssh]) { $1 }
+    follow.currentDirectoryURL = URL(fileURLWithPath: project)
+    follow.standardOutput = FileHandle.nullDevice
+    follow.standardError = FileHandle.nullDevice
+    do { try follow.run() } catch {
+        expect.expect(false, "drip follow starts (\(error))")
+        return
+    }
+    launched.append(follow.processIdentifier)
+    // A first follow shows only what comes next, so the events wait until it has looked at the queue.
+    pause(3)
+    let now = Int(Date().timeIntervalSince1970)
+    let events = (1...5).map { number in
+        "{\"drip\":1,\"time\":\(now),\"agent\":\"codex\",\"machine\":\"devbox\",\"env\":{},\"payload\":"
+            + "{\"hook_event_name\":\"Stop\",\"session_id\":\"e2e-follow-\(number)\",\"turn_id\":\"t\","
+            + "\"last_assistant_message\":\"Done \(number).\"}}\n"
+    }
+    if let handle = FileHandle(forWritingAtPath: queue) {
+        _ = try? handle.seekToEnd()
+        handle.write(Data(events.joined().utf8))
+        try? handle.close()
+    }
+    expect.within(15, wait(15) { showing }, "its cards show")
+    // Every card has come and gone, and the drips that showed them have exited.
+    expect.within(90, wait(90) { !showing }, "and go")
+    pause(3)
+    let table = run(["ps", "-ax", "-o", "ppid=,stat="]).out
+    let zombies = table.split(separator: "\n").filter { line in
+        let fields = line.split(separator: " ")
+        return fields.count == 2 && Int32(fields[0]) == follow.processIdentifier && fields[1].hasPrefix("Z")
+    }.count
+    expect.expect(follow.isRunning, "drip follow is still running")
+    expect.expect(zombies == 0, "it leaves no zombie child behind (\(zombies))")
+    follow.terminate()
+}
+
 // MARK: - Done
 
 clearScreen()
