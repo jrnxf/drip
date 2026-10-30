@@ -592,7 +592,7 @@ stands where the ring would be, and every 2.4 seconds a soft halo grows out of i
 size and fades (with Reduce Motion, the dot alone). The card stays until you click it or a newer
 card with the same `--id` replaces it, and drip returns at once, so the script goes on. It gives way
 to other cards: when another card waits for its place and every card on screen waits too, the
-oldest goes back into the overflow drop under the stack, keeping what is left of its wait, and comes
+oldest goes back into the overflow drop (in push, the pill), keeping what is left of its wait, and comes
 back once there is room. It never stays longer than 10 minutes. A question (`--yes`), of any
 look, waits too and never gives way: it stays until it is answered, replaced or its 10 minutes are
 up, other cards stack around it, and a card with no room in the stack, or another question, waits
