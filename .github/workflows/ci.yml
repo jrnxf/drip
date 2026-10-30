@@ -59,13 +59,23 @@ jobs:
 
   macos-oldest:
     # The release build with an older Swift than macos-latest has, as the README promises macOS 13
-    # and Swift 5.9 or newer: Xcode 15.4 brings Swift 5.10.
+    # and Swift 5.9 or newer. macOS 15 images start at Xcode 16.0 (Swift 6.0), so the swift.org
+    # Swift 5.10 toolchain is installed on top of that Xcode's SDK.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
-    runs-on: macos-14
+    runs-on: macos-15
     env:
-      DEVELOPER_DIR: /Applications/Xcode_15.4.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_16.0.app/Contents/Developer
+      SWIFT_PKG: swift-5.10.1-RELEASE-osx.pkg
+      SWIFT_PKG_SHA256: c4e1d693d48c7ffd67724b74ffcbdca0aca05b37d2c41649aab13d2c649d19e7
     steps:
       - uses: actions/checkout@v4
+      - name: Install Swift 5.10.1
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/$SWIFT_PKG" "https://download.swift.org/swift-5.10.1-release/xcode/swift-5.10.1-RELEASE/$SWIFT_PKG"
+          echo "$SWIFT_PKG_SHA256  $RUNNER_TEMP/$SWIFT_PKG" | shasum -a 256 -c -
+          sudo installer -pkg "$RUNNER_TEMP/$SWIFT_PKG" -target /
+          plist=/Library/Developer/Toolchains/swift-5.10.1-RELEASE.xctoolchain/Info.plist
+          echo "TOOLCHAINS=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" >> "$GITHUB_ENV"
       - run: swift --version
       - run: swift build -c release
       - run: .build/release/drip --version
