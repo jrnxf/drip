@@ -1,3 +1,4 @@
+#if !os(WASI) // Files shared between processes; the browser has none.
 import DripCore
 import Foundation
 import Testing
@@ -124,3 +125,4 @@ final class QueueDirectoryTests {
         #expect(queue.ticket(of: 200) != nil)
     }
 }
+#endif

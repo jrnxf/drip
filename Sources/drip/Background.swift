@@ -186,9 +186,7 @@ enum CardQueue {
     private static var cards: [Card] = []
     private static var leavesAtExit = false
 
-    /// Queues the cards of the process `pid`. A foreground drip queues its background drip itself,
-    /// before returning, so the order is the order drips were run in; one that hands its stack on
-    /// queues it right `after` its own ticket. Only a background drip's cards are `adoptable`.
+    /// Queues the cards of the process `pid`, as `QueueDirectory.enqueue` describes.
     static func enqueue(pid: pid_t, cards: [Card], adoptable: Bool = false, after parent: String? = nil) {
         queue.enqueue(pid: pid, cards: cards, adoptable: adoptable, after: parent)
     }
