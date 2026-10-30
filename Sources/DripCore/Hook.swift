@@ -287,8 +287,9 @@ public enum AgentHook {
                     ?? string("error").map { $0.replacing("_", with: " ") }
                 return card(.fail, "stopped", reason)
             case "PostToolUse", "PostToolUseFailure":
-                // Claude's `PermissionRequest` names no `tool_use_id`, so its card waits on the call's
-                // fingerprint; one that did name it is cleared by that.
+                // Claude's `PermissionRequest` names no `tool_use_id` (see contract.json), so its card
+                // waits on the call's fingerprint. Were a version to add one, the read in that case
+                // would take it up and this `tool_use_id` would clear it.
                 let call = toolCall(object, scope: "prompt_id")
                 return clear(
                     tool: call ?? string("tool_use_id"), alsoTool: call == nil ? nil : string("tool_use_id"), keyed: true)

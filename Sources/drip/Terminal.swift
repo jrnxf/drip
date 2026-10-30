@@ -1,4 +1,3 @@
-#if !os(WASI)
 import DripCore
 import Foundation
 #if canImport(AppKit)
@@ -121,4 +120,3 @@ enum Terminal {
     }
     #endif
 }
-#endif

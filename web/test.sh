@@ -16,6 +16,9 @@ else
     wasmtime=$tools/$release/wasmtime
 fi
 
+# The drip executable has nothing to do with these tests; see Package.swift.
+export DRIP_WASM_TESTS=1
+
 set -- --package-path "$root" --scratch-path "$root/.build/wasm-tests" \
     --swift-sdks-path "$sdks" --swift-sdk "$sdk"
 swift build --build-tests "$@"
