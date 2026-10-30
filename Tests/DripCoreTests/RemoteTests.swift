@@ -512,11 +512,13 @@ struct RemoteFollowTests {
     }
 
     @Test func aConnectionThatGoesSilentIsDroppedAndReconnected() throws {
-        // A half-open ssh: the reader said hello and then nothing, and the pipe never closes.
+        // A half-open ssh: the reader said hello and then nothing. It closes the pipe only well past
+        // the limit, so a follower without the silence check ends each connection at that close,
+        // never saying it was silent; it does not rely on being killed, which may take until SIGKILL.
         try write(script: "silent-ssh", """
             #!/bin/sh
             echo "#drip-follow 2"
-            exec sleep 30
+            exec sleep 3
             """)
         let settings = RemoteFollower.Settings(
             target: "devbox", queue: queue, ssh: ["\(root)/silent-ssh"], positionPath: positionPath, silenceLimit: 0.5)
@@ -524,11 +526,7 @@ struct RemoteFollowTests {
         var delays: [Double] = []
         let follower = RemoteFollower(settings: settings, handle: { _, _ in }, log: { logs.append($0) })
         follower.sleep = { delays.append($0) }
-        // Without the silence check the first connection hangs until this.
-        DispatchQueue.global().asyncAfter(deadline: .now() + 8) { follower.stop() }
-        let started = Date()
         try follower.run(connections: 2)
-        #expect(Date().timeIntervalSince(started) < 6, "the follower sat on a silent connection")
         #expect(logs.filter { $0.hasPrefix("devbox said nothing for") }.count == 2)
         #expect(delays == [RemoteFollower.delays[0]])
     }
