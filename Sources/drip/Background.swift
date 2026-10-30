@@ -154,8 +154,9 @@ enum BackgroundDrip {
 ///
 /// Each showing drip holds a ticket: a file named for when it was queued and its pid, holding its
 /// cards. The oldest ticket whose process is still alive shows; a drip that dies leaves a ticket
-/// that the others skip and clean up. `CardReplacement` decides which cards a newer card with the
-/// same id replaces, and `CardAdoption` which cards a drip showing a stack at the notch takes over.
+/// that the others skip and clean up. `QueueDirectory` keeps the tickets, `CardReplacement` decides
+/// which cards a newer card with the same id replaces, and `CardAdoption` which cards a drip showing
+/// a stack at the notch takes over.
 enum CardQueue {
     /// The longest a drip waits for its turn before showing its cards anyway.
     static let patience: TimeInterval = 120
@@ -172,6 +173,8 @@ enum CardQueue {
         return (base as NSString).appendingPathComponent("drip-queue")
     }()
 
+    private static let queue = QueueDirectory(path: directory, isAlive: isAlive)
+
     /// This process's ticket, once it has waited for its turn.
     private(set) static var mine: QueueTicket?
 
@@ -187,14 +190,7 @@ enum CardQueue {
     /// before returning, so the order is the order drips were run in; one that hands its stack on
     /// queues it right `after` its own ticket. Only a background drip's cards are `adoptable`.
     static func enqueue(pid: pid_t, cards: [Card], adoptable: Bool = false, after parent: String? = nil) {
-        try? FileManager.default.createDirectory(
-            atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let stamp = UInt64(Date().timeIntervalSince1970 * 1_000_000_000)
-        let start = HeldCards.processStartTime(pid)
-        let contents = (try? JSONEncoder().encode(TicketContents(cards: cards, adoptable: adoptable))) ?? Data()
-        let name = parent.flatMap { QueueTicket.name(after: $0, pid: pid, start: start) }
-            ?? QueueTicket.name(stamp: stamp, pid: pid, start: start)
-        write(contents, to: name)
+        queue.enqueue(pid: pid, cards: cards, adoptable: adoptable, after: parent)
     }
 
     /// Waits until every drip queued earlier has shown its cards, or until a showing drip has
@@ -208,10 +204,10 @@ enum CardQueue {
         let start = Date()
         var deadline = start.addingTimeInterval(patience)
         let longest = deadline.addingTimeInterval(Defaults.waitLimit)
-        while !isFirst(me), !isFullyAdopted {
+        while !queue.isFirst(me), !isFullyAdopted {
             if Date() >= deadline {
                 guard Date() < longest, let mine,
-                      CardTurns.awaitsAnswer(before: mine.name, queue: load(), isAlive: isAlive)
+                      CardTurns.awaitsAnswer(before: mine.name, queue: queue.load(), isAlive: isAlive)
                 else { break }
                 deadline = Date().addingTimeInterval(1)
             }
@@ -225,8 +221,8 @@ enum CardQueue {
     static func join(cards: [Card]? = nil) {
         let me = getpid()
         if let cards { self.cards = cards }
-        if tickets().first(where: { $0.pid == me }) == nil { enqueue(pid: me, cards: self.cards) }
-        mine = tickets().first(where: { $0.pid == me })
+        if queue.ticket(of: me) == nil { queue.enqueue(pid: me, cards: self.cards) }
+        mine = queue.ticket(of: me)
         if !leavesAtExit {
             leavesAtExit = true
             atexit { CardQueue.leave() }
@@ -236,19 +232,19 @@ enum CardQueue {
     /// Whether a showing drip adopted every card of this process's ticket.
     static var isFullyAdopted: Bool {
         guard let mine else { return false }
-        return load().first(where: { $0.name == mine.name })?.isFullyAdopted ?? false
+        return queue.load().first(where: { $0.name == mine.name })?.isFullyAdopted ?? false
     }
 
     /// Whether a showing drip adopted the card at `index` of this process's ticket.
     static func isAdopted(index: Int) -> Bool {
         guard let mine else { return false }
-        return claims(of: mine.name).contains(CardAdoption.claimKey(index: index))
+        return queue.claims(of: mine.name).contains(CardAdoption.claimKey(index: index))
     }
 
     /// The newer cards a stack showing for this process's ticket can adopt, oldest first.
     static func adoptable() -> [(ticket: String, index: Int, card: Card)] {
         guard let mine else { return [] }
-        return CardAdoption.candidates(after: mine.name, queue: load(), isAlive: isAlive)
+        return CardAdoption.candidates(after: mine.name, queue: queue.load(), isAlive: isAlive)
     }
 
     /// Marks the card at `index` of `ticket` as adopted, so its own drip skips it.
@@ -259,41 +255,28 @@ enum CardQueue {
     /// Whether a newer card with the same id has replaced `card`, so it should not be shown.
     static func isReplaced(_ card: Card) -> Bool {
         guard card.id != nil, let mine else { return false }
-        let queue = load()
-        let ticket = queue.first(where: { $0.name == mine.name }) ?? mine
-        return CardReplacement.isReplaced(card, in: ticket, queue: queue, isAlive: isAlive)
+        let tickets = queue.load()
+        let ticket = tickets.first(where: { $0.name == mine.name }) ?? mine
+        return CardReplacement.isReplaced(card, in: ticket, queue: tickets, isAlive: isAlive)
     }
 
     /// The newest card queued after `source` that should take the place of `showing` on screen,
     /// and its ticket.
     static func replacement(for showing: Card, after source: String) -> (ticket: String, card: Card)? {
         guard showing.id != nil else { return nil }
-        return CardReplacement.replacement(for: showing, after: source, queue: load(), isAlive: isAlive)
+        return CardReplacement.replacement(for: showing, after: source, queue: queue.load(), isAlive: isAlive)
     }
 
     /// The cards of newer drips still waiting for their turn, leaving out those with an id in
     /// `except`, which take the place of a card on screen instead; and whether a stack could adopt each.
     static func waiting(except ids: Set<String>) -> [(card: Card, adoptable: Bool)] {
         guard let mine else { return [] }
-        return CardTurns.waiting(after: mine.name, queue: load(), isAlive: isAlive, except: ids)
+        return CardTurns.waiting(after: mine.name, queue: queue.load(), isAlive: isAlive, except: ids)
     }
 
     /// Marks the card with `id` in `ticket` as taken over, so its own drip skips it.
     static func claim(_ id: String, in ticket: String) {
-        var claimed = claims(of: ticket)
-        claimed.insert(id)
-        write((try? JSONEncoder().encode(claimed.sorted())) ?? Data(), to: QueueTicket.claimName(for: ticket))
-    }
-
-    /// Whether `pid` holds the oldest live ticket, clearing the tickets of drips that died.
-    private static func isFirst(_ pid: pid_t) -> Bool {
-        for ticket in tickets() {
-            if ticket.pid == pid { return true }
-            if isAlive(ticket) { return false }
-            remove(ticket.name)
-        }
-        // The ticket is gone, so there is nothing left to wait for.
-        return true
+        queue.claim(id, in: ticket)
     }
 
     /// Whether the drip that queued `ticket` still runs: its pid is alive and, when the ticket says
@@ -305,54 +288,9 @@ enum CardQueue {
         return HeldCards.processStartTime(ticket.pid) == start
     }
 
-    /// The tickets in queue order, without reading them.
-    private static func tickets() -> [QueueTicket] {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
-        return names.sorted().compactMap { QueueTicket(name: $0) }
-    }
-
-    /// The tickets in queue order, with their cards and claims.
-    private static func load() -> [QueueTicket] {
-        tickets().map { ticket in
-            var ticket = ticket
-            if let data = FileManager.default.contents(atPath: path(ticket.name)), !data.isEmpty,
-               let contents = TicketContents.decode(data)
-            {
-                ticket.cards = contents.cards
-                ticket.adoptable = contents.adoptable
-            }
-            ticket.claimed = claims(of: ticket.name)
-            return ticket
-        }
-    }
-
-    private static func claims(of ticket: String) -> Set<String> {
-        guard let data = FileManager.default.contents(atPath: path(QueueTicket.claimName(for: ticket))) else { return [] }
-        return Set((try? JSONDecoder().decode([String].self, from: data)) ?? [])
-    }
-
-    /// Writes a file whole, so a reader never sees it half written: to a hidden name first, which
-    /// is not a ticket, then renamed into place.
-    private static func write(_ contents: Data, to name: String) {
-        let temporary = path(".\(name).\(getpid()).tmp")
-        guard FileManager.default.createFile(atPath: temporary, contents: contents) else { return }
-        if rename(temporary, path(name)) != 0 { try? FileManager.default.removeItem(atPath: temporary) }
-    }
-
-    private static func path(_ name: String) -> String {
-        (directory as NSString).appendingPathComponent(name)
-    }
-
-    private static func remove(_ ticket: String) {
-        try? FileManager.default.removeItem(atPath: path(ticket))
-        try? FileManager.default.removeItem(atPath: path(QueueTicket.claimName(for: ticket)))
-    }
-
     /// Gives up this process's turn, for a drip that waits for something else before showing.
     static func leave() {
-        let me = getpid()
-        tickets().filter { $0.pid == me }.forEach { remove($0.name) }
+        queue.leave(getpid())
     }
 }
 #endif
-
