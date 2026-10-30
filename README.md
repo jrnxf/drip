@@ -51,9 +51,13 @@ Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Int
 seconds: nothing to compile, and no Xcode. drip is still in development: until 0.1.0 is out, brew
 installs the latest development build, a pre-release such as 0.1.0-pre.1, and `brew upgrade`
 moves to the next one, then to 0.1.0. Install it with Homebrew rather than downloading the
-archive from the release page: the binary is signed ad hoc, not notarized, so Gatekeeper blocks a
-copy downloaded in a browser, while brew's download runs as it is. To build the latest `main` from
-source instead, run `brew install --HEAD jrnxf/tap/drip`.
+archive from the release page: the binary is signed with drip's own certificate, not one from
+Apple, and not notarized, so Gatekeeper blocks a copy downloaded in a browser, while brew's
+download runs as it is. Every release is signed with that same certificate, so what you allow
+drip in System Settings, such as access to the local network, holds across `brew upgrade`;
+releases up to 0.1.0-pre.21 were signed ad hoc, so moving from one of them asks once more. To
+build the latest `main` from source instead, run `brew install --HEAD jrnxf/tap/drip`; that build
+is signed ad hoc, so macOS asks again after each one.
 
 Without Homebrew, build it from source with the Swift in the Command Line Tools and put the binary
 on your `PATH`:

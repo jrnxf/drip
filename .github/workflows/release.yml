@@ -1,6 +1,7 @@
 name: Release
 
-# Pushing a tag v<version> builds drip as one universal binary (Apple silicon and Intel), packed in
+# Pushing a tag v<version> builds drip as one universal binary (Apple silicon and Intel), signed
+# with drip's own certificate (see the Sign step), packed in
 # drip-<version>-universal-apple-darwin.tar.gz with its .sha256, publishes the tag's GitHub release
 # with both attached, then points the Homebrew formula at it, so brew installs drip without
 # compiling. The archive holds one directory of the same name, with the executable drip, README.md,
@@ -78,18 +79,80 @@ jobs:
           set -- -c release --arch arm64 --arch x86_64
           swift build "$@"
           cp "$(swift build "$@" --show-bin-path)/drip" drip
-      # The linker signs only the arm64 slice. An ad-hoc signature on both slices is what macOS
-      # needs to run it; brew does not quarantine a formula's download, so Gatekeeper never asks
-      # for more.
-      - name: Sign ad hoc
-        run: codesign --force --sign - drip
+      # Both slices signed with drip's own self-signed certificate, .github/signing/certificate.pem,
+      # under the fixed identifier co.jrnxf.drip, so every release has the same designated
+      # requirement: that identifier and that certificate, not the binary's hash. macOS ties a
+      # privacy grant such as Local Network access to it, so a grant holds across updates, where an
+      # ad-hoc signature made each build a new app. Gatekeeper still knows no developer for it, but
+      # brew does not quarantine a formula's download, so it never asks.
+      # The certificate's key is the SIGNING_CERTIFICATE_P12 secret, a base64 .p12, opened with
+      # SIGNING_CERTIFICATE_PASSWORD. A tag must have them. Without them, as in a fork's pull
+      # request, the binary is signed ad hoc, so the rest of the job still builds and checks it.
+      # The hardened runtime keeps other code from being injected into drip; the Apple Events
+      # entitlement in .github/signing/drip.entitlements lets it still ask to control Ghostty.
+      - name: Sign
+        id: sign
+        run: |
+          if [ -z "$P12" ]; then
+            if [ "$GITHUB_REF_TYPE" = tag ]; then
+              echo "A release is signed with drip's certificate, but SIGNING_CERTIFICATE_P12 is not set" >&2
+              exit 1
+            fi
+            echo "No signing certificate, so signed ad hoc"
+            codesign --force --sign - drip
+            echo "kind=adhoc" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A keychain of its own for this job, deleted by the next step.
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -hex 32)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 900 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/signing.p12"
+          # codesign may use the key without asking.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" \
+            >/dev/null
+          # codesign finds an identity only in a keychain on the search list.
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          # Named by the committed certificate's hash, so a secret with any other key finds no
+          # identity, rather than signing with a requirement the next release would not match.
+          identity="$(openssl x509 -in .github/signing/certificate.pem -outform der | shasum -a 1 | cut -d ' ' -f 1)"
+          codesign --force --options runtime --timestamp=none --identifier co.jrnxf.drip \
+            --entitlements .github/signing/drip.entitlements --keychain "$keychain" --sign "$identity" drip
+          echo "kind=certificate" >> "$GITHUB_OUTPUT"
+        env:
+          P12: ${{ secrets.SIGNING_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+      - name: Delete the signing keychain
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/signing.p12"
+          if [ -e "$RUNNER_TEMP/signing.keychain-db" ]; then
+            security delete-keychain "$RUNNER_TEMP/signing.keychain-db"
+          fi
       - name: Check
         run: |
           lipo -info drip
           lipo drip -verify_arch arm64 x86_64
           codesign --verify --strict --all-architectures --verbose=2 drip
           codesign --display --verbose=2 drip 2>&1 | tee signature.txt
-          grep -qx 'Signature=adhoc' signature.txt
+          if [ "$SIGNED" = certificate ]; then
+            grep -qx 'Identifier=co.jrnxf.drip' signature.txt
+            grep -qx 'Authority=drip code signing' signature.txt
+            grep -Eq '^CodeDirectory .* flags=0x10000\(runtime\) ' signature.txt
+            # The same for every release: the identifier and the certificate, no hash of the build.
+            identity="$(openssl x509 -in .github/signing/certificate.pem -outform der | shasum -a 1 | cut -d ' ' -f 1)"
+            codesign --display --requirements - drip 2>&1 | tee requirement.txt
+            grep -qxF "designated => identifier \"co.jrnxf.drip\" and certificate root = H\"$identity\"" requirement.txt
+            codesign --display --entitlements - --xml drip > entitlements.plist
+            test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.automation.apple-events' entitlements.plist)" = true
+          else
+            grep -qx 'Signature=adhoc' signature.txt
+          fi
           # macOS 13 is the oldest the README promises, for both slices.
           for arch in arm64 x86_64; do
             vtool -arch "$arch" -show-build drip | tee build.txt
@@ -98,6 +161,8 @@ jobs:
           ./drip --version
           # The Intel slice, under Rosetta.
           arch -x86_64 ./drip --version
+        env:
+          SIGNED: ${{ steps.sign.outputs.kind }}
       - name: Check the version matches the tag
         if: github.event_name == 'push' && github.ref_type == 'tag'
         run: |
