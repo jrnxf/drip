@@ -15,6 +15,8 @@ name: Release
 # - v0.1.0, a full release: Version.swift must say 0.1.0 itself.
 # The formula follows every full release, and pre-releases only until the first full one.
 #
+# A tag must be on main, with CI passed on its commit, or the build fails at once.
+#
 # Pull requests and a manual run build and check the same archive, kept as a workflow artifact
 # only: they never make a release or a tag.
 #
@@ -43,10 +45,43 @@ jobs:
   binary:
     name: Build the universal binary
     runs-on: macos-15
+    permissions:
+      contents: read
+      # To read the check runs of the tag's commit, for the step below.
+      checks: read
     outputs:
       archive: ${{ steps.archive.outputs.archive }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          # A tag's whole history, to tell whether its commit is on main.
+          fetch-depth: ${{ github.ref_type == 'tag' && 0 || 1 }}
+      # A release goes out only from a commit that is on main and that CI has passed there: this
+      # workflow runs no test itself, and CI runs on the tag in parallel and gates nothing. The
+      # snapshot tests would not even pass here, as their references are those of CI's runner image.
+      # A tag pushed before CI finished fails here: run the job again once it has.
+      - name: Check the tag is on main and CI passed
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "$TAG is on $GITHUB_SHA, which is not on main: a release goes out only from main" >&2
+            exit 1
+          fi
+          runs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" \
+            --jq '.check_runs[] | "\(.name) \(.conclusion)"')"
+          printf '%s\n' "$runs"
+          missing=""
+          for job in test macos macos-oldest snapshots wasm; do
+            printf '%s\n' "$runs" | grep -qx "$job success" || missing="$missing $job"
+          done
+          if [ -n "$missing" ]; then
+            echo "CI has not passed on $GITHUB_SHA for:$missing" >&2
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
       - name: Stamp a pre-release's version
         if: github.event_name == 'push' && github.ref_type == 'tag'
         run: |
@@ -196,7 +231,7 @@ jobs:
       - run: shasum -a 256 "$ARCHIVE" | tee "$ARCHIVE.sha256"
         env:
           ARCHIVE: ${{ steps.archive.outputs.archive }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ${{ steps.archive.outputs.archive }}
           path: |

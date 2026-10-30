@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     container: swift:6.2-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # .build holds absolute paths (its module cache), so the key names the checkout's path: a
       # cache from before a rename would not build.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: .build
           key: swiftpm-${{ runner.os }}-${{ github.repository }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
@@ -36,7 +36,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: swift build -c release
       - run: .build/release/drip --version
 
@@ -44,14 +44,20 @@ jobs:
     # Every test on a Mac, the snapshot comparisons too: each card drawn with `drip __render` against
     # its reference in Tests/Snapshots. A card that differs is kept as an artifact to look at.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
-    runs-on: macos-latest
+    # Not macos-latest: the references were recorded on this image (snapshots.yml), and the next
+    # image would fail every snapshot on a change that touches none. Bump both together, then record again.
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: sw_vers
       # Swift Testing is built for macOS 14, so the tests are too, as in scripts/mac-check.sh.
       - run: swift test -Xswiftc -target -Xswiftc "$(uname -m)-apple-macosx14.0"
+      # The deep suite of scripts/mac-e2e.sh needs a person at a Mac, but not to compile: a harness
+      # that stopped building would otherwise show only when someone next needs it.
+      - run: swiftc -O -o "$RUNNER_TEMP/harness" scripts/mac-e2e/Harness.swift && "$RUNNER_TEMP/harness" --self-test
+      - run: swiftc -typecheck scripts/mac-e2e/Helper.swift
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: snapshot-failures
           path: .build/snapshot-failures
@@ -65,7 +71,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_15.4.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: swift --version
       - run: swift build -c release
       - run: .build/release/drip --version
@@ -78,6 +84,6 @@ jobs:
     # The Wasm SDK must match the compiler exactly: web/tools.sh pins both.
     container: swift:6.4.1-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: apt-get update && apt-get install -y --no-install-recommends curl ca-certificates xz-utils
       - run: web/test.sh
