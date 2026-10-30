@@ -63,7 +63,7 @@ Without Homebrew, build it from source with the Swift in the Command Line Tools 
 on your `PATH`:
 
 ```sh
-xcode-select --install   # only if swift is not found; drip needs Swift 5.9 or newer
+xcode-select --install   # only if swift is not found; drip needs Swift 6.0 or newer
 git clone https://github.com/jrnxf/drip.git
 cd drip
 swift build -c release
