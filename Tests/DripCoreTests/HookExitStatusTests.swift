@@ -11,14 +11,9 @@ struct HookExitStatusTests {
     static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent()
 
-    /// The drip this test run built, next to the test bundle, or in the package's debug build.
-    static let drip: URL = {
-        let beside = Bundle.allBundles.first { $0.bundlePath.hasSuffix(".xctest") }?.bundleURL
-            .deletingLastPathComponent().appendingPathComponent("drip")
-        return [beside, repo.appendingPathComponent(".build/debug/drip")].compactMap { $0 }
-            .first { FileManager.default.isExecutableFile(atPath: $0.path) }
-            ?? repo.appendingPathComponent(".build/debug/drip")
-    }()
+    /// The drip this test run built. Not found through `Bundle.allBundles`: on Linux that walks
+    /// CoreFoundation's bundle list without a lock and crashes while other tests run beside it.
+    static let drip = repo.appendingPathComponent(".build/debug/drip")
 
     static let permission = """
         {"hook_event_name":"PermissionRequest","session_id":"s1","tool_name":"Bash",\
