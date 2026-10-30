@@ -511,6 +511,48 @@ struct RemoteFollowTests {
         #expect(result.delays == [RemoteFollower.delays[0]])
     }
 
+    @Test func aConnectionThatGoesSilentIsDroppedAndReconnected() throws {
+        // A half-open ssh: the reader said hello and then nothing, and the pipe never closes.
+        try write(script: "silent-ssh", """
+            #!/bin/sh
+            echo "#drip-follow 2"
+            exec sleep 30
+            """)
+        let settings = RemoteFollower.Settings(
+            target: "devbox", queue: queue, ssh: ["\(root)/silent-ssh"], positionPath: positionPath, silenceLimit: 0.5)
+        var logs: [String] = []
+        var delays: [Double] = []
+        let follower = RemoteFollower(settings: settings, handle: { _, _ in }, log: { logs.append($0) })
+        follower.sleep = { delays.append($0) }
+        // Without the silence check the first connection hangs until this.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 8) { follower.stop() }
+        let started = Date()
+        try follower.run(connections: 2)
+        #expect(Date().timeIntervalSince(started) < 6, "the follower sat on a silent connection")
+        #expect(logs.filter { $0.hasPrefix("devbox said nothing for") }.count == 2)
+        #expect(delays == [RemoteFollower.delays[0]])
+    }
+
+    @Test func aConnectionThatLastedPastSteadyAfterStartsTheBackoffOver() throws {
+        try write(script: "hello-ssh", """
+            #!/bin/sh
+            echo "#drip-follow 2"
+            """)
+        let settings = RemoteFollower.Settings(
+            target: "devbox", queue: queue, ssh: ["\(root)/hello-ssh"], positionPath: positionPath)
+        var jumped = 0.0
+        var delays: [Double] = []
+        let follower = RemoteFollower(settings: settings, handle: { _, _ in }, log: { line in
+            // The third connection comes up, and then a steady half minute passes on this Mac's clock.
+            if line == "following devbox again", delays.count == 2 { jumped = RemoteFollower.steadyAfter + 1 }
+        })
+        follower.now = { Date().addingTimeInterval(jumped) }
+        follower.sleep = { delays.append($0) }
+        try follower.run(connections: 4)
+        // Two short connections lengthen the pause; the long one is forgiven.
+        #expect(delays == [1, 2, 1])
+    }
+
     @Test func aPaneQueryThatHangsHoldsTheNextEventUpNoLongerThanItsDeadline() throws {
         let now = Date()
         try append([Self.line(session: "s1", time: now.timeIntervalSince1970), Self.line(session: "s2", time: now.timeIntervalSince1970)])
