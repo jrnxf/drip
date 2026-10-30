@@ -103,7 +103,9 @@ final class IslandLayers {
                 .foregroundColor: NSColor.white,
             ])
         }
-        func width(_ label: NSAttributedString) -> CGFloat { ceil(label.size().width) + 24 * sizeScale }
+        func width(_ label: NSAttributedString) -> CGFloat {
+            CGFloat(CardMetrics.buttonWidth(labelWidth: Double(label.size().width), scale: Double(sizeScale)))
+        }
         let yesLabel = card.action.map { label($0.label) }
         let noLabel = card.action?.decline.map(label)
         let buttonsWidth = yesLabel.map {
@@ -472,7 +474,7 @@ final class IslandLayers {
             let label = NSAttributedString(string: text, attributes: [
                 .font: NSFont.systemFont(ofSize: 12.5 * sizeScale, weight: .semibold),
             ])
-            return Double(ceil(label.size().width) + 24 * sizeScale)
+            return CardMetrics.buttonWidth(labelWidth: Double(label.size().width), scale: Double(sizeScale))
         }
         let yes = card.action.map { buttonWidth($0.label) }
         let no = card.action?.decline.map(buttonWidth)

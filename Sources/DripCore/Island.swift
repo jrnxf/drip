@@ -12,6 +12,12 @@ import Foundation
 public enum CardMetrics {
     /// The widest a card gets, in points.
     public static let maxWidth: Double = 640
+
+    /// The width of a button labelled with text `labelWidth` wide: the label rounded up to a whole
+    /// point, and room for the padding either side.
+    public static func buttonWidth(labelWidth: Double, scale: Double) -> Double {
+        labelWidth.rounded(.up) + 24 * scale
+    }
 }
 
 /// The sizes an island is built from.

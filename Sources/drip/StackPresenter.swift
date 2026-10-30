@@ -368,22 +368,27 @@ final class StackPresenter: CardPresenting {
     private func release(decided: Double) {
         let card: Card
         let own: Bool
-        if let next = stack.nextOwn() {
-            // Replaced since it was queued: the drop's count goes down instead.
-            if CardQueue.isReplaced(next) { return }
+        switch stack.nextRelease(adoptable: others.map(\.card), isReplaced: CardQueue.isReplaced) {
+        case .own:
+            guard let next = stack.nextOwn() else { return }
             card = next
             own = true
-        } else if let index = others.firstIndex(where: { !stack.swapsInPlace($0.card) }) {
+        case .skipOwn:
+            // Replaced since it was queued: the drop's count goes down instead.
+            stack.dropWaiting(at: 0)
+            return
+        case let .enter(index):
             let found = others.remove(at: index)
             CardQueue.adopt(index: found.index, in: found.ticket)
             if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
             card = found.card
             own = false
-        } else if let tucked = stack.nextTucked() {
+        case .tucked:
             // A card that gave way comes back once the cards that needed its place have had theirs.
+            guard let tucked = stack.nextTucked() else { return }
             card = tucked.card
             own = tucked.own
-        } else {
+        case .swap, nil:
             return
         }
         let layers = makeLayers(for: card)
@@ -556,32 +561,29 @@ final class StackPresenter: CardPresenting {
             }
         }
         if stack.isReady(at: time) {
-            for found in others {
-                // A newer card with the same id as one on screen takes its place there.
-                if let id = found.card.id,
-                   let shown = stack.live.first(where: { $0.card.id == id && $0.isShown }),
-                   CardReplacement.canSwap(shown.card, for: found.card)
-                {
+            while let admission = stack.nextAdmission(adoptable: others.map(\.card), isReplaced: CardQueue.isReplaced) {
+                switch admission {
+                case let .swap(shown, index):
+                    // A newer card with the same id as one on screen takes its place there.
+                    let found = others.remove(at: index)
                     CardQueue.adopt(index: found.index, in: found.ticket)
-                    others.removeAll { $0.ticket == found.ticket && $0.index == found.index }
                     swap(shown, for: found.card)
-                    continue
+                case let .enter(index):
+                    let found = others.remove(at: index)
+                    CardQueue.adopt(index: found.index, in: found.ticket)
+                    if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
+                    enter(found.card, own: false)
+                    return
+                case .own:
+                    if let card = stack.nextOwn() { enter(card, own: true) }
+                    return
+                case .skipOwn:
+                    stack.dropWaiting(at: 0)
+                    return
+                case .tucked:
+                    if let tucked = stack.nextTucked() { enter(tucked.card, own: tucked.own) }
+                    return
                 }
-                guard stack.overflow == nil, stack.waiting.isEmpty, stack.hasRoom else { break }
-                CardQueue.adopt(index: found.index, in: found.ticket)
-                others.removeAll { $0.ticket == found.ticket && $0.index == found.index }
-                if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
-                enter(found.card, own: false)
-                return
-            }
-            if stack.overflow == nil, let card = stack.nextOwn() {
-                if CardQueue.isReplaced(card) { return }
-                enter(card, own: true)
-                return
-            }
-            if stack.overflow == nil, others.isEmpty, let tucked = stack.nextTucked() {
-                enter(tucked.card, own: tucked.own)
-                return
             }
         }
         if stack.canRelease(at: time) { release(decided: time) }
