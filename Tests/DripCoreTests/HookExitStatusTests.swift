@@ -20,6 +20,12 @@ struct HookExitStatusTests {
         "tool_input":{"command":"ls"},"cwd":"/home/user/api"}
         """
 
+    /// Gemini asks for a permission with a `Notification`: it has no `PermissionRequest`.
+    static let geminiPermission = """
+        {"hook_event_name":"Notification","session_id":"g1","notification_type":"ToolPermission",\
+        "message":"Allow run_shell_command: ls?","details":{"tool_name":"run_shell_command"},"cwd":"/home/user/api"}
+        """
+
     struct Outcome {
         var status: Int32
         var error: String
@@ -90,9 +96,10 @@ struct HookExitStatusTests {
         }
     }
 
-    @Test(arguments: ["claude", "codex"])
+    @Test(arguments: ["claude", "codex", "gemini"])
     func aBrokenConfigNeverBlocksAPermission(agent: String) throws {
-        let outcome = try hook(agent, payload: Data(Self.permission.utf8), config: "broken = [")
+        let permission = agent == "gemini" ? Self.geminiPermission : Self.permission
+        let outcome = try hook(agent, payload: Data(permission.utf8), config: "broken = [")
         expectNeverBlocks(outcome, "\(agent), a broken config.toml")
     }
 
