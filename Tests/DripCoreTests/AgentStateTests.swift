@@ -207,5 +207,32 @@ struct AgentStateTests {
         #expect(try AgentHook.outcome(agent: .codex, payload: #"{"type":"agent-turn-complete","last-assistant-message":"ok"}"#,
                                       environment: attention) == .nothing)
     }
+
+    /// Hooks of one session run side by side, so two of them write the same state file at once. A
+    /// shared temporary name let one rename the other's file away, and the loser threw: `drip hook`
+    /// exited 1 and the agent showed a hook error, or a waiting record was lost.
+    @Test func writersOfOneStateFileAtOnceNeverFail() {
+        let requests = DismissRequests(directory: directory + "/dismiss")
+        let writers = 8
+        let rounds = 100
+        let lock = NSLock()
+        nonisolated(unsafe) var failed = 0
+        for _ in 0 ..< rounds {
+            DispatchQueue.concurrentPerform(iterations: writers) { writer in
+                do {
+                    if writer.isMultiple(of: 2) {
+                        try requests.request(id: "claude:s1", now: now)
+                    } else {
+                        try state.noteWaiting(id: "claude:s1", tool: "toolu_\(writer)", now: now)
+                    }
+                } catch {
+                    lock.lock()
+                    failed += 1
+                    lock.unlock()
+                }
+            }
+        }
+        #expect(failed == 0)
+    }
 }
 #endif

@@ -442,13 +442,17 @@ enum StateFiles {
     }
 
     /// Replaces the file in one step, readable only by this user, so a crash never leaves half of it.
+    /// The temporary file is this write's own: with a shared name, two writers of one path (hooks of
+    /// one session, outside the lock) had one rename the other's file away, and the loser threw.
     static func write(_ text: String, toPath path: String) throws {
-        let temporary = path + ".tmp"
+        let temporary = path + ".\(getpid()).\(UInt32.random(in: .min ... .max)).tmp"
         guard FileManager.default.createFile(
             atPath: temporary, contents: Data(text.utf8), attributes: [.posixPermissions: 0o600])
         else { throw StateError("cannot write \(temporary)") }
         guard rename(temporary, path) == 0 else {
-            throw StateError("cannot replace \(path): \(String(cString: strerror(errno)))")
+            let reason = String(cString: strerror(errno))
+            unlink(temporary)
+            throw StateError("cannot replace \(path): \(reason)")
         }
     }
 }
