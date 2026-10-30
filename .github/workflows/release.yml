@@ -88,8 +88,6 @@ jobs:
       # The certificate's key is the SIGNING_CERTIFICATE_P12 secret, a base64 .p12, opened with
       # SIGNING_CERTIFICATE_PASSWORD. A tag must have them. Without them, as in a fork's pull
       # request, the binary is signed ad hoc, so the rest of the job still builds and checks it.
-      # The hardened runtime keeps other code from being injected into drip; the Apple Events
-      # entitlement in .github/signing/drip.entitlements lets it still ask to control Ghostty.
       - name: Sign
         id: sign
         run: |
@@ -121,8 +119,8 @@ jobs:
           # Named by the committed certificate's hash, so a secret with any other key finds no
           # identity, rather than signing with a requirement the next release would not match.
           identity="$(openssl x509 -in .github/signing/certificate.pem -outform der | shasum -a 1 | cut -d ' ' -f 1)"
-          codesign --force --options runtime --timestamp=none --identifier co.jrnxf.drip \
-            --entitlements .github/signing/drip.entitlements --keychain "$keychain" --sign "$identity" drip
+          codesign --force --timestamp=none --identifier co.jrnxf.drip --keychain "$keychain" \
+            --sign "$identity" drip
           echo "kind=certificate" >> "$GITHUB_OUTPUT"
         env:
           P12: ${{ secrets.SIGNING_CERTIFICATE_P12 }}
@@ -143,13 +141,10 @@ jobs:
           if [ "$SIGNED" = certificate ]; then
             grep -qx 'Identifier=co.jrnxf.drip' signature.txt
             grep -qx 'Authority=drip code signing' signature.txt
-            grep -Eq '^CodeDirectory .* flags=0x10000\(runtime\) ' signature.txt
             # The same for every release: the identifier and the certificate, no hash of the build.
             identity="$(openssl x509 -in .github/signing/certificate.pem -outform der | shasum -a 1 | cut -d ' ' -f 1)"
             codesign --display --requirements - drip 2>&1 | tee requirement.txt
             grep -qxF "designated => identifier \"co.jrnxf.drip\" and certificate root = H\"$identity\"" requirement.txt
-            codesign --display --entitlements - --xml drip > entitlements.plist
-            test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.automation.apple-events' entitlements.plist)" = true
           else
             grep -qx 'Signature=adhoc' signature.txt
           fi
