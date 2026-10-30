@@ -65,11 +65,11 @@ jobs:
 
   macos-oldest:
     # The release build with an older Swift than macos-latest has, as the README promises macOS 13
-    # and Swift 5.9 or newer: Xcode 15.4 brings Swift 5.10.
+    # and Swift 6.0 or newer: Xcode 16.0, the oldest on the macOS 15 image, brings Swift 6.0.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
-    runs-on: macos-14
+    runs-on: macos-15
     env:
-      DEVELOPER_DIR: /Applications/Xcode_15.4.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_16.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
       - run: swift --version
