@@ -37,6 +37,8 @@ extension CardStack {
         public internal(set) var changedAt = -Double.infinity
         /// Whether it last changed as a card grew out of it, so the count rolls with that card.
         public internal(set) var handedOver = false
+        /// Whether its count last rolled up rather than down.
+        public internal(set) var rollsUp = true
         /// Whether it is spread wide to list the waiting cards' titles, and since when, or since when
         /// it went back to its count.
         public internal(set) var peeking = false
@@ -180,6 +182,10 @@ extension CardStack {
     /// How far open a card growing out of the overflow drop is when its text starts to fade in:
     /// sooner than a card dropping in, so it is never an empty capsule while the stack moves.
     public static let handOverText = 0.65
+    /// Whether the count rolls up as a card grows out of the overflow drop, with that card: up out of
+    /// chain's drop into the place above it, down out of a push stack's pill into the top place.
+    public var handOverRollsUp: Bool { settings.mode == .chain }
+
     /// How long before the overflow drop has spread its count fades in, as it rounds out under the
     /// last card rather than after.
     public static let countLead = 0.2
@@ -441,7 +447,8 @@ extension CardStack {
 
     /// Sets the overflow drop's count to `count` at `time`: the drop widens or narrows to fit it, and
     /// swells as a card merges into it or gives a little as one leaves it. `handingOver` when a card
-    /// grows out of it: the count then rolls with that card on `handOver`, and the drop holds still.
+    /// grows out of it: the count then rolls with that card on `handOver`, the way that card grows,
+    /// and the drop holds still. Otherwise it rolls up as it goes up and down as it goes down.
     func tick(_ overflow: Overflow, to count: Int, at time: Double, handingOver: Bool = false) {
         guard count != overflow.count else { return }
         let up = count > overflow.count
@@ -449,6 +456,7 @@ extension CardStack {
         overflow.count = count
         overflow.changedAt = time
         overflow.handedOver = handingOver
+        overflow.rollsUp = handingOver ? handOverRollsUp : up
         let metrics = overflowMetrics(count: count, like: overflow.metrics)
         if abs(metrics.pillWidth - overflow.metrics.pillWidth) > 0.5 {
             overflow.metrics = metrics

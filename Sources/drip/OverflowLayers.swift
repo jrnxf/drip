@@ -6,8 +6,8 @@ import QuartzCore
 /// The overflow drop's count and, with the pointer on the drop, the titles of the cards waiting,
 /// clipped to the drop as the stack draws it. The count rolls to its new number as it changes, the
 /// old one out one way and the new one in from the other, landing with a small pop, or, as a card
-/// grows out of the drop, rolling up with that card on its spring; the titles crossfade with the
-/// count. The stack draws the drop's black shape with the rest of its outline.
+/// grows out of the drop, rolling with that card on its spring, up or down as it grows; the titles
+/// crossfade with the count. The stack draws the drop's black shape with the rest of its outline.
 ///
 /// The root layer is flipped, as an island's is, so y grows down from the top of the screen; x is
 /// offset so the notch's center is the layer's center.
@@ -157,7 +157,7 @@ final class OverflowLayers {
             shownChange = overflow.changedAt
             roll(
                 from: overflow.previous, to: overflow.count, at: started + overflow.changedAt,
-                handingOver: overflow.handedOver)
+                handingOver: overflow.handedOver, up: overflow.rollsUp)
         }
         if overflow.peekText != shownTitles {
             shownTitles = overflow.peekText
@@ -187,11 +187,11 @@ final class OverflowLayers {
     }
 
     /// The count's last number rolling out as the drop itself spreads into the last card waiting,
-    /// at `begin`.
-    func rollOut(from count: Int, at begin: CFTimeInterval) {
+    /// at `begin`, `up` or down with that card.
+    func rollOut(from count: Int, at begin: CFTimeInterval, up: Bool) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        roll(from: count, to: 0, at: begin, handingOver: true)
+        roll(from: count, to: 0, at: begin, handingOver: true, up: up)
         CATransaction.commit()
     }
 
@@ -200,11 +200,11 @@ final class OverflowLayers {
     }
 
     /// The old number rolls out one way and fades, and the new one rolls in from the other and lands
-    /// with a small pop: up as the count goes up, down as it goes down. `handingOver`, as a card grows
-    /// out of the drop, both roll up with that card on its spring and crossfade, with no pop. At 0
+    /// with a small pop, `up` or down as `CardStack.Overflow.rollsUp` says. `handingOver`, as a card
+    /// grows out of the drop, both roll with that card on its spring and crossfade, with no pop. At 0
     /// only the old one rolls out.
-    private func roll(from old: Int, to new: Int, at begin: CFTimeInterval, handingOver: Bool = false) {
-        let direction: CGFloat = handingOver || new > old ? 1 : -1
+    private func roll(from old: Int, to new: Int, at begin: CFTimeInterval, handingOver: Bool = false, up: Bool) {
+        let direction: CGFloat = up ? 1 : -1
         let distance = CGFloat(Self.rollDistance) * sizeScale * direction
         let handOver = handingOver ? CardStack.handOver : nil
         for layer in [previous, current] {

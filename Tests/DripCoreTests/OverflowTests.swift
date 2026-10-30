@@ -759,6 +759,32 @@ struct OverflowTests {
         #expect(zip(afterTops, (0..<3).map(slot)).allSatisfy { abs($0 - $1) < 0.01 })
     }
 
+    /// The count rolls with the card growing out of it: down as a push stack's card grows down out of
+    /// the pill, up as a chain's card grows up out of the drop. A card dripping in rolls it up.
+    @Test func theCountRollsWithTheCardGrowingOutOfIt() throws {
+        for mode in [StackSettings.Mode.push, .chain] {
+            let driver = stack(["a", "b", "c", "d", "e"], seconds: 3, mode: mode)
+            var handOver: (rollsUp: Bool, handedOver: Bool)?
+            driver.run(for: 10, step: { _, _ in
+                if handOver == nil, driver.releases.count == 1, let overflow = driver.stack.overflow {
+                    handOver = (overflow.rollsUp, overflow.handedOver)
+                }
+            })
+            let rolled = try #require(handOver)
+            #expect(rolled.handedOver)
+            #expect(rolled.rollsUp == (mode == .chain))
+            #expect(driver.stack.handOverRollsUp == (mode == .chain))
+        }
+        let pushed = stack(["a", "b", "c", "d"], seconds: 8, mode: .push)
+        pushed.run(for: 3.5)
+        let pill = try #require(pushed.stack.overflow)
+        pushed.others = [card("late")]
+        pushed.run(for: 1)
+        #expect(pill.count == 2)
+        #expect(pill.rollsUp)
+        #expect(!pill.handedOver)
+    }
+
     /// A card handed on while it sinks away goes on sinking where the next drip shows it.
     @Test func aSinkingCardHandedOnGoesOnSinking() throws {
         let stack = CardStack(settings: StackSettings(mode: .push, max: 3))

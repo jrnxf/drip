@@ -391,7 +391,7 @@ final class StackPresenter: CardPresenting {
         if release.last, let overflowLayers, case let .entering(start, _) = release.entry.phase {
             // The drop itself spreads into the card, and its last number rolls out over it.
             spreadInto = (release.entry.id, start + CardStack.handOver.duration)
-            overflowLayers.rollOut(from: release.count, at: started + start)
+            overflowLayers.rollOut(from: release.count, at: started + start, up: stack.handOverRollsUp)
         }
         show(release.entry, layers: layers, decided: decided)
     }
