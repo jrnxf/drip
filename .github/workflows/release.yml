@@ -54,8 +54,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # A tag's whole history, to tell whether its commit is on main.
-          fetch-depth: ${{ github.ref_type == 'tag' && 0 || 1 }}
+          # The whole history, to tell whether a tag's commit is on main.
+          fetch-depth: 0
       # A release goes out only from a commit that is on main and that CI has passed there: this
       # workflow runs no test itself, and CI runs on the tag in parallel and gates nothing. The
       # snapshot tests would not even pass here, as their references are those of CI's runner image.

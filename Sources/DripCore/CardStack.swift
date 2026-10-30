@@ -530,8 +530,8 @@ public final class CardStack {
     }
 
     /// The card under `point`, as for `entry(at:time:)`, that takes clicks. A card `--activate none`
-    /// leaves without a button neither holds the stack nor is taken away by a click: the pointer
-    /// passes through it, as it does a lone card.
+    /// leaves without a button neither holds the stack nor is taken away by a click. The pointer
+    /// passes through to the window below only while no card in the stack takes clicks.
     public func clickableEntry(at point: IslandPoint, time: Double) -> Entry? {
         entry(at: point, time: time).flatMap { $0.card.isClickable ? $0 : nil }
     }

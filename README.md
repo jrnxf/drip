@@ -860,7 +860,8 @@ under the notch.
 stops, gaps stay open and new cards wait, though they still drip into the drop so its count stays
 true. Once the pointer has rested for 5 seconds, the stack lets go, and moving it holds the stack
 again. A click on a card you can click dismisses it; one `--activate none` leaves without a button
-lets the pointer through to the window below, as a lone card does. Only the cards of drips
+neither holds the stack nor is dismissed by a click. Clicks pass to the window below only while no
+card in the stack takes clicks, as for a lone card. Only the cards of drips
 that returned at once stack; a card that waits (`--wait`, or a question) waits its turn. While a
 question shows, cards that count down stack around it; a card that waits, or another question,
 waits for its answer. drip exits as soon as the question is answered, so the command after it
