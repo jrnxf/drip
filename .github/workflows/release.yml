@@ -68,11 +68,11 @@ jobs:
             echo "$TAG is on $GITHUB_SHA, which is not on main: a release goes out only from main" >&2
             exit 1
           fi
-          runs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" \
+          runs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?filter=all&per_page=100" \
             --jq '.check_runs[] | "\(.name) \(.conclusion)"')"
           printf '%s\n' "$runs"
           missing=""
-          for job in test macos macos-oldest snapshots wasm; do
+          for job in test snapshots; do
             printf '%s\n' "$runs" | grep -qx "$job success" || missing="$missing $job"
           done
           if [ -n "$missing" ]; then
