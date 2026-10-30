@@ -663,6 +663,7 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
                     "countdownFrom": release.entry.countdownFrom, "waits": release.entry.isWaiting,
                     "fromDrop": release.last ? release.count : 0,
                     "handOver": [CardStack.handOver.duration, CardStack.handOver.bounce, CardStack.handOver.settlingTime],
+                    "rollsUp": stack.handOverRollsUp,
                 ])
             }
         }
@@ -699,7 +700,7 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
 }
 
 /// The overflow drop as the page paints its count: `count` and the `previous` count it rolled from
-/// at `changedAt`, on the `handOver` spring, as duration, bounce and settling time, when a card grew out of it;
+/// at `changedAt`, up when `rollsUp`, on the `handOver` spring, as duration, bounce and settling time, when a card grew out of it;
 /// `phase` "forming" from `start` with the count fading in at `cue`, "shown",
 /// "releasing" or "leaving" from `start`; `peeking` since `peekChangedAt`, or back to its count
 /// since then, listing `titles`. An empty object for no drop.
@@ -708,7 +709,7 @@ func overflowState(_ overflow: CardStack.Overflow) -> [String: Any] {
         "count": overflow.count, "previous": overflow.previous, "changedAt": overflow.changedAt,
         "handOver": overflow.handedOver ? [CardStack.handOver.duration, CardStack.handOver.bounce, CardStack.handOver.settlingTime] : [Double](),
         "peeking": overflow.peeking, "peekChangedAt": overflow.peekChangedAt, "titles": overflow.peekText,
-        "scale": overflow.metrics.scale,
+        "scale": overflow.metrics.scale, "rollsUp": overflow.rollsUp,
     ]
     switch overflow.phase {
     case let .forming(start, cues):
@@ -821,8 +822,9 @@ public func dripStackDismiss(_ stackHandle: Int32, _ handle: Int32) -> Int32 {
 
 /// Every card of the stack at `time`, top to bottom, leaving cards included, as doubles: the card
 /// count, then for each card its island's handle, the seconds left on its countdown, where its
-/// capsule's top is heading, and its frame as `drip_frame` lays one out, the outline traced where its
-/// drop melts into the notch or the card above it. The page reads `drip_frame_length` doubles.
+/// capsule's top is heading, how solid its black shape is, and its frame as `drip_frame` lays one
+/// out, the outline traced where its drop melts into the notch or the card above it. The page reads
+/// `drip_frame_length` doubles.
 @_expose(wasm, "drip_stack_frame")
 @_cdecl("drip_stack_frame")
 public func dripStackFrame(_ stackHandle: Int32, _ time: Double) -> UnsafePointer<Double> {
@@ -832,8 +834,8 @@ public func dripStackFrame(_ stackHandle: Int32, _ time: Double) -> UnsafePointe
     let pieces = session?.stack.outline.pieces(at: time) ?? []
     frameBuffer.append(Double(entries.count))
     for (entry, piece) in zip(entries, pieces) {
-        frameBuffer += [Double(session?.islandOf[entry.id] ?? 0), entry.remaining, entry.animator.targetTop]
         let shape = entry.animator.shape(at: time)
+        frameBuffer += [Double(session?.islandOf[entry.id] ?? 0), entry.remaining, entry.animator.targetTop, shape.opacity]
         var field: DropletField?
         if case let .traced(traced) = piece { field = traced }
         appendFrame(shape: shape, metrics: entry.metrics, layout: entry.animator.content(for: shape), traced: field)

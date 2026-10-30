@@ -132,10 +132,12 @@ public struct IslandShape: Equatable, Sendable {
     /// The width the content is laid out for; nil for the open capsule's. It follows the capsule
     /// only while the island springs from one card's size to the next.
     public var contentWidth: Double?
+    /// How solid the black shape is drawn: 1 but for a card fading as it sinks away.
+    public var opacity: Double
 
     public init(
         pillTop: Double, pillWidth: Double, pillHeight: Double, progress: Double, blend: Double = 0,
-        contentWidth: Double? = nil
+        contentWidth: Double? = nil, opacity: Double = 1
     ) {
         self.pillTop = pillTop
         self.pillWidth = pillWidth
@@ -143,6 +145,7 @@ public struct IslandShape: Equatable, Sendable {
         self.progress = progress
         self.blend = blend
         self.contentWidth = contentWidth
+        self.opacity = opacity
     }
 
     /// The drop's corner radius: fully round until it reaches the capsule's corners.
@@ -273,6 +276,8 @@ public struct IslandAnimator: Sendable {
     /// When the drop, gathered round on the way out, starts to rise; nil before `exit`.
     public private(set) var riseTime: Double?
     private var dropCenter, pillWidth, pillHeight, progress, blend: SpringValue
+    /// How solid the shape is: 1 until it fades as it sinks away.
+    private var opacity = SpringValue(1)
     /// The width the content is laid out for: the open capsule's, until a resize springs it along
     /// with the capsule.
     private var contentWidth: SpringValue
@@ -416,6 +421,30 @@ public struct IslandAnimator: Sendable {
             detail: IslandCues.lines(m.detailLines, from: 0, step: 0))
     }
 
+    /// Starts the exit at `time` as a fade instead: the capsule sinks `IslandAnimator.sinkDepth` and
+    /// narrows a little as it fades away where it is, its content fading at once, into nothing. A
+    /// push stack's card leaving as the next card grows out of the overflow pill above the stack:
+    /// everything moves down, the card going included. Returns when the content fades out.
+    public mutating func sink(at time: Double) -> IslandCues {
+        let m = metrics
+        let spring = Self.sinking
+        dropCenter.animate(to: targetTop + m.pillHeight / 2 + Self.sinkDepth * m.scale, with: spring, at: time)
+        pillWidth.animate(to: m.pillWidth - Self.sinkNarrowing * m.scale, with: spring, at: time)
+        opacity.animate(to: 0, with: spring, at: time)
+        return IslandCues(
+            sides: 0, title: IslandCues.lines(m.titleLines, from: 0, step: 0),
+            detail: IslandCues.lines(m.detailLines, from: 0, step: 0))
+    }
+
+    /// How a card sinks and fades away, and how far it sinks and narrows as it does, in points at
+    /// regular size.
+    public static let sinking = Spring(duration: 0.4)
+    public static let sinkDepth = 14.0
+    public static let sinkNarrowing = 24.0
+
+    /// Whether the shape has faded out of sight by `time`.
+    public func isFaded(at time: Double) -> Bool { opacity.value(at: time) <= 0.01 }
+
     /// Moves the open capsule so its top is at `top`, starting at `time`: a card in a stack closing
     /// the gap one above it left, or making room for a new one.
     public mutating func move(to top: Double, at time: Double, with spring: Spring = IslandAnimator.settle) {
@@ -468,7 +497,7 @@ public struct IslandAnimator: Sendable {
 
     /// When every spring has settled.
     public var end: Double {
-        [dropCenter, pillWidth, pillHeight, progress, blend, contentWidth].compactMap(\.end).max() ?? 0
+        [dropCenter, pillWidth, pillHeight, progress, blend, contentWidth, opacity].compactMap(\.end).max() ?? 0
     }
 
     public func shape(at time: Double) -> IslandShape {
@@ -483,7 +512,8 @@ public struct IslandAnimator: Sendable {
         let center = dropCenter.value(at: time)
         return IslandShape(
             pillTop: center - tall / 2, pillWidth: width, pillHeight: tall, progress: opened,
-            blend: max(blend.value(at: time), 0), contentWidth: contentWidth.value(at: time))
+            blend: max(blend.value(at: time), 0), contentWidth: contentWidth.value(at: time),
+            opacity: min(max(opacity.value(at: time), 0), 1))
     }
 
     /// The first time from `start`, in 1 ms steps and within 2 s, at which `condition` holds.
