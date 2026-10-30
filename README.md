@@ -850,7 +850,8 @@ moved down out of its way, and the cards waiting wait in a small pill that drips
 and floats just under it instead, the stack moving down to make room. A card that comes later
 drips from the notch into the pill. When a card leaves while cards wait, it sinks away as it fades, the other cards
 move down, the next card grows out of the pill into the top place and the count goes down, again in
-one motion; once none waits, the pill goes back into the notch and the stack closes up under it.
+one motion; the last card waiting is the pill itself spreading into a card as the stack closes up
+under the notch.
 `off` shows one card at a time. While the pointer is on any card in the stack, nothing moves: every countdown
 stops, gaps stay open and new cards wait, though they still drip into the drop so its count stays
 true. Once the pointer has rested for 5 seconds, the stack lets go, and moving it holds the stack

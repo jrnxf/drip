@@ -713,46 +713,50 @@ struct OverflowTests {
         }
     }
 
-    /// Every card that waited grows out of the pill in turn, the last one included, which leaves
-    /// the empty pill to go back into the notch; the stack then closes up under the notch.
-    @Test func pushModeTakesTheEmptyPillBackIntoTheNotch() throws {
+    /// Every card that waited grows out of the pill in turn, and the last one is the pill itself
+    /// spreading into the top place, its last number rolling out over it, as chain's drop does: no
+    /// empty pill is ever left under the notch.
+    @Test func pushModeTheLastCardWaitingIsThePillItself() throws {
         let driver = stack(["a", "b", "c", "d", "e"], seconds: 3, mode: .push)
-        var leftPill: CardStack.Overflow?
-        var leftAt: Double?
+        var pill: CardStack.Overflow?
+        var blank = false
         var sank: [String] = []
-        driver.run(for: 14, step: { time, changes in
+        driver.run(for: 14, step: { _, changes in
             sank += changes.left.filter(\.entry.sinks).map(\.entry.card.title)
-            if leftAt == nil, let pill = driver.stack.overflow, pill.isLeaving {
-                leftAt = time
-                leftPill = pill
-            }
+            if pill == nil { pill = driver.stack.overflow }
+            // A pill on screen with nothing left to count.
+            if let overflow = driver.stack.overflow, overflow.count == 0 { blank = true }
         })
         #expect(driver.releases.map(\.release.entry.card.title) == ["d", "e"])
-        #expect(driver.releases.allSatisfy { !$0.release.last })
+        #expect(driver.releases.map(\.release.last) == [false, true])
+        #expect(driver.releases.map(\.release.count) == [2, 1])
         #expect(sank == ["a", "b"])
-        let pill = try #require(leftPill)
-        let left = try #require(leftAt)
-        #expect(pill.count == 0)
-        #expect(pill.anchor == nil)
-        #expect(driver.stack.overflow == nil)
-        // It rose back into the notch, and the cards went back up under it as it did.
-        #expect(pill.animator.targetTop < metrics.notchHeight)
-        #expect(try #require(driver.releases.last).time < left)
+        #expect(!blank)
+        // The pill's own drop became the card, under the notch where the top place is again.
+        let last = try #require(driver.releases.last)
+        let drop = try #require(pill)
+        #expect(last.release.entry.animator.shape(at: last.time).pillTop == drop.animator.shape(at: last.time).pillTop)
+        #expect(abs(last.top - slot(0)) < 0.01)
+        #expect(last.live == ["e", "d", "c"])
     }
 
-    /// Once the pill has gone back in, the stack closes up under the notch.
-    @Test func pushModeClosesUpOnceThePillGoes() throws {
+    /// As the pill spreads into the last card waiting, the stack closes up under the notch on the
+    /// same spring: the card going sinks away, and the others move down into the places under it.
+    @Test func pushModeClosesUpAsThePillSpreadsIntoTheLastCard() throws {
         let driver = stack(["a", "b", "c", "d"], seconds: 6, mode: .push)
         var shownTops: [Double] = []
         var afterTops: [Double] = []
         driver.run(for: 11, step: { _, _ in
             if driver.stack.overflow?.phase == .shown { shownTops = driver.stack.live.map(\.animator.targetTop) }
-            if driver.stack.overflow?.isLeaving == true { afterTops = driver.stack.live.map(\.animator.targetTop) }
+            if afterTops.isEmpty, driver.releases.count == 1 { afterTops = driver.stack.live.map(\.animator.targetTop) }
         })
-        #expect(driver.releases.map(\.release.entry.card.title) == ["d"])
+        let release = try #require(driver.releases.first)
+        #expect(release.release.entry.card.title == "d")
+        #expect(release.release.last)
+        #expect(driver.stack.overflow == nil)
         #expect(zip(shownTops, (0..<3).map(pushedSlot)).allSatisfy { abs($0 - $1) < 0.01 })
-        #expect(zip(afterTops, (0..<3).map(slot)).allSatisfy { abs($0 - $1) < 0.01 })
         #expect(afterTops.count == 3)
+        #expect(zip(afterTops, (0..<3).map(slot)).allSatisfy { abs($0 - $1) < 0.01 })
     }
 
     /// A card handed on while it sinks away goes on sinking where the next drip shows it.

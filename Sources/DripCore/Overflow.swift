@@ -11,7 +11,9 @@
 /// of the notch, lets go and floats just under it, and the stack moves down to make room. A card
 /// that comes while it shows drips into it from the notch. As room opens, the card leaving sinks
 /// away, the others move down a place, and the next card grows out of the pill into the top place,
-/// all as one motion. Once nothing waits, the pill goes back into the notch and the stack closes up.
+/// all as one motion. The last card waiting is the pill itself spreading into the top place as the
+/// stack closes up under the notch, so no empty pill is left; a pill emptied otherwise, as when the
+/// cards waiting went elsewhere, goes back into the notch.
 extension CardStack {
     public final class Overflow {
         public enum Phase: Equatable {
@@ -207,12 +209,13 @@ extension CardStack {
     /// card waits until its drop starts to rise. The drop stays where it is, joined to the new card
     /// until the neck between them pinches off. The last card waiting is the drop itself, spreading
     /// into the card. In push mode the card grows down out of the pill into the top place instead, as
-    /// the cards move down a place on the same spring, and the pill stays until it goes back in.
+    /// the cards move down a place on the same spring; the last card waiting is the pill itself
+    /// spreading into the top place, so no empty pill is left.
     @discardableResult
     public func release(_ card: Card, metrics: IslandMetrics, own: Bool, at time: Double) -> Release? {
         guard let overflow, !overflow.isLeaving else { return nil }
         let count = overflow.count
-        let last = settings.mode == .chain && queued.count <= 1 && overflow.inFlight == 0
+        let last = queued.count <= 1 && overflow.inFlight == 0
         let holding = settings.mode == .chain ? entries.filter { $0.isLeaving && $0.holdsPlaceUntil.isFinite } : []
         // The new card, and the count with it, wait for a card still gathering in place to rise.
         let start = holding.filter { !$0.rises }.map(\.holdsPlaceUntil).reduce(time, max)
@@ -222,7 +225,9 @@ extension CardStack {
         // No longer waiting, from now rather than the next step: it can grow out as a card leaves,
         // after the step has looked at the cards waiting.
         if let index = queued.firstIndex(of: card) { queued.remove(at: index) }
-        if settings.mode == .push { return pushRelease(card, metrics: metrics, own: own, out: overflow, count: count, at: time) }
+        if settings.mode == .push {
+            return pushRelease(card, metrics: metrics, own: own, out: overflow, count: count, last: last, at: time)
+        }
         for entry in holding where entry.rises { entry.holdsPlaceUntil = -.infinity }
         if holding.contains(where: \.rises) { place(at: time, with: Self.handOver) }
         var slot: Double?
@@ -249,12 +254,16 @@ extension CardStack {
 
     /// Grows `card` out of `overflow`, the pill over a push stack, at `time`, into the top place, as
     /// every card moves down a place on `handOver`. A card leaving gives its place up at once, so
-    /// none moves down into a place still held. `count` is what the pill showed before.
+    /// none moves down into a place still held. `count` is what the pill showed before. The `last`
+    /// card waiting is the pill itself spreading into the top place under the notch, as the stack
+    /// closes up under it.
     private func pushRelease(
-        _ card: Card, metrics: IslandMetrics, own: Bool, out overflow: Overflow, count: Int, at time: Double
+        _ card: Card, metrics: IslandMetrics, own: Bool, out overflow: Overflow, count: Int, last: Bool, at time: Double
     ) -> Release {
         for entry in entries where entry.isLeaving { entry.holdsPlaceUntil = -.infinity }
-        var animator = IslandAnimator(metrics: metrics, from: overflow.animator.shape(at: time))
+        // Gone as a pill from now, so the places are laid out under the notch again.
+        if last { self.overflow = nil }
+        var animator = last ? overflow.animator : IslandAnimator(metrics: metrics, from: overflow.animator.shape(at: time))
         let cues = animator.spread(
             into: metrics, top: pillStackTop ?? metrics.pillTop, at: time, with: Self.handOver, textAt: Self.handOverText)
         let entry = Entry(id: nextID, card: card, own: own, metrics: metrics, animator: animator)
@@ -264,8 +273,8 @@ extension CardStack {
         entries.insert(entry, at: live.first.flatMap { first in entries.firstIndex { $0 === first } } ?? 0)
         place(at: time, except: entry, with: Self.handOver)
         lastEntrance = time
-        overflow.phase = .releasing(until: time + 0.4)
-        return Release(entry: entry, count: count, last: false)
+        if !last { overflow.phase = .releasing(until: time + 0.4) }
+        return Release(entry: entry, count: count, last: last)
     }
 
     /// Springs the overflow drop wide to list the waiting cards' titles, `width` points wide as drawn
