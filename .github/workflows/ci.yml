@@ -76,7 +76,7 @@ jobs:
           sudo installer -pkg "$RUNNER_TEMP/$SWIFT_PKG" -target /
           plist=/Library/Developer/Toolchains/swift-5.10.1-RELEASE.xctoolchain/Info.plist
           echo "TOOLCHAINS=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" >> "$GITHUB_ENV"
-      - run: swift --version
+      - run: swift --version 2>&1 | tee /dev/stderr | grep -q 'Swift version 5\.10\.'
       - run: swift build -c release
       - run: .build/release/drip --version
 
