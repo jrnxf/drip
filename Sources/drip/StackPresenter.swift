@@ -593,6 +593,8 @@ final class StackPresenter: CardPresenting {
         let time = now
         let elapsed = max(time - lastTick, 0)
         lastTick = time
+        // With no card to click the pointer goes through to the window below, as for a lone card.
+        panel?.ignoresMouseEvents = !stack.hasClickable
         updateHover()
         admit()
 
@@ -688,9 +690,9 @@ final class StackPresenter: CardPresenting {
         return CGPoint(x: location.x - panel.frame.midX, y: notch.top - location.y)
     }
 
-    /// The card under `point`, in island coordinates, among those still in the stack.
+    /// The card under `point`, in island coordinates, among those in the stack that take clicks.
     private func entry(at point: CGPoint) -> CardStack.Entry? {
-        stack.entry(at: IslandPoint(Double(point.x), Double(point.y)), time: now)
+        stack.clickableEntry(at: IslandPoint(Double(point.x), Double(point.y)), time: now)
     }
 
     /// The button of `entry` at `point`, in island coordinates, as it is drawn now; nil off them.

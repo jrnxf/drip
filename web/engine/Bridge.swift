@@ -749,7 +749,7 @@ public func dripStackPointer(_ stackHandle: Int32, _ x: Double, _ y: Double, _ i
     let stack = session.stack
     let moved = (inside != 0 ? point : nil) != session.pointer
     session.pointer = inside != 0 ? point : nil
-    let under = inside != 0 ? stack.entry(at: point, time: time) : nil
+    let under = inside != 0 ? stack.clickableEntry(at: point, time: time) : nil
     let onDrop = peek(stack, at: session.pointer, time: time)
     // Held while the pointer moves on it, as on a Mac, and let go once it rests.
     stack.hover(under != nil || onDrop, moved: moved, at: time)
@@ -783,7 +783,7 @@ func named(_ answer: CardAnswer?) -> String {
 @_cdecl("drip_stack_click")
 public func dripStackClick(_ stackHandle: Int32, _ x: Double, _ y: Double, _ time: Double) -> UnsafePointer<UInt8> {
     let point = IslandPoint(x, y)
-    guard let session = stacks[stackHandle], let entry = session.stack.entry(at: point, time: time) else {
+    guard let session = stacks[stackHandle], let entry = session.stack.clickableEntry(at: point, time: time) else {
         return send(["handle": 0, "button": ""])
     }
     let answer = session.stack.button(of: entry, at: point, time: time)
