@@ -856,10 +856,11 @@ drips from the notch into the pill. When a card leaves while cards wait, it sink
 move down, the next card grows out of the pill into the top place and the count goes down, again in
 one motion; the last card waiting is the pill itself spreading into a card as the stack closes up
 under the notch.
-`off` shows one card at a time. While the pointer is on any card in the stack, nothing moves: every countdown
+`off` shows one card at a time. While the pointer is on any card in the stack you can click, nothing moves: every countdown
 stops, gaps stay open and new cards wait, though they still drip into the drop so its count stays
 true. Once the pointer has rested for 5 seconds, the stack lets go, and moving it holds the stack
-again. A click on a card dismisses it. Only the cards of drips
+again. A click on a card you can click dismisses it; one `--activate none` leaves without a button
+lets the pointer through to the window below, as a lone card does. Only the cards of drips
 that returned at once stack; a card that waits (`--wait`, or a question) waits its turn. While a
 question shows, cards that count down stack around it; a card that waits, or another question,
 waits for its answer. drip exits as soon as the question is answered, so the command after it
@@ -1047,6 +1048,8 @@ run can read the Claude Code token and the Gemini API key in the Keychain withou
 
 A pushed tag makes a release: `.github/workflows/release.yml` builds the universal archive,
 publishes the tag's GitHub release with it, and points the formula in jrnxf/homebrew-tap at it.
+It releases only a commit that is on main and that CI's `test` and `snapshots` jobs have passed;
+tag after CI goes green, or run the failed job again once it has.
 
 ```sh
 git tag v0.1.0-pre.1 && git push origin v0.1.0-pre.1   # a development build
