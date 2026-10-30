@@ -176,8 +176,9 @@ extension CardStack {
     }
 
     /// How everything moves as the next card grows out of the overflow drop: the cards below the one
-    /// leaving close up, the new card spreads into the place at the bottom, and the drop's count rolls
-    /// to its new number, all on this one spring and from the same moment, as one motion.
+    /// leaving close up, the new card spreads into the place at the bottom (in push, the top), and the
+    /// drop's count rolls to its new number, all on this one spring and from the same moment, as one
+    /// motion.
     public static let handOver = Spring(duration: 0.5, bounce: 0.12)
     /// How far open a card growing out of the overflow drop is when its text starts to fade in:
     /// sooner than a card dropping in, so it is never an empty capsule while the stack moves.
@@ -208,7 +209,7 @@ extension CardStack {
         return Self.pillTop(overflow.metrics) + overflow.metrics.pillHeight + Self.gap
     }
 
-    /// Grows `card`, laid out as `metrics`, out of the overflow drop from `time`, as the count rolls
+    /// Grows `card`, laid out as `metrics`, out of the overflow drop from `time`, as the count goes
     /// down: up into the place the card leaving frees. A card that left rising gives its place up at
     /// once, so the cards below close up as it gathers and the new card spreads, the count rolling
     /// with them, all on `handOver` from `time`; one still gathering in place holds it, and the new
