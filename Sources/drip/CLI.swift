@@ -94,16 +94,12 @@ struct DripCLI {
         case let .invocation(.run(command)):
             return run(command)
         case let .invocation(.hook(command)):
-            #if !os(WASI)
             DebugLog.process = .hook
-            #endif
             return hook(command)
         case let .invocation(.setup(command)):
             return setup(command)
         case let .invocation(.follow(command)):
-            #if !os(WASI)
             DebugLog.process = .follow
-            #endif
             return follow(command)
         case let .invocation(.history(command)):
             return history(command)
@@ -150,31 +146,11 @@ struct DripCLI {
             guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit + 1) else {
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
             }
-            #if os(WASI)
-            // A session nobody attends, such as `claude -p` in a pipeline, or one an orchestrator
-            // silenced with DRIP_HOOK=off: nothing to show, nothing to take away, nothing to fail.
-            guard try AgentHook.speaks(for: command.agent, environment: ProcessInfo.processInfo.environment) else {
-                return ExitStatus.shown
-            }
-            if payload.utf8.count > AgentHook.payloadLimit {
-                throw UsageError("the hook payload is larger than 4 MB")
-            }
-            guard case let .card(event) = try AgentHook.outcome(
-                agent: command.agent, payload: payload, environment: ProcessInfo.processInfo.environment)
-            else {
-                return ExitStatus.shown
-            }
-            guard display.hasGUISession else { return ExitStatus.shown }
-            var cardFlags = event.filling(flags)
-            cardFlags.icon = cardFlags.icon ?? command.agent.icon(installed: display.isInstalled)
-            let card = try makeResolver(console).resolve(kind: event.kind, title: event.title, flags: cardFlags)
-            #else
             guard let card = try AgentHook.card(
                 agent: command.agent, payload: payload, flags: flags, in: surroundings(console, resurfacing: command.agent))
             else {
                 return ExitStatus.shown
             }
-            #endif
             // An agent's hook keeps its output clean, terminal or not.
             status = deliver([card], wait: flags.wait, remind: false, console: console)
         } catch {
@@ -187,10 +163,6 @@ struct DripCLI {
     /// runs it.
     private func follow(_ command: FollowCommand) -> Int32 {
         let console = Console()
-        #if os(WASI)
-        console.error("drip follow reads another machine over ssh, which WebAssembly cannot")
-        return ExitStatus.usage
-        #else
         let environment = ProcessInfo.processInfo.environment
         let target = command.target ?? ""
         let activate = CardActivation.target(flag: command.activate, sender: CardActivation.sender(in: environment))
@@ -250,7 +222,6 @@ struct DripCLI {
             return ExitStatus.followFailed
         }
         return ExitStatus.shown
-        #endif
     }
 
     /// The drip a launchd agent runs: this one, by the name `PATH` finds it under when it does, as
@@ -265,10 +236,6 @@ struct DripCLI {
 
     /// Prints the debug log, or empties it.
     private func debug(_ command: DebugCommand) -> Int32 {
-        #if os(WASI)
-        Console().error("the debug log is kept on your Mac, which WebAssembly cannot reach")
-        return ExitStatus.usage
-        #else
         let environment = ProcessInfo.processInfo.environment
         if command.clear {
             do {
@@ -287,15 +254,10 @@ struct DripCLI {
             print(text, terminator: "")
         }
         return ExitStatus.shown
-        #endif
     }
 
     /// Asks every drip showing cards to take them away, those with `--id` only when it is given.
     private func dismiss(_ command: DismissCommand) -> Int32 {
-        #if os(WASI)
-        Console().error("drip dismiss takes away cards on your Mac, which WebAssembly cannot")
-        return ExitStatus.dismissFailed
-        #else
         do {
             try DismissRequests(environment: ProcessInfo.processInfo.environment).request(id: command.id)
             return ExitStatus.shown
@@ -303,7 +265,6 @@ struct DripCLI {
             Console().error("cannot dismiss: \(error)")
             return ExitStatus.dismissFailed
         }
-        #endif
     }
 
     /// Adds drip's hooks to the agent's settings, or prints them.
@@ -317,10 +278,6 @@ struct DripCLI {
             return ExitStatus.shown
         }
         let console = Console()
-        #if os(WASI)
-        console.error("drip setup changes files, which WebAssembly cannot")
-        return ExitStatus.setupFailed
-        #else
         switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(agent) {
         case let .done(lines, warnings):
             warnings.forEach(console.warn)
@@ -335,7 +292,6 @@ struct DripCLI {
             console.error(message)
             return ExitStatus.setupFailed
         }
-        #endif
     }
 
     /// Everything that can fail is checked here, before the cards are handed off. `record` is false
@@ -406,11 +362,7 @@ struct DripCLI {
 
         let clock = ContinuousClock()
         let start = clock.now
-        #if os(WASI)
-        let outcome = CommandRunner.Outcome(status: 126, error: "\(command.command[0]): cannot run commands in WebAssembly")
-        #else
         let outcome = CommandRunner.run(command.command)
-        #endif
         let elapsed = (clock.now - start).components
         if let error = outcome.error {
             console.error(error)
@@ -424,9 +376,7 @@ struct DripCLI {
             _ = report(error, console)
         }
         // The card is on its way; Ctrl-C now stops the script that ran drip, as it would the command.
-        #if !os(WASI)
         CommandRunner.endLikeTheCommand(outcome)
-        #endif
         return outcome.status
     }
 
@@ -511,7 +461,6 @@ struct DripCLI {
         }
     }
 
-    #if !os(WASI)
     /// What an agent's hook reads around its event on this Mac.
     private func surroundings(_ console: Console, resurfacing agent: AgentHook.Agent? = nil) -> AgentHook.Surroundings {
         AgentHook.Surroundings(
@@ -528,7 +477,6 @@ struct DripCLI {
             },
             resolver: { try makeResolver(console, file: $0, environment: $1) })
     }
-    #endif
 
     /// Reads the config file and environment, printing the config file's warnings.
     private func makeResolver(
