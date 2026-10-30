@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import Foundation
 import PackageDescription
 
@@ -31,7 +31,9 @@ let package = Package(
         .testTarget(name: "DripSnapshotTests"),
         // Builds scripts/agent-contract/Contract.swift and runs it without an agent. macOS only.
         .testTarget(name: "AgentContractTests"),
-    ]
+    ],
+    // Tools version 6.0 would turn on the Swift 6 language mode; the code is written for Swift 5.
+    swiftLanguageModes: [.v5]
 )
 
 // The web page's WebAssembly module: DripCore behind plain wasm exports. Only for a Wasm build,
