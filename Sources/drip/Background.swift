@@ -73,6 +73,8 @@ enum BackgroundDrip {
             if shown[0] >= 0 { close(shown[0]) }
             return nil
         }
+        // `drip follow` lives on and spawns one of these per card; none may stay a zombie.
+        ChildReaper.reap(pid)
         return Spawned(pid: pid, writing: writing, shown: shown[0] >= 0 ? shown[0] : nil)
     }
 

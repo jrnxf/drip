@@ -675,6 +675,28 @@ struct CardStackTests {
         #expect(field.anchor == DropletAnchor.capsule(first.animator.shape(at: time + 0.15), metrics: first.metrics))
     }
 
+    /// `--activate none` promises a card you can click through. The stack held every card while the
+    /// pointer was on any of them, and a click took the card away, so the default stack ate the click.
+    @Test func aCardWithNothingToClickIsNotUnderThePointer() {
+        var clickable = card("a", seconds: 10)
+        clickable.activate = "com.apple.finder"
+        var plain = card("b", seconds: 10)
+        plain.activate = nil
+        #expect(clickable.isClickable && !plain.isClickable)
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [clickable, plain])
+        let time = run(stack, until: 4)
+        let (a, b) = (stack.live[0], stack.live[1])
+        let middle = { (entry: CardStack.Entry) in
+            let shape = entry.animator.shape(at: time)
+            return IslandPoint(0, shape.pillTop + shape.pillHeight / 2)
+        }
+        #expect(stack.entry(at: middle(b), time: time) === b)
+        #expect(stack.clickableEntry(at: middle(a), time: time) === a)
+        #expect(stack.clickableEntry(at: middle(b), time: time) == nil)
+        #expect(stack.hasClickable)
+        #expect(!CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [plain]).hasClickable)
+    }
+
     @Test func thePointerFindsTheCardAndItsButton() {
         var withButton = card("a", seconds: 10)
         withButton.action = CardAction(label: "Open", open: nil)

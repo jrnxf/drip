@@ -578,6 +578,19 @@ public final class CardStack {
         }
     }
 
+    /// The card under `point`, as for `entry(at:time:)`, that takes clicks. A card `--activate none`
+    /// leaves without a button neither holds the stack nor is taken away by a click. The pointer
+    /// passes through to the window below only while no card in the stack takes clicks.
+    public func clickableEntry(at point: IslandPoint, time: Double) -> Entry? {
+        entry(at: point, time: time).flatMap { $0.card.isClickable ? $0 : nil }
+    }
+
+    /// Whether any card in the stack takes clicks, so the window over the notch should take the
+    /// pointer at all.
+    public var hasClickable: Bool {
+        live.contains { $0.card.isClickable }
+    }
+
     /// Whether `point`, as for `entry(at:time:)`, is on `entry`'s close mark as it is drawn at `time`:
     /// the left end of its capsule, its padding and its icon, where a pointer on the card shows a ×
     /// in place of the icon. A click there takes the card away without bringing anything forward.

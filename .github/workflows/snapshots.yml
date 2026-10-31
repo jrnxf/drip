@@ -1,6 +1,6 @@
 name: Record snapshots
 
-# Records every snapshot reference on GitHub's macOS runner, the Mac CI compares them on, and uploads
+# Records every snapshot reference on GitHub's macOS 26 runner, the Mac CI compares them on, and uploads
 # them as the snapshot-references artifact: unzip it into Tests/Snapshots, look at each card, and
 # commit the ones that changed. A Mac of your own can draw SF Symbols' edges a few pixels apart, so
 # the runner is where the references come from.
@@ -12,16 +12,17 @@ permissions:
 
 jobs:
   record:
-    runs-on: macos-latest
+    # The runner CI compares on (ci.yml's snapshots job): bump both together, then record again.
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: sw_vers
       - run: rm -f Tests/Snapshots/*.png
       # Swift Testing is built for macOS 14, so the tests are too, as in scripts/mac-check.sh.
       - run: DRIP_RECORD_SNAPSHOTS=1 swift test --filter DripSnapshotTests -Xswiftc -target -Xswiftc "$(uname -m)-apple-macosx14.0"
       # Lossless: the same pixels in fewer bytes.
       - run: brew install oxipng && oxipng -o max --strip safe Tests/Snapshots/*.png
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: snapshot-references
           path: Tests/Snapshots/*.png
