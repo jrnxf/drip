@@ -924,19 +924,41 @@ struct OverflowTests {
         }
     }
 
-    /// With no card waiting, a lone card leaving rises at once all the same, and the card below
-    /// follows it up without touching it; in push mode it still gathers in place first. The count
-    /// ticking up as a card drips in still swells the drop.
-    @Test func aLoneCardLeavingRisesAtOnceWithoutADrop() throws {
+    /// With no card waiting, a lone card leaving gathers into a round drop in place first and only
+    /// then rises, as in the old exit, and the card below holds its place until the drop rises and
+    /// then closes the gap without touching it; in push mode it gathers in place first as well. The
+    /// count ticking up as a card drips in still swells the drop.
+    @Test func aLoneCardLeavingGathersBeforeItRisesWithoutADrop() throws {
         let driver = stack(["a", "b"], seconds: 2)
         var leaving: CardStack.Entry?
         var leftAt = 0.0
+        var sampled: (width: Double, tall: Double)?
+        var below: CardStack.Entry?
+        var early = Double.infinity
         let closest = closestGap(driver, for: 6, step: { time, changes in
-            if leaving == nil, let left = changes.left.first { leaving = left.entry; leftAt = time }
+            if leaving == nil, let left = changes.left.first {
+                leaving = left.entry
+                leftAt = time
+                below = driver.stack.live.first { $0 !== left.entry }
+            }
+            guard let leaving, let rise = leaving.animator.riseTime else { return }
+            if sampled == nil, time >= rise {
+                let shape = leaving.animator.shape(at: time)
+                sampled = (shape.pillWidth, shape.pillHeight)
+            }
+            // The card below stays put until the drop above it starts to rise.
+            if time < rise, let below { early = min(early, below.animator.shape(at: time).pillTop - slot(1)) }
         })
         let left = try #require(leaving)
         #expect(left.card.title == "a")
-        #expect(try #require(left.animator.riseTime) - leftAt < 0.05)
+        let rise = try #require(left.animator.riseTime)
+        // Round to the eye once it rises, after the gather rather than with it.
+        #expect(rise - leftAt > 0.15)
+        let round = try #require(sampled)
+        // Within a step of round: the first step at or past the rise.
+        #expect(abs(round.width - metrics.dropSize) <= 3 * metrics.scale)
+        #expect(abs(round.tall - metrics.dropSize) <= 3 * metrics.scale)
+        #expect(early > -0.01)
         #expect(closest > 0)
 
         let pushed = stack(["a", "b"], seconds: 2, mode: .push)

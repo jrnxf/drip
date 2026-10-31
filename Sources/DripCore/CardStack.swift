@@ -502,15 +502,16 @@ public final class CardStack {
             entry.isShown && (entry.remaining <= 0 || entry.dismissed != nil) && !self.isFilling(entry)
                 && !(dropBusy && entry.dismissed == nil)
         }
-        // A card leaving rises straight away, so the cards below follow it up at once, and the next
-        // card waiting in the overflow drop grows out of it in the same motion. Only when it is the
-        // one card leaving: cards leaving together, as when the pointer leaves and they all run out
-        // at once, would rise into each other's places, so they gather first, and so does a card
-        // leaving while another still gathers in place or while the drop is busy.
+        // A card leaving rises straight away only when the next card waiting in the overflow drop
+        // grows out of it in the same motion, so the cards below follow it up with that card. With
+        // no card waiting it gathers into a round drop in place first, and only then rises. Only
+        // when it is the one card leaving: cards leaving together, as when the pointer leaves and
+        // they all run out at once, would rise into each other's places, so they gather first, and
+        // so does a card leaving while another still gathers in place or while the drop is busy.
         let due = entries.filter(goes)
         let rises = due.count == 1 && settings.mode == .chain && !hovering
             && !entries.contains { $0.isLeaving && $0.holdsPlaceUntil.isFinite && $0.holdsPlaceUntil > time + lead }
-            && overflow.map { $0.phase == .shown && !$0.peeking } ?? true
+            && overflow.map { $0.phase == .shown && !$0.peeking } ?? false
         // In push mode the next card waiting grows out of the overflow pill above the stack instead,
         // and the one card leaving sinks away where it is, so everything moves down together.
         let sinks = due.count == 1 && settings.mode == .push && !queued.isEmpty
