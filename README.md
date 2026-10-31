@@ -846,8 +846,8 @@ turn in a small drop under the last card, which counts them. A card that comes l
 drop and the count goes up. When a card leaves, it all happens in one motion: the card rises away,
 the next card grows out of the drop into its place, the other cards move up and the count goes
 down. A card that leaves with none waiting gathers back into a round drop first, then rises into the
-notch or the card above, as in the entrance reversed. Once none waits, the drop goes back into the last card. With the pointer on the drop, it
-widens to list the waiting cards' titles, newest first.
+notch or the card above, as in the entrance reversed. Once none waits, the drop goes back into the
+last card. With the pointer on the drop, it widens to list the waiting cards' titles, newest first.
 A click on the drop does nothing. How they stack is `stack` in the config, or `DRIP_STACK`. With `chain`, the default, each new
 card drops out of the bottom of the last one and the oldest goes back into the notch first, the
 others moving up behind it. With `push` a new card drops out of the notch once the others have
