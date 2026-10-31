@@ -390,8 +390,8 @@ public final class CardStack {
     }
 
     /// Takes `entry` back into the card above it, or into the notch, at `time`, or `sinking` away
-    /// where it is as the next card grows out of the overflow pill above a push stack. Returns when its content fades out; nil
-    /// when it was already leaving.
+    /// where it is as the next card grows out of the overflow pill above a push stack. Returns when
+    /// its content fades out; nil when it was already leaving.
     @discardableResult
     public func leave(_ entry: Entry, at time: Double, sinking: Bool = false) -> IslandCues? {
         guard !entry.isLeaving else { return nil }

@@ -214,9 +214,10 @@ extension CardStack {
     /// place, and the new card waits until its drop starts to rise; then the cards below close up and
     /// the new card spreads, the count rolling with them, all on `handOver` from that moment. The
     /// drop stays where it is, joined to the new card until the neck between them pinches off. The
-    /// last card waiting is the drop itself, spreading into the card. In push mode the card grows down out of the pill into the top place instead, as
-    /// the cards move down a place on the same spring; the last card waiting is the pill itself
-    /// spreading into the top place, so no empty pill is left.
+    /// last card waiting is the drop itself, spreading into the card. In push mode the card grows
+    /// down out of the pill into the top place instead, as the cards move down a place on the same
+    /// spring; the last card waiting is the pill itself spreading into the top place, so no empty
+    /// pill is left.
     @discardableResult
     public func release(_ card: Card, metrics: IslandMetrics, own: Bool, at time: Double) -> Release? {
         guard let overflow, !overflow.isLeaving else { return nil }
