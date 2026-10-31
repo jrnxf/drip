@@ -213,8 +213,8 @@ extension CardStack {
     /// down: up into the place the card leaving frees. A card leaving gathers in place and holds its
     /// place, and the new card waits until its drop starts to rise; then the cards below close up and
     /// the new card spreads, the count rolling with them, all on `handOver` from that moment. The
-    /// drop stays where it is, joined to the new card until the neck between them pinches off. The last card waiting is the drop itself, spreading
-    /// into the card. In push mode the card grows down out of the pill into the top place instead, as
+    /// drop stays where it is, joined to the new card until the neck between them pinches off. The
+    /// last card waiting is the drop itself, spreading into the card. In push mode the card grows down out of the pill into the top place instead, as
     /// the cards move down a place on the same spring; the last card waiting is the pill itself
     /// spreading into the top place, so no empty pill is left.
     @discardableResult
@@ -224,7 +224,7 @@ extension CardStack {
         let last = queued.count <= 1 && overflow.inFlight == 0
         let holding = settings.mode == .chain ? entries.filter { $0.isLeaving && $0.holdsPlaceUntil.isFinite } : []
         // The new card, and the count with it, wait for a card still gathering in place to rise.
-        let start = holding.filter { !$0.rises }.map(\.holdsPlaceUntil).reduce(time, max)
+        let start = holding.map(\.holdsPlaceUntil).reduce(time, max)
         // From the cards still waiting rather than the count shown, which a card that came while no
         // seed could drip in may not have caught up with yet.
         tick(overflow, to: max(queued.count - 1 - overflow.inFlight, 0), at: start, handingOver: true)
@@ -234,9 +234,7 @@ extension CardStack {
         if settings.mode == .push {
             return pushRelease(card, metrics: metrics, own: own, out: overflow, count: count, last: last, at: time)
         }
-        for entry in holding where !entry.rises { entry.handsOver = true }
-        for entry in holding where entry.rises { entry.holdsPlaceUntil = -.infinity }
-        if holding.contains(where: \.rises) { place(at: time, with: Self.handOver) }
+        for entry in holding { entry.handsOver = true }
         var slot: Double?
         for entry in live { slot = (slot ?? entry.metrics.pillTop) + entry.metrics.pillHeight + Self.gap }
         var animator = last ? overflow.animator : IslandAnimator(metrics: metrics, from: overflow.animator.shape(at: time))

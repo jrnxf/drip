@@ -143,9 +143,6 @@ public struct HandedCard: Equatable, Sendable, Codable {
     public var isWaiting: Bool
     /// How long ago it started to leave; nil while it shows.
     public var leaving: Double?
-    /// Whether it left rising at once rather than gathering in place first; nil for gathering, as
-    /// from a drip that did not say.
-    public var rises: Bool?
     /// Whether it left sinking away, as a push stack's card does as the next grows out of the
     /// overflow pill; nil for not, as from a drip that did not say.
     public var sinks: Bool?
@@ -154,14 +151,13 @@ public struct HandedCard: Equatable, Sendable, Codable {
 
     public init(
         card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil,
-        rises: Bool? = nil, sinks: Bool? = nil, glide: [SpringMotion] = []
+        sinks: Bool? = nil, glide: [SpringMotion] = []
     ) {
         self.card = card
         self.top = top
         self.remaining = remaining
         self.isWaiting = isWaiting
         self.leaving = leaving
-        self.rises = rises
         self.sinks = sinks
         self.glide = glide
     }

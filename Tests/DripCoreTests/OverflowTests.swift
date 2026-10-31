@@ -1016,6 +1016,30 @@ struct OverflowTests {
         #expect(changedAt == rise)
     }
 
+    /// The pointer coming onto the stack while a card gathers, after the next card was set to grow
+    /// out of the drop, still lets the cards below close up as that card grows into its place, so it
+    /// never grows into the card above it.
+    @Test func theCardsBelowCloseUpUnderThePointerAsTheNextCardGrowsOut() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 2.5)
+        var grown: CardStack.Entry?
+        var closest = Double.infinity
+        driver.run(for: 6, step: { time, _ in
+            if grown == nil, let first = driver.releases.first { grown = first.release.entry }
+            guard let grown else { return }
+            driver.stack.hover(true, moved: true, at: time)
+            let live = driver.stack.live
+            guard let index = live.firstIndex(where: { $0 === grown }), index > 0 else { return }
+            let above = live[index - 1].animator.shape(at: time)
+            closest = min(closest, grown.animator.shape(at: time).pillTop - (above.pillTop + above.pillHeight))
+        })
+        let entry = try #require(grown)
+        #expect(entry.card.title == "d")
+        #expect(driver.stack.hovering)
+        #expect(closest > 0)
+        #expect(driver.stack.live.map(\.card.title) == ["b", "c", "d"])
+        for (index, card) in driver.stack.live.enumerated() { #expect(abs(card.animator.targetTop - slot(index)) < 0.5) }
+    }
+
     /// When the next card has to wait for a card still gathering in place, the count waits with it
     /// and rolls as the card starts to grow out, not before.
     @Test func theCountWaitsForTheCardItGoesTo() throws {
