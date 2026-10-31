@@ -210,11 +210,10 @@ extension CardStack {
     }
 
     /// Grows `card`, laid out as `metrics`, out of the overflow drop from `time`, as the count goes
-    /// down: up into the place the card leaving frees. A card that left rising gives its place up at
-    /// once, so the cards below close up as it gathers and the new card spreads, the count rolling
-    /// with them, all on `handOver` from `time`; one still gathering in place holds it, and the new
-    /// card waits until its drop starts to rise. The drop stays where it is, joined to the new card
-    /// until the neck between them pinches off. The last card waiting is the drop itself, spreading
+    /// down: up into the place the card leaving frees. A card leaving gathers in place and holds its
+    /// place, and the new card waits until its drop starts to rise; then the cards below close up and
+    /// the new card spreads, the count rolling with them, all on `handOver` from that moment. The
+    /// drop stays where it is, joined to the new card until the neck between them pinches off. The last card waiting is the drop itself, spreading
     /// into the card. In push mode the card grows down out of the pill into the top place instead, as
     /// the cards move down a place on the same spring; the last card waiting is the pill itself
     /// spreading into the top place, so no empty pill is left.
@@ -235,6 +234,7 @@ extension CardStack {
         if settings.mode == .push {
             return pushRelease(card, metrics: metrics, own: own, out: overflow, count: count, last: last, at: time)
         }
+        for entry in holding where !entry.rises { entry.handsOver = true }
         for entry in holding where entry.rises { entry.holdsPlaceUntil = -.infinity }
         if holding.contains(where: \.rises) { place(at: time, with: Self.handOver) }
         var slot: Double?

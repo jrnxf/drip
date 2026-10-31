@@ -175,9 +175,9 @@ struct OverflowTests {
         #expect(driver.releases.count >= 3)
     }
 
-    /// The moment a card starts to leave, the count rolls down, the next card starts to grow out of
-    /// the drop and the cards below start to close up, all on `CardStack.handOver`: one motion. The
-    /// leaving card rises at once, so the cards below never run into it.
+    /// The leaving card gathers into a round drop in place first. The moment that drop starts to rise,
+    /// the count rolls down, the next card starts to grow out of the overflow drop and the cards below
+    /// start to close up, all on `CardStack.handOver`: one motion, and none runs into the drop.
     @Test func theNextCardGrowsOutAsTheLeavingCardGoes() throws {
         let driver = stack(["a", "b", "c", "d", "e"], seconds: 3)
         var leftAt: Double?
@@ -204,22 +204,24 @@ struct OverflowTests {
         #expect(first.release.count == 2)
         #expect(!first.release.last)
         #expect(first.release.entry.card.title == "d")
-        // In the very step the card started to leave, and growing from that moment.
+        // Decided in the very step the card started to leave, but growing from the moment its drop
+        // starts to rise, once it is round.
+        let rise = try #require(leaving?.animator.riseTime)
         #expect(first.time == left)
-        #expect(first.start == left)
         #expect(try #require(leaving?.exit?.time) == left)
-        // It rises as it gathers, rather than once it is round, and the cards below follow it up at
-        // once without ever touching it.
-        #expect(try #require(leaving?.animator.riseTime) - left < 0.05)
-        #expect(try #require(below?.animator.shape(at: left + 0.1)).pillTop < slot(1) - 1)
+        #expect(rise - left > 0.15)
+        #expect(first.start == rise)
+        // The cards below hold their place while it gathers, then follow it up without touching it.
+        #expect(abs(try #require(below?.animator.shape(at: rise - 0.01)).pillTop - slot(1)) < 0.01)
+        #expect(try #require(below?.animator.shape(at: rise + 0.1)).pillTop < slot(1) - 1)
         #expect(closest > 0)
         // The count rolls with it, from the same moment, with no swell of the drop.
         let drop = try #require(overflow)
         let (shown, changedAt, handedOver) = try #require(count)
         #expect(shown == 1)
-        #expect(changedAt == left)
+        #expect(changedAt == rise)
         #expect(handedOver)
-        #expect(stride(from: left, through: left + 0.6, by: 0.01).allSatisfy {
+        #expect(stride(from: rise, through: rise + 0.6, by: 0.01).allSatisfy {
             abs(drop.animator.shape(at: $0).pillWidth - metrics.dropSize) < 0.5
         })
         // Into the place the leaving card frees, at the bottom of the cards that stay.
@@ -981,8 +983,8 @@ struct OverflowTests {
     }
 
     /// A card whose time is up while the drop is still forming waits until the drop is ready, then
-    /// leaves rising, as the next card grows out of the drop and the count rolls, all at once: the
-    /// first card to go is one motion like the rest.
+    /// leaves, gathers, and rises as the next card grows out of the drop and the count rolls, all at
+    /// once: the first card to go is one motion like the rest.
     @Test func aCardDueWhileTheDropFormsWaitsForItThenHandsOver() throws {
         let driver = stack(["a", "b", "c", "d", "e"], seconds: 2.5)
         var formingAt: Double?
@@ -1004,13 +1006,14 @@ struct OverflowTests {
         #expect(entry.card.title == "a")
         #expect(entry.remaining < 0)
         #expect(try #require(entry.exit?.time) > forming)
-        #expect(try #require(entry.animator.riseTime) - left < 0.05)
+        let rise = try #require(entry.animator.riseTime)
+        #expect(rise - left > 0.15)
         let first = try #require(driver.releases.first)
         #expect(first.time == left)
-        #expect(first.start == left)
+        #expect(first.start == rise)
         let (shown, changedAt) = try #require(count)
         #expect(shown == 1)
-        #expect(changedAt == left)
+        #expect(changedAt == rise)
     }
 
     /// When the next card has to wait for a card still gathering in place, the count waits with it
