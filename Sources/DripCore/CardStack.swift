@@ -219,6 +219,55 @@ public final class CardStack {
         return tucked.removeFirst()
     }
 
+    /// What the stack takes in next, as `nextAdmission(adoptable:isReplaced:)` decides it. The
+    /// `Int` is an index into the `adoptable` cards that call was given.
+    public enum Admission {
+        /// The adoptable card shows in place of the shown `Entry` with the same id.
+        case swap(Entry, Int)
+        /// The adoptable card drops in as a card of its own.
+        case enter(Int)
+        /// This drip's next own card drops in, taken with `nextOwn()`.
+        case own
+        /// This drip's next own card was replaced since it was queued: it is dropped with
+        /// `dropWaiting(at: 0)`, and nothing else drops in this step.
+        case skipOwn
+        /// The oldest card that gave way comes back, taken with `nextTucked()`.
+        case tucked
+    }
+
+    /// What drops into a stack at rest next, one change at a time (call again after applying a
+    /// `.swap`, which leaves the stack as it was): a newer drip's card with the same id as one on
+    /// screen takes its place there; else the first `adoptable` card takes a place of its own when
+    /// no card waits past a full stack; else this drip's next own card; else a card that gave way.
+    /// `adoptable` is in the order the cards should come in, and `isReplaced` tells an own card a
+    /// newer one has taken over. The caller checks `isReady(at:)` first.
+    public func nextAdmission(adoptable: [Card], isReplaced: (Card) -> Bool = { _ in false }) -> Admission? {
+        for (index, card) in adoptable.enumerated() {
+            if let id = card.id,
+               let shown = live.first(where: { $0.card.id == id && $0.isShown }),
+               CardReplacement.canSwap(shown.card, for: card)
+            {
+                return .swap(shown, index)
+            }
+            guard overflow == nil, waiting.isEmpty, hasRoom else { break }
+            return .enter(index)
+        }
+        guard overflow == nil else { return nil }
+        if hasRoom, let own = waiting.first { return isReplaced(own) ? .skipOwn : .own }
+        if adoptable.isEmpty, hasRoom, waiting.isEmpty, !tucked.isEmpty { return .tucked }
+        return nil
+    }
+
+    /// What grows out of the overflow drop next: this drip's own card first, else the first
+    /// `adoptable` card that does not show in place of one on screen, else a card that gave way.
+    /// Cases as for `Admission`, with `.enter` the adopted card's index.
+    public func nextRelease(adoptable: [Card], isReplaced: (Card) -> Bool = { _ in false }) -> Admission? {
+        if hasRoom, let own = waiting.first { return isReplaced(own) ? .skipOwn : .own }
+        if let index = adoptable.firstIndex(where: { !swapsInPlace($0) }) { return .enter(index) }
+        if hasRoom, waiting.isEmpty, !tucked.isEmpty { return .tucked }
+        return nil
+    }
+
     /// Forgets the cards that gave way and wait to come back for which `drops` holds: a newer card
     /// with the same id took their place, or they were dismissed. Returns whether any went.
     @discardableResult
@@ -553,12 +602,6 @@ public final class CardStack {
         let left = -shape.pillWidth / 2
         return point.x >= left - 2 && point.x <= layout.iconCenter.x + layout.iconSize / 2 + 6 * entry.metrics.scale
             && point.y >= shape.pillTop - 2 && point.y <= shape.pillTop + shape.pillHeight + 2
-    }
-
-    /// Whether `point`, as for `entry(at:time:)`, is on one of `entry`'s buttons as they are drawn at
-    /// `time`.
-    public func isOnButton(of entry: Entry, at point: IslandPoint, time: Double) -> Bool {
-        button(of: entry, at: point, time: time) != nil
     }
 
     /// The button of `entry` under `point`, as for `entry(at:time:)`, as it is drawn at `time`: a

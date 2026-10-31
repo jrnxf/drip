@@ -486,6 +486,139 @@ struct CardStackTests {
         #expect((a?.card.waitLimit ?? .infinity) < Defaults.waitLimit)
     }
 
+    // MARK: What comes in next
+
+    private func identified(_ title: String, id: String? = nil) -> Card {
+        var card = card(title, seconds: 10)
+        card.id = id
+        return card
+    }
+
+    /// A stack of one place whose only card gave way to a newer one and went back into the overflow
+    /// drop, with that card gone and the stack at rest: the tucked card waits, and so do `then`, this
+    /// drip's own cards not yet in.
+    private func stackWithATuckedCard(then own: [Card] = []) -> CardStack {
+        let stack = CardStack(
+            settings: StackSettings(mode: .chain, max: 2),
+            cards: [asking("a", seconds: 2), asking("b", seconds: 2), card("c", seconds: 2)] + own)
+        stack.tucks = true
+        var time = 0.0
+        while time < 20 {
+            if !stack.tucked.isEmpty, stack.waiting.count == own.count, stack.hasRoom, stack.isReady(at: time) { break }
+            if stack.isReady(at: time), let next = stack.nextOwn() {
+                stack.enter(next, metrics: metrics, own: true, decided: time, at: time)
+            }
+            stack.advance(to: time, elapsed: 1.0 / 60, lead: 0)
+            time += 1.0 / 60
+        }
+        return stack
+    }
+
+    @Test func aNewerCardWithTheSameIdSwapsIntoThePlaceOnScreenEvenInAFullStack() {
+        let stack = CardStack(
+            settings: StackSettings(mode: .chain, max: 2), cards: [identified("a", id: "build"), identified("b")])
+        run(stack, until: 4)
+        #expect(!stack.hasRoom)
+        guard case let .swap(shown, 0)? = stack.nextAdmission(adoptable: [identified("a2", id: "build")]) else {
+            Issue.record("a card with the id of one on screen should swap into it")
+            return
+        }
+        #expect(shown.card.title == "a")
+        // A card with no match has no place to go.
+        #expect(stack.nextAdmission(adoptable: [identified("other")]) == nil)
+    }
+
+    @Test func aCardThatAsksAQuestionNeverSwapsIntoPlace() {
+        var question = card("a", seconds: 10)
+        question.id = "build"
+        question.action = CardAction(label: "Merge", open: nil)
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [question])
+        run(stack, until: 4)
+        guard case .enter(0)? = stack.nextAdmission(adoptable: [identified("a2", id: "build")]) else {
+            Issue.record("a question reports its click to the drip that showed it, so the newer card waits for its own place")
+            return
+        }
+    }
+
+    @Test func aNewerDripsCardTakesAFreePlaceOnlyWhenNoOwnCardWaits() {
+        let free = CardStack(settings: StackSettings(mode: .chain, max: 3))
+        guard case .enter(0)? = free.nextAdmission(adoptable: [card("other")]) else {
+            Issue.record("the adopted card drops in")
+            return
+        }
+        let waiting = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("own")])
+        guard case .own? = waiting.nextAdmission(adoptable: [card("other")]) else {
+            Issue.record("this drip's own card goes first, so a newer drip's never jumps the queue")
+            return
+        }
+    }
+
+    @Test func noNewerCardJumpsAnOwnCardThatWaitsPastAFullStack() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [card("a", seconds: 10), card("b")])
+        run(stack, until: 4)
+        #expect(stack.waiting.count == 1)
+        #expect(stack.nextAdmission(adoptable: [card("other")]) == nil)
+    }
+
+    @Test func anOwnCardComesBeforeACardThatGaveWay() {
+        let stack = stackWithATuckedCard(then: [card("own")])
+        guard case .own? = stack.nextRelease(adoptable: []) else {
+            Issue.record("an own card grows out of the drop first")
+            return
+        }
+    }
+
+    @Test func aCardThatGaveWayComesBackOnlyAfterEveryNewerCardOffered() {
+        let stack = stackWithATuckedCard()
+        guard case .enter(0)? = stack.nextRelease(adoptable: [card("other")]) else {
+            Issue.record("a newer card goes before one that gave way")
+            return
+        }
+        guard case .tucked? = stack.nextRelease(adoptable: []) else {
+            Issue.record("the card that gave way comes back into free room")
+            return
+        }
+    }
+
+    @Test func aReplacedOwnCardIsDroppedBeforeACardThatGaveWayComesBack() {
+        let stack = stackWithATuckedCard(then: [card("old")])
+        // The card that gave way must not slip in ahead of the drop's count going down.
+        guard case .skipOwn? = stack.nextRelease(adoptable: [], isReplaced: { $0.title == "old" }) else {
+            Issue.record("a replaced own card is skipped, not shown")
+            return
+        }
+        stack.dropWaiting(at: 0)
+        guard case .tucked? = stack.nextRelease(adoptable: [], isReplaced: { $0.title == "old" }) else {
+            Issue.record("the card that gave way comes back once the replaced one is gone")
+            return
+        }
+    }
+
+    @Test func releaseTakesOwnFirstThenACardNotSwappingInPlace() {
+        let own = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("own")])
+        guard case .own? = own.nextRelease(adoptable: [card("other")]) else {
+            Issue.record("own first")
+            return
+        }
+
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [identified("a", id: "build")])
+        run(stack, until: 4)
+        // "a2" shows in place of "a" and so does not grow out of the drop; "b" does.
+        guard case .enter(1)? = stack.nextRelease(adoptable: [identified("a2", id: "build"), identified("b")]) else {
+            Issue.record("a card that swaps in place does not grow out of the drop")
+            return
+        }
+        #expect(stack.nextRelease(adoptable: [identified("a2", id: "build")]) == nil)
+    }
+
+    @Test func releaseSkipsAReplacedOwnCardInsteadOfShowingIt() {
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("old")])
+        guard case .skipOwn? = stack.nextRelease(adoptable: [card("other")], isReplaced: { $0.title == "old" }) else {
+            Issue.record("the replaced card is dropped, not shown or passed over for a newer drip's")
+            return
+        }
+    }
+
     @Test func aCardThatGaveWayCanBeForgotten() {
         let stack = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [asking("a"), card("c", seconds: 2)])
         stack.tucks = true
@@ -578,9 +711,9 @@ struct CardStackTests {
         #expect(stack.entry(at: middle(b), time: time) === b)
         #expect(stack.entry(at: IslandPoint(0, 2), time: time) == nil)
         let ring = a.animator.content(for: a.animator.shape(at: time)).ringCenter
-        #expect(stack.isOnButton(of: a, at: ring, time: time))
-        #expect(!stack.isOnButton(of: a, at: middle(a), time: time))
-        #expect(!stack.isOnButton(of: b, at: b.animator.content(for: b.animator.shape(at: time)).ringCenter, time: time))
+        #expect(stack.button(of: a, at: ring, time: time) != nil)
+        #expect(stack.button(of: a, at: middle(a), time: time) == nil)
+        #expect(stack.button(of: b, at: b.animator.content(for: b.animator.shape(at: time)).ringCenter, time: time) == nil)
         #expect(stack.button(of: a, at: ring, time: time) == .yes)
     }
 

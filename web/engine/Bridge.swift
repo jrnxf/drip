@@ -288,7 +288,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
 func island(for card: Card, notchWidth: Double, notchHeight: Double, widest: Double) -> [String: Any] {
     let scale = card.size.scale
     let hasIcon = card.showsIconAtNotch
-    func buttonWidth(_ label: String) -> Double { measure(2, scale, label).rounded(.up) + 24 * scale }
+    func buttonWidth(_ label: String) -> Double { CardMetrics.buttonWidth(labelWidth: measure(2, scale, label), scale: scale) }
     let declineWidth = card.action?.decline.map(buttonWidth) ?? 0
     let actionWidth = card.action.map {
         IslandMetrics.buttonsWidth(yes: buttonWidth($0.label), no: $0.decline.map(buttonWidth), scale: scale)
@@ -606,16 +606,19 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
             "waits": entry.isWaiting,
         ])
     }
-    // As StackPresenter.admit: one change at a time, into a stack at rest, and while no card waits
-    // past a full stack; else the next card grows out of the overflow drop when it can.
+    /// The offered cards still to come in, with the island each is: the stack decides on the cards,
+    /// this maps what it picks back to a page island.
+    func adoptable() -> [(handle: Int32, island: Island)] {
+        session.adoptable.compactMap { handle in islands[handle].map { (handle, $0) } }
+    }
+    // One change at a time, into a stack at rest, as CardStack.nextAdmission decides.
     admit: if stack.isReady(at: time) {
-        for handle in session.adoptable {
-            guard let island = islands[handle] else { continue }
-            if let id = island.card.id,
-               let shown = stack.live.first(where: { $0.card.id == id && $0.isShown }),
-               CardReplacement.canSwap(shown.card, for: island.card),
-               let old = session.islandOf[shown.id], let before = islands[old]
-            {
+        while true {
+            let offered = adoptable()
+            switch stack.nextAdmission(adoptable: offered.map(\.island.card)) {
+            case let .swap(shown, index):
+                let (handle, island) = offered[index]
+                guard let old = session.islandOf[shown.id], let before = islands[old] else { break admit }
                 session.adoptable.removeAll { $0 == handle }
                 stack.swap(shown, for: island.card, metrics: island.animator.metrics, at: time, reduced: false)
                 session.islandOf[shown.id] = handle
@@ -629,29 +632,39 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
                     "inRing": IslandUpdate.landsInRing(from: before.card, to: island.card),
                     "waits": shown.isWaiting,
                 ])
-                continue
+            case let .enter(index):
+                let handle = offered[index].handle
+                session.adoptable.removeAll { $0 == handle }
+                enter(handle, own: false)
+                break admit
+            case .own:
+                if stack.nextOwn() != nil { enter(session.own.removeFirst(), own: true) }
+                break admit
+            case .skipOwn:
+                break admit
+            case .tucked:
+                if let tucked = stack.nextTucked() { enter(session.tucked.removeFirst(), own: tucked.own) }
+                break admit
+            case nil:
+                break admit
             }
-            guard stack.overflow == nil, stack.waiting.isEmpty, stack.hasRoom else { break }
-            session.adoptable.removeAll { $0 == handle }
-            enter(handle, own: false)
-            break admit
-        }
-        if stack.overflow == nil, stack.nextOwn() != nil {
-            enter(session.own.removeFirst(), own: true)
-        } else if stack.overflow == nil, session.adoptable.isEmpty, let tucked = stack.nextTucked() {
-            enter(session.tucked.removeFirst(), own: tucked.own)
         }
     }
     func release() {
         guard stack.canRelease(at: time) else { return }
+        let offered = adoptable()
         var next: (handle: Int32, own: Bool)?
-        if stack.nextOwn() != nil {
-            next = (session.own.removeFirst(), true)
-        } else if let handle = session.adoptable.first(where: { islands[$0].map { !stack.swapsInPlace($0.card) } ?? false }) {
+        switch stack.nextRelease(adoptable: offered.map(\.island.card)) {
+        case .own:
+            if stack.nextOwn() != nil { next = (session.own.removeFirst(), true) }
+        case let .enter(index):
+            let handle = offered[index].handle
             session.adoptable.removeAll { $0 == handle }
             next = (handle, false)
-        } else if let tucked = stack.nextTucked() {
-            next = (session.tucked.removeFirst(), tucked.own)
+        case .tucked:
+            if let tucked = stack.nextTucked() { next = (session.tucked.removeFirst(), tucked.own) }
+        case .swap, .skipOwn, nil:
+            break
         }
         if let next, let island = islands[next.handle],
            let release = stack.release(island.card, metrics: island.animator.metrics, own: next.own, at: time)
@@ -674,7 +687,7 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
     let changes = stack.advance(
         to: time, elapsed: elapsed, lead: 0, needsRoom: !session.adoptable.isEmpty, othersWaiting: othersWaiting != 0,
         queued: session.offered)
-    // As StackPresenter.tick: a card leaving makes room for the next card waiting in the overflow
+    // A card leaving makes room for the next card waiting in the overflow
     // drop, which grows out of it from the same moment.
     if !changes.left.isEmpty { release() }
     peek(stack, at: session.pointer, time: time)

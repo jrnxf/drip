@@ -48,3 +48,11 @@ if ProcessInfo.processInfo.environment["DRIP_WEB"] == "1" {
             linkerSettings: [.unsafeFlags(["-Xclang-linker", "-mexec-model=reactor"])]
         ))
 }
+
+// web/test.sh builds the package for WebAssembly with `--build-tests`, which builds every target.
+// The command-line tool is AppKit, processes and ssh, nothing the page runs and nothing wasmtime
+// could run, so it stays out of that build.
+if ProcessInfo.processInfo.environment["DRIP_WASM_TESTS"] == "1" {
+    package.products.removeAll { $0.name == "drip" }
+    package.targets.removeAll { $0.name == "drip" }
+}
