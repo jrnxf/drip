@@ -33,9 +33,9 @@ public final class CardStack {
         /// A leaving card keeps its place until its drop starts to rise, so the cards below never
         /// run into it while it gathers.
         var holdsPlaceUntil = Double.infinity
-        /// Whether it left rising at once, as the next card grows out of the overflow drop, so it
-        /// can give its place up the moment that card starts to.
-        var rises = false
+        /// Whether the next card grows out of the overflow drop as its drop starts to rise, so the cards
+        /// below close up with that card, on the same spring.
+        var handsOver = false
         /// Whether it left sinking away where it is, as the next card grows out of the overflow pill
         /// above a push stack, giving its place up at once.
         public internal(set) var sinks = false
@@ -175,8 +175,7 @@ public final class CardStack {
             HandedCard(
                 card: entry.card, top: entry.exit?.top ?? entry.animator.targetTop,
                 remaining: max(entry.remaining, 0), isWaiting: entry.isWaiting,
-                leaving: entry.exit.map { max(time - $0.time, 0) }, rises: entry.exit == nil ? nil : entry.rises,
-                sinks: entry.exit == nil ? nil : entry.sinks,
+                leaving: entry.exit.map { max(time - $0.time, 0) }, sinks: entry.exit == nil ? nil : entry.sinks,
                 glide: entry.exit == nil && entry.isShown ? entry.animator.glide(at: time) : [])
         }
     }
@@ -199,7 +198,7 @@ public final class CardStack {
         entries.append(entry)
         lastEntrance = time
         let exit = handed.leaving.flatMap {
-            leave(entry, at: time - $0, rising: handed.rises ?? false, sinking: handed.sinks ?? false)
+            leave(entry, at: time - $0, sinking: handed.sinks ?? false)
         }
         place(at: time)
         return (entry, exit)
@@ -314,8 +313,10 @@ public final class CardStack {
     /// Moves every card but `incoming` to its place in the stack at `time`, unless the pointer is on
     /// it. Returns whether any card moved.
     @discardableResult
-    func place(at time: Double, except incoming: Entry? = nil, with spring: Spring = IslandAnimator.settle) -> Bool {
-        guard !hovering else {
+    func place(
+        at time: Double, except incoming: Entry? = nil, with spring: Spring = IslandAnimator.settle, evenHovering: Bool = false
+    ) -> Bool {
+        guard !hovering || evenHovering else {
             needsLayout = true
             return false
         }
@@ -388,12 +389,11 @@ public final class CardStack {
         return high
     }
 
-    /// Takes `entry` back into the card above it, or into the notch, at `time`, `rising` at once as
-    /// the next card grows out of the overflow drop, or `sinking` away where it is as the next card
-    /// grows out of the overflow pill above a push stack. Returns when its content fades out; nil
-    /// when it was already leaving.
+    /// Takes `entry` back into the card above it, or into the notch, at `time`, or `sinking` away
+    /// where it is as the next card grows out of the overflow pill above a push stack. Returns when
+    /// its content fades out; nil when it was already leaving.
     @discardableResult
-    public func leave(_ entry: Entry, at time: Double, rising: Bool = false, sinking: Bool = false) -> IslandCues? {
+    public func leave(_ entry: Entry, at time: Double, sinking: Bool = false) -> IslandCues? {
         guard !entry.isLeaving else { return nil }
         let position = entries.firstIndex { $0 === entry } ?? 0
         let above = entries[..<position].last { !$0.isLeaving }
@@ -401,9 +401,8 @@ public final class CardStack {
         entry.anchor = sinking ? nil : above
         let anchor = entry.anchor.map { DropletAnchor.capsule($0.animator.shape(at: time), metrics: $0.metrics) }
         entry.exit = (time, entry.animator.shape(at: time).pillTop)
-        let cues = sinking ? entry.animator.sink(at: time) : entry.animator.exit(at: time, into: anchor, rising: rising)
+        let cues = sinking ? entry.animator.sink(at: time) : entry.animator.exit(at: time, into: anchor)
         entry.holdsPlaceUntil = entry.animator.riseTime ?? time
-        entry.rises = rising
         entry.sinks = sinking
         entry.phase = .leaving(until: entry.animator.end)
         // The cards that grew out of this one now hang from whatever is above it.
@@ -462,6 +461,8 @@ public final class CardStack {
     ) -> Changes {
         var changes = Changes()
         var released = false
+        var releasedAt = Double.infinity
+        var handingOver = false
         let waitingCards = live.filter(\.isWaiting)
         let yielding = waitingCards.filter { !$0.card.waitsForAnswer }
         if othersWaiting {
@@ -502,15 +503,10 @@ public final class CardStack {
             entry.isShown && (entry.remaining <= 0 || entry.dismissed != nil) && !self.isFilling(entry)
                 && !(dropBusy && entry.dismissed == nil)
         }
-        // A card leaving rises straight away, so the cards below follow it up at once, and the next
-        // card waiting in the overflow drop grows out of it in the same motion. Only when it is the
-        // one card leaving: cards leaving together, as when the pointer leaves and they all run out
-        // at once, would rise into each other's places, so they gather first, and so does a card
-        // leaving while another still gathers in place or while the drop is busy.
+        // A card leaving gathers into a round drop in place and only then rises, as it does without
+        // an overflow drop. The next card waiting grows out of the drop, the cards below close up
+        // and the count rolls together as the gathered drop starts to rise, so none runs into it.
         let due = entries.filter(goes)
-        let rises = due.count == 1 && settings.mode == .chain && !hovering
-            && !entries.contains { $0.isLeaving && $0.holdsPlaceUntil.isFinite && $0.holdsPlaceUntil > time + lead }
-            && overflow.map { $0.phase == .shown && !$0.peeking } ?? true
         // In push mode the next card waiting grows out of the overflow pill above the stack instead,
         // and the one card leaving sinks away where it is, so everything moves down together.
         let sinks = due.count == 1 && settings.mode == .push && !queued.isEmpty
@@ -521,13 +517,15 @@ public final class CardStack {
                 let last = max(cues.sides, (cues.title + cues.detail).max() ?? 0) + 0.25
                 if time - start >= last { entry.phase = .shown }
             case .shown:
-                if goes(entry), let cues = leave(entry, at: time + lead, rising: rises, sinking: sinks)
+                if goes(entry), let cues = leave(entry, at: time + lead, sinking: sinks)
                 {
                     changes.left.append((entry, cues, time + lead, entry.dismissed ?? false))
                 }
             case .leaving:
                 // Its drop has started to rise: the cards below can close the gap behind it.
                 if entry.holdsPlaceUntil.isFinite, time >= entry.holdsPlaceUntil {
+                    releasedAt = min(releasedAt, entry.holdsPlaceUntil)
+                    handingOver = handingOver || entry.handsOver
                     entry.holdsPlaceUntil = -.infinity
                     released = true
                 }
@@ -540,7 +538,13 @@ public final class CardStack {
             return false
         }
         entries.removeAll { entry in changes.gone.contains { $0 === entry } }
-        changes.moved = (released || needsLayout) && place(at: time + lead)
+        // The cards below close the gap from the moment its drop started to rise, together with the
+        // card growing out of the overflow drop when one does, even under the pointer, as that card
+        // grows into its place regardless.
+        changes.moved = (released || needsLayout)
+            && place(
+                at: released ? releasedAt : time + lead, with: handingOver ? Self.handOver : IslandAnimator.settle,
+                evenHovering: handingOver)
         if let others {
             changes.overflowChanged = advanceOverflow(others, replaced: replaced, to: time, start: time + lead)
         }

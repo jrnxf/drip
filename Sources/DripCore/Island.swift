@@ -397,10 +397,9 @@ public struct IslandAnimator: Sendable {
     }
 
     /// Starts the exit at `time`, faster than the entrance and without bounce, back into the notch,
-    /// or into the capsule above it when given that capsule's `anchor`. `rising` at once, the drop
-    /// rises as it gathers rather than once it is round: a card leaving as the next one grows out of
-    /// the overflow drop, which the cards below follow up. Returns when the content fades out.
-    public mutating func exit(at time: Double, into anchor: DropletAnchor? = nil, rising: Bool = false) -> IslandCues {
+    /// or into the capsule above it when given that capsule's `anchor`. Returns when the content
+    /// fades out.
+    public mutating func exit(at time: Double, into anchor: DropletAnchor? = nil) -> IslandCues {
         let m = metrics
         // The capsule gathers back into a round drop, which only then rises; the notch reaches for it,
         // they merge and the notch swallows it.
@@ -411,7 +410,7 @@ public struct IslandAnimator: Sendable {
         progress.animate(to: 0, with: shrink, at: gather)
         // Round to the eye once both sides are within 2 points of the drop's.
         let (width, tall) = (pillWidth, pillHeight)
-        let rise = rising ? gather : Self.firstTime(after: gather) { t in
+        let rise = Self.firstTime(after: gather) { t in
             max(abs(width.value(at: t) - m.dropSize), abs(tall.value(at: t) - m.dropSize)) <= 2 * m.scale
         }
         blend.animate(to: m.blend, with: Spring(duration: 0.3), at: rise)
