@@ -1152,7 +1152,9 @@ final class IslandPresenter: CardPresenting {
         updateAccessibilityActions()
         panel.setFrame(frame, display: false)
         self.panel = panel
-        watchPointer(panel: panel, view: view)
+        // Clicks go to the window behind, unless the card takes them.
+        panel.ignoresMouseEvents = true
+        if card.isClickable { watchPointer(panel: panel, view: view) }
 
         var animator = IslandAnimator(metrics: layers.metrics)
         layers.apply(layers.frame(animator.shape(at: 0), layout: animator.content(for: animator.shape(at: 0))))
@@ -1220,6 +1222,12 @@ final class IslandPresenter: CardPresenting {
     func replace(with card: Card) {
         guard canReplace, let panel, let view = panel.contentView, let old = layers else { return }
         self.card = card
+        // The pointer is watched only while the card takes clicks.
+        if let view = view as? IslandView, card.isClickable, gate == nil {
+            watchPointer(panel: panel, view: view)
+        } else if !card.isClickable {
+            stopWatchingPointer()
+        }
         let motion = CardPresenters.motion(for: card)
         let layers = IslandLayers(card: card, notch: notch, scale: old.root.contentsScale, console: console)
         layers.maskNotch()
@@ -1374,7 +1382,8 @@ final class IslandPresenter: CardPresenting {
     }
 
     /// Has the panel take the pointer only on the island of a card that takes clicks, and hears of
-    /// the pointer moving elsewhere, which `view` does not while the panel lets it through.
+    /// the pointer moving elsewhere, which `view` does not while the panel lets it through. Only a
+    /// card that takes clicks needs it: for any other, the panel never takes the pointer.
     private func watchPointer(panel: IslandPanel, view: IslandView) {
         let gate = PointerGate(panel: panel) { [weak self, weak panel, weak view] location in
             guard let self, let panel, let view, self.departure != nil, self.card.isClickable else { return false }

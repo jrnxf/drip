@@ -1,4 +1,4 @@
-import DripCore
+@testable import DripCore // to give two cards the same time left
 #if os(WASI)
 import FoundationEssentials
 #else
@@ -1077,5 +1077,45 @@ struct OverflowTests {
         let forming = try #require(cues)
         #expect(CardStack.countCue(forming) == max(forming.sides - CardStack.countLead, 0))
         #expect(CardStack.countCue(forming) < forming.sides)
+    }
+
+    /// Two countdowns that end on the same tick: both cards leave in that one step, oldest first,
+    /// the next card waiting grows out of the drop, and the count drops by exactly the one card
+    /// that took the place; none sticks and none shows twice.
+    @Test func twoCardsRunningOutOnTheSameTickLeaveTogether() throws {
+        let driver = stack(["a", "b", "c", "d", "e"], seconds: 20)
+        driver.run(for: 4)
+        #expect(driver.stack.overflow?.phase == .shown)
+        #expect(driver.stack.overflow?.count == 2)
+        let tied = Array(driver.stack.live.prefix(2))
+        for entry in tied { entry.remaining = 0.5 }
+        var leftSteps: [[String]] = []
+        driver.run(for: 3, step: { _, changes in
+            if !changes.left.isEmpty { leftSteps.append(changes.left.map(\.entry.card.title)) }
+        })
+        #expect(leftSteps.first == ["a", "b"])
+        #expect(leftSteps.joined().filter { $0 == "a" || $0 == "b" }.count == 2)
+        // Both are gone and the cards waiting took their place, one growing out of the drop at a
+        // time, in the order they came.
+        #expect(driver.stack.live.map(\.card.title).starts(with: ["c", "d"]))
+        #expect(Set(driver.stack.live.map(\.card.title)).count == driver.stack.live.count)
+        #expect(driver.releases.map(\.release.entry.card.title).prefix(2) == ["d", "e"])
+        #expect(driver.stack.overflow == nil || driver.stack.overflow?.count == 0)
+        #expect(driver.stack.live.count <= 3)
+    }
+
+    /// The same tie with no drop: a stack of two with one more card queued behind it. Both leave in
+    /// the one step and the queued card comes into the room, not stuck waiting for either.
+    @Test func twoCardsRunningOutOnTheSameTickLetTheQueuedCardIn() throws {
+        let driver = stack(["a", "b", "c"], max: 2, seconds: 20)
+        driver.run(for: 4)
+        #expect(driver.stack.live.map(\.card.title).starts(with: ["a", "b"]))
+        for entry in driver.stack.live.prefix(2) { entry.remaining = 0.5 }
+        var leftSteps: [[String]] = []
+        driver.run(for: 3, step: { _, changes in
+            if !changes.left.isEmpty { leftSteps.append(changes.left.map(\.entry.card.title)) }
+        })
+        #expect(leftSteps == [["a", "b"]])
+        #expect(driver.stack.live.map(\.card.title) == ["c"])
     }
 }
