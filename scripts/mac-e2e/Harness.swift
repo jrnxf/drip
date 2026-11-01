@@ -195,12 +195,16 @@ func run(_ arguments: [String], environment: [String: String]? = nil, input: Dat
     return Ran(status: process.terminationStatus, out: read(out), err: read(err))
 }
 
-/// Lets the run loop run, so AppKit draws the backdrop, for `seconds`.
+/// Lets the run loop run, so AppKit draws the backdrop and hands the harness's own windows their
+/// clicks, for `seconds`.
 func pause(_ seconds: Double) {
     let end = Date().addingTimeInterval(seconds)
     repeat {
         notice()
-        RunLoop.current.run(until: min(end, Date().addingTimeInterval(0.1)))
+        let until = min(end, Date().addingTimeInterval(0.1))
+        if let event = NSApp.nextEvent(matching: .any, until: until, inMode: .default, dequeue: true) {
+            NSApp.sendEvent(event)
+        }
     } while Date() < end
 }
 
@@ -1404,7 +1408,12 @@ func clicksPassBeside(_ cards: [CGRect], _ expect: inout Expectations) {
         expect.expect(false, "the cards show")
         return
     }
-    let points = cards.enumerated().map { ("beside card \($0.offset + 1)", CGPoint(x: $0.element.maxX + 30, y: $0.element.midY)) }
+    // Halfway between the card and the window's edge, or 30 points from the card in a wider window.
+    let beside = { (card: CGRect) -> CGPoint in
+        let edge = windows.first { $0.intersects(card) }?.maxX ?? card.maxX
+        return CGPoint(x: card.maxX + min(30, (edge - card.maxX) / 2), y: card.midY)
+    }
+    let points = cards.enumerated().map { ("beside card \($0.offset + 1)", beside($0.element)) }
         + [("under the last card", CGPoint(x: last.midX, y: last.maxY + 10))]
     for (name, point) in points {
         guard windows.contains(where: { $0.contains(point) }) else {
@@ -1437,6 +1446,12 @@ if canClick {
         check(12, variant.name) { expect in
             catcher.orderFrontRegardless()
             defer { catcher.orderOut(nil) }
+            // With no card showing, the window behind takes a click: the control for the clicks below.
+            let view = catcher.contentView as? CatcherView
+            view?.clicks = 0
+            _ = click(CGPoint(x: notchArea.midX + 200, y: notchArea.minY + 60))
+            pause(0.4)
+            expect.expect(view?.clicks == 1, "the window behind takes a click with no card showing (\(view?.clicks ?? 0) of 1)")
             for arguments in variant.cards {
                 dripRun(arguments + ["--id", fresh("through")], extra: variant.extra)
             }
