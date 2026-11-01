@@ -44,12 +44,13 @@ mkdir -p "$out"
 # The cards come from a release build, as mac-check's do: a debug build samples the springs too slowly.
 swift build -c release
 
-# Builds `$2` from `$1` when the source changed since the last build.
+# Builds `$2` from `$1` when the source changed since the last build, as the hash of `$1` kept in
+# `$3` says, `$2.source` unless given.
 stale() {
-    [ ! -e "$2" ] || [ "$(cat "$2.source" 2>/dev/null)" != "$(shasum -a 256 "$1" | cut -d' ' -f1)" ]
+    [ ! -e "$2" ] || [ "$(cat "${3:-$2.source}" 2>/dev/null)" != "$(shasum -a 256 "$1" | cut -d' ' -f1)" ]
 }
 built() {
-    shasum -a 256 "$1" | cut -d' ' -f1 >"$2.source"
+    shasum -a 256 "$1" | cut -d' ' -f1 >"${3:-$2.source}"
 }
 
 harness="$cache/harness"
@@ -65,7 +66,10 @@ fi
 # An app of its own, so the Accessibility grant is its own: macOS ties the grant to this exact
 # build, so it is rebuilt only when Helper.swift changes.
 helper="$cache/drip e2e helper.app"
-if stale scripts/mac-e2e/Helper.swift "$helper/Contents/MacOS/helper"; then
+# The source's hash stays outside the app: a file added to the signed app breaks its seal, and
+# macOS then never matches the helper to its grant, so it stays untrusted with the grant on.
+helperSource="$cache/drip e2e helper.source"
+if stale scripts/mac-e2e/Helper.swift "$helper/Contents/MacOS/helper" "$helperSource"; then
     rm -rf "$helper"
     mkdir -p "$helper/Contents/MacOS"
     cat >"$helper/Contents/Info.plist" <<'PLIST'
@@ -83,7 +87,7 @@ if stale scripts/mac-e2e/Helper.swift "$helper/Contents/MacOS/helper"; then
 PLIST
     swiftc -O -o "$helper/Contents/MacOS/helper" scripts/mac-e2e/Helper.swift
     codesign --force --sign - --identifier co.jrnxf.drip.e2e-helper "$helper"
-    built scripts/mac-e2e/Helper.swift "$helper/Contents/MacOS/helper"
+    built scripts/mac-e2e/Helper.swift "$helper/Contents/MacOS/helper" "$helperSource"
 fi
 
 # Keeps the display awake while the checks run.
