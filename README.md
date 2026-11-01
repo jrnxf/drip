@@ -679,6 +679,8 @@ pane's tab and then its agent; in WezTerm, the pane. None of them needs a permis
 can click holds while the pointer is on it, like a card with a button, for up to 5 seconds after
 the pointer last moved, so a pointer left resting on it never keeps it there. A card that waits for
 you is always clickable: a click takes it away, even with `--activate none`. The card itself never takes focus.
+Only the cards themselves take the pointer: a click beside a card, at its height, or under it
+reaches the window behind, as it would with no card showing.
 
 **Out of the way.** While the pointer is on a card you can click, a × takes its icon's place, and a
 card that brings an app forward shows an arrow where its ring was. A click on the ×, or a
@@ -964,7 +966,7 @@ never overwrites a reference: to regenerate one on purpose, delete its PNG and r
 agents' hooks, as CI has no screen at the notch and no agent to run hooks. It checks what a person
 would look for at the notch, and needs none: it shows cards
 from a release build, runs the hooks `drip setup claude` and `drip setup codex` write with the
-payloads Claude Code and Codex send, moves the pointer onto cards, clicks them, pauses and resumes,
+payloads Claude Code and Codex send, moves the pointer onto cards, clicks them and beside them, pauses and resumes,
 and attaches tmux from Ghostty and Terminal. It prints `ok` or `FAIL` for each thing it expects, from
 what drip records in its history, which windows it has on screen, which app is in front, what tmux
 says, and pixels at the notch, and exits 1 on a failure. `--only 1,4` runs some checks. It runs drip

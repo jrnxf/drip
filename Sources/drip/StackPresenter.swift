@@ -52,6 +52,8 @@ final class StackPresenter: CardPresenting {
     private var handOffFailed = false
     private var panel: IslandPanel?
     private var view: IslandView?
+    /// Lets the pointer through everywhere but on a card that takes clicks.
+    private var gate: PointerGate?
     private let container = CALayer()
     /// The notch and every card's capsule, melted together where a drop is forming or returning.
     private let liquid = CAShapeLayer()
@@ -196,6 +198,10 @@ final class StackPresenter: CardPresenting {
         panel.setFrame(frame, display: false)
         self.panel = panel
         self.view = view
+        gate = PointerGate(panel: panel) { [weak self] location in
+            guard let self, let at = self.pointer(at: location) else { return false }
+            return self.entry(at: at) != nil
+        }
         panel.orderFrontRegardless()
 
         started = CACurrentMediaTime()
@@ -595,8 +601,8 @@ final class StackPresenter: CardPresenting {
         let time = now
         let elapsed = max(time - lastTick, 0)
         lastTick = time
-        // With no card to click the pointer goes through to the window below, as for a lone card.
-        panel?.ignoresMouseEvents = !stack.hasClickable
+        // The cards move under a pointer at rest too.
+        gate?.update()
         updateHover()
         admit()
 
@@ -685,10 +691,11 @@ final class StackPresenter: CardPresenting {
     // MARK: The pointer
 
     /// The pointer in island coordinates: x from the notch's center, y down from the screen's top.
-    private var pointer: CGPoint? {
-        guard let panel else { return nil }
-        let location = NSEvent.mouseLocation
-        guard NSMouseInRect(location, panel.frame, false) else { return nil }
+    private var pointer: CGPoint? { pointer(at: NSEvent.mouseLocation) }
+
+    /// `location`, a point on screen, in island coordinates; nil off the panel.
+    private func pointer(at location: NSPoint) -> CGPoint? {
+        guard let panel, NSMouseInRect(location, panel.frame, false) else { return nil }
         return CGPoint(x: location.x - panel.frame.midX, y: notch.top - location.y)
     }
 
@@ -861,6 +868,8 @@ final class StackPresenter: CardPresenting {
     private func finish() {
         timer?.invalidate()
         timer = nil
+        gate?.stop()
+        gate = nil
         panel?.orderOut(nil)
         onFinish?(true)
         onFinish = nil

@@ -1034,6 +1034,59 @@ final class IslandPanel: NSPanel {
     }
 }
 
+/// Lets the pointer through a panel everywhere but where what it draws takes clicks. A window that
+/// takes the pointer takes every click in its frame, its transparent parts too, so the panel takes
+/// the pointer only while it is over such a place: looked at as the pointer moves, wherever it is on
+/// screen, and at every `update()`, for a card that moves under a pointer at rest.
+final class PointerGate {
+    private weak var panel: NSPanel?
+    /// Whether a point on screen, in AppKit's global coordinates, is somewhere the panel takes clicks.
+    private let takesClicks: (NSPoint) -> Bool
+    /// The pointer moved while over another app's window, which the panel's own view never hears
+    /// of; with the point on screen.
+    var onMoveElsewhere: ((NSPoint) -> Void)?
+    private var monitors: [Any] = []
+
+    init(panel: NSPanel, takesClicks: @escaping (NSPoint) -> Bool) {
+        self.panel = panel
+        self.takesClicks = takesClicks
+        panel.ignoresMouseEvents = true
+        let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        // Global monitors hear of events for other apps only, local ones of this app's.
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: moves, handler: { [weak self] _ in
+            guard let self else { return }
+            self.update()
+            self.onMoveElsewhere?(NSEvent.mouseLocation)
+        }) {
+            monitors.append(global)
+        }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: moves, handler: { [weak self] event in
+            self?.update()
+            return event
+        }) {
+            monitors.append(local)
+        }
+    }
+
+    deinit { stop() }
+
+    /// Has the panel take the pointer if it is over a place that takes clicks, and let it through if
+    /// not. A button held down keeps the panel taking it, so a press that began on a card ends there.
+    func update() {
+        guard let panel else { return }
+        let takes = takesClicks(NSEvent.mouseLocation)
+        if !takes, !panel.ignoresMouseEvents, NSEvent.pressedMouseButtons != 0 { return }
+        if panel.ignoresMouseEvents == takes { panel.ignoresMouseEvents = !takes }
+    }
+
+    /// Lets the pointer through for good.
+    func stop() {
+        monitors.forEach(NSEvent.removeMonitor)
+        monitors = []
+        panel?.ignoresMouseEvents = true
+    }
+}
+
 /// Grows a card out of the notch, holds it while the ring drains, and takes it back in.
 final class IslandPresenter: CardPresenting {
     private var card: Card
@@ -1080,9 +1133,6 @@ final class IslandPresenter: CardPresenting {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        // When clickable, keep AppKit's default: clicks on the island's transparent surroundings
-        // still reach the menu bar beneath.
-        if !card.isClickable { panel.ignoresMouseEvents = true }
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
@@ -1102,6 +1152,7 @@ final class IslandPresenter: CardPresenting {
         updateAccessibilityActions()
         panel.setFrame(frame, display: false)
         self.panel = panel
+        watchPointer(panel: panel, view: view)
 
         var animator = IslandAnimator(metrics: layers.metrics)
         layers.apply(layers.frame(animator.shape(at: 0), layout: animator.content(for: animator.shape(at: 0))))
@@ -1213,7 +1264,7 @@ final class IslandPresenter: CardPresenting {
         CATransaction.commit()
         retire(old, after: lingers)
 
-        panel.ignoresMouseEvents = !card.isClickable
+        gate?.update()
         view.setAccessibilityLabel(CardText.spoken(title: card.title, detail: card.detail))
         updateAccessibilityActions()
         hovering = false
@@ -1290,6 +1341,12 @@ final class IslandPresenter: CardPresenting {
 
     // MARK: Clicks and hovering, for a clickable card.
 
+    /// Lets the pointer through everywhere but on the island of a card that takes clicks.
+    private var gate: PointerGate?
+    /// Has `gate` look again at every frame, for an island that grows, springs or shrinks under a
+    /// pointer at rest.
+    private var gateTimer: Timer?
+
     /// Runs the exit once; nil after that.
     private var departure: (() -> Void)?
     private var pending: DispatchWorkItem?
@@ -1312,8 +1369,32 @@ final class IslandPresenter: CardPresenting {
         holdLimit?.cancel()
         if card.action != nil, !clicked { CardActions.missed = true }
         layers?.showPointer(nil)
-        panel?.ignoresMouseEvents = true
+        stopWatchingPointer()
         departure()
+    }
+
+    /// Has the panel take the pointer only on the island of a card that takes clicks, and hears of
+    /// the pointer moving elsewhere, which `view` does not while the panel lets it through.
+    private func watchPointer(panel: IslandPanel, view: IslandView) {
+        let gate = PointerGate(panel: panel) { [weak self, weak panel, weak view] location in
+            guard let self, let panel, let view, self.departure != nil, self.card.isClickable else { return false }
+            return self.onIsland(view.convert(panel.convertPoint(fromScreen: location), from: nil))
+        }
+        gate.onMoveElsewhere = { [weak self, weak panel, weak view] location in
+            guard let self, let panel, let view else { return }
+            self.pointer(at: view.convert(panel.convertPoint(fromScreen: location), from: nil))
+        }
+        self.gate = gate
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak gate] _ in gate?.update() }
+        RunLoop.main.add(timer, forMode: .common)
+        gateTimer = timer
+    }
+
+    private func stopWatchingPointer() {
+        gateTimer?.invalidate()
+        gateTimer = nil
+        gate?.stop()
+        gate = nil
     }
 
     /// A point in the view in the island's own coordinates: y down from the top of its layers.
@@ -1459,6 +1540,7 @@ final class IslandPresenter: CardPresenting {
     private func finish(waitingForSound: Bool = true) {
         guard let onFinish else { return }
         self.onFinish = nil
+        stopWatchingPointer()
         panel?.orderOut(nil)
         if waitingForSound, let sound {
             sound.waitUntilDone { onFinish(true) }

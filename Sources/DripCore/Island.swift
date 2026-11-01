@@ -158,6 +158,20 @@ public struct IslandShape: Equatable, Sendable {
     public func pillRadius(_ metrics: IslandMetrics) -> Double {
         min(pillWidth / 2, pillHeight / 2, metrics.pillCornerRadius)
     }
+
+    /// Whether `point`, x from the notch's center and y down from the screen's top, is on the
+    /// capsule as it is drawn, round corners and all, or within `margin` of it. Only there does the
+    /// card take the pointer: a click beside it or under it goes to the window behind.
+    public func contains(_ point: IslandPoint, metrics: IslandMetrics, margin: Double = 0) -> Bool {
+        // How far past the capsule's straight edges the point is, outward; negative inside them.
+        let dx = abs(point.x) - pillWidth / 2 - margin
+        let dy = abs(point.y - pillTop - pillHeight / 2) - pillHeight / 2 - margin
+        guard dx <= 0, dy <= 0 else { return false }
+        // Within a corner's square, the point must be inside its quarter circle too.
+        let radius = pillRadius(metrics) + margin
+        let x = dx + radius, y = dy + radius
+        return x <= 0 || y <= 0 || x * x + y * y <= radius * radius
+    }
 }
 
 /// A point in island coordinates.
