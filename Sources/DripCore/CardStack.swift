@@ -572,27 +572,16 @@ public final class CardStack {
     // MARK: The pointer
 
     /// The card under `point`, x from the notch's center and y down from the screen's top, among
-    /// those still in the stack.
+    /// those still in the stack: on its capsule as it is drawn at `time`, or within 2 points of it.
     public func entry(at point: IslandPoint, time: Double) -> Entry? {
-        live.first { entry in
-            let shape = entry.animator.shape(at: time)
-            let left = -shape.pillWidth / 2 - 2, top = shape.pillTop - 2
-            return point.x >= left && point.x < left + shape.pillWidth + 4
-                && point.y >= top && point.y < top + shape.pillHeight + 4
-        }
+        live.first { $0.animator.shape(at: time).contains(point, metrics: $0.metrics, margin: 2) }
     }
 
     /// The card under `point`, as for `entry(at:time:)`, that takes clicks. A card `--activate none`
     /// leaves without a button neither holds the stack nor is taken away by a click. The pointer
-    /// passes through to the window below only while no card in the stack takes clicks.
+    /// passes through to the window below everywhere but on such a card.
     public func clickableEntry(at point: IslandPoint, time: Double) -> Entry? {
         entry(at: point, time: time).flatMap { $0.card.isClickable ? $0 : nil }
-    }
-
-    /// Whether any card in the stack takes clicks, so the window over the notch should take the
-    /// pointer at all.
-    public var hasClickable: Bool {
-        live.contains { $0.card.isClickable }
     }
 
     /// Whether `point`, as for `entry(at:time:)`, is on `entry`'s close mark as it is drawn at `time`:

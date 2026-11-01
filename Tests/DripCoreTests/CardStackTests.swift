@@ -693,8 +693,39 @@ struct CardStackTests {
         #expect(stack.entry(at: middle(b), time: time) === b)
         #expect(stack.clickableEntry(at: middle(a), time: time) === a)
         #expect(stack.clickableEntry(at: middle(b), time: time) == nil)
-        #expect(stack.hasClickable)
-        #expect(!CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [plain]).hasClickable)
+    }
+
+    /// The window over the notch is wider and taller than its cards. It took every click in it while
+    /// any card took clicks, so the windows of other apps beside a card, at its height, or under it,
+    /// could not be clicked while it showed. Only the capsules take the pointer now.
+    @Test func onlyTheCapsulesTakeThePointer() {
+        let cards = ["a", "b"].map { title in
+            var clickable = card(title, seconds: 10)
+            clickable.activate = "com.apple.finder"
+            return clickable
+        }
+        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: cards)
+        let time = run(stack, until: 4)
+        let (a, b) = (stack.live[0], stack.live[1])
+        #expect(a.card.isClickable && b.card.isClickable)
+        let shapeA = a.animator.shape(at: time), shapeB = b.animator.shape(at: time)
+        let middleA = shapeA.pillTop + shapeA.pillHeight / 2
+        #expect(stack.clickableEntry(at: IslandPoint(0, middleA), time: time) === a)
+        #expect(stack.clickableEntry(at: IslandPoint(shapeA.pillWidth / 2 - 1, middleA), time: time) === a)
+        // Beside the card, at its height: on either side, just past it and far from it.
+        for x in [shapeA.pillWidth / 2 + 3, shapeA.pillWidth / 2 + 30, -shapeA.pillWidth / 2 - 30] {
+            #expect(stack.clickableEntry(at: IslandPoint(x, middleA), time: time) == nil)
+        }
+        // Under the last card, and between two.
+        #expect(stack.clickableEntry(at: IslandPoint(0, shapeB.pillTop + shapeB.pillHeight + 10), time: time) == nil)
+        let gap = (shapeA.pillTop + shapeA.pillHeight + shapeB.pillTop) / 2
+        if shapeB.pillTop - (shapeA.pillTop + shapeA.pillHeight) > 6 {
+            #expect(stack.clickableEntry(at: IslandPoint(0, gap), time: time) == nil)
+        }
+        // Just outside a round end's corner, inside the capsule's bounding box.
+        let radius = shapeA.pillRadius(a.metrics)
+        let corner = IslandPoint(shapeA.pillWidth / 2 - radius * 0.1, shapeA.pillTop + radius * 0.1)
+        #expect(stack.clickableEntry(at: corner, time: time) == nil)
     }
 
     @Test func thePointerFindsTheCardAndItsButton() {

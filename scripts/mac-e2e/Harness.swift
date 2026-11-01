@@ -195,12 +195,16 @@ func run(_ arguments: [String], environment: [String: String]? = nil, input: Dat
     return Ran(status: process.terminationStatus, out: read(out), err: read(err))
 }
 
-/// Lets the run loop run, so AppKit draws the backdrop, for `seconds`.
+/// Lets the run loop run, so AppKit draws the backdrop and hands the harness's own windows their
+/// clicks, for `seconds`.
 func pause(_ seconds: Double) {
     let end = Date().addingTimeInterval(seconds)
     repeat {
         notice()
-        RunLoop.current.run(until: min(end, Date().addingTimeInterval(0.1)))
+        let until = min(end, Date().addingTimeInterval(0.1))
+        if let event = NSApp.nextEvent(matching: .any, until: until, inMode: .default, dequeue: true) {
+            NSApp.sendEvent(event)
+        }
     } while Date() < end
 }
 
@@ -1370,6 +1374,102 @@ check(11, "drip follow reaps the drips it spawns") { expect in
     expect.expect(follow.isRunning, "drip follow is still running")
     expect.expect(zombies == 0, "it leaves no zombie child behind (\(zombies))")
     follow.terminate()
+}
+
+// 12. drip's window is wider and taller than its cards. A click beside a card, at its height, or
+// under it, where no card is drawn, must reach the window behind, as it would with no card there;
+// a click on the card still takes it.
+
+/// Counts the clicks that reach it.
+final class CatcherView: NSView {
+    var clicks = 0
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { clicks += 1 }
+}
+
+/// Another app's window under drip's, as plain white as the backdrop, that takes clicks.
+let catcher: NSPanel = {
+    let panel = NSPanel(
+        contentRect: backdrop.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    panel.backgroundColor = .white
+    panel.isOpaque = true
+    panel.hasShadow = false
+    panel.level = backdrop.level
+    panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+    panel.contentView = CatcherView(frame: NSRect(origin: .zero, size: backdrop.frame.size))
+    return panel
+}()
+
+/// Clicks beside each of `cards` and under the last, inside drip's windows, and expects each click to
+/// reach the window behind while the cards stay.
+func clicksPassBeside(_ cards: [CGRect], _ expect: inout Expectations) {
+    let windows = dripWindows().ours
+    guard let last = cards.last else {
+        expect.expect(false, "the cards show")
+        return
+    }
+    // Halfway between the card and the window's edge, or 30 points from the card in a wider window.
+    let beside = { (card: CGRect) -> CGPoint in
+        let edge = windows.first { $0.intersects(card) }?.maxX ?? card.maxX
+        return CGPoint(x: card.maxX + min(30, (edge - card.maxX) / 2), y: card.midY)
+    }
+    let points = cards.enumerated().map { ("beside card \($0.offset + 1)", beside($0.element)) }
+        + [("under the last card", CGPoint(x: last.midX, y: last.maxY + 10))]
+    for (name, point) in points {
+        guard windows.contains(where: { $0.contains(point) }) else {
+            expect.expect(false, "\(name) is inside drip's window, so the check means something")
+            continue
+        }
+        let view = catcher.contentView as? CatcherView
+        view?.clicks = 0
+        expect.expect(click(point), "the helper clicks \(name)")
+        pause(0.4)
+        expect.expect(view?.clicks == 1, "a click \(name) reaches the window behind (\(view?.clicks ?? 0) of 1)")
+    }
+    expect.expect(showing && cardsOnScreen().count == cards.count, "the cards stay")
+}
+
+if canClick {
+    let variants: [(name: String, cards: [[String]], extra: [String: String])] = [
+        ("beside and under a lone card", [["info", "e2e lone", "-d", "clicks pass beside it", "--stay"]],
+         ["DRIP_STACK": "off"]),
+        ("beside and under a stack", [
+            ["info", "e2e stack one", "-d", "clicks pass beside it", "--stay"],
+            ["info", "e2e stack two", "-d", "clicks pass beside it", "--stay"],
+        ], [:]),
+        ("beside and under a card with a button", [
+            ["info", "e2e button", "-d", "clicks pass beside it", "--open", "https://example.com", "--button", "View",
+             "--stay"],
+        ], [:]),
+    ]
+    for variant in variants {
+        check(12, variant.name) { expect in
+            catcher.orderFrontRegardless()
+            defer { catcher.orderOut(nil) }
+            // With no card showing, the window behind takes a click: the control for the clicks below.
+            let view = catcher.contentView as? CatcherView
+            view?.clicks = 0
+            _ = click(CGPoint(x: notchArea.midX + 200, y: notchArea.minY + 60))
+            pause(0.4)
+            expect.expect(view?.clicks == 1, "the window behind takes a click with no card showing (\(view?.clicks ?? 0) of 1)")
+            for arguments in variant.cards {
+                dripRun(arguments + ["--id", fresh("through")], extra: variant.extra)
+            }
+            var cards: [CGRect] = []
+            _ = wait(6) {
+                cards = cardsOnScreen()
+                return cards.count == variant.cards.count
+            }
+            expect.expect(cards.count == variant.cards.count, "\(variant.cards.count) card(s) show (found \(cards.count))")
+            clicksPassBeside(cards, &expect)
+            // The card still takes a click: its × takes it away.
+            guard let first = cards.first else { return }
+            expect.expect(click(CGPoint(x: first.minX + first.height * 0.45, y: first.midY)), "the helper clicks the ×")
+            expect.within(1.5, wait(3) { cardsOnScreen().count == cards.count - 1 }, "a click on the card's × takes it away")
+        }
+    }
+} else if options.only?.contains(12) ?? true {
+    skip(12, "clicks beside a card: \(ungranted)")
 }
 
 // MARK: - Done

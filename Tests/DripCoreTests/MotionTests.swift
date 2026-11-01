@@ -270,6 +270,36 @@ struct IslandTests {
         #expect(drop.pillRadius(tall) == tall.dropSize / 2)
     }
 
+    /// Only the capsule as it is drawn takes the pointer: not beside it at its height, not under it,
+    /// and not the corners its round ends cut off its bounding box.
+    @Test func theCapsuleHoldsOnlyWhatItDraws() {
+        for (metrics, shape) in [(metrics, Self.open(metrics)), (tall, Self.open(tall))] {
+            let middle = shape.pillTop + shape.pillHeight / 2
+            let (half, radius) = (shape.pillWidth / 2, shape.pillRadius(metrics))
+            #expect(shape.contains(IslandPoint(0, middle), metrics: metrics))
+            #expect(shape.contains(IslandPoint(-half + 0.5, middle), metrics: metrics))
+            #expect(shape.contains(IslandPoint(0, shape.pillTop + 0.5), metrics: metrics))
+            #expect(!shape.contains(IslandPoint(half + 1, middle), metrics: metrics))
+            #expect(!shape.contains(IslandPoint(-half - 40, middle), metrics: metrics))
+            #expect(!shape.contains(IslandPoint(0, shape.pillTop + shape.pillHeight + 1), metrics: metrics))
+            #expect(!shape.contains(IslandPoint(0, shape.pillTop - 1), metrics: metrics))
+            // The corner of the bounding box is off a round end, and the end's arc is on it.
+            #expect(!shape.contains(IslandPoint(half - 0.5, shape.pillTop + 0.5), metrics: metrics))
+            let arc = IslandPoint(half - radius * (1 - 0.65), shape.pillTop + radius * (1 - 0.65))
+            #expect(shape.contains(arc, metrics: metrics))
+            // A margin reaches past the edges by as much, round the corners too.
+            #expect(shape.contains(IslandPoint(half + 1.5, middle), metrics: metrics, margin: 2))
+            #expect(!shape.contains(IslandPoint(half + 2.5, middle), metrics: metrics, margin: 2))
+            #expect(!shape.contains(IslandPoint(half + 1.5, shape.pillTop - 1.5), metrics: metrics, margin: 2))
+        }
+    }
+
+    private static func open(_ metrics: IslandMetrics) -> IslandShape {
+        var animator = IslandAnimator(metrics: metrics)
+        animator.open()
+        return animator.shape(at: 0)
+    }
+
     /// A title and a detail of one line each in a taller fallback font, Japanese or Thai, stay round at
     /// the ends: only wrapped text caps the corners.
     @Test func aOneLineCapsuleInATallFontStaysRound() {
