@@ -124,6 +124,9 @@ public enum RemoteHook {
             }
 
             (drip_queue "$@") >/dev/null 2>&1
+            # An agent that writes the payload to stdin gets a broken pipe if the hook ends before
+            # reading it, as when the event was not queued: read the rest, unless it came as an argument.
+            [ $# -ge 2 ] || [ -t 0 ] || cat >/dev/null 2>&1
             exit 0
 
             """#
