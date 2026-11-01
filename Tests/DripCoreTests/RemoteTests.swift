@@ -389,12 +389,18 @@ struct RemoteFollowTests {
     }
 
     @Test func theHookNeverFailsTheAgentsTurn() throws {
+        // More than a pipe holds: the agent's write ends only once the hook has read all of it, and
+        // fails with a broken pipe if the hook ends first.
+        let big = #"{"hook_event_name":"Stop","filler":""# + String(repeating: "x", count: 1024 * 1024) + #""}"#
         #expect(try hook(["cursor"], stdin: "{}") == 0)
+        #expect(try hook(["cursor"], stdin: big) == 0)
         #expect(try hook(["claude"], stdin: "") == 0)
         #expect(try hook([]) == 0)
+        #expect(try hook([], stdin: big) == 0)
         // A queue it cannot write: still 0, and nothing printed.
         try write(script: "blocked", "")
         #expect(try hook(["claude"], stdin: "{}", environment: ["DRIP_QUEUE": "\(root)/blocked/queue.jsonl"]) == 0)
+        #expect(try hook(["claude"], stdin: big, environment: ["DRIP_QUEUE": "\(root)/blocked/queue.jsonl"]) == 0)
         #expect(queueLines().isEmpty)
     }
 
