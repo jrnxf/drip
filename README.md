@@ -944,6 +944,7 @@ swift test            # on Linux, or on a Mac with Xcode
 scripts/mac-check.sh  # on any Mac
 scripts/mac-e2e.sh    # on any Mac, without a person
 scripts/record-demo.sh  # films docs/demo.mp4 and docs/demo.gif on a Mac; needs ffmpeg
+scripts/sim-overflow.sh  # replays the overflow drop at the notch on a Mac, to film or to watch
 scripts/agent-contract.sh  # the agents' hooks, live, with the latest of each; needs node and tmux
 ```
 
@@ -984,6 +985,13 @@ a fixed sequence at the notch of the screen under the pointer, records that stri
 at the screen's native pixels, and encodes `docs/demo.mp4` and `docs/demo.gif` with ffmpeg. Set a clean
 wallpaper first, and allow your terminal under System Settings > Privacy & Security > Screen & System
 Audio Recording the first time. Run it again for a new take.
+
+`scripts/sim-overflow.sh` replays the overflow drop on a Mac: it sends more cards than the stack
+shows, a gap apart, so a drop forms under the last card, counts the cards waiting and goes back in
+once none waits. Start it with no drip card on screen. `--max`, `--count`, `--gap` and `--timeout`
+set the stack and the cards, `--id` ends with a card that swaps into the first in place, and `--push`
+stacks with push instead of chain; `--help` lists them. Nothing runs it for you: it is for filming
+the drop or for looking at its motion after a change.
 
 ### The live agent check
 

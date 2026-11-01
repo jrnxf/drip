@@ -1,9 +1,7 @@
 #!/bin/sh
-# TEMPORARY: remove once the overflow drop's motion is tuned.
-#
-# Replays the overflow drop on a Mac, for screen recordings: sends more cards than the stack shows,
-# a gap apart, so a drop forms under the last card and counts the cards waiting, takes in the ones
-# that come later, ticks down as each grows out of it, and goes back in once none waits. With --id,
+# Replays the overflow drop on a Mac, for screen recordings and for looking at its motion by eye:
+# sends more cards than the stack shows, a gap apart, so a drop forms under the last card and counts
+# the cards waiting, takes in the ones that come later, ticks down as each grows out of it, and goes back in once none waits. With --id,
 # the first card has an id and one more card with that id comes last: it waits in the drop, then
 # swaps into the first card in place, and the count goes down without a card growing out.
 #
