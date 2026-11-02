@@ -437,6 +437,33 @@ struct CardStackTests {
         #expect(tops.last.map { abs($0.at - metrics.pillTop) < 0.5 } == true)
     }
 
+    /// A card whose time runs out while the next card is still dropping in leaves as soon as the
+    /// stack is at rest, before the card after that drops in, so a burst of arrivals never holds a
+    /// card past its time.
+    @Test func aCardWhoseTimeIsUpLeavesBeforeTheNextDropsIn() throws {
+        let titles = ["a", "b", "c"]
+        // When b starts to drop in and when a starts counting down, learned from cards that stay.
+        let probe = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: titles.map { card($0, seconds: 60) })
+        var bEnters = 0.0
+        run(probe, until: 4) { time, _ in
+            if bEnters == 0, probe.live.count == 2 { bEnters = time }
+        }
+        let from = probe.live[0].countdownFrom
+        // a's time runs out while b is still settling.
+        let stack = CardStack(
+            settings: StackSettings(mode: .chain, max: 3),
+            cards: [card("a", seconds: bEnters + 0.1 - from), card("b", seconds: 60), card("c", seconds: 60)])
+        var aLeaves: Double?
+        var cEnters: Double?
+        run(stack, until: 6) { time, changes in
+            if changes.left.contains(where: { $0.entry.card.title == "a" }) { aLeaves = aLeaves ?? time }
+            if cEnters == nil, stack.entries.contains(where: { $0.card.title == "c" }) { cEnters = time }
+        }
+        let left = try #require(aLeaves)
+        let entered = try #require(cEnters)
+        #expect(left < entered)
+    }
+
     @Test func aClickedButtonIsReported() {
         var withButton = card("a", seconds: 10)
         withButton.action = CardAction(label: "Open", open: nil)

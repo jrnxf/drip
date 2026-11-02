@@ -142,10 +142,11 @@ public final class CardStack {
 
     /// Whether a card may drop in at `time`: one at a time, into a stack at rest, so a new drop
     /// never shoves cards still settling, and never while the pointer is on the stack. The overflow
-    /// drop is at rest too, with nothing dripping into it.
+    /// drop is at rest too, with nothing dripping into it. A card whose time is up leaves first.
     public func isReady(at time: Double) -> Bool {
         !hovering && time - lastEntrance >= Self.entranceSpacing && entries.allSatisfy { $0.animator.end <= time }
             && overflow.map { $0.end <= time && !$0.peeking } ?? true
+            && !entries.contains { $0.isShown && $0.remaining <= 0 && $0.dismissed == nil }
     }
 
     /// When every spring in the stack has settled, the overflow drop's and what drips into it
