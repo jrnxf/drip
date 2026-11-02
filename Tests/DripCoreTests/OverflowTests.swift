@@ -303,7 +303,8 @@ struct OverflowTests {
     }
 
     /// The pointer leaving gives every card with less than 1.5 seconds left 1.5 seconds, so they all
-    /// run out in the same step: they gather first and nothing runs into them.
+    /// run out in the same step: they leave one at a time, each gathering first, and nothing runs
+    /// into them.
     @Test func cardsRunningOutTogetherAfterThePointerLeavesGatherFirst() throws {
         let driver = stack(["a", "b", "c", "d", "e"], seconds: 3)
         while driver.stack.overflow?.phase != .shown, driver.time < 5 { driver.run(for: 1.0 / 60) }
@@ -312,8 +313,13 @@ struct OverflowTests {
         #expect(driver.stack.live.filter { $0.remaining < 1.5 }.count >= 2)
         driver.stack.hover(false, at: driver.time)
         var most = 0
-        let closest = closestGap(driver, for: 4, step: { _, changes in most = max(most, changes.left.count) })
-        #expect(most >= 2)
+        var left = 0
+        let closest = closestGap(driver, for: 4, step: { _, changes in
+            most = max(most, changes.left.count)
+            left += changes.left.count
+        })
+        #expect(most == 1)
+        #expect(left >= 2)
         #expect(closest > 0)
     }
 
@@ -1079,10 +1085,10 @@ struct OverflowTests {
         #expect(CardStack.countCue(forming) < forming.sides)
     }
 
-    /// Two countdowns that end on the same tick: both cards leave in that one step, oldest first,
-    /// the next card waiting grows out of the drop, and the count drops by exactly the one card
-    /// that took the place; none sticks and none shows twice.
-    @Test func twoCardsRunningOutOnTheSameTickLeaveTogether() throws {
+    /// Two countdowns that end on the same tick: the cards leave one at a time, oldest first, the
+    /// next card waiting grows out of the drop as each goes, and the count drops by exactly the one
+    /// card that took the place; none sticks and none shows twice.
+    @Test func twoCardsRunningOutOnTheSameTickLeaveOneAtATime() throws {
         let driver = stack(["a", "b", "c", "d", "e"], seconds: 20)
         driver.run(for: 4)
         #expect(driver.stack.overflow?.phase == .shown)
@@ -1093,7 +1099,7 @@ struct OverflowTests {
         driver.run(for: 3, step: { _, changes in
             if !changes.left.isEmpty { leftSteps.append(changes.left.map(\.entry.card.title)) }
         })
-        #expect(leftSteps.first == ["a", "b"])
+        #expect(leftSteps.prefix(2) == [["a"], ["b"]])
         #expect(leftSteps.joined().filter { $0 == "a" || $0 == "b" }.count == 2)
         // Both are gone and the cards waiting took their place, one growing out of the drop at a
         // time, in the order they came.
@@ -1104,8 +1110,8 @@ struct OverflowTests {
         #expect(driver.stack.live.count <= 3)
     }
 
-    /// The same tie with no drop: a stack of two with one more card queued behind it. Both leave in
-    /// the one step and the queued card comes into the room, not stuck waiting for either.
+    /// The same tie with no drop: a stack of two with one more card queued behind it. Both leave, one
+    /// at a time, and the queued card comes into the room, not stuck waiting for either.
     @Test func twoCardsRunningOutOnTheSameTickLetTheQueuedCardIn() throws {
         let driver = stack(["a", "b", "c"], max: 2, seconds: 20)
         driver.run(for: 4)
@@ -1115,7 +1121,7 @@ struct OverflowTests {
         driver.run(for: 3, step: { _, changes in
             if !changes.left.isEmpty { leftSteps.append(changes.left.map(\.entry.card.title)) }
         })
-        #expect(leftSteps == [["a", "b"]])
+        #expect(leftSteps == [["a"], ["b"]])
         #expect(driver.stack.live.map(\.card.title) == ["c"])
     }
 }

@@ -142,10 +142,11 @@ public final class CardStack {
 
     /// Whether a card may drop in at `time`: one at a time, into a stack at rest, so a new drop
     /// never shoves cards still settling, and never while the pointer is on the stack. The overflow
-    /// drop is at rest too, with nothing dripping into it.
+    /// drop is at rest too, with nothing dripping into it. A card whose time is up leaves first.
     public func isReady(at time: Double) -> Bool {
         !hovering && time - lastEntrance >= Self.entranceSpacing && entries.allSatisfy { $0.animator.end <= time }
             && overflow.map { $0.end <= time && !$0.peeking } ?? true
+            && !entries.contains { $0.isShown && $0.remaining <= 0 && $0.dismissed == nil }
     }
 
     /// When every spring in the stack has settled, the overflow drop's and what drips into it
@@ -503,10 +504,16 @@ public final class CardStack {
             entry.isShown && (entry.remaining <= 0 || entry.dismissed != nil) && !self.isFilling(entry)
                 && !(dropBusy && entry.dismissed == nil)
         }
+        // Cards whose time is up leave one at a time, the one longest past its time first, and only
+        // from a stack at rest: once the last card's drop has gone and the cards below have closed
+        // up behind it, so each leaves from its place and the last from under the notch. A card
+        // taken away on purpose goes at once.
+        let atRest = entries.allSatisfy { $0.animator.end <= time }
+        let next = atRest ? entries.filter { goes($0) && $0.dismissed == nil }.min { $0.remaining < $1.remaining } : nil
         // A card leaving gathers into a round drop in place and only then rises, as it does without
         // an overflow drop. The next card waiting grows out of the drop, the cards below close up
         // and the count rolls together as the gathered drop starts to rise, so none runs into it.
-        let due = entries.filter(goes)
+        let due = entries.filter { goes($0) && ($0.dismissed != nil || $0 === next) }
         // In push mode the next card waiting grows out of the overflow pill above the stack instead,
         // and the one card leaving sinks away where it is, so everything moves down together.
         let sinks = due.count == 1 && settings.mode == .push && !queued.isEmpty
@@ -517,7 +524,7 @@ public final class CardStack {
                 let last = max(cues.sides, (cues.title + cues.detail).max() ?? 0) + 0.25
                 if time - start >= last { entry.phase = .shown }
             case .shown:
-                if goes(entry), let cues = leave(entry, at: time + lead, sinking: sinks)
+                if due.contains(where: { $0 === entry }), let cues = leave(entry, at: time + lead, sinking: sinks)
                 {
                     changes.left.append((entry, cues, time + lead, entry.dismissed ?? false))
                 }
