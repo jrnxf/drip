@@ -398,6 +398,45 @@ struct CardStackTests {
         #expect(stack.live[1].animator.end <= end)
     }
 
+    /// Three drips started together, whose cards' times run out within one exit of each other, the
+    /// bottom card's first: each leaves only once the drop before it has gone and the cards below
+    /// have closed up behind it, so no gap ever opens above a card that leaves and the last leaves
+    /// from under the notch.
+    @Test func cardsWhoseTimeRunsOutTogetherLeaveOneAtATime() {
+        let order = ["third", "first", "second"]
+        // When each card starts counting down, learned from cards that stay.
+        let probe = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: order.map { card($0, seconds: 60) })
+        run(probe, until: 4)
+        let from = probe.live.map(\.countdownFrom)
+        // second's time runs out first, third's 0.25 s later as second's drop rises, first's just after.
+        let ends = [6.25, 6.3, 6.0]
+        let stack = CardStack(
+            settings: StackSettings(mode: .chain, max: 3),
+            cards: order.indices.map { card(order[$0], seconds: ends[$0] - from[$0]) })
+        var left: [(title: String, time: Double)] = []
+        var gone: [Double] = []
+        // Each card's top as it starts to leave, and the top of its place in a closed-up stack.
+        var tops: [(at: Double, place: Double)] = []
+        run(stack, until: 10) { time, changes in
+            for leaving in changes.left {
+                left.append((leaving.entry.card.title, time))
+                let place = stack.entries.filter { !$0.isLeaving || $0 === leaving.entry }.firstIndex { $0 === leaving.entry } ?? 0
+                tops.append((leaving.entry.exit?.top ?? 0, metrics.pillTop + Double(place) * (metrics.pillHeight + CardStack.gap)))
+            }
+            gone += changes.gone.map { _ in time }
+        }
+        #expect(left.map(\.title) == ["second", "third", "first"])
+        #expect(gone.count == 3)
+        // Never two drops in the air at once.
+        for (next, previous) in zip(left.dropFirst(), gone) {
+            #expect(next.time >= previous)
+        }
+        for top in tops {
+            #expect(abs(top.at - top.place) < 0.5)
+        }
+        #expect(tops.last.map { abs($0.at - metrics.pillTop) < 0.5 } == true)
+    }
+
     @Test func aClickedButtonIsReported() {
         var withButton = card("a", seconds: 10)
         withButton.action = CardAction(label: "Open", open: nil)
