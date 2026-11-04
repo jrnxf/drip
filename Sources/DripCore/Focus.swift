@@ -59,6 +59,18 @@ public enum WhenFocused: String, CaseIterable, Sendable {
         func present(awayAfter: Double) -> Bool {
             (idle ?? 0) < awayAfter
         }
+
+        /// Whether the agent's terminal is in front: its pane showing in the app in front, or, when
+        /// drip cannot tell the pane, the app in front.
+        public var inFront: Bool {
+            if let pane { return pane && app }
+            return app
+        }
+
+        /// Whether you are likely watching the agent's terminal: at the screen, with it in front.
+        public func watching(awayAfter: Double) -> Bool {
+            present(awayAfter: awayAfter) && inFront
+        }
     }
 
     /// `card` as it shows while the terminal is where `front` says, or nil when it does not show.
@@ -66,14 +78,7 @@ public enum WhenFocused: String, CaseIterable, Sendable {
     /// word, not the app's, and a card that waits for you is only ever skipped, never quieted: it is
     /// on you either way.
     public func apply(to card: Card, front: Front, awayAfter: Double = WhenFocused.defaultAwayAfter) -> Card? {
-        guard self != .show, front.present(awayAfter: awayAfter) else { return card }
-        let inFront: Bool
-        if let pane = front.pane {
-            inFront = pane && front.app
-        } else {
-            inFront = front.app
-        }
-        guard inFront else { return card }
+        guard self != .show, front.watching(awayAfter: awayAfter) else { return card }
         if self == .skip, front.pane == true { return nil }
         guard !card.waits else { return card }
         var card = card
@@ -102,5 +107,27 @@ extension CardResolver {
     /// `DRIP_DONE_AFTER`, then the config's `done_after`, then 0: every done card shows.
     public var doneAfter: Double {
         environment.doneAfter ?? config.doneAfter ?? 0
+    }
+
+    /// `DRIP_APPROVE`, then the config's `approve`, then off: a permission card only tells you the
+    /// agent waits, and you answer in the terminal.
+    public var approve: Bool {
+        environment.approve ?? config.approve ?? false
+    }
+}
+
+/// Whether you went to the agent's terminal while its permission card waits, for an agent that holds
+/// its own prompt until the hook returns: the card then goes, so the prompt shows. Only a terminal
+/// that comes to the front counts, not one in front already, which you may have left there and come
+/// back to: the card is what you came back to.
+public struct TerminalArrival: Sendable {
+    private var wasInFront: Bool?
+
+    public init() {}
+
+    /// Whether the terminal came to the front since the last look, from where it is now.
+    public mutating func arrived(_ front: WhenFocused.Front) -> Bool {
+        defer { wasInFront = front.inFront }
+        return wasInFront == false && front.inFront
     }
 }

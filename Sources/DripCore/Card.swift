@@ -188,6 +188,9 @@ public enum Defaults {
     public static let secondsRange: ClosedRange<Double> = 0.5...60
     /// The longest a card that waits for you stays, should nothing click or replace it.
     public static let waitLimit: Double = 600
+    /// The longest a permission card with Allow and Deny waits for a click: nine minutes, a minute
+    /// short of the ten Claude Code and Codex give a hook, so drip always answers in time.
+    public static let approveWait: Double = 540
     /// The most cards on screen at once.
     public static let stackMax = 3
     public static let stackMaxRange: ClosedRange<Int> = 1...6

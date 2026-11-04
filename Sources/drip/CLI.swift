@@ -152,11 +152,29 @@ struct DripCLI {
                 return ExitStatus.shown
             }
             // An agent's hook keeps its output clean, terminal or not.
-            status = deliver([card], wait: flags.wait, remind: false, console: console)
+            status = card.asksQuestion
+                ? ask(card, agent: command.agent, console: console)
+                : deliver([card], wait: flags.wait, remind: false, console: console)
         } catch {
             status = report(error, console, subcommand: HookCommand.configuration.commandName)
         }
         return status == ExitStatus.shown || status == ExitStatus.noGUISession ? ExitStatus.shown : ExitStatus.hookFailed
+    }
+
+    /// Shows a permission card with Allow and Deny and waits for it, printing the agent's answer on a
+    /// click. A card that goes unclicked prints nothing, which leaves the answer to the terminal.
+    private func ask(_ card: Card, agent: AgentHook.Agent, console: Console) -> Int32 {
+        #if canImport(AppKit)
+        let watch = ApprovalWatch(card: card, agent: agent, display: display)
+        watch.start()
+        defer { withExtendedLifetime(watch) {} }
+        #endif
+        let status = deliver([card], wait: true, remind: false, console: console)
+        guard let approval = AgentHook.Approval(status: status) else {
+            return status == ExitStatus.notClicked ? ExitStatus.shown : status
+        }
+        FileHandle.standardOutput.write(Data(approval.output.utf8))
+        return ExitStatus.shown
     }
 
     /// Shows the cards of agents on another machine until stopped, or prints the launchd agent that
@@ -313,7 +331,13 @@ struct DripCLI {
     /// each click went only on a standard error that is a log, as `drip follow`'s.
     private func background() -> Int32 {
         #if canImport(AppKit)
+        // A permission card's drip starts this one to hand its stack on to. An agent that takes its
+        // answer from the terminal sends SIGTERM to every process under the hook, this one too, and
+        // what the hook hands on then must still show: until the request comes, only the pipe
+        // closing ends it.
+        signal(SIGTERM, SIG_IGN)
         guard let request = BackgroundDrip.readRequest() else { return ExitStatus.usage }
+        signal(SIGTERM, SIG_DFL)
         let console = Console(quiet: true, background: true)
         if let resurface = request.resurface {
             return resurfaceSkipped(request, resurface, console: console)
@@ -473,6 +497,13 @@ struct DripCLI {
                 // A background drip waits for the card; this hook returns at once.
                 _ = BackgroundDrip.start(BackgroundRequest(
                     cards: [card], resurface: .init(agent: agent.rawValue, noted: noted)))
+                #endif
+            },
+            away: {
+                #if canImport(AppKit)
+                return Away.isAway
+                #else
+                return false
                 #endif
             },
             resolver: { try makeResolver(console, file: $0, environment: $1) })

@@ -36,6 +36,8 @@ extension AgentHook {
         /// waiting record was written, so the card can come back with `resurfaced` if the agent
         /// still waits `WhenFocused.resurfaceDelay` seconds on.
         public var resurface: (Card, Double) -> Void
+        /// Whether a card would wait for nobody now: the screen is locked, or `drip pause` holds cards.
+        public var away: () -> Bool
         /// Reads the config file `environment` points at. An event calls it at most once, whether for
         /// the debug log or for the card's settings.
         public var loadConfig: ([String: String]) throws -> ConfigFile
@@ -54,7 +56,7 @@ extension AgentHook {
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
             front: @escaping (Card) -> WhenFocused.Front, paneShowing: @escaping (Card) -> Bool? = { _ in nil },
             machineView: @escaping (Card) -> MachineView = { _ in .selected },
-            resurface: @escaping (Card, Double) -> Void = { _, _ in },
+            resurface: @escaping (Card, Double) -> Void = { _, _ in }, away: @escaping () -> Bool = { false },
             loadConfig: @escaping ([String: String]) throws -> ConfigFile = { try ConfigLoader.load(environment: $0) },
             resolver: @escaping (ConfigFile, [String: String]) throws -> CardResolver, origin: Origin? = nil,
             showsCards: Bool = true, now: @escaping () -> Date = Date.init, process: DebugLog.Process = .hook
@@ -67,6 +69,7 @@ extension AgentHook {
             self.paneShowing = paneShowing
             self.machineView = machineView
             self.resurface = resurface
+            self.away = away
             self.loadConfig = loadConfig
             self.resolver = resolver
             self.origin = origin
@@ -210,8 +213,46 @@ extension AgentHook {
                 state.noteDone(id: id)
             }
         }
-        return decideFocus(
+        let looked = decideFocus(
             card, surroundings: surroundings, resolver: resolver, log: log, fields: eventFields, resurfacing: false, note: note)
+        guard let shown = looked.card else { return nil }
+        // The card goes by its id when the agent moves on, as one you answered in the terminal.
+        guard event.asksPermission, origin == nil, resolver.approve, shown.id != nil else { return shown }
+        // Held until you are back, the card would hold the agent's answer as long.
+        if surroundings.away() {
+            note("approve", "skip", eventFields + [("reason", "away")])
+            return shown
+        }
+        // Codex holds its own prompt until the hook returns: with you at its terminal already, the
+        // card only tells you, and the prompt shows at once.
+        if agent.holdsPromptForHook,
+           (looked.front ?? look(at: card, surroundings: surroundings, awayAfter: resolver.awayAfter)).watching(awayAfter: resolver.awayAfter)
+        {
+            note("approve", "skip", eventFields + [("reason", "watching_terminal")])
+            return shown
+        }
+        note("approve", "ask", eventFields + [("wait_seconds", "\(Int(Defaults.approveWait))")])
+        return asking(shown)
+    }
+
+    /// `card`, a permission card, with Allow and Deny: a click on either is the agent's answer, which
+    /// `drip hook` prints as `Approval.output`. Nothing clicked in `Defaults.approveWait` seconds,
+    /// or a click on the card itself, leaves the answer to the terminal.
+    public static func asking(_ card: Card) -> Card {
+        var card = card
+        card.action = CardAction(label: "Allow", open: nil, decline: "Deny")
+        card.waitLimit = Defaults.approveWait
+        return card
+    }
+
+    /// Where the terminal is for `card`, asking about its pane only when that decides it: the
+    /// terminal app in front, and you at it.
+    static func look(at card: Card, surroundings: Surroundings, awayAfter: Double) -> WhenFocused.Front {
+        var front = surroundings.front(card)
+        if front.pane == nil, front.app, front.present(awayAfter: awayAfter) {
+            front.pane = surroundings.paneShowing(card)
+        }
+        return front
     }
 
     /// The card a waiting card skipped while you were watching becomes `WhenFocused.resurfaceDelay`
@@ -235,15 +276,16 @@ extension AgentHook {
         }
         let resolver = try surroundings.resolver(try config.file.get(), environment)
         return decideFocus(
-            card, surroundings: surroundings, resolver: resolver, log: log, fields: fields, resurfacing: true, note: note)
+            card, surroundings: surroundings, resolver: resolver, log: log, fields: fields, resurfacing: true, note: note).card
     }
 
-    /// `card` as it shows given where the terminal is, or nil when you are watching. A waiting card
-    /// skipped for it is handed to `surroundings.resurface`, unless this is already its second look.
+    /// `card` as it shows given where the terminal is, or nil when you are watching, and where the
+    /// terminal was, when drip looked. A waiting card skipped for it is handed to
+    /// `surroundings.resurface`, unless this is already its second look.
     private static func decideFocus(
         _ card: Card, surroundings: Surroundings, resolver: CardResolver, log: DebugLog, fields eventFields: [(String, String?)],
         resurfacing: Bool, note: (String, String, [(String, String?)]) -> Void
-    ) -> Card? {
+    ) -> (card: Card?, front: WhenFocused.Front?) {
         let origin = surroundings.origin
         // You may be watching the agent's terminal already. Asking about the pane costs a round trip
         // to another machine, so only when it matters: its terminal in front, and you at it. For an
@@ -252,7 +294,7 @@ extension AgentHook {
         let whenFocused = resolver.whenFocused
         guard whenFocused != .show else {
             note("card", "show", eventFields + [("reason", "when_focused_show"), ("waits", "\(card.waits)")])
-            return card
+            return (card, nil)
         }
         var front = surroundings.front(card)
         var query: [(String, String?)] = []
@@ -301,7 +343,7 @@ extension AgentHook {
                 ("pane_showing", front.pane.map { "\($0)" }), ("remote_pane_unknown", unknownRemote ? "true" : nil), ("machine_selected", machineSelected),
             ] + query)
         }
-        return shown
+        return (shown, front)
     }
 }
 #endif
