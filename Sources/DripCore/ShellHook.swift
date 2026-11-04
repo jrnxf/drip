@@ -147,8 +147,8 @@ public enum ShellHook {
             }
             return Merge(text: result + block, updated: false)
         }
-        guard let start = original.range(of: begin), let finish = original.range(of: end, range: start.upperBound..<original.endIndex),
-              original.range(of: begin, range: start.upperBound..<original.endIndex) == nil
+        guard let start = original.firstRange(of: begin), let finish = original[start.upperBound...].firstRange(of: end),
+              original[start.upperBound...].firstRange(of: begin) == nil
         else {
             throw Refusal(description: "has drip's block cut in two, or twice")
         }
