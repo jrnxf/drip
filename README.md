@@ -30,6 +30,7 @@ drip fail "deploy failed" --stay  # stays until you click it
 drip info "my-app needs you" --stay --icon app:com.openai.chat
 drip info "deploying" --id deploy && drip ok "deployed" --id deploy
 drip setup claude             # Claude Code's hooks: which project needs you, and why
+drip setup zsh                # a card for any command that runs 10 seconds or more
 drip history --missed         # what came up while you were away
 drip dismiss                  # take the cards on screen away, without going to the terminal
 drip pause 30m                # hold cards for half an hour; drip resume ends it early
@@ -450,6 +451,33 @@ drip run make test
 drip run --open "$CI_URL" --button "View run" ./deploy.sh
 ```
 
+### Without typing `drip run`
+
+`drip setup zsh` adds a block to `~/.zshrc` (`$ZDOTDIR/.zshrc` when that is set) that gives a card to
+any command that ran 10 seconds or more, with nothing in front of it. The card is the one `drip run`
+makes: green with `make test finished`, or red with `make test failed (exit 2)`, and the time as its
+detail. It shows only when you are not watching that terminal, by the same rules as an agent's done
+card: drip's [`when_focused` and `away_after`](#config), and your tmux or herdr pane.
+
+```sh
+drip setup zsh          # adds the block; run it again to update it, and then: exec zsh
+drip setup zsh --print  # prints the block without changing anything
+```
+
+The block costs a prompt nothing noticeable: zsh times the command itself and starts drip only for a
+slow one, so a fast command runs no drip at all. It does nothing where drip is not installed.
+
+| Setting | What it does | Default |
+|---|---|---|
+| `DRIP_SLOW_AFTER` | Seconds a command must run for a card. `0` turns the cards off. | `10` |
+| `DRIP_SLOW_IGNORE` | More commands to leave out, space-separated, besides the editors (`vim`, `nvim`, `emacs`), pagers (`less`, `man`), `ssh`, `tmux`, `top` and REPLs (`python`, `node`) drip leaves out already. | none |
+| `DRIP_HOOK=off` | No cards from this shell. | unset |
+| `FM_TASK_ID` | Set by an orchestrator for the workers it starts: no cards from them. | unset |
+
+Set them with `export` in `~/.zshrc`, or in a shell for as long as it lives. `sudo`, `env`, `time` and
+variable assignments in front of a command are looked through, so `sudo vim` is left out as `vim`
+is. fish is not supported yet.
+
 [drip run](#buttons) has the details, and the site a guide: [Get an alert on Mac when a terminal
 command finishes](https://drip.jrnxf.co/notify-when-command-finishes).
 
@@ -484,7 +512,9 @@ command is `drip hook claude`, `drip hook codex` or `drip hook gemini` in `~/.cl
 them. If you set `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, the files
 are there instead. drip installs nothing else: no daemon, no login item, no preferences. If you
 [follow another machine](#agents-on-another-machine), stop and delete the launchd agents you saved
-for it, and on the machine delete `drip-remote-hook`, its queue and the hooks that run it.
+for it, and on the machine delete `drip-remote-hook`, its queue and the hooks that run it. If you ran
+`drip setup zsh`, delete the block in `~/.zshrc` that starts with `# >>> drip` and ends with
+`# <<< drip <<<`, and the `.zshrc.drip-backup-<date>-<time>` next to it.
 
 ## Privacy
 
@@ -540,6 +570,7 @@ drip [KIND] [TITLE] [options]
 drip run [options] [--] <command> [args...]
 drip hook claude|codex|gemini [options] [payload]
 drip setup claude|codex|gemini [--print | --remote]
+drip setup zsh [--print]
 drip setup remote
 drip follow <ssh-target> [options]
 drip history [--missed] [-n N | --all] [--json | --replay]
@@ -921,7 +952,8 @@ icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this fi
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
 `DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`, `DRIP_AWAY_AFTER`,
-`DRIP_AGENT_CARDS`, `DRIP_DONE_AFTER`, `DRIP_DEBUG`;
+`DRIP_AGENT_CARDS`, `DRIP_DONE_AFTER`, `DRIP_DEBUG`, and for the [zsh block](#without-typing-drip-run)
+`DRIP_SLOW_AFTER` and `DRIP_SLOW_IGNORE`;
 `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
 environment exits 2 when drip makes a card from it (1 for `drip hook`); a command that makes none,
 such as `drip history`, `drip debug` or `drip dismiss`, or a hook that shows nothing or only takes a

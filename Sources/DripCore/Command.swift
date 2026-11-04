@@ -274,6 +274,7 @@ public struct DripCommand: ParsableCommand {
             drip hook claude|codex|gemini [options] [payload]
             drip setup claude|codex|gemini [--print | --remote]
             drip setup remote
+            drip setup zsh [--print]
             drip follow <ssh-target> [options]
             drip history [--missed] [-n N | --all] [--json | --replay]
             drip debug [--clear]
@@ -285,7 +286,7 @@ public struct DripCommand: ParsableCommand {
         subcommands: [
             ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, FollowCommand.self,
             HistoryCommand.self, DebugCommand.self, DismissCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self,
-            BackgroundCommand.self,
+            BackgroundCommand.self, FinishedCommand.self,
         ],
         defaultSubcommand: ShowCommand.self
     )
@@ -303,6 +304,7 @@ public struct DripCommand: ParsableCommand {
           drip fail "deploy failed" --stay
           drip info "my-app needs you" --stay --icon app:com.openai.chat
           drip setup claude
+          drip setup zsh
           drip follow devbox
           drip dismiss
           drip pause 30m
@@ -443,15 +445,16 @@ public struct HookCommand: ParsableCommand {
 public struct SetupCommand: ParsableCommand {
     /// What `drip setup` sets up: an agent, or `remote`, the hook for agents on another machine.
     public enum Target: String, CaseIterable, ExpressibleByArgument {
-        case claude, codex, gemini, remote
+        case claude, codex, gemini, remote, zsh
     }
 
     public static let configuration = CommandConfiguration(
         commandName: "setup",
-        abstract: "Add drip's hooks to Claude Code's, Codex's or Gemini CLI's settings.",
+        abstract: "Add drip's hooks to Claude Code's, Codex's or Gemini CLI's settings, or a card for slow commands to zsh.",
         usage: """
             drip setup claude|codex|gemini [--print | --remote]
             drip setup remote
+            drip setup zsh [--print]
             """,
         discussion: """
             Adds drip hook to ~/.claude/settings.json, ~/.codex/hooks.json or ~/.gemini/settings.json, \
@@ -461,7 +464,10 @@ public struct SetupCommand: ParsableCommand {
             Codex it also takes drip out of notify in ~/.codex/config.toml, which the Stop hook replaces. \
             For an agent on another machine, which drip follow shows the cards of: drip setup remote \
             prints drip-remote-hook, a shell script to save there, and --remote prints the hooks that \
-            run it, for the agent's settings there.
+            run it, for the agent's settings there. drip setup zsh adds a block to ~/.zshrc (in ZDOTDIR, \
+            if set) that shows a card for any command that ran 10 seconds or more, unless you are \
+            watching that terminal; DRIP_SLOW_AFTER changes the 10 and DRIP_SLOW_IGNORE adds commands \
+            to leave out. Run it again to update the block.
             """
     )
 
@@ -476,6 +482,11 @@ public struct SetupCommand: ParsableCommand {
         target.flatMap { AgentHook.Agent(rawValue: $0.rawValue) }
     }
 
+    /// The shell whose rc file gets a card for slow commands; nil for an agent or `remote`.
+    public var shell: ShellHook.Shell? {
+        target.flatMap { ShellHook.Shell(rawValue: $0.rawValue) }
+    }
+
     @Flag(name: .customLong("print"), help: "Print drip's hooks for the agent's settings instead of adding them.")
     public var printOnly = false
 
@@ -486,10 +497,46 @@ public struct SetupCommand: ParsableCommand {
 
     public func validate() throws {
         guard let target else {
-            throw ValidationError("missing the agent: drip setup claude, drip setup codex or drip setup gemini")
+            throw ValidationError(
+                "missing the agent: drip setup claude, drip setup codex, drip setup gemini or drip setup zsh")
+        }
+        if shell != nil, remote {
+            throw ValidationError("--remote is for an agent's hooks; drip setup zsh --print prints the zsh block")
         }
         if target != .remote, printOnly, remote {
             throw ValidationError("--remote prints the hooks already: give --print or --remote, not both")
+        }
+    }
+}
+
+/// `drip __finished --status <n> --seconds <n> -- <command line>`: the card for a command that ran long,
+/// which the zsh block `drip setup zsh` adds starts. It is not for typing.
+public struct FinishedCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "__finished",
+        abstract: "Show the card for a slow shell command that ended, unless you are watching its terminal.",
+        shouldDisplay: false
+    )
+
+    @Option(help: "The command's exit status.") public var status: Int32 = 0
+
+    @Option(help: "How long the command ran.") public var seconds: Double = 0
+
+    /// The command line, as typed: after `--`.
+    @Argument(parsing: .postTerminator, help: "The command line.") var words: [String] = []
+
+    @Flag(help: "Never print warnings.") public var quiet = false
+
+    /// The command line the card is titled with.
+    public var command: String {
+        words.joined(separator: " ")
+    }
+
+    public init() {}
+
+    public func validate() throws {
+        if command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw ValidationError("missing the command line")
         }
     }
 }
@@ -801,6 +848,7 @@ public enum Invocation {
     case run(RunCommand)
     case hook(HookCommand)
     case setup(SetupCommand)
+    case finished(FinishedCommand)
     case follow(FollowCommand)
     case history(HistoryCommand)
     case debug(DebugCommand)
@@ -837,6 +885,7 @@ public enum CommandLineParser {
             case let command as RunCommand: return .invocation(.run(command))
             case let command as HookCommand: return .invocation(.hook(command))
             case let command as SetupCommand: return .invocation(.setup(command))
+            case let command as FinishedCommand: return .invocation(.finished(command))
             case let command as FollowCommand: return .invocation(.follow(command))
             case let command as HistoryCommand: return .invocation(.history(command))
             case let command as DebugCommand: return .invocation(.debug(command))

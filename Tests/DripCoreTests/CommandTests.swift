@@ -321,7 +321,7 @@ struct CommandTests {
         // Without an agent, one line says what is missing, not the whole help; a mistake is a usage error.
         guard case let .exit(status, missing) = CommandLineParser.parse(["setup"]) else { Issue.record(); return }
         #expect(status == ExitStatus.usage)
-        #expect(missing == "drip: missing the agent: drip setup claude, drip setup codex or drip setup gemini\n"
+        #expect(missing == "drip: missing the agent: drip setup claude, drip setup codex, drip setup gemini or drip setup zsh\n"
             + "See 'drip setup --help'.")
     }
 
@@ -418,6 +418,8 @@ struct CommandTests {
         #expect(help.contains("drip hook claude|codex|gemini [options]"), "\(help)")
         #expect(help.contains("drip setup claude|codex|gemini [--print | --remote]"), "\(help)")
         #expect(help.contains("drip setup remote"), "\(help)")
+        #expect(help.contains("drip setup zsh [--print]"), "\(help)")
+        #expect(!help.contains("__finished"), "\(help)")
         #expect(help.contains("drip follow <ssh-target> [options]"), "\(help)")
         #expect(help.contains("drip history [--missed] [-n N | --all] [--json | --replay]"), "\(help)")
         #expect(help.contains("drip pause [DURATION]"), "\(help)")
