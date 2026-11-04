@@ -11,6 +11,9 @@ protocol CardDisplay {
     /// Hands the cards to a background drip and returns at once, or shows them here when it cannot.
     func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32
 
+    /// The button pressed on a question `show` showed, if any.
+    var pressed: CardAnswer? { get }
+
     /// Checks the cards' sounds and icons, warning about and replacing any that cannot load.
     func prepare(_ cards: [Card], console: Console) -> [Card]
 
@@ -154,11 +157,29 @@ struct DripCLI {
                 return ExitStatus.shown
             }
             // An agent's hook keeps its output clean, terminal or not.
-            status = deliver([card], wait: flags.wait, remind: false, console: console)
+            status = card.asksQuestion
+                ? ask(card, agent: command.agent, console: console)
+                : deliver([card], wait: flags.wait, remind: false, console: console)
         } catch {
             status = report(error, console, subcommand: HookCommand.configuration.commandName)
         }
         return status == ExitStatus.shown || status == ExitStatus.noGUISession ? ExitStatus.shown : ExitStatus.hookFailed
+    }
+
+    /// Shows a permission card with Allow and Deny and waits for it, printing the agent's answer on a
+    /// click. A card that goes unclicked prints nothing, which leaves the answer to the terminal.
+    private func ask(_ card: Card, agent: AgentHook.Agent, console: Console) -> Int32 {
+        #if canImport(AppKit)
+        let watch = ApprovalWatch(card: card, agent: agent, display: display)
+        watch.start()
+        defer { withExtendedLifetime(watch) {} }
+        #endif
+        let status = deliver([card], wait: true, remind: false, console: console)
+        guard let approval = AgentHook.Approval(pressed: display.pressed, status: status) else {
+            return status == ExitStatus.notClicked ? ExitStatus.shown : status
+        }
+        FileHandle.standardOutput.write(Data(approval.output.utf8))
+        return ExitStatus.shown
     }
 
     /// The card for a slow shell command that ended, if you are not watching its terminal. Exits 0 when
@@ -351,7 +372,13 @@ struct DripCLI {
     /// each click went only on a standard error that is a log, as `drip follow`'s.
     private func background() -> Int32 {
         #if canImport(AppKit)
+        // A permission card's drip starts this one to hand its stack on to. An agent that takes its
+        // answer from the terminal sends SIGTERM to every process under the hook, this one too, and
+        // what the hook hands on then must still show: until the request comes, only the pipe
+        // closing ends it.
+        signal(SIGTERM, SIG_IGN)
         guard let request = BackgroundDrip.readRequest() else { return ExitStatus.usage }
+        signal(SIGTERM, SIG_DFL)
         let console = Console(quiet: true, background: true)
         if let resurface = request.resurface {
             return resurfaceSkipped(request, resurface, console: console)
@@ -513,6 +540,13 @@ struct DripCLI {
                     cards: [card], resurface: .init(agent: agent.rawValue, noted: noted)))
                 #endif
             },
+            away: {
+                #if canImport(AppKit)
+                return Away.isAway
+                #else
+                return false
+                #endif
+            },
             resolver: { try makeResolver(console, file: $0, environment: $1) })
     }
 
@@ -570,6 +604,8 @@ struct UnavailableDisplay: CardDisplay {
     }
 
     var hasGUISession: Bool { false }
+
+    var pressed: CardAnswer? { nil }
 
     func front(of card: Card) -> WhenFocused.Front {
         WhenFocused.Front(app: false)

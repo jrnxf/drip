@@ -81,6 +81,10 @@ the terminal, and then turns into the done card in place. A click brings back th
 and its pane in tmux, herdr or WezTerm. While you watch the agent's terminal, its done card comes
 without a sound.
 
+Opt in with `approve = true` in the config, or `DRIP_APPROVE=1`, and a Claude Code or Codex
+permission card has Allow and Deny: a click answers the agent, and no click leaves it to the
+terminal. See [docs/agents.md](docs/agents.md).
+
 Fewer cards: `agent_cards = "attention"` in the config shows only the cards that need you, and
 `DRIP_HOOK=off` silences one agent, such as an orchestrator's background workers.
 

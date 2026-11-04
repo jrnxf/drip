@@ -92,6 +92,14 @@
         },
         {
           "@type": "Question",
+          "name": "Can I allow or deny from the card?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, once you turn it on with approve = true in ~/.config/drip/config.toml, or DRIP_APPROVE=1: Claude Code's and Codex's permission cards get Allow and Deny, and a click is the agent's answer. With nothing clicked in 9 minutes, the terminal asks as usual. Answer in the terminal instead and the card goes. Codex asks in its terminal only once the hook returns, so its card has the buttons only while you are not watching that terminal. Cards from an agent on another machine, and Gemini CLI's, only tell."
+          }
+        },
+        {
+          "@type": "Question",
           "name": "How do I get a card out of the way without going to the terminal?",
           "acceptedAnswer": {
             "@type": "Answer",
@@ -132,6 +140,7 @@ drip setup gemini   # Gemini CLI, in ~/.gemini/settings.json</code></pre>
         <li><b>Hooks, not polling.</b> <code>drip setup claude</code> adds hooks for Claude Code's <code>PermissionRequest</code> (Claude wants to run something), <code>Notification</code> (a question), <code>Stop</code> (the turn is done) and <code>StopFailure</code> (a rate limit, an outage or another API error) events, and for the events that show it moved on. It keeps the rest of the file, backs the old one up next to it, and changes nothing when run again.</li>
         <li><b>One card per event.</b> Each hook runs <code>drip hook claude</code>, which reads the hook's JSON and shows <code>my-app needs you</code> with what Claude wants, such as <code>Claude wants to run npm install</code>, <code>my-app is done</code> with the last thing Claude wrote, or <code>my-app stopped</code> with the error.</li>
         <li><b>Gone once you answer.</b> Approve in the terminal, or send Claude a prompt, and the card that said it needs you goes.</li>
+        <li><b>Or answer on the card.</b> With <code>approve = true</code> in drip's config, or <code>DRIP_APPROVE=1</code>, the permission card has Allow and Deny, and a click is Claude's answer. Off by default.</li>
         <li><b>Named by project.</b> The title is the project, from the session's working directory, so several sessions at once stay apart; two folders of the same name read <code>1/drip</code> and <code>2/drip</code>.</li>
         <li><b>Replaced in place.</b> Each session's cards share an id, so the waiting card turns into the done card instead of queueing behind it. While you watch the terminal, the done card is quiet and short.</li>
         <li><b>Back to the terminal, or out of the way.</b> A click on the card brings forward the terminal the agent runs in, and its tmux pane. The × on hover, or a right-click, takes the card away and brings nothing forward.</li>
@@ -146,6 +155,8 @@ drip setup gemini   # Gemini CLI, in ~/.gemini/settings.json</code></pre>
       <p>drip never writes a settings file that is a symlink, read-only, or not plain JSON. It says why, prints the hooks to add where the file comes from, and exits 1. <code>drip setup claude --print</code> prints them without trying.</p>
       <h3>What if I am away when Claude Code needs me?</h3>
       <p>A card that comes up while the screen is locked waits for the unlock, and <code>drip history --missed</code> lists what came up while you were away.</p>
+      <h3>Can I allow or deny from the card?</h3>
+      <p>Yes, once you turn it on with <code>approve = true</code> in <code>~/.config/drip/config.toml</code>, or <code>DRIP_APPROVE=1</code>: Claude Code's and Codex's permission cards get Allow and Deny, and a click is the agent's answer. With nothing clicked in 9 minutes, the terminal asks as usual. Answer in the terminal instead and the card goes. Codex asks in its terminal only once the hook returns, so its card has the buttons only while you are not watching that terminal. Cards from an agent on another machine, and Gemini CLI's, only tell.</p>
       <h3>How do I get a card out of the way without going to the terminal?</h3>
       <p>Click the × that takes the icon's place when the pointer is on the card, or right-click, Control-click or Option-click anywhere on it: the card goes back into the notch and nothing comes forward. <code>drip dismiss</code> does the same from the keyboard, and VoiceOver offers Dismiss on every card.</p>
       <h3>How do I remove the hooks?</h3>

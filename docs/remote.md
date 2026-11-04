@@ -83,7 +83,8 @@ client attached to that machine, so drip cannot tell whether the herdr in front 
 that machine or Local. When herdr does not answer within 3 seconds, or the agent runs outside herdr,
 drip takes you not to be watching: its cards show, with their sound. The `DRIP_HOOK` and attendance
 of the session on the machine decide whether it raises cards, not the variables `drip follow` runs
-with.
+with. Its permission cards only tell, even with `approve` on: the answer stays in the terminal on
+the machine, and its hook there returns at once.
 
 **Clicks.** A click brings forward the terminal you ran `drip follow` from, or the app
 `--activate` names. In Ghostty, when the agent runs in herdr, Ghostty itself brings forward the

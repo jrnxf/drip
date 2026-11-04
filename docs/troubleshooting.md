@@ -46,8 +46,9 @@ the last 1 MB. It is for you, or an agent you ask to look at it, and goes nowher
 to no one.
 
 A line is `time process event decision key=value ...`. `process` is `hook`, `follow` or `cli`; the
-`event` is `card` (shown or skipped, and `reason`), `clear` (a card an agent's next step took away)
-or `click`. What it records, and nothing else:
+`event` is `card` (shown or skipped, and `reason`), `clear` (a card an agent's next step took away),
+`approve` (whether a permission card got Allow and Deny: `ask`, or `skip` and `reason`) or
+`click`. What it records, and nothing else:
 
 - the agent (`claude`, `codex` or `gemini`), the machine it ran on, the card's kind (`ok`, `warn`, ...)
   and whether it waits for you;

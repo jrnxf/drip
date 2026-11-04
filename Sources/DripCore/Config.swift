@@ -39,6 +39,8 @@ public struct Config: Equatable {
     public var agentCards: AgentHook.Cards?
     /// The shortest turn, in seconds, whose done card shows.
     public var doneAfter: Double?
+    /// Whether a permission card asks with Allow and Deny.
+    public var approve: Bool?
     /// Whether drip keeps its debug log, `DebugLog`.
     public var debug: Bool?
     /// Overrides of built-in presets, and custom presets, by name.
@@ -48,9 +50,10 @@ public struct Config: Equatable {
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
         awayAfter: Double? = nil, agentCards: AgentHook.Cards? = nil, doneAfter: Double? = nil,
-        debug: Bool? = nil, presets: [String: PresetOverride] = [:]
+        approve: Bool? = nil, debug: Bool? = nil, presets: [String: PresetOverride] = [:]
     ) {
         self.debug = debug
+        self.approve = approve
         self.awayAfter = awayAfter
         self.agentCards = agentCards
         self.doneAfter = doneAfter
@@ -195,6 +198,7 @@ private struct ConfigReader {
             case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
             case "agent_cards": config.agentCards = try choice(item, key: key, AgentHook.Cards.self)
             case "done_after": config.doneAfter = try seconds(item, key: key, in: Defaults.doneAfterRange)
+            case "approve": config.approve = try boolean(item, key: key)
             case "debug": config.debug = try boolean(item, key: key)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
@@ -366,6 +370,8 @@ public struct EnvironmentSettings: Equatable {
     public var agentCards: AgentHook.Cards?
     /// The shortest turn, in seconds, whose done card shows.
     public var doneAfter: Double?
+    /// Whether a permission card asks with Allow and Deny, from `DRIP_APPROVE`.
+    public var approve: Bool?
     /// The bundle identifier of the app drip was run from, from `__CFBundleIdentifier`.
     public var sender: String?
     /// The terminal pane drip was run in, from `TMUX` and `TMUX_PANE`, herdr's `HERDR_PANE_ID`, or
@@ -378,9 +384,10 @@ public struct EnvironmentSettings: Equatable {
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
         awayAfter: Double? = nil, agentCards: AgentHook.Cards? = nil, doneAfter: Double? = nil,
-        sender: String? = nil, debug: Bool? = nil
+        approve: Bool? = nil, sender: String? = nil, debug: Bool? = nil
     ) {
         self.debug = debug
+        self.approve = approve
         self.awayAfter = awayAfter
         self.agentCards = agentCards
         self.doneAfter = doneAfter
@@ -395,7 +402,7 @@ public struct EnvironmentSettings: Equatable {
     }
 
     /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK, DRIP_STACK_MAX,
-    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_AGENT_CARDS, DRIP_DONE_AFTER and DRIP_DEBUG. Empty
+    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_AGENT_CARDS, DRIP_DONE_AFTER, DRIP_APPROVE and DRIP_DEBUG. Empty
     /// values are ignored; invalid ones are usage errors. Also notes the app drip was run from, from
     /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
@@ -439,6 +446,7 @@ public struct EnvironmentSettings: Equatable {
             stackMax = max
         }
         sound = value("DRIP_SOUND").map(Sound.init(parsing:))
+        approve = try Self.switch("DRIP_APPROVE", environment: environment)
         debug = try Self.debug(environment: environment)
         sender = CardActivation.sender(in: environment)
         pane = TerminalPane(environment: environment)
@@ -449,11 +457,17 @@ extension EnvironmentSettings {
     /// `DRIP_DEBUG`: `1`, `true`, `on` or `yes`, or `0`, `false`, `off` or `no`; nil when unset or
     /// empty. Throws a `UsageError` for anything else.
     public static func debug(environment: [String: String]) throws -> Bool? {
-        guard let text = environment["DRIP_DEBUG"].flatMap({ $0.isEmpty ? nil : $0 }) else { return nil }
+        try `switch`("DRIP_DEBUG", environment: environment)
+    }
+
+    /// A variable that turns something on or off: `1`, `true`, `on` or `yes`, or `0`, `false`, `off`
+    /// or `no`; nil when unset or empty. Throws a `UsageError` for anything else.
+    static func `switch`(_ name: String, environment: [String: String]) throws -> Bool? {
+        guard let text = environment[name].flatMap({ $0.isEmpty ? nil : $0 }) else { return nil }
         switch text.lowercased() {
         case "1", "true", "on", "yes": return true
         case "0", "false", "off", "no": return false
-        default: throw UsageError("DRIP_DEBUG must be 1 or 0, not '\(text)'")
+        default: throw UsageError("\(name) must be 1 or 0, not '\(text)'")
         }
     }
 }

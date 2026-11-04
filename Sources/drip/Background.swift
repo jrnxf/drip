@@ -53,10 +53,16 @@ enum BackgroundDrip {
         var unblocked = sigset_t()
         sigemptyset(&unblocked)
         posix_spawnattr_setsigmask(&attributes, &unblocked)
+        // A permission card's drip ignores SIGTERM to answer it; the drip it starts does not.
+        var defaults = sigset_t()
+        sigemptyset(&defaults)
+        sigaddset(&defaults, SIGTERM)
+        posix_spawnattr_setsigdefault(&attributes, &defaults)
         // Its own session: Ctrl-C or closing the terminal doesn't take the card with it. Every
         // descriptor not set up above is closed in the child.
         posix_spawnattr_setflags(
-            &attributes, Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_CLOEXEC_DEFAULT))
+            &attributes,
+            Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_CLOEXEC_DEFAULT))
 
         var arguments: [UnsafeMutablePointer<CChar>?] = [strdup(executable), strdup(command), nil]
         defer { arguments.forEach { free($0) } }

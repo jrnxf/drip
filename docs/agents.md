@@ -35,13 +35,14 @@ Codex after `drip setup codex`.
 
 The title is the project, from the session's working directory. Two sessions in folders of the same
 name, such as two worktrees of one repo, read apart: `1/drip needs you` and `2/drip needs you`. A
-card that needs you stays, as with `--stay`, and the agent's hook still returns at once. It goes as
-soon as you answer in the terminal: the hook for the tool call it asked about, or for the next
-prompt you send, takes it away and shows nothing. Otherwise it stays until you click it, the
-session's next card replaces it, or 10 minutes pass. Each session's card has the id
-`<agent>:<session>`, so a session's new card replaces its last one instead of queuing behind it:
-the waiting card turns into the done card in place. drip keeps the agent's Markdown out of the
-card: it shows the words, without code fences, heading or list markers, or emphasis marks.
+card that needs you stays, as with `--stay`, and the agent's hook still returns at once, unless you
+let the card answer it (below). It goes as soon as you answer in the terminal: the hook for the tool
+call it asked about, or for the next prompt you send, takes it away and shows nothing. Otherwise it
+stays until you click it, the session's next card replaces it, or 10 minutes pass. Each session's
+card has the id `<agent>:<session>`, so a session's new card replaces its last one instead of
+queuing behind it: the waiting card turns into the done card in place. drip keeps the agent's
+Markdown out of the card: it shows the words, without code fences, heading or list markers, or
+emphasis marks.
 
 **Clicks.** A click on an agent's card brings back the terminal the agent runs in, and in tmux,
 herdr or WezTerm the agent's own pane. The × that takes the icon's place while the pointer is on the
@@ -60,6 +61,24 @@ machine, the pane showing there is not enough: your herdr window must show that 
 (`herdr machine list` marks it `selected`), and if herdr cannot say, the card shows. A card that
 needs you and was skipped because you were watching comes back 30 seconds later, once, if the
 agent still waits and you are no longer watching.
+
+**Approve from the card.** With `approve = true` in the [config](config.md), or `DRIP_APPROVE=1`,
+the card that asks for Claude Code's or Codex's permission has Allow and Deny, and a click is the
+agent's answer: drip prints it on the hook's stdout, and the tool runs, or does not, without the
+terminal. The hook then waits on the card instead of returning at once. Nothing clicked in 9
+minutes, a minute inside the 10 both agents give a hook, prints nothing, and the terminal asks as it
+would without drip; so does a click on the card itself, which brings the terminal forward as on any
+agent's card, and the ×. It is off by default: a stray click allows a command, and a hook that waits
+is a change to choose, not one `drip setup` makes for you.
+
+| Agent | When the card asks | Answered in the terminal instead |
+| --- | --- | --- |
+| Claude Code | Always: Claude asks in its terminal at the same time, and the first answer counts | A deny takes the card away at once; an allow, once the tool ends |
+| Codex | Only while you are not watching its terminal: Codex asks there only once the hook returns, so while you watch, the card only tells | Go to the terminal while the card waits and the card goes, and Codex asks there |
+
+A permission card that comes up while the screen is locked or `drip pause` holds cards only tells,
+and so does one from [another machine](remote.md), or from Gemini CLI: drip answers only for an
+agent on this Mac.
 
 **Fewer cards.** With many sessions at once, the done cards add up. `agent_cards = "attention"`
 shows only the cards that need you, a permission, a question or an error, from every session you
@@ -100,7 +119,8 @@ Without a GUI session, as when you run the agent over ssh, there is nothing to s
 nothing and exits 0, so the agent shows no hook error after every turn. Any failure, from a usage
 error to a payload it cannot read or an invalid config, exits 1: Claude Code and Codex read exit 2
 as "block", and Gemini CLI reads any code but 0 and 1 that way, which after a turn makes it run the
-turn again. drip reads up to 4 MB of payload, and prints nothing on success, as Gemini CLI needs.
+turn again. drip reads up to 4 MB of payload, and prints nothing on success, as Gemini CLI needs,
+but the answer a click gives on a card that approves (see **Approve from the card.**).
 A hook that takes a waiting card away reads one small file when no card waits, and the config file
 unless `DRIP_DEBUG` is set, to see whether `debug` is on, so the hooks that run on every tool call
 cost next to nothing. drip keeps what each session waits on, where it runs, and

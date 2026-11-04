@@ -411,7 +411,10 @@ public struct HookCommand: ParsableCommand {
             Without a GUI session, as over ssh, drip shows nothing and exits 0, and so it does for a \
             session nobody attends, such as claude -p, and wherever DRIP_HOOK=off; DRIP_HOOK=on \
             shows cards even then, and DRIP_HOOK=attention shows only the cards that need you or \
-            report an error, not the done cards, for an orchestrator's own session. Any failure exits 1, \
+            report an error, not the done cards, for an orchestrator's own session. With approve on \
+            in the config, or DRIP_APPROVE=1, the card that asks for Claude Code's or Codex's \
+            permission has Allow and Deny, and drip prints a click as the agent's answer; nothing \
+            clicked in 9 minutes prints nothing, and the terminal asks. Any failure exits 1, \
             since an agent reads some other codes as "block".
             """
     )
