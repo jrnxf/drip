@@ -27,6 +27,14 @@ if [ "$(uname -s)" != Darwin ]; then
     exit 1
 fi
 
+# --judge-check only reads verdicts and shows nothing, so it runs anywhere.
+judging=
+for argument in "$@"; do [ "$argument" = --judge-check ] && judging=1; done
+if [ -z "$judging" ]; then
+    . scripts/live-guard.sh
+    live_guard mac-e2e
+fi
+
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/drip-e2e"
 mkdir -p "$cache"
 

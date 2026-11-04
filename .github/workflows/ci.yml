@@ -15,8 +15,8 @@ jobs:
   test:
     # Pushes already cover branches in this repository; pull requests run only from forks.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
-    # Linux builds and tests DripCore. The rendering and snapshot tests run on a Mac with
-    # scripts/mac-check.sh.
+    # Linux builds and tests DripCore. The rendering and snapshot tests run on a Mac, in the
+    # snapshots job.
     runs-on: ubuntu-latest
     container: swift:6.2-noble
     steps:
@@ -52,8 +52,8 @@ jobs:
       - run: sw_vers
       # Swift Testing is built for macOS 14, so the tests are too, as in scripts/mac-check.sh.
       - run: swift test -Xswiftc -target -Xswiftc "$(uname -m)-apple-macosx14.0"
-      # The deep suite of scripts/mac-e2e.sh needs a person at a Mac, but not to compile: a harness
-      # that stopped building would otherwise show only when someone next needs it.
+      # The deep suite of scripts/mac-e2e.sh runs in the live job; its self-test and the helper's
+      # build fail here too, without waiting for that whole run.
       - run: swiftc -O -o "$RUNNER_TEMP/harness" scripts/mac-e2e/Harness.swift && "$RUNNER_TEMP/harness" --self-test
       - run: swiftc -typecheck scripts/mac-e2e/Helper.swift
       - if: failure()
@@ -61,6 +61,47 @@ jobs:
         with:
           name: snapshot-failures
           path: .build/snapshot-failures
+          if-no-files-found: ignore
+
+  live:
+    # scripts/mac-e2e.sh, the deep suite: real cards at the top of the runner's screen, the hooks
+    # Claude Code and Codex run, the pointer and clicks. It shows cards from a drip with its own queue
+    # and state, so it runs here, on a Mac nobody works at, and refuses a Mac in use
+    # (scripts/live-guard.sh). The screenshots it keeps are an artifact to look at.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DRIP_LIVE_CHECKS: isolated
+    steps:
+      - uses: actions/checkout@v5
+      - run: sw_vers
+      # Check 6 attaches tmux from Ghostty, then from Terminal. Ghostty comes with Homebrew's
+      # quarantine, and its first launch is slow, so the check would see no Ghostty window: the
+      # quarantine goes and Ghostty starts once first.
+      - run: |
+          brew install tmux
+          brew install --cask ghostty
+          xattr -dr com.apple.quarantine /Applications/Ghostty.app
+          open /Applications/Ghostty.app && sleep 8 && killall ghostty
+      # The runner's image turns Reduce Motion on, and with it cards fade instead of stacking.
+      - run: |
+          defaults write com.apple.universalaccess reduceMotion -bool false
+          reduced=$(echo 'import AppKit; print(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)' | swift -)
+          [ "$reduced" = false ] || { echo "Reduce Motion is still on" >&2; exit 1; }
+      # Clicks and VoiceOver's actions go through the helper app mac-e2e.sh builds, which needs
+      # Accessibility: nobody is here to answer the prompt, so the grant goes straight into the
+      # runner's TCC database, by the helper's bundle id.
+      - run: |
+          sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
+            "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, flags)
+             VALUES ('kTCCServiceAccessibility', 'co.jrnxf.drip.e2e-helper', 0, 2, 4, 1, 0);"
+      - run: scripts/mac-e2e.sh --no-prompt --out "$RUNNER_TEMP/mac-e2e"
+      - if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: mac-e2e-screenshots
+          path: ${{ runner.temp }}/mac-e2e
           if-no-files-found: ignore
 
   macos-oldest:
