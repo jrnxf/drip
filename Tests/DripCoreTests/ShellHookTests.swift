@@ -318,5 +318,40 @@ struct ZshHookTests {
         #expect(result.output.contains("empty=5"), "\(result.output)")
         #expect(result.calls.count == 1)
     }
+
+    @Test func sourcingTheRcFileAgainWhileACommandRunsStartsNoCard() throws {
+        guard Self.zsh != nil else { return }
+        // `source ~/.zshrc` loads the block again between preexec and precmd: its start time must
+        // stay the command's, not go back to zero, which would read as decades.
+        let result = try run("""
+            cat > "$HOME/block" <<'DRIP_TEST_BLOCK'
+            \(ShellHook.snippet(for: .zsh))DRIP_TEST_BLOCK
+            __drip_preexec 'source ~/.zshrc' 'source ~/.zshrc' 'source ~/.zshrc'; source "$HOME/block"; add-zsh-hook -d preexec __drip_preexec; add-zsh-hook -d precmd __drip_precmd
+            (exit 0); __drip_precmd
+            """, environment: ["DRIP_SLOW_AFTER": "5"])
+        #expect(result.calls.isEmpty, "\(result)")
+        #expect(result.output.isEmpty, "\(result.output)")
+    }
+
+    @Test func theUsersShellOptionsDoNotChangeTheHook() throws {
+        guard Self.zsh != nil else { return }
+        // A glob in the line stays text, and an unset DRIP_SLOW_IGNORE is no error under nounset.
+        let line = "sleep 11; echo *"
+        for options in ["setopt globsubst", "setopt shwordsplit", "setopt nounset", "setopt globsubst nounset shwordsplit"] {
+            let result = try run("\(options)\n\(command(line, seconds: 60))")
+            #expect(result.calls.count == 1, "\(options): \(result)")
+            #expect(result.calls.first?.hasSuffix(" -- \(line)") == true, "\(options): \(result)")
+            #expect(result.output.isEmpty, "\(options): \(result.output)")
+        }
+    }
+
+    @Test func aThresholdThatIsNoNumberLeavesTheCardsOffQuietly() throws {
+        guard Self.zsh != nil else { return }
+        for after in ["10s", "abc", "-5", "1e3", "1."] {
+            let result = try run(command("make", seconds: 60), environment: ["DRIP_SLOW_AFTER": after])
+            #expect(result.calls.isEmpty, "\(after): \(result)")
+            #expect(result.output.isEmpty, "\(after): \(result.output)")
+        }
+    }
 }
 #endif

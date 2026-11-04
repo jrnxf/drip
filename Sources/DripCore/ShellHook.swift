@@ -65,16 +65,20 @@ public enum ShellHook {
             # Written by `drip setup zsh`: run it again to update this block, delete it to remove it.
             # A command that runs \#(defaultAfter) seconds or more shows a card when it ends, unless you are
             # watching this terminal. No drip runs for a faster command.
-            #   DRIP_SLOW_AFTER   seconds a command must run for a card; 0 turns the cards off
+            #   DRIP_SLOW_AFTER   seconds a command must run for a card; 0 turns the cards off, and
+            #                     anything but a number leaves them off
             #   DRIP_SLOW_IGNORE  more commands to leave out, space-separated, besides the editors, pagers,
             #                     ssh and REPLs named below
             # Silent where drip is missing, and where \#(silencedBy) is set or DRIP_HOOK=off.
             if zmodload zsh/datetime 2>/dev/null && autoload -Uz add-zsh-hook 2>/dev/null; then
               typeset -g __drip_command __drip_expanded
-              typeset -gF __drip_start=0
+              typeset -gF __drip_start
               typeset -ga __drip_ignore=(\#(ignore))
 
+              # Each function sets the shell's options to zsh's own for its run, so setopt in your rc
+              # file (globsubst, nounset, shwordsplit) cannot change what they do.
               __drip_preexec() {
+                emulate -L zsh
                 __drip_command=$1
                 __drip_expanded=$3
                 __drip_start=$EPOCHREALTIME
@@ -83,8 +87,9 @@ public enum ShellHook {
               # Whether the command line starts a command in the ignore list, past any assignments,
               # sudo and the like.
               __drip_ignored() {
+                emulate -L zsh
                 local word
-                local -a ignore=($__drip_ignore ${=DRIP_SLOW_IGNORE})
+                local -a ignore=($__drip_ignore ${=DRIP_SLOW_IGNORE-})
                 for word in ${(z)1}; do
                   case $word in
                     *=* | -* | sudo | command | builtin | exec | env | nocorrect | noglob | nohup | time) continue ;;
@@ -98,16 +103,18 @@ public enum ShellHook {
 
               __drip_precmd() {
                 local code=$?
+                emulate -L zsh
                 [[ -n $__drip_command ]] || return $code
                 local command=$__drip_command expanded=$__drip_expanded
                 __drip_command=
                 local seconds=$(( EPOCHREALTIME - __drip_start ))
                 local after=${DRIP_SLOW_AFTER:-\#(defaultAfter)}
+                [[ $after == <->(|.<->) ]] || return $code
                 (( after > 0 && seconds >= after )) || return $code
                 [[ -z ${\#(silencedBy)-} && ${DRIP_HOOK-} != off ]] || return $code
                 (( $+commands[drip] )) || return $code
                 __drip_ignored $expanded && return $code
-                command drip __finished --status $code --seconds $seconds -- $command >/dev/null 2>&1 &!
+                command drip __finished --status $code --seconds $seconds -- "$command" >/dev/null 2>&1 &!
                 return $code
               }
 

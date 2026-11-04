@@ -476,7 +476,11 @@ slow one, so a fast command runs no drip at all. It does nothing where drip is n
 
 Set them with `export` in `~/.zshrc`, or in a shell for as long as it lives. `sudo`, `env`, `time` and
 variable assignments in front of a command are looked through, so `sudo vim` is left out as `vim`
-is. fish is not supported yet.
+is. A `DRIP_SLOW_AFTER` that is not a number leaves the cards off. fish is not supported yet.
+
+The card's title is the command line as you typed it, and `drip history` keeps it, so any token on the
+line, such as a `curl -H "Authorization: ..."` header, is in both. `drip run` does the same, but only
+when you ask. Keep secrets out of command lines, or add the command to `DRIP_SLOW_IGNORE`.
 
 [drip run](#buttons) has the details, and the site a guide: [Get an alert on Mac when a terminal
 command finishes](https://drip.jrnxf.co/notify-when-command-finishes).
