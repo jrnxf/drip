@@ -9,7 +9,7 @@ import ImageIO
 ///
 /// A card without a reference is cancelled. With `DRIP_RECORD_SNAPSHOTS=1` its rendering is saved
 /// as the new reference instead; existing references are never overwritten. To regenerate one on
-/// purpose, delete it and run scripts/mac-check.sh.
+/// purpose, delete it and run the Record snapshots workflow (.github/workflows/snapshots.yml).
 #if canImport(AppKit)
 struct SnapshotTests {
     @Test func presetsOneLine() throws {
@@ -201,7 +201,7 @@ func assertSnapshots(_ snapshots: [Snapshot], sourceLocation: SourceLocation = #
     }
     if !missing.isEmpty {
         try Test.cancel(
-            "no reference for \(missing.joined(separator: ", ")); run scripts/mac-check.sh", sourceLocation: sourceLocation)
+            "no reference for \(missing.joined(separator: ", ")); run the Record snapshots workflow", sourceLocation: sourceLocation)
     }
 }
 

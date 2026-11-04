@@ -16,6 +16,8 @@ if [ "$(uname -s)" != Darwin ]; then
     echo "mac-check: run this on a Mac" >&2
     exit 1
 fi
+. scripts/live-guard.sh
+live_guard mac-check
 
 # Swift Testing is built for macOS 14, so the tests are too; drip itself targets macOS 13 below.
 set -- -Xswiftc -target -Xswiftc "$(uname -m)-apple-macosx14.0"

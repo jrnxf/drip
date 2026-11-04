@@ -945,8 +945,8 @@ multi-line strings, exits 4 with the line, and so does a file larger than 1 MB.
 ```sh
 swift build
 swift test            # on Linux, or on a Mac with Xcode
-scripts/mac-check.sh  # on any Mac
-scripts/mac-e2e.sh    # on any Mac, without a person
+scripts/mac-check.sh  # on a Mac nobody works at, such as a VM, with DRIP_LIVE_CHECKS=isolated
+scripts/mac-e2e.sh    # the same, without a person; CI's live job runs it on every push
 scripts/record-demo.sh  # films docs/demo.mp4 and docs/demo.gif on a Mac; needs ffmpeg
 scripts/sim-overflow.sh  # replays the overflow drop at the notch on a Mac, to film or to watch
 scripts/agent-contract.sh  # the agents' hooks, live, with the latest of each; needs node and tmux
@@ -967,8 +967,15 @@ Claude permission card that its tool's run takes away, a card that stays for `dr
 away, then lists the last cards in the history. It works with only the Command Line Tools installed; Xcode is not needed. It
 never overwrites a reference: to regenerate one on purpose, delete its PNG and run the script again.
 
-`scripts/mac-e2e.sh` is the deep suite: run it on a Mac before merging a change to cards or to the
-agents' hooks, as CI has no screen at the notch and no agent to run hooks. It checks what a person
+`scripts/mac-check.sh` and `scripts/mac-e2e.sh` show real cards from a drip with its own queue and
+state, which on a Mac in use come up beside the person's own cards, miss their history and ignore
+their `drip pause`. So both refuse to run, and exit 2, unless `DRIP_LIVE_CHECKS=isolated` says the
+Mac is one nobody works at: a CI runner, or a macOS VM of your own. `swift test` needs no screen and
+runs anywhere.
+
+`scripts/mac-e2e.sh` is the deep suite: the `live` job in `.github/workflows/ci.yml` runs it on
+GitHub's macOS runner on every push, with Accessibility granted to its helper up front, and keeps
+the screenshots as the `mac-e2e-screenshots` artifact. It checks what a person
 would look for at the notch, and needs none: it shows cards
 from a release build, runs the hooks `drip setup claude` and `drip setup codex` write with the
 payloads Claude Code and Codex send, moves the pointer onto cards, clicks them and beside them, pauses and resumes,
