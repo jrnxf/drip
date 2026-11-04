@@ -714,14 +714,15 @@ to clear the notch from the keyboard. VoiceOver offers each card's Open and Dism
 ### Missed cards and history
 
 A card that comes up while the screen is locked would play to nobody, so drip holds it until the
-screen unlocks. Then one or two held cards show as they are, and three or more show as one card,
-`5 cards while you were away`, with their titles newest first. Cards held while drip is paused
-(see [Pausing](#pausing)) show the same way when the pause ends. It takes the look and sound of the
-newest `fail` card among them, else the newest card that stays, else the newest `warn` card, else
-the newest card, so a failure still reads as one. The summary counts down, even when it takes the
-look of a card that stays. Of held cards with the same `--id`, only the newest shows. A click on the
-summary brings forward the app the held cards came from, or nothing when they came from different
-apps. A drip that waits for its card, with `--wait` or a `--yes` question, warns that the
+screen unlocks. Then the last five held cards play back as they came, newest first. When more
+than five were held, the older ones follow as one card, `12 cards while you were away`, with their
+titles newest first, or as they are when only one or two are left; `drip history` has them all.
+Cards held while drip is paused (see [Pausing](#pausing)) play back the same way when the pause
+ends. The summary takes the look and sound of the newest `fail` card among the cards it sums up,
+else the newest card that stays, else the newest `warn` card, else the newest card, so a failure
+still reads as one. The summary counts down, even when it takes the look of a card that stays. Of
+held cards with the same `--id`, only the newest shows. A click on the summary brings forward the
+app its cards came from, or nothing when they came from different apps. A drip that waits for its card, with `--wait` or a `--yes` question, warns that the
 screen is locked, keeps waiting until the unlock and then shows its card on its own.
 
 Every card is also kept in `$XDG_STATE_HOME/drip/history.jsonl`, or
@@ -772,9 +773,10 @@ locked or drip is paused like any other, and are not added to the history again.
 `drip pause` holds every card for an hour, from every drip, as if the screen were locked: for a
 meeting, a screen share or a call. Cards already on screen go too, within a second, and are held
 with the others; a question stays, as its script waits on it. When the pause ends, the held cards
-show as missed cards do: one or two as they are, three or more as one `N cards while you were away`
-card, and `drip history --missed` lists them, all but those already shown before the pause. A drip that waits for its card, with `--wait` or a `--yes` question, waits for
-the end of the pause, and says so.
+play back as missed cards do: the last five newest first, the older ones as one `N cards while you
+were away` card, and `drip history --missed` lists them, all but those already shown before the
+pause. A drip that waits for its card, with `--wait` or a `--yes` question, waits for the end of
+the pause, and says so.
 
 ```sh
 drip pause            # an hour; when drip is paused already, how long is left

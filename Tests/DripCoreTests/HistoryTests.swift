@@ -473,6 +473,39 @@ final class HistoryTests {
         #expect(detail.hasSuffix(" · a fairly long card title number 1"))
     }
 
+    @Test func fewerCardsThanTheLimitPlayBackNewestFirstWithoutASummary() {
+        let held = (1..<MissedSummary.replayLimit).map { card("c\($0)") }
+        #expect(MissedSummary.replay([]).isEmpty)
+        #expect(MissedSummary.replay(held).map(\.title) == ["c4", "c3", "c2", "c1"])
+    }
+
+    @Test func exactlyTheLimitPlaysBackWithoutASummary() {
+        let held = (1...MissedSummary.replayLimit).map { card("c\($0)") }
+        #expect(MissedSummary.replay(held).map(\.title) == ["c5", "c4", "c3", "c2", "c1"])
+    }
+
+    @Test func moreCardsThanTheLimitReplayTheNewestAndSumUpTheRestLast() throws {
+        let held = (1...12).map { card("c\($0)") }
+        let shown = MissedSummary.replay(held)
+        try #require(shown.count == MissedSummary.replayLimit + 1)
+        #expect(shown.prefix(MissedSummary.replayLimit).map(\.title) == ["c12", "c11", "c10", "c9", "c8"])
+        #expect(shown[MissedSummary.replayLimit].title == "7 cards while you were away")
+        #expect(shown[MissedSummary.replayLimit].detail == "c7 · c6 · c5 · c4 · c3 · c2 · c1")
+    }
+
+    @Test func oneOrTwoOlderCardsAreNotSummedUp() {
+        let held = (1...(MissedSummary.replayLimit + 2)).map { card("c\($0)") }
+        #expect(MissedSummary.replay(held).map(\.title) == ["c7", "c6", "c5", "c4", "c3", "c2", "c1"])
+    }
+
+    @Test func aFailureAmongTheOlderCardsStillLooksLikeOneInTheSummary() throws {
+        var held = (1...8).map { card("c\($0)") }
+        held[0] = card("c1", kind: "fail")
+        let summary = try #require(MissedSummary.replay(held).last)
+        #expect(summary.title == "3 cards while you were away")
+        #expect(summary.kind == "fail")
+    }
+
     private func card(_ title: String, kind: String = "info") -> Card {
         let preset = Preset.builtIn.first { $0.name == kind } ?? Preset(
             name: kind, icon: .symbol("paperplane.fill"), color: .system(.purple), sound: .named("Submarine"))

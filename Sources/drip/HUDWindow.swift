@@ -163,7 +163,7 @@ struct HUDDisplay: CardDisplay {
                 record(cards, missed: false)
                 let ids = Set(cards.compactMap(\.id))
                 let stale = leftovers.filter { $0.id.map { !ids.contains($0) } ?? true }
-                return MissedSummary.cards(for: CardReplacement.latest(stale)) + cards
+                return MissedSummary.replay(CardReplacement.latest(stale)) + cards
             case .held:
                 record(cards, missed: true)
                 return nil
@@ -171,7 +171,7 @@ struct HUDDisplay: CardDisplay {
                 record(cards, missed: true)
                 waitUntilBack()
                 do {
-                    return MissedSummary.cards(for: CardReplacement.latest(try held.release()))
+                    return MissedSummary.replay(CardReplacement.latest(try held.release()))
                 } catch {
                     console.warn("cannot read the cards held while the screen was locked or drip was paused: \(error)")
                     return cards
