@@ -738,8 +738,9 @@ public struct PauseCommand: ParsableCommand {
         abstract: "Hold cards for a while, then show what came up.",
         usage: "drip pause [DURATION]",
         discussion: """
-            Until the pause ends, cards are held as they are while the screen is locked: then one or \
-            two show as they are, and three or more as one card, and drip history --missed lists them. \
+            Until the pause ends, cards are held as they are while the screen is locked: then the \
+            last five play back newest first, any older ones as one card, and drip history --missed \
+            lists them. \
             A drip that waits for its card, with --wait or a --yes question, waits for the end. drip \
             pause alone pauses for 1h, or says how long is left when drip is paused already. To \
             extend or shorten a running pause, pass a duration, such as drip pause 1h: it sets a new \
