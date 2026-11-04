@@ -574,7 +574,7 @@ struct CardStackTests {
             if stack.isReady(at: time), let next = stack.nextOwn() {
                 stack.enter(next, metrics: metrics, own: true, decided: time, at: time)
             }
-            stack.advance(to: time, elapsed: 1.0 / 60, lead: 0)
+            _ = stack.advance(to: time, elapsed: 1.0 / 60, lead: 0)
             time += 1.0 / 60
         }
         return stack

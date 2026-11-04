@@ -78,6 +78,8 @@ struct HUDDisplay: CardDisplay {
         return ExitStatus.answered(missed: CardActions.missed || unanswered, declined: CardActions.declined)
     }
 
+    var pressed: CardAnswer? { CardActions.pressed }
+
     /// Shows on the cards another drip's stack handed on, in that drip's place in the queue, as a
     /// background drip, and returns once they have gone.
     func resume(_ handOff: StackHandOff, console: Console) -> Int32 {

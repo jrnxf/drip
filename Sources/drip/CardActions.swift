@@ -8,6 +8,9 @@ enum CardActions {
     static var missed = false
     /// Set when a question was answered no.
     static var declined = false
+    /// The button a question was answered with, set only by a press of it: a card that went any
+    /// other way, or never showed, leaves it nil.
+    static var pressed: CardAnswer?
 
     /// Notes how a click went in the debug log: what drip tried to bring forward, and whether macOS
     /// refused. Never a window's title, or what a command printed.
@@ -135,6 +138,7 @@ enum CardActions {
 
     /// Answers a card's buttons: yes runs the action, no is reported through drip's exit status.
     static func answer(_ answer: CardAnswer, to action: CardAction, console: Console) {
+        pressed = answer
         switch answer {
         case .yes: perform(action, console: console)
         case .no: declined = true

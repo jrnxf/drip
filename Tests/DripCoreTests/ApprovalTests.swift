@@ -55,13 +55,45 @@ struct ApprovalTests {
         ]))
     }
 
-    @Test func onlyAClickAnswers() {
-        #expect(AgentHook.Approval(status: ExitStatus.shown) == .allow)
-        #expect(AgentHook.Approval(status: ExitStatus.declined) == .deny)
+    @Test func onlyAPressAnswers() {
+        #expect(AgentHook.Approval(pressed: .yes, status: ExitStatus.shown) == .allow)
+        #expect(AgentHook.Approval(pressed: .no, status: ExitStatus.declined) == .deny)
         // Nothing clicked, a click on the card itself, the card taken away: the terminal asks.
-        #expect(AgentHook.Approval(status: ExitStatus.notClicked) == nil)
-        #expect(AgentHook.Approval(status: ExitStatus.usage) == nil)
-        #expect(AgentHook.Approval(status: ExitStatus.noGUISession) == nil)
+        #expect(AgentHook.Approval(pressed: nil, status: ExitStatus.notClicked) == nil)
+        #expect(AgentHook.Approval(pressed: nil, status: ExitStatus.usage) == nil)
+        #expect(AgentHook.Approval(pressed: nil, status: ExitStatus.noGUISession) == nil)
+        // A drip that showed nothing exits 0 too: without a press, that is no answer.
+        #expect(AgentHook.Approval(pressed: nil, status: ExitStatus.shown) == nil)
+        // A press the exit status does not bear out answers nothing either.
+        #expect(AgentHook.Approval(pressed: .yes, status: ExitStatus.notClicked) == nil)
+        #expect(AgentHook.Approval(pressed: .yes, status: ExitStatus.declined) == nil)
+        #expect(AgentHook.Approval(pressed: .no, status: ExitStatus.shown) == nil)
+    }
+
+    /// A stack drops its own permission card before it ever shows when a newer card of the session
+    /// replaced it, or a dismiss came for it: the card is handed back to be noted as missed, nothing
+    /// was pressed, and the terminal asks.
+    @Test func aPermissionCardDroppedBeforeItShowsGivesNoAnswer() throws {
+        let asking = AgentHook.asking(try #require(try AgentHook.card(agent: .claude, payload: Self.claude, in: local([:]))))
+        let settings = StackSettings(mode: .chain, max: 3)
+
+        let replaced = CardStack(settings: settings, cards: [asking])
+        guard case .skipOwn? = replaced.nextRelease(adoptable: [], isReplaced: { $0.id == asking.id }) else {
+            Issue.record("a replaced permission card is skipped, not shown")
+            return
+        }
+        let skipped = replaced.dropWaiting(at: 0)
+        #expect(skipped?.action != nil)
+        #expect(replaced.entries.isEmpty)
+        #expect(replaced.waiting.isEmpty)
+
+        let dismissed = CardStack(settings: settings, cards: [asking])
+        #expect(dismissed.dropWaiting(where: { $0.id == asking.id }).map(\.action) == [asking.action])
+        #expect(dismissed.entries.isEmpty)
+        #expect(dismissed.dropWaiting(where: { _ in true }).isEmpty)
+
+        #expect(AgentHook.Approval(pressed: nil, status: ExitStatus.shown) == nil)
+        #expect(AgentHook.Approval(pressed: nil, status: ExitStatus.notClicked) == nil)
     }
 
     @Test func theSettingIsOffUnlessTurnedOn() throws {

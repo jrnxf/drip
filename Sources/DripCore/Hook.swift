@@ -79,13 +79,15 @@ public enum AgentHook {
             ]).formatted() + "\n"
         }
 
-        /// The answer `drip hook` prints for a permission card's exit status: allowed for a click on
-        /// Allow, denied for one on Deny, and nil when the card went unanswered, which leaves the
-        /// request to the agent's own prompt.
-        public init?(status: Int32) {
-            switch status {
-            case ExitStatus.shown: self = .allow
-            case ExitStatus.declined: self = .deny
+        /// The answer `drip hook` prints for a permission card: allowed only for a press of Allow and
+        /// denied only for one of Deny, each with the exit status it gives. Anything else, such as a
+        /// card that went unclicked, or was replaced or dismissed before it ever showed, is nil, which
+        /// leaves the request to the agent's own prompt. An exit status alone never allows: a drip
+        /// that showed nothing exits 0 too.
+        public init?(pressed: CardAnswer?, status: Int32) {
+            switch (pressed, status) {
+            case (.yes, ExitStatus.shown): self = .allow
+            case (.no, ExitStatus.declined): self = .deny
             default: return nil
             }
         }

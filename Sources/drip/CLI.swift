@@ -11,6 +11,9 @@ protocol CardDisplay {
     /// Hands the cards to a background drip and returns at once, or shows them here when it cannot.
     func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32
 
+    /// The button pressed on a question `show` showed, if any.
+    var pressed: CardAnswer? { get }
+
     /// Checks the cards' sounds and icons, warning about and replacing any that cannot load.
     func prepare(_ cards: [Card], console: Console) -> [Card]
 
@@ -170,7 +173,7 @@ struct DripCLI {
         defer { withExtendedLifetime(watch) {} }
         #endif
         let status = deliver([card], wait: true, remind: false, console: console)
-        guard let approval = AgentHook.Approval(status: status) else {
+        guard let approval = AgentHook.Approval(pressed: display.pressed, status: status) else {
             return status == ExitStatus.notClicked ? ExitStatus.shown : status
         }
         FileHandle.standardOutput.write(Data(approval.output.utf8))
@@ -563,6 +566,8 @@ struct UnavailableDisplay: CardDisplay {
     }
 
     var hasGUISession: Bool { false }
+
+    var pressed: CardAnswer? { nil }
 
     func front(of card: Card) -> WhenFocused.Front {
         WhenFocused.Front(app: false)
