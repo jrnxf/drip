@@ -256,6 +256,16 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             return failure(error, status: ExitStatus.hookFailed, subcommand: HookCommand.configuration.commandName)
         }
     case let .invocation(.setup(command)):
+        if let shell = command.shell {
+            if command.printOnly {
+                return send(["exit": ExitStatus.shown, "message": ShellHook.snippet(for: shell)])
+            }
+            return send([
+                "exit": ExitStatus.setupFailed,
+                "message": "drip: drip setup zsh adds a block to your .zshrc on your Mac, not in this page. "
+                    + "drip setup zsh --print shows it here.",
+            ])
+        }
         guard let agent = command.agent else {
             return send(["exit": ExitStatus.shown, "message": RemoteHook.script])
         }
@@ -278,6 +288,8 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         return send(["exit": 1, "message": "drip: the debug log lives on your Mac, not in this page"])
     case .invocation(.pause), .invocation(.resume):
         return send(["exit": 1, "message": "drip: a pause holds the cards on your Mac, not in this page"])
+    case .invocation(.finished):
+        return send(["exit": ExitStatus.noGUISession, "message": "drip: a finished command is a shell's to report, not this page's"])
     case .invocation(.render), .invocation(.background):
         return send(["exit": ExitStatus.noGUISession, "message": "drip: not in a browser"])
     }

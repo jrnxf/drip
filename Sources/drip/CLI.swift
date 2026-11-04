@@ -101,6 +101,8 @@ struct DripCLI {
             return hook(command)
         case let .invocation(.setup(command)):
             return setup(command)
+        case let .invocation(.finished(command)):
+            return finished(command)
         case let .invocation(.follow(command)):
             DebugLog.process = .follow
             return follow(command)
@@ -178,6 +180,22 @@ struct DripCLI {
         }
         FileHandle.standardOutput.write(Data(approval.output.utf8))
         return ExitStatus.shown
+    }
+
+    /// The card for a slow shell command that ended, if you are not watching its terminal. Exits 0 when
+    /// there is none, and without a GUI session, since the shell hook runs it unseen.
+    private func finished(_ command: FinishedCommand) -> Int32 {
+        let console = Console(quiet: command.quiet)
+        do {
+            guard let card = try ShellHook.card(
+                command: command.command, status: command.status, seconds: command.seconds,
+                in: surroundings(console))
+            else { return ExitStatus.shown }
+            let status = deliver([card], wait: false, remind: false, console: console)
+            return status == ExitStatus.noGUISession ? ExitStatus.shown : status
+        } catch {
+            return report(error, console, subcommand: FinishedCommand.configuration.commandName)
+        }
     }
 
     /// Shows the cards of agents on another machine until stopped, or prints the launchd agent that
@@ -290,6 +308,26 @@ struct DripCLI {
 
     /// Adds drip's hooks to the agent's settings, or prints them.
     private func setup(_ command: SetupCommand) -> Int32 {
+        if let shell = command.shell {
+            if command.printOnly {
+                print(ShellHook.snippet(for: shell), terminator: "")
+                return ExitStatus.shown
+            }
+            let console = Console()
+            switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(shell) {
+            case let .done(lines, warnings):
+                warnings.forEach(console.warn)
+                lines.forEach { print($0) }
+                return ExitStatus.shown
+            case let .refused(reason, snippet):
+                console.error(reason)
+                print(snippet, terminator: "")
+                return ExitStatus.setupFailed
+            case let .failed(message):
+                console.error(message)
+                return ExitStatus.setupFailed
+            }
+        }
         guard let agent = command.agent else {
             print(RemoteHook.script, terminator: "")
             return ExitStatus.shown
