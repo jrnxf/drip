@@ -1059,6 +1059,9 @@ check(4, "sending a prompt") { expect in
     expect.within(1.5, wait(3) { !showing }, "sending a prompt takes it away")
 }
 check(4, "a done card after a waiting one") { expect in
+    // The plain click in check 3 leaves Terminal, the hook's terminal, in front, and a done card
+    // from the terminal in front stays quiet by default, so another app comes forward first.
+    bringForward(elsewhere)
     let session = fresh("claude")
     claude("PermissionRequest", ["session_id": session, "tool_name": "Bash", "tool_input": ["command": "ls"], "tool_use_id": "toolu_x"])
     expect.within(3, wait(3) { showing }, "the permission card shows")
