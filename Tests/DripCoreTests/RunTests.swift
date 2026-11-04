@@ -11,9 +11,13 @@ import Glibc
 // One at a time: a test changes how this process handles SIGINT.
 @Suite(.serialized) struct RunTests {
     @Test func duration() {
-        #expect(RunSummary.duration(seconds: 0) == "0.0s")
-        #expect(RunSummary.duration(seconds: 3.14) == "3.1s")
-        #expect(RunSummary.duration(seconds: 9.99) == "9.9s")
+        #expect(RunSummary.duration(seconds: 0) == "0s")
+        #expect(RunSummary.duration(seconds: -1) == "0s")
+        #expect(RunSummary.duration(seconds: 3.14) == "3s")
+        #expect(RunSummary.duration(seconds: 5.0) == "5s")
+        #expect(RunSummary.duration(seconds: 9.99) == "9s")
+        #expect(RunSummary.duration(seconds: 12.4) == "12s")
+        #expect(RunSummary.duration(seconds: 65) == "1m 5s")
         #expect(RunSummary.duration(seconds: 10) == "10s")
         #expect(RunSummary.duration(seconds: 42.7) == "42s")
         #expect(RunSummary.duration(seconds: 60) == "1m 0s")

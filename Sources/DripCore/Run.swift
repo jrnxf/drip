@@ -22,13 +22,9 @@ public enum RunSummary {
         return CardText.truncate(commandLine, limit: Defaults.runTitleLimit - suffix.count) + suffix
     }
 
-    /// A wall time such as `3.1s`, `42s`, `3m 12s` or `1h 4m 0s`.
+    /// A wall time in whole seconds, such as `3s`, `42s`, `3m 12s` or `1h 4m 0s`.
     public static func duration(seconds: Double) -> String {
-        if seconds < 10 {
-            let tenths = (max(seconds, 0) * 10).rounded(.down) / 10
-            return "\(tenths)s"
-        }
-        let total = Int(seconds.rounded(.down))
+        let total = Int(max(seconds, 0).rounded(.down))
         let hours = total / 3600
         let minutes = total % 3600 / 60
         let remainder = total % 60
