@@ -383,11 +383,24 @@ public struct HeldCards {
     }
 }
 
-/// What the screen shows of the cards held while it was locked: up to two as they are, and three or
-/// more as one card that sums them up, so the unlock is not a long line of cards.
+/// What the screen shows of the cards held while it was locked: the newest few play back as they
+/// are, and any older ones are summed up, so the unlock is not a long line of cards.
 public enum MissedSummary {
     /// The fewest held cards that are summed up into one.
     public static let threshold = 3
+
+    /// The most held cards that play back on their own; the older ones are summed up.
+    public static let replayLimit = 5
+
+    /// The cards to show on unlock, from the held cards oldest first: the newest `replayLimit` of
+    /// them, newest first, since what happened last is likely what matters now, then the older ones
+    /// summed up, last because they are the oldest. With `replayLimit` or fewer there is no summary.
+    public static func replay(_ held: [Card]) -> [Card] {
+        let replayed = held.suffix(replayLimit)
+        let older = Array(held.dropLast(replayed.count))
+        // One or two older cards show as they are, newest first like the rest.
+        return replayed.reversed() + (older.count < threshold ? older.reversed() : cards(for: older))
+    }
 
     public static func cards(for held: [Card]) -> [Card] {
         guard held.count >= threshold, var card = mostSevere(held) else { return held }
