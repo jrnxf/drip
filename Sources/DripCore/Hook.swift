@@ -49,6 +49,48 @@ public enum AgentHook {
         public func icon(installed: (String) -> Bool) -> Icon {
             apps.first(where: installed).map(Icon.app) ?? mark.map { .mark($0.name) } ?? AgentHook.fallbackIcon
         }
+
+        /// Whether the agent holds its own permission prompt until its `PermissionRequest` hook
+        /// returns: Codex asks only once its hooks decided nothing, while Claude Code shows its
+        /// dialog at once and takes whichever answer comes first.
+        public var holdsPromptForHook: Bool {
+            self == .codex
+        }
+    }
+
+    /// An answer to a permission request from the card's buttons, which `drip hook` prints for the
+    /// agent to act on.
+    public enum Approval: Equatable, Sendable {
+        case allow, deny
+
+        /// What the agent is told when a request was denied from the card.
+        public static let denied = "Denied from the drip card."
+
+        /// The `PermissionRequest` hook output that answers the request, in the shape Claude Code and
+        /// Codex both read: `hookSpecificOutput.decision.behavior`, with a message for a denial.
+        public var output: String {
+            var decision = [JSONMember("behavior", .string(self == .allow ? "allow" : "deny"))]
+            if self == .deny { decision.append(JSONMember("message", .string(Self.denied))) }
+            return JSONValue.object([
+                JSONMember("hookSpecificOutput", .object([
+                    JSONMember("hookEventName", .string("PermissionRequest")),
+                    JSONMember("decision", .object(decision)),
+                ])),
+            ]).formatted() + "\n"
+        }
+
+        /// The answer `drip hook` prints for a permission card: allowed only for a press of Allow and
+        /// denied only for one of Deny, each with the exit status it gives. Anything else, such as a
+        /// card that went unclicked, or was replaced or dismissed before it ever showed, is nil, which
+        /// leaves the request to the agent's own prompt. An exit status alone never allows: a drip
+        /// that showed nothing exits 0 too.
+        public init?(pressed: CardAnswer?, status: Int32) {
+            switch (pressed, status) {
+            case (.yes, ExitStatus.shown): self = .allow
+            case (.no, ExitStatus.declined): self = .deny
+            default: return nil
+            }
+        }
     }
 
     /// The icon of an agent with no app installed and no bundled mark: a plain terminal, so the ring
@@ -78,10 +120,14 @@ public enum AgentHook {
         public var isPermissionNotice: Bool
         /// The session's working directory, which the title names; nil when the payload has none.
         public var directory: String?
+        /// Whether the event is a permission request the agent takes an answer to from its hook, so
+        /// the card can ask it with Allow and Deny when `approve` is on.
+        public var asksPermission: Bool
 
         public init(
             kind: String, title: String, detail: String? = nil, id: String? = nil, stays: Bool = false,
-            waitsOn: String? = nil, isPermissionNotice: Bool = false, directory: String? = nil
+            waitsOn: String? = nil, isPermissionNotice: Bool = false, directory: String? = nil,
+            asksPermission: Bool = false
         ) {
             self.kind = kind
             self.title = title
@@ -91,6 +137,7 @@ public enum AgentHook {
             self.waitsOn = waitsOn
             self.isPermissionNotice = isPermissionNotice
             self.directory = directory
+            self.asksPermission = asksPermission
         }
 
         /// `flags` with what the event says where the command line says nothing: the session's id
@@ -254,11 +301,12 @@ public enum AgentHook {
         let id = string("session_id").map { "\(agent.rawValue):\($0)" }
         func card(
             _ kind: Preset, _ title: String, _ detail: String?, stays: Bool = false, waitsOn: String? = nil,
-            isPermissionNotice: Bool = false
+            isPermissionNotice: Bool = false, asksPermission: Bool = false
         ) -> Outcome {
             .card(Event(
                 kind: kind.name, title: "\(project()) \(title)", detail: detail, id: id, stays: stays,
-                waitsOn: stays ? waitsOn : nil, isPermissionNotice: isPermissionNotice, directory: directory))
+                waitsOn: stays ? waitsOn : nil, isPermissionNotice: isPermissionNotice, directory: directory,
+                asksPermission: asksPermission))
         }
         func clear(tool: String? = nil, alsoTool: String? = nil, keyed: Bool = false, startsTurn: Bool = false) -> Outcome {
             // A clear for one tool call that names none could take the wrong card: nothing then.
@@ -278,7 +326,7 @@ public enum AgentHook {
             case "PermissionRequest":
                 return card(
                     .info, "needs you", request(object, agent: agent, directory: directory), stays: true,
-                    waitsOn: string("tool_use_id") ?? toolCall(object, scope: "prompt_id"))
+                    waitsOn: string("tool_use_id") ?? toolCall(object, scope: "prompt_id"), asksPermission: true)
             case "Stop":
                 return card(.ok, "is done", string("last_assistant_message").map(plainText))
             case "StopFailure":
@@ -322,7 +370,7 @@ public enum AgentHook {
             case "PermissionRequest":
                 return card(
                     .info, "needs you", request(object, agent: agent, directory: directory), stays: true,
-                    waitsOn: toolCall(object, scope: "turn_id"))
+                    waitsOn: toolCall(object, scope: "turn_id"), asksPermission: true)
             case "Stop":
                 return card(.ok, "is done", string("last_assistant_message").map(plainText))
             case "PostToolUse":

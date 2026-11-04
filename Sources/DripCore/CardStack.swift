@@ -277,10 +277,11 @@ public final class CardStack {
         return tucked.count != count
     }
 
-    /// Forgets this drip's own card still to drop in at `index` of `waiting`.
-    public func dropWaiting(at index: Int) {
-        guard waiting.indices.contains(index) else { return }
-        waiting.remove(at: index)
+    /// Forgets this drip's own card still to drop in at `index` of `waiting`, and returns it.
+    @discardableResult
+    public func dropWaiting(at index: Int) -> Card? {
+        guard waiting.indices.contains(index) else { return nil }
+        return waiting.remove(at: index)
     }
 
     /// Forgets the card that gave way at `index` of `tucked`.
@@ -290,12 +291,12 @@ public final class CardStack {
     }
 
     /// Forgets this drip's own cards still to drop in for which `drops` holds, as when they were
-    /// dismissed before they showed. Returns whether any went.
+    /// dismissed before they showed. Returns the cards that went.
     @discardableResult
-    public func dropWaiting(where drops: (Card) -> Bool) -> Bool {
-        let count = waiting.count
+    public func dropWaiting(where drops: (Card) -> Bool) -> [Card] {
+        let dropped = waiting.filter(drops)
         waiting.removeAll(where: drops)
-        return waiting.count != count
+        return dropped
     }
 
     /// Where each card that holds a place in the stack sits: its capsule's top, from the notch down,

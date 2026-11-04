@@ -381,7 +381,7 @@ final class StackPresenter: CardPresenting {
             own = true
         case .skipOwn:
             // Replaced since it was queued: the drop's count goes down instead.
-            stack.dropWaiting(at: 0)
+            neverShown(stack.dropWaiting(at: 0))
             return
         case let .enter(index):
             let found = others.remove(at: index)
@@ -584,7 +584,7 @@ final class StackPresenter: CardPresenting {
                     if let card = stack.nextOwn() { enter(card, own: true) }
                     return
                 case .skipOwn:
-                    stack.dropWaiting(at: 0)
+                    neverShown(stack.dropWaiting(at: 0))
                     return
                 case .tucked:
                     if let tucked = stack.nextTucked() { enter(tucked.card, own: tucked.own) }
@@ -787,12 +787,20 @@ final class StackPresenter: CardPresenting {
         for entry in stack.live where dismissals.dismisses(id: entry.card.id, since: arrivals[entry.id] ?? queuedAt) {
             dismiss(entry)
         }
-        stack.dropWaiting { dismissals.dismisses(id: $0.id, since: queuedAt) }
+        for card in stack.dropWaiting(where: { dismissals.dismisses(id: $0.id, since: queuedAt) }) {
+            neverShown(card)
+        }
         for (index, tucked) in stack.tucked.enumerated().reversed()
             where dismissals.dismisses(id: tucked.card.id, since: arrivals[tucked.entry] ?? queuedAt)
         {
             stack.dropTucked(at: index)
         }
+    }
+
+    /// Notes this drip's own card that went before it ever showed: a button on it was never clicked,
+    /// and a question on it goes unanswered.
+    private func neverShown(_ card: Card?) {
+        if card?.action != nil { CardActions.missed = true }
     }
 
     /// When a pause starts while a background drip shows cards, as for a screen share, takes them

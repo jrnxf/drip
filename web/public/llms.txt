@@ -4,7 +4,10 @@
 
 ## Docs
 
-- [README: install, usage, flags, config](https://github.com/jrnxf/drip#readme)
+- [README: install, quick start, usage](https://github.com/jrnxf/drip#readme)
+- [Every flag, exit code and the history](https://github.com/jrnxf/drip/blob/main/docs/usage.md)
+- [Every config key](https://github.com/jrnxf/drip/blob/main/docs/config.md)
+- [Coding agent hooks, every event and card](https://github.com/jrnxf/drip/blob/main/docs/agents.md)
 - [Claude Code, Codex and Gemini CLI notifications](https://drip.jrnxf.co/claude-code-notifications)
 - [Alert when a command finishes](https://drip.jrnxf.co/notify-when-command-finishes)
 - [Compared with terminal-notifier, osascript, alerter](https://drip.jrnxf.co/vs)

@@ -146,7 +146,7 @@ struct ResolveTests {
             command: ["false"], status: 1, seconds: 0.01, flags: CardFlags(seconds: 2, sound: Sound.none))
         #expect(card.kind == "fail")
         #expect(card.title == "false failed (exit 1)")
-        #expect(card.detail == "0.0s")
+        #expect(card.detail == "0s")
         #expect(card.seconds == 2)
         #expect(card.sound == Sound.none)
     }
