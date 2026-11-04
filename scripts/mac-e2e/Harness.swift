@@ -1216,8 +1216,11 @@ check(7, "pausing") { expect in
 
 // 8. The pointer resting on a stack: it holds for 5 seconds, then lets go; moving it holds again.
 check(8, "the pointer resting on a stack") { expect in
+    // Each card counts down 4 s: the three come up one run of drip after another, which on a slow Mac
+    // takes over 2 s, and the top card must still be there when the pointer comes onto it. Once it
+    // has gone, the next slides under a still pointer, which never holds the stack.
     for name in ["one", "two", "three"] {
-        dripRun(["ok", "e2e stack \(name)", "-d", "counts down 2 s", "--seconds", "2", "--id", fresh("stack")])
+        dripRun(["ok", "e2e stack \(name)", "-d", "counts down 4 s", "--seconds", "4", "--id", fresh("stack")])
     }
     var cards: [CGRect] = []
     _ = wait(6) {
@@ -1229,14 +1232,14 @@ check(8, "the pointer resting on a stack") { expect in
     point(at: CGPoint(x: top.midX, y: top.midY))
     let rested = Date()
     keep("stack", "Three separate black cards stacked one under another, titled 'e2e stack one', 'e2e stack two' and "
-        + "'e2e stack three' from the top, each with the grey detail 'counts down 2 s'. The top card, under the "
+        + "'e2e stack three' from the top, each with the grey detail 'counts down 4 s'. The top card, under the "
         + "pointer, shows a grey disc with a white x on the left and a white arrow on the right; the other two show "
         + "a green check icon on the left and a green ring on the right.", around: cards)
     pause(4.6 - Date().timeIntervalSince(rested))
     expect.expect(cardsOnScreen().count == 3, "all three hold for the first 5 s of the rest")
     let went = wait(9, { !showing }) != nil
     let after = Date().timeIntervalSince(rested)
-    expect.expect(went && after > 5 && after < 10, String(format: "then they count down and go (%.1f s after the rest began)", after))
+    expect.expect(went && after > 5 && after < 12, String(format: "then they count down and go (%.1f s after the rest began)", after))
 }
 check(8, "moving the pointer after a rest") { expect in
     dripRun(["ok", "e2e held again", "-d", "counts down 2 s", "--seconds", "2", "--id", fresh("stack")])
