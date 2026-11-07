@@ -114,6 +114,10 @@ jobs:
           set -- -c release --arch arm64 --arch x86_64
           swift build "$@"
           cp "$(swift build "$@" --show-bin-path)/drip" drip
+      # Strip the local symbols of both slices before signing, since strip on a signed binary breaks
+      # its signature. -x keeps the global symbols the executable exports.
+      - name: Strip
+        run: strip -x drip
       # Both slices signed with drip's own self-signed certificate, .github/signing/certificate.pem,
       # under the fixed identifier co.jrnxf.drip, so every release has the same designated
       # requirement: that identifier and that certificate, not the binary's hash. macOS ties a
