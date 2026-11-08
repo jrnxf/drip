@@ -2,11 +2,10 @@
 
 ## Permissions
 
-**No permissions.** drip asks macOS for none, but one, and only to follow
-[agents on another machine](remote.md) in Ghostty: the first click on such a card
-asks to let drip control Ghostty, to bring forward the terminal that shows herdr. It needs no
-Accessibility, Screen Recording or Notifications permission and adds no login item. Nothing runs in the background but the
-drip that is showing queued cards.
+**No permissions.** drip uses only public APIs that need no permission, so a card needs no macOS
+privacy grant. A custom icon or sound file in a protected folder can trigger a Files and Folders
+prompt. drip adds no login item, and nothing runs in the background but the drip that is showing
+queued cards. A command you give `--on-click` runs as you, and asks for what it needs itself.
 
 **Which screen.** A card shows on the screen the pointer is on, with or without a notch, and falls
 back to the main screen. It also shows over full-screen apps and on every Space.
@@ -37,7 +36,7 @@ its terminal was in front. It is off. Turn it on with `debug = true` in the conf
 add one line for each decision about an agent's card, and for each click on one:
 
 ```
-2026-10-27T10:20:51.123+01:00 follow card show agent=claude machine=devbox kind=ok id=claude:1a2b3c4d reason=not_focused_or_away waits=false when_focused=skip away_after=60.0 idle_seconds=2.1 frontmost=com.mitchellh.ghostty activate=com.mitchellh.ghostty app_in_front=true pane=herdr:w1:p2 herdr_machine=devbox pane_showing=false query="herdr pane get w1:p2" answer=not_showing query_ms=412
+2026-10-27T10:20:51.123+01:00 follow card show agent=claude machine=devbox kind=ok id=claude:1a2b3c4d reason=not_focused_or_away waits=false when_focused=skip away_after=60.0 idle_seconds=2.1 frontmost=com.mitchellh.ghostty activate=com.mitchellh.ghostty app_in_front=true remote_pane_unknown=true
 ```
 
 `drip debug` prints the log and `drip debug --clear` empties it. It is `debug.log` next to the
@@ -55,11 +54,16 @@ A line is `time process event decision key=value ...`. `process` is `hook`, `fol
 - the first 8 characters of the session id;
 - the settings that decided: `when_focused`, `away_after`, `agent_cards`, `done_after`, and `DRIP_HOOK`;
 - what drip noticed: the bundle identifier of the frontmost app and of the app a click brings
-  forward, seconds since the keyboard or mouse was last used (both on every card line, `unknown` when drip did not ask, and the frontmost `none` when no app is in front), `topmost_visible`, the terminal when its window is on top of a display, else `none`, whether the agent's pane is in front, and, for a remote agent, `machine_selected`, whether your herdr window shows its machine;
-- the pane's id (`herdr:w1:p2`, `tmux:%3`), the herdr machine, the query run to ask whether it is in
-  front (`herdr pane get w1:p2`, or `tmux display-message`), its answer and how long it took;
-- for a click: what drip tried to bring forward, whether macOS refused it and why, and whether
-  selecting the pane worked.
+  forward, seconds since the keyboard or mouse was last used (both on every card line, `unknown`
+  when drip did not ask, and the frontmost `none` when no app is in front), `topmost_visible`, the
+  terminal when its window is on top of a display, else `none`, whether the agent's tmux pane is in
+  front, and, for a remote agent, `remote_pane_unknown=true`, since drip cannot tell which pane
+  shows on another machine;
+- the tmux pane's id (`tmux:%3`), the query run to ask whether it is in front (`tmux
+  display-message`), its answer and how long it took;
+- for a click: what drip tried to bring forward, whether macOS refused it and why, whether
+  selecting the tmux pane worked, and, for an `--on-click` command, an `on_click` line with
+  `result=ok` or `result=failed` and a `reason`, never what the command printed.
 
 It never records a card's title or detail, an agent's message or prompt, a tool's name or input, a
 command, a folder or file path from an agent, or a hook payload, and it holds no socket path or

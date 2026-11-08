@@ -113,6 +113,11 @@ public struct CardOptions: ParsableArguments {
         valueName: "bundle-id|none"))
     var activate: String?
 
+    @Option(name: .customLong("on-click"), help: ArgumentHelp(
+        "A shell command a click on the card runs, after it brings --activate forward. It reads the card on stdin as one line of JSON.",
+        valueName: "command"))
+    var onClick: String?
+
     @Flag(help: "Keep the card on screen until it is clicked, a newer card with the same --id replaces it, or 10 minutes pass. drip still returns at once.")
     var stay = false
 
@@ -169,6 +174,9 @@ public struct CardOptions: ParsableArguments {
         if let activate, activate != CardActivation.none, !CardActivation.isBundleIdentifier(activate) {
             throw ValidationError("--activate: '\(activate)' is not a bundle identifier such as com.apple.Terminal")
         }
+        if let onClick, onClick.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw ValidationError("--on-click needs a command")
+        }
     }
 
     /// Throws when the options ask a question, which `drip run` and `drip hook` cannot: nothing reads
@@ -192,7 +200,8 @@ public struct CardOptions: ParsableArguments {
         return CardFlags(
             detail: detail, seconds: seconds, sound: sound,
             icon: icon.map { $0.resolved(from: directory) }, color: color, stay: stay, wait: wait, quiet: quiet,
-            open: target, button: label, decline: open == nil ? no : nil, id: id, activate: activate)
+            open: target, button: label, decline: open == nil ? no : nil, id: id, activate: activate,
+            onClick: onClick)
     }
 
     /// What drip warns about before it shows the card: options that do nothing.
@@ -238,13 +247,17 @@ public struct CardFlags: Equatable {
     public var id: String?
     /// A bundle identifier, or `none`.
     public var activate: String?
+    /// The shell command a click on the card runs.
+    public var onClick: String?
 
     public init(
         detail: String? = nil, seconds: Double? = nil, sound: Sound? = nil, icon: Icon? = nil,
         color: CardColor? = nil, size: CardSize? = nil, motion: Motion? = nil, stay: Bool = false,
         wait: Bool = false, quiet: Bool = false,
-        open: String? = nil, button: String? = nil, decline: String? = nil, id: String? = nil, activate: String? = nil
+        open: String? = nil, button: String? = nil, decline: String? = nil, id: String? = nil, activate: String? = nil,
+        onClick: String? = nil
     ) {
+        self.onClick = onClick
         self.open = open
         self.button = button
         self.decline = decline
@@ -303,6 +316,7 @@ public struct DripCommand: ParsableCommand {
           drip warn "Deploy to prod?" --yes Deploy --no Cancel && ./deploy.sh
           drip fail "deploy failed" --stay
           drip info "my-app needs you" --stay --icon app:com.openai.chat
+          drip ok "tests passed" --on-click 'jq -r .title >>~/clicked.log'
           drip setup claude
           drip setup zsh
           drip follow devbox
@@ -549,7 +563,7 @@ public struct FollowCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "follow",
         abstract: "Show the cards of coding agents on another machine, over ssh.",
-        usage: "drip follow <ssh-target> [--max-age <duration>] [--activate <bundle-id>] [--herdr-machine <label>] [--queue <path>] [--launchd]",
+        usage: "drip follow <ssh-target> [--max-age <duration>] [--activate <bundle-id>] [--on-click <command>] [--queue <path>] [--launchd]",
         discussion: """
             Reads the events that drip-remote-hook queues on the machine, over ssh with no prompts, and \
             shows each one's card as drip hook would on this Mac, by the same config and DRIP_HOOK. \
@@ -576,10 +590,10 @@ public struct FollowCommand: ParsableCommand {
         valueName: "bundle-id|none"))
     public var activate: String?
 
-    @Option(name: .customLong("herdr-machine"), help: ArgumentHelp(
-        "The machine as herdr on this Mac saved it, which a click focuses the agent's tab on. (default: the one herdr saved for the ssh target, else its host)",
-        valueName: "label"))
-    var herdrMachineName: String?
+    @Option(name: .customLong("on-click"), help: ArgumentHelp(
+        "A shell command a click on a card runs on this Mac, after it brings --activate forward. It reads the card on stdin as one line of JSON, with the machine and the variables DRIP_FORWARD_ENV names there.",
+        valueName: "command"))
+    public var onClick: String?
 
     @Option(help: ArgumentHelp(
         "The queue on the machine. (default: $DRIP_QUEUE there, else drip/remote.jsonl in $XDG_STATE_HOME or ~/.local/state)",
@@ -592,29 +606,6 @@ public struct FollowCommand: ParsableCommand {
     /// Seconds an event may be old when it arrives.
     public var maxAge: Double {
         maxAgeText.flatMap(DripPause.duration) ?? Self.defaultMaxAge
-    }
-
-    /// The saved herdr machine a click focuses the agent's tab on: `--herdr-machine`, else the
-    /// target's host, without its user or port. Nil when it is no machine label.
-    public var herdrMachine: String? {
-        herdrMachine(savedMachines: { nil })
-    }
-
-    /// The saved herdr machine a click focuses the agent's tab on and drip asks whether you watch
-    /// the agent's pane: `--herdr-machine`, else the one `savedMachines`, what `herdr machine list
-    /// --json` prints, saved for the target, else the target's host. Nil when it is no machine label.
-    public func herdrMachine(savedMachines: () -> String?) -> String? {
-        if let herdrMachineName { return TerminalPane.isMachineLabel(herdrMachineName) ? herdrMachineName : nil }
-        var target = target ?? ""
-        if target.hasPrefix("ssh://") { target = String(target.dropFirst(6)) }
-        var host = String(target.split(separator: "@").last ?? "")
-        host = String(host.split(separator: ":").first ?? "")
-        if let saved = savedMachines(), let machine = TerminalPane.herdrMachine(
-            forSSHTarget: target, host: host.isEmpty ? nil : host, inList: saved)
-        {
-            return machine
-        }
-        return TerminalPane.isMachineLabel(host) ? host : nil
     }
 
     public init() {}
@@ -634,8 +625,8 @@ public struct FollowCommand: ParsableCommand {
         if let activate, activate != CardActivation.none, !CardActivation.isBundleIdentifier(activate) {
             throw ValidationError("--activate: '\(activate)' is not a bundle identifier such as com.apple.Terminal")
         }
-        if let herdrMachineName, !TerminalPane.isMachineLabel(herdrMachineName) {
-            throw ValidationError("--herdr-machine: '\(herdrMachineName)' is not a herdr machine label")
+        if let onClick, onClick.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw ValidationError("--on-click needs a command")
         }
         if let queue, queue.isEmpty || queue.contains("\n") {
             throw ValidationError("--queue needs a path")
@@ -1006,7 +997,7 @@ extension CommandLineParser {
     /// command: in `drip run -s 3 make`, 3 is the value and make the command.
     static let valueOptions: Set<String> = [
         "-d", "--detail", "-s", "--seconds", "--sound", "--icon", "--color", "--open", "--button",
-        "--yes", "--no", "--id", "--activate",
+        "--yes", "--no", "--id", "--activate", "--on-click",
     ]
 
     /// The first argument before `--` that starts with a dash but is text, not an option: it holds

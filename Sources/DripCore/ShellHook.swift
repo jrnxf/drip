@@ -37,10 +37,6 @@ public enum ShellHook {
     public static let begin = "# >>> drip: a card when a slow command finishes >>>"
     public static let end = "# <<< drip <<<"
 
-    /// The environment variable that keeps the hook silent: an orchestrator sets it for the workers it
-    /// starts, whose finished commands are no news to you.
-    public static let silencedBy = "FM_TASK_ID"
-
     /// The block setup adds to the rc file, begin and end lines included, ending with a newline.
     public static func snippet(for shell: Shell) -> String {
         switch shell {
@@ -69,7 +65,7 @@ public enum ShellHook {
             #                     anything but a number leaves them off
             #   DRIP_SLOW_IGNORE  more commands to leave out, space-separated, besides the editors, pagers,
             #                     ssh and REPLs named below
-            # Silent where drip is missing, and where \#(silencedBy) is set or DRIP_HOOK=off.
+            # Silent where drip is missing, and where DRIP_HOOK=off.
             if zmodload zsh/datetime 2>/dev/null && autoload -Uz add-zsh-hook 2>/dev/null; then
               typeset -g __drip_command __drip_expanded
               typeset -gF __drip_start
@@ -111,7 +107,7 @@ public enum ShellHook {
                 local after=${DRIP_SLOW_AFTER:-\#(defaultAfter)}
                 [[ $after == <->(|.<->) ]] || return $code
                 (( after > 0 && seconds >= after )) || return $code
-                [[ -z ${\#(silencedBy)-} && ${DRIP_HOOK-} != off ]] || return $code
+                [[ ${DRIP_HOOK-} != off ]] || return $code
                 (( $+commands[drip] )) || return $code
                 __drip_ignored $expanded && return $code
                 command drip __finished --status $code --seconds $seconds -- "$command" >/dev/null 2>&1 &!
@@ -218,17 +214,17 @@ extension SetupInstaller {
 }
 
 extension ShellHook {
-    /// The card for a command that ended, or nil for none: no GUI session, `DRIP_HOOK=off` or the
-    /// orchestrator's variable keep it silent, and so does watching the terminal it ran in, where the
+    /// The card for a command that ended, or nil for none: no GUI session or `DRIP_HOOK=off` keep it
+    /// silent, and so does watching the terminal it ran in, where the
     /// pane and the app are drip's `Front`, whatever `when_focused` says, except `show`, which shows
-    /// every card. A terminal that is the frontmost app counts as watched unless tmux or herdr says
+    /// every card. A terminal that is the frontmost app counts as watched unless tmux says
     /// the command's own pane is not the one showing.
     public static func card(
         command: String, status: Int32, seconds: Double, flags: CardFlags = CardFlags(),
         in surroundings: AgentHook.Surroundings
     ) throws -> Card? {
         let environment = surroundings.environment
-        guard surroundings.hasGUISession, environment[silencedBy].map({ $0.isEmpty }) ?? true,
+        guard surroundings.hasGUISession,
               try AgentHook.setting(environment: environment) != .off
         else { return nil }
         let resolver = try surroundings.resolver(try surroundings.loadConfig(environment), environment)

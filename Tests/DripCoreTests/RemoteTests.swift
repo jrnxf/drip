@@ -9,7 +9,7 @@ import Testing
 /// Agents on another machine: the line `drip-remote-hook` queues, and how `drip follow` reads it.
 struct RemoteEventTests {
     static let line = #"""
-        {"drip":1,"time":1800000000,"agent":"claude","machine":"devbox","env":{"DRIP_HOOK":"attention","CLAUDE_CODE_SESSION_ATTENDED":"","CLAUDE_CODE_ENTRYPOINT":"cli","HERDR_PANE_ID":"w1:p2","HERDR_TAB_ID":"w1:t3","HERDR_WORKSPACE_ID":"w1","OTHER":"x"},"payload":{"session_id":"s1","cwd":"/home/user/api", "hook_event_name":"Stop","last_assistant_message":"Done."} }
+        {"drip":1,"time":1800000000,"agent":"claude","machine":"devbox","env":{"DRIP_HOOK":"attention","CLAUDE_CODE_SESSION_ATTENDED":"","CLAUDE_CODE_ENTRYPOINT":"cli","HERDR_PANE_ID":"w1:p2","OTHER":"x"},"forward":{"HERDR_PANE_ID":"w1:p2","WEZTERM_PANE":"7"},"payload":{"session_id":"s1","cwd":"/home/user/api", "hook_event_name":"Stop","last_assistant_message":"Done."} }
         """#
 
     @Test func aQueueLineIsAnEvent() throws {
@@ -18,10 +18,9 @@ struct RemoteEventTests {
         #expect(event.agent == .claude)
         #expect(event.machine == "devbox")
         // Empty values and variables the hook does not pass are left out.
-        #expect(event.environment == [
-            "DRIP_HOOK": "attention", "CLAUDE_CODE_ENTRYPOINT": "cli", "HERDR_PANE_ID": "w1:p2",
-            "HERDR_TAB_ID": "w1:t3", "HERDR_WORKSPACE_ID": "w1",
-        ])
+        #expect(event.environment == ["DRIP_HOOK": "attention", "CLAUDE_CODE_ENTRYPOINT": "cli"])
+        // What DRIP_FORWARD_ENV named there is kept apart, for a click command only.
+        #expect(event.forwarded == ["HERDR_PANE_ID": "w1:p2", "WEZTERM_PANE": "7"])
         #expect(try AgentHook.event(agent: .claude, payload: event.payload).title == "api is done")
     }
 
@@ -53,23 +52,29 @@ struct RemoteEventTests {
         ])
     }
 
-    @Test func aClickFocusesTheAgentsWorkspaceAndTabOnItsMachine() throws {
-        let origin = try RemoteEvent(line: Self.line).origin(activate: "com.mitchellh.ghostty", herdrMachine: "devbox")
+    @Test func aClickRunsOnlyFollowsCommandWithTheMachineAndWhatItForwarded() throws {
+        let event = try RemoteEvent(line: Self.line)
+        let origin = event.origin(activate: "com.mitchellh.ghostty", onClick: "my-focus")
         #expect(origin.machine == "devbox")
         #expect(origin.activate == "com.mitchellh.ghostty")
-        let pane = try #require(origin.pane)
-        #expect(pane.selectCommands == [
-            ["herdr", "--machine", "devbox", "workspace", "focus", "w1"],
-            ["herdr", "--machine", "devbox", "tab", "focus", "w1:t3"],
-        ])
-        // That machine's herdr says whether the agent's pane is in front there.
-        #expect(pane.herdrShowingCommand == ["herdr", "--machine", "devbox", "pane", "get", "w1:p2"])
-        #expect(pane.hostName == "devbox")
+        #expect(origin.click == OnClick(
+            command: "my-focus", machine: "devbox", environment: ["HERDR_PANE_ID": "w1:p2", "WEZTERM_PANE": "7"]))
         #expect(origin.qualified("claude:s1") == "claude:s1@devbox")
-        // Outside herdr, or without a machine to name: nothing to focus.
-        #expect(RemoteEvent(time: 0, agent: .codex, machine: "devbox", environment: [:], payload: "{}")
-            .origin(activate: nil, herdrMachine: "devbox").pane == nil)
-        #expect(try RemoteEvent(line: Self.line).origin(activate: nil, herdrMachine: nil).pane == nil)
+        // Without drip follow --on-click, a click runs nothing.
+        #expect(event.origin(activate: nil, onClick: nil).click == nil)
+    }
+
+    @Test func aQueuedEventCannotSetWhatAClickRuns() throws {
+        // A queue line can hold anything: a command, a path to open, a pane, an app to bring forward.
+        let line = #"""
+            {"drip":1,"time":1800000000,"agent":"claude","machine":"devbox","on_click":"rm -rf ~","onClick":{"command":"rm -rf ~"},"command":"touch /tmp/owned","open":"/Applications/Calculator.app","activate":"com.apple.Terminal","pane":"%1","env":{"DRIP_HOOK":"attention","TMUX":"/tmp/t,1,0","TMUX_PANE":"%1","__CFBundleIdentifier":"com.apple.Terminal","DRIP_FORWARD_ENV":"HOME","DRIP_ACTIVATE":"com.apple.Terminal"},"forward":{"bad name":"x","OK":"line\nbreak","LONG":"\#(String(repeating: "x", count: 300))","FINE":"w1:p2"},"payload":{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"Stop","last_assistant_message":"Done."}}
+            """#
+        let event = try RemoteEvent(line: line)
+        // None of the Mac's own variables come from the queue: no pane, no app, no forwarding.
+        #expect(event.environment == ["DRIP_HOOK": "attention"])
+        // Forwarded values are data: bad names, control characters and long values are left out.
+        #expect(event.forwarded == ["FINE": "w1:p2"])
+        #expect(event.origin(activate: nil, onClick: nil).click == nil)
     }
 
     @Test func anEventFromAheadOfThisClockIsNew() throws {
@@ -170,28 +175,21 @@ struct RemoteEventTests {
         }
         #expect(plain.target == "me@devbox")
         #expect(plain.maxAge == FollowCommand.defaultMaxAge)
-        #expect(plain.herdrMachine == "devbox")
+        #expect(plain.onClick == nil)
         #expect(plain.queue == nil)
         guard case let .invocation(.follow(full)) = CommandLineParser.parse([
-            "follow", "devbox", "--max-age", "1h", "--herdr-machine", "build-box", "--activate", "com.apple.Terminal",
+            "follow", "devbox", "--max-age", "1h", "--on-click", "my-focus --pane", "--activate", "com.apple.Terminal",
             "--queue", "/srv/queue.jsonl",
         ]) else { Issue.record(); return }
         #expect(full.maxAge == 3600)
-        #expect(full.herdrMachine == "build-box")
-        // herdr's saved machines: the one saved for the target, by its label, unless one is named.
-        let saved = #"[{"id":"7fa0","label":"devbox.example.com","target":"devbox","enabled":true}]"#
-        #expect(full.herdrMachine(savedMachines: { saved }) == "build-box")
-        guard case let .invocation(.follow(target)) = CommandLineParser.parse(["follow", "devbox"]) else {
-            Issue.record(); return
-        }
-        #expect(target.herdrMachine(savedMachines: { saved }) == "devbox.example.com")
-        #expect(target.herdrMachine(savedMachines: { "[]" }) == "devbox")
-        #expect(target.herdrMachine(savedMachines: { nil }) == "devbox")
+        #expect(full.onClick == "my-focus --pane")
         #expect(full.activate == "com.apple.Terminal")
         #expect(full.queue == "/srv/queue.jsonl")
         for arguments in [
             ["follow"], ["follow", "-oProxyCommand=x"], ["follow", "dev box"], ["follow", "devbox", "--max-age", "soon"],
-            ["follow", "devbox", "--herdr-machine", "-x"], ["follow", "devbox", "--activate", "not an app"],
+            ["follow", "devbox", "--on-click", ""], ["follow", "devbox", "--activate", "not an app"],
+            // Gone: a click command does what it did.
+            ["follow", "devbox", "--herdr-machine", "devbox"],
         ] {
             guard case let .exit(status, _) = CommandLineParser.parse(arguments) else {
                 Issue.record("\(arguments)"); continue
@@ -357,7 +355,8 @@ struct RemoteFollowTests {
 
             """
         #expect(try hook(["claude"], stdin: payload, environment: [
-            "DRIP_HOOK": "attention", "HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t3;rm -rf", "HERDR_WORKSPACE_ID": "w1",
+            "DRIP_HOOK": "attention", "HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t3;rm -rf", "EMPTY": "",
+            "DRIP_FORWARD_ENV": "HERDR_PANE_ID HERDR_TAB_ID EMPTY UNSET 1BAD $(id) HERDR_PANE_ID",
         ]) == 0)
         // Codex's notify passes its JSON as an argument.
         #expect(try hook(["codex", #"{"type":"agent-turn-complete","thread-id":"t1"}"#], environment: ["DRIP_MACHINE": "build box!"]) == 0)
@@ -367,9 +366,9 @@ struct RemoteFollowTests {
         #expect(event.agent == .claude)
         #expect(event.machine == "devbox")
         #expect(abs(event.time - Date().timeIntervalSince1970) < 60)
-        #expect(event.environment == [
-            "DRIP_HOOK": "attention", "HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t3rm-rf", "HERDR_WORKSPACE_ID": "w1",
-        ])
+        #expect(event.environment == ["DRIP_HOOK": "attention"])
+        // Only what DRIP_FORWARD_ENV names is forwarded, with names checked and values cleaned.
+        #expect(event.forwarded == ["HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t3rm-rf"])
         let card = try AgentHook.event(agent: .claude, payload: event.payload)
         #expect(card.detail == "Claude wants to run make\ntest")
         let notify = try RemoteEvent(line: lines[1])
@@ -382,7 +381,7 @@ struct RemoteFollowTests {
     }
 
     @Test func theMachinesNameStartsWithALetterOrDigit() throws {
-        // A name herdr would not take loses what comes before its first letter or digit.
+        // A name loses what comes before its first letter or digit.
         try hook(["gemini", #"{"hook_event_name":"AfterTool"}"#], environment: ["DRIP_MACHINE": "_-.dev"])
         try hook(["gemini", #"{"hook_event_name":"AfterTool"}"#], environment: ["DRIP_MACHINE": "..."])
         #expect(try queueLines().map { try RemoteEvent(line: $0).machine } == ["dev", "remote"])
@@ -444,7 +443,7 @@ struct RemoteFollowTests {
         let show: (RemoteEvent, Bool) -> Void = { event, stale in
             cards.append(try? AgentHook.card(
                 agent: event.agent, payload: event.payload,
-                in: event.surroundings(mac, activate: nil, herdrMachine: nil, stale: stale)))
+                in: event.surroundings(mac, activate: nil, onClick: nil, stale: stale)))
         }
         let ask = #"{"drip":1,"time":\#(Int(now.timeIntervalSince1970)),"agent":"claude","machine":"devbox","env":{},"payload":{"session_id":"s1","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"ls"}}}"#
         try append([ask])
@@ -561,7 +560,7 @@ struct RemoteFollowTests {
         let now = Date()
         try append([Self.line(session: "s1", time: now.timeIntervalSince1970), Self.line(session: "s2", time: now.timeIntervalSince1970)])
         try FollowPosition(inode: inode(queue), offset: 0).save(to: positionPath)
-        // As herdr on the machine would, asked whether the first event's pane shows: it ignores
+        // As a slow command run for the first event would: it ignores
         // SIGTERM, and leaves a process holding its output open.
         var handled: [Date] = []
         let started = Date()
@@ -573,8 +572,9 @@ struct RemoteFollowTests {
         })
         #expect(result.sessions == ["s1", "s2"])
         #expect(handled.count == 2)
-        // The deadline and the grace, and a second to connect.
-        #expect(handled.last.map { $0.timeIntervalSince(started) < 0.5 + TimedCommand.grace + 1 } == true)
+        // The deadline and the grace, and time to connect while the other suites run, well
+        // short of the 30 seconds the command would hold it up.
+        #expect(handled.last.map { $0.timeIntervalSince(started) < 0.5 + TimedCommand.grace + 3 } == true)
     }
 
     @Test func aClockBehindThisMacsAgesEventsByItsOwnTime() throws {
@@ -858,7 +858,6 @@ struct RemoteDecisionTests {
     func local(
         _ environment: [String: String] = [:], front: @escaping (Card) -> WhenFocused.Front,
         paneShowing: @escaping (Card) -> Bool? = { _ in nil },
-        machineView: @escaping (Card) -> MachineView = { _ in .selected },
         resurface: @escaping (Card, Double) -> Void = { _, _ in }
     ) -> AgentHook.Surroundings {
         AgentHook.Surroundings(
@@ -868,7 +867,7 @@ struct RemoteDecisionTests {
             ]
                 .merging(environment) { $1 },
             hasGUISession: true, isInstalled: { _ in false },
-            front: front, paneShowing: paneShowing, machineView: machineView, resurface: resurface,
+            front: front, paneShowing: paneShowing, resurface: resurface,
             resolver: { _, environment in CardResolver(config: Config(), environment: try EnvironmentSettings(environment: environment)) },
             now: { now })
     }
@@ -879,10 +878,12 @@ struct RemoteDecisionTests {
             payload: payload)
     }
 
-    func card(_ event: RemoteEvent, _ local: AgentHook.Surroundings, stale: Bool = false) throws -> Card? {
+    func card(
+        _ event: RemoteEvent, _ local: AgentHook.Surroundings, onClick: String? = nil, stale: Bool = false
+    ) throws -> Card? {
         try AgentHook.card(
             agent: event.agent, payload: event.payload,
-            in: event.surroundings(local, activate: "com.mitchellh.ghostty", herdrMachine: "devbox", stale: stale))
+            in: event.surroundings(local, activate: "com.mitchellh.ghostty", onClick: onClick, stale: stale))
     }
 
     static let stop = #"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"Stop","last_assistant_message":"Done."}"#
@@ -890,13 +891,15 @@ struct RemoteDecisionTests {
 
     @Test func aRemoteCardIsTheLocalCardFromItsMachine() throws {
         let here = try #require(try AgentHook.card(agent: .claude, payload: Self.stop, in: local()))
-        let there = try #require(try card(remote(Self.stop, environment: ["HERDR_TAB_ID": "w1:t2"]), local()))
+        let there = try #require(try card(remote(Self.stop), local(["TMUX": "/tmp/t,1,0", "TMUX_PANE": "%1"])))
         #expect(here.id == "claude:s1")
         #expect(there.id == "claude:s1@devbox")
         #expect(here.title == "api is done")
         #expect(there.title == "api on devbox is done")
         #expect(there.activate == "com.mitchellh.ghostty")
-        #expect(there.pane == TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox", hostName: "devbox"))
+        // The Mac's own tmux pane is not the agent's: a remote card has none.
+        #expect(there.pane == nil)
+        #expect(there.onClick == nil)
         var same = there
         same.id = here.id
         same.title = here.title
@@ -957,70 +960,36 @@ struct RemoteDecisionTests {
         #expect(try card(remote(Self.stop), local(["DRIP_DONE_AFTER": "30"])) == nil)
     }
 
-    @Test func aRemoteCardFollowsWhenFocusedOnItsMachinesWord() throws {
-        let herdr = ["HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t2", "HERDR_WORKSPACE_ID": "w1"]
+    @Test func aRemoteCardTakesYouNotToBeWatchingIt() throws {
         let asked = Asked()
-        /// The terminal in front, or not, and you at it `idle` seconds ago, with the agent's pane in
-        /// front on the machine as its herdr says, which is nil when it does not answer in time.
-        func there(_ environment: [String: String], pane: Bool?, app: Bool = true, idle: Double = 0) throws -> Card? {
-            try card(remote(Self.stop, environment: herdr), local(environment) { _ in
+        /// The terminal in front, or not, and you at it `idle` seconds ago.
+        func there(_ environment: [String: String], app: Bool = true, idle: Double = 0) throws -> Card? {
+            try card(remote(Self.stop), local(environment) { _ in
                 WhenFocused.Front(app: app, idle: idle)
             } paneShowing: { card in
                 asked.panes.append(card.pane)
-                return pane
+                return true
             })
         }
         let skip = ["DRIP_WHEN_FOCUSED": "skip"]
-        // The agent's pane in front on the machine: no card, as for a pane here.
-        #expect(try there(skip, pane: true) == nil)
-        #expect(asked.panes.last == TerminalPane(
-            herdrPane: "w1:p2", herdrTab: "w1:t2", herdrWorkspace: "w1", herdrMachine: "devbox", hostName: "devbox"))
-        #expect(try there([:], pane: true)?.sound == Sound.none)
-        // You were away longer than away_after: it shows, with its sound.
-        #expect(try there(skip, pane: true, idle: 120)?.sound != Sound.none)
-        #expect(try there(skip.merging(["DRIP_AWAY_AFTER": "300"]) { $1 }, pane: true, idle: 120) == nil)
-        // Another pane in front there, or no answer in time: it shows, with its sound.
-        #expect(try there(skip, pane: false)?.sound != Sound.none)
-        #expect(try there(skip, pane: nil)?.sound != Sound.none)
-        #expect(try there([:], pane: nil)?.sound != Sound.none)
-        // With show, with the terminal not in front here, or with you away, drip never asks the machine.
-        let count = asked.panes.count
-        #expect(try there(["DRIP_WHEN_FOCUSED": "show"], pane: true)?.sound != Sound.none)
-        #expect(try there(skip, pane: true, app: false)?.sound != Sound.none)
-        #expect(try there(skip, pane: true, idle: 120)?.sound != Sound.none)
-        #expect(asked.panes.count == count)
+        // drip cannot tell which pane shows on the machine: the card shows, with its sound.
+        #expect(try there(skip)?.sound != Sound.none)
+        #expect(try there([:])?.sound != Sound.none)
+        #expect(try there(skip, app: false)?.sound != Sound.none)
+        #expect(try there(skip, idle: 120)?.sound != Sound.none)
+        // And it never asks this Mac's terminal about a pane that is not the agent's.
+        #expect(asked.panes.isEmpty)
     }
 
-    @Test func aRemoteCardIsOnlySkippedWhileThisMacsHerdrShowsItsMachine() throws {
-        let herdr = ["HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t2", "HERDR_WORKSPACE_ID": "w1"]
-        let skip = ["DRIP_WHEN_FOCUSED": "skip", "DRIP_DEBUG": "1"]
-        func there(_ view: MachineView) throws -> Card? {
-            try card(remote(Self.stop, environment: herdr), local(skip) { _ in
-                WhenFocused.Front(app: true, idle: 0)
-            } paneShowing: { _ in true } machineView: { _ in view })
-        }
-        // The pane shows on the machine and so does this Mac's herdr window: no card.
-        #expect(try there(.selected) == nil)
-        // The window shows Local, though the machine's pane is the one in front there: the card shows.
-        #expect(try there(.notSelected)?.sound != Sound.none)
-        // herdr cannot say: the card shows, and the log says why.
-        #expect(try there(.unknown("no answer within 3s"))?.sound != Sound.none)
-        let log = (try? String(contentsOfFile: "\(state)/drip/debug.log", encoding: .utf8)) ?? ""
-        #expect(log.contains("machine_selected=false"))
-        #expect(log.contains("machine_selected=\"unknown: no answer within 3s\"") || log.contains("machine_selected=unknown:"))
-    }
-
-    @Test func aMachineListNamesWhichSavedMachineTheWindowShows() {
-        func view(_ selected: String) -> MachineView {
-            MachineView(
-                machineList: #"[{"id":"a","label":"devbox","target":"dev","session":"default","enabled":true,\#(selected)}]"#,
-                machine: "devbox")
-        }
-        #expect(view(#""selected":true"#) == .selected)
-        #expect(view(#""selected":false"#) == .notSelected)
-        #expect(view(#""other":1"#) == .unknown("no selected field"))
-        #expect(MachineView(machineList: "[]", machine: "devbox") == .unknown("machine not in list"))
-        #expect(MachineView(machineList: "not json", machine: "devbox") == .unknown("unreadable machine list"))
+    @Test func aRemoteCardRunsOnlyTheCommandFollowGives() throws {
+        var event = remote(Self.stop)
+        event.forwarded = ["HERDR_PANE_ID": "w1:p2"]
+        #expect(try card(event, local())?.onClick == nil)
+        let clicked = try #require(try card(event, local(), onClick: "my-focus"))
+        #expect(clicked.onClick == OnClick(command: "my-focus", machine: "devbox", environment: ["HERDR_PANE_ID": "w1:p2"]))
+        #expect(clicked.isClickable)
+        // A click command of this Mac's own shell does not reach a remote card.
+        #expect(try card(event, local(["DRIP_FORWARD_ENV": "HOME"]))?.onClick == nil)
     }
 
     @Test func aWaitingCardSkippedWhileWatchingComesBackIfTheAgentStillWaits() throws {

@@ -4,14 +4,14 @@ import Foundation
 extension RemoteEvent {
     /// `local`, what `drip hook` reads around an event on this Mac, as it is for this event from
     /// another machine: the session's variables from the event, the machine in card ids and titles,
-    /// a click that brings `activate` forward and focuses the agent's tab on `herdrMachine`, the time
-    /// the event happened, never later than `local`'s, and no card when the event is `stale`.
+    /// a click that brings `activate` forward and runs `onClick`, the time the event happened, never
+    /// later than `local`'s, and no card when the event is `stale`.
     public func surroundings(
-        _ local: AgentHook.Surroundings, activate: String?, herdrMachine: String?, stale: Bool = false
+        _ local: AgentHook.Surroundings, activate: String?, onClick: String? = nil, stale: Bool = false
     ) -> AgentHook.Surroundings {
         var surroundings = local
         surroundings.environment = environment(over: local.environment)
-        surroundings.origin = origin(activate: activate, herdrMachine: herdrMachine)
+        surroundings.origin = origin(activate: activate, onClick: onClick)
         surroundings.showsCards = local.showsCards && !stale
         surroundings.process = .follow
         surroundings.now = { [time, now = local.now] in Date(timeIntervalSince1970: min(time, now().timeIntervalSince1970)) }
@@ -346,7 +346,7 @@ public enum FollowAgent {
     }
 
     /// The agent's plist, which runs `command`. launchd starts it with almost no environment, so it
-    /// gets the `PATH` of `environment`, where drip finds herdr for clicks, and the variables
+    /// gets the `PATH` of `environment`, where drip and a click's command find their programs, and the variables
     /// `keeps(_:)` names; it logs to `~/Library/Logs/<label>.log`.
     public static func plist(command: [String], target: String, environment: [String: String]) -> String {
         let label = label(target: target)

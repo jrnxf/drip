@@ -39,6 +39,7 @@ exits 2, or 1 for `drip hook`.
 | `--no LABEL` | With `--yes`, a no button of this label to its left: drip exits 1 if it was clicked. | none |
 | `--id ID` | Names what the card is about, up to 200 characters; see [Replacing cards](#replacing-cards). | none |
 | `--activate BUNDLE-ID\|none` | The app a click on the card brings forward, such as `com.apple.Terminal`; see [Clicks](#clicks). | the app drip was run from |
+| `--on-click CMD` | A click on the card also runs `CMD`, with `/bin/sh -c`, and the card as one line of JSON on stdin; see [Clicks](#clicks). | none |
 | `--stay` | Keeps the card on screen until it is clicked, a newer card with the same `--id` replaces it, or 10 minutes pass, without holding the script: drip still returns at once. Works with any look; see Cards that wait below. | off |
 | `--wait` | Wait until the card has gone before exiting. | off |
 | `--quiet` | Never print warnings. | off |
@@ -142,13 +143,40 @@ card away. macOS names that app in the `__CFBundleIdentifier` environment variab
 starts, and drip uses it; `--activate` names another app by its bundle identifier, and
 `--activate none` leaves a card without a button click-through; on a card with a button, a click off
 the button only takes the card away. In tmux, a click also selects the pane drip ran in, in the
-terminal that shows that tmux session now, which may not be the one that started tmux; in herdr, the
-pane's tab and then its agent; in WezTerm, the pane. None of them needs a permission. A card you
+terminal that shows that tmux session now, which may not be the one that started tmux. Neither needs
+a permission. A card you
 can click holds while the pointer is on it, like a card with a button, for up to 5 seconds after
 the pointer last moved, so a pointer left resting on it never keeps it there. A card that waits for
 you is always clickable: a click takes it away, even with `--activate none`. The card itself never takes focus.
 Only the cards themselves take the pointer: a click beside a card, at its height, or under it
 reaches the window behind, as it would with no card showing.
+
+**Your own click.** `--on-click CMD` makes a click also run `CMD` with `/bin/sh -c`, for any
+terminal, multiplexer or window manager drip does not know. `drip`, `drip run`, `drip hook` and
+`drip follow` take it. The command runs in the background, while the app comes forward, for up to
+10 seconds. Its output goes nowhere. When it fails, drip prints the first line of its stderr, and
+`drip debug` notes how it ended, never what it printed. It reads one line of JSON on stdin, version 1:
+
+```json
+{"app":"com.mitchellh.ghostty","env":{"WEZTERM_PANE":"7"},"id":"claude:s1","kind":"info","machine":"devbox","title":"my-app needs you","v":1}
+```
+
+| Field | What it holds |
+| --- | --- |
+| `v` | `1`. A new version comes only with a change that breaks a reader of this one. |
+| `kind`, `title` | The card's kind and title, the title cut at 500 characters. |
+| `id` | The card's `--id`, when it has one. |
+| `app` | The bundle identifier the click brings forward, when there is one. |
+| `machine` | For a card `drip follow` showed, the machine the agent runs on. |
+| `env` | The variables `DRIP_FORWARD_ENV` names, read where the card came from. |
+
+`DRIP_FORWARD_ENV` is a space-separated list of variable names, such as
+`DRIP_FORWARD_ENV="HERDR_PANE_ID WEZTERM_PANE"`. drip reads them from the shell that runs it, or, for
+an agent on another machine, from the agent's session there. It passes on at most 16, each a name of
+letters, digits and `_` up to 64 long, with a value of up to 256 characters and no control
+characters; the rest are left out. A value from another machine is data to check, never a command
+to run. History never keeps the command, and `drip history --replay` never runs it.
+[recipes.md](recipes.md) has commands for herdr, WezTerm and Ghostty.
 
 **Out of the way.** While the pointer is on a card you can click, a × takes its icon's place, and a
 card that brings an app forward shows an arrow where its ring was. A click on the ×, or a
@@ -192,8 +220,8 @@ that came up while the screen was locked or drip was paused has `missed` after i
 
 ```text
 2m ago    ┃ drip is done
-          ┃ Split it. Pane awareness for herdr belongs in drip. Your
-          ┃ firstmate and worker rules belong in dotfiles. How your…
+          ┃ Split the parser out of the CLI. The flags belong in one
+          ┃ place, and the tests in another. How the help text reads…
 ────────────────────────────────────────────────────────────────
 20m ago   ┃ deploy failed  missed
           ┃ api 1.4.2
@@ -375,7 +403,7 @@ drip run --open "$CI_URL" --button "View run" ./deploy.sh
 any command that ran 10 seconds or more, with nothing in front of it. The card is the one `drip run`
 makes: green with `make test finished`, or red with `make test failed (exit 2)`, and the time as its
 detail. It shows only when you are not watching that terminal, by the same rules as an agent's done
-card: drip's [`when_focused` and `away_after`](config.md), and your tmux or herdr pane.
+card: drip's [`when_focused` and `away_after`](config.md), and your tmux pane.
 
 ```sh
 drip setup zsh          # adds the block; run it again to update it, and then: exec zsh
@@ -390,7 +418,6 @@ slow one, so a fast command runs no drip at all. It does nothing where drip is n
 | `DRIP_SLOW_AFTER` | Seconds a command must run for a card. `0` turns the cards off. | `10` |
 | `DRIP_SLOW_IGNORE` | More commands to leave out, space-separated, besides the editors (`vim`, `nvim`, `emacs`), pagers (`less`, `man`), `ssh`, `tmux`, `top` and REPLs (`python`, `node`) drip leaves out already. | none |
 | `DRIP_HOOK=off` | No cards from this shell. | unset |
-| `FM_TASK_ID` | Set by an orchestrator for the workers it starts: no cards from them. | unset |
 
 Set them with `export` in `~/.zshrc`, or in a shell for as long as it lives. `sudo`, `env`, `time` and
 variable assignments in front of a command are looked through, so `sudo vim` is left out as `vim`

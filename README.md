@@ -12,8 +12,9 @@
 drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you.
 
 A glance tells you what finished and how it went: a build, a deploy, a test run, or a coding agent
-such as Claude Code, Codex or Gemini CLI. It is not Notification Center, so it needs no permissions,
-and drip returns at once, so it never slows the script that calls it. On a Mac without a notch, the
+such as Claude Code, Codex or Gemini CLI. It is not Notification Center, so a card needs no macOS
+privacy grant. A custom icon or sound file in a protected folder can trigger a Files and Folders
+prompt. drip returns at once, so it never slows the script that calls it. On a Mac without a notch, the
 card grows out of the top edge of the screen.
 
 - **One command, any script.** `drip ok "deployed"` shows a green card with an icon, a sound and a countdown.
@@ -78,7 +79,7 @@ drip setup gemini   # Gemini CLI, in ~/.gemini/settings.json
 The card's title is the project, such as `my-app needs you` with `Claude wants to run npm install`,
 or `my-app is done` with the agent's last message. A card that needs you stays until you answer in
 the terminal, and then turns into the done card in place. A click brings back the agent's terminal,
-and its pane in tmux, herdr or WezTerm. While you watch the agent's terminal, its done card comes
+and its pane in tmux. For any other multiplexer, add `--on-click` (see [Clicks](#clicks)). While you watch the agent's terminal, its done card comes
 without a sound.
 
 Opt in with `approve = true` in the config, or `DRIP_APPROVE=1`, and a Claude Code or Codex
@@ -103,7 +104,21 @@ drip setup claude --remote   # prints the hooks to add on the machine
 drip follow devbox           # on the Mac; --launchd prints a launchd agent to keep it running
 ```
 
-[docs/remote.md](docs/remote.md) has the setup step by step, the queue and how clicks reach herdr.
+[docs/remote.md](docs/remote.md) has the setup step by step, the queue, and how a click reaches the
+agent's pane with `drip follow --on-click`.
+
+## Clicks
+
+A click on a card brings its terminal forward. Add `--on-click CMD` to `drip`, `drip run`,
+`drip hook` or `drip follow`, and a click also runs `CMD` with `/bin/sh -c`. It reads one line of
+JSON on stdin, such as:
+
+```json
+{"app":"com.mitchellh.ghostty","env":{"WEZTERM_PANE":"7"},"id":"claude:s1","kind":"info","title":"my-app needs you","v":1}
+```
+
+`env` holds only the variables that `DRIP_FORWARD_ENV` names. [docs/recipes.md](docs/recipes.md)
+uses it to focus a pane in herdr or WezTerm, or a Ghostty window on another Space.
 
 ## Away, paused and missed
 
@@ -143,11 +158,13 @@ drip --help | help <subcommand>
 | `--yes LABEL`, `--no LABEL` | Ask a question: exits 0 for yes, 1 for no, 5 for no answer. |
 | `--id ID` | A newer card with the same id replaces this one in place. |
 | `--stay` | Stay until clicked, without holding the script. |
+| `--on-click CMD` | Run `CMD` on a click, with the card as JSON on stdin. |
 | `--wait` | Exit only once the card has gone. |
 
 The kinds are `ok` (green), `warn` (orange), `fail` (red) and `info` (blue), plus any preset you
 define. [docs/usage.md](docs/usage.md) has every flag, the exit codes, the history format, clicks,
-stacking, and how cards move at the notch.
+stacking, and how cards move at the notch. [docs/contract.md](docs/contract.md) lists what scripts can
+rely on.
 
 ## Config
 
@@ -171,7 +188,7 @@ sound = "Submarine"
 | | drip | terminal-notifier, osascript, alerter |
 | --- | --- | --- |
 | Shows | its own card, from the notch | a Notification Center banner or alert |
-| Permission | none; Ghostty automation for clicks on cards from another machine, asked once | Notifications |
+| Permission | none for a card; a Files and Folders prompt only for an icon or sound in a protected folder | Notifications |
 | Focus and Do Not Disturb | shows anyway; `drip pause` holds cards | follows Focus |
 | Kept afterwards | `drip history` | Notification Center's list |
 | Buttons and answers | `--yes`, `--no`: exits 0, 1 or 5 | terminal-notifier 3 and alerter: actions or a reply, printed |
@@ -181,6 +198,8 @@ sound = "Submarine"
 ## More
 
 - [Install, from source, and uninstall](docs/install.md)
+- [Click recipes](docs/recipes.md): herdr, WezTerm and Ghostty across Spaces
+- [What scripts can rely on](docs/contract.md): flags, exit codes, `history --json` and the click payload
 - [Troubleshooting](docs/troubleshooting.md): no card, permissions, privacy and the debug log
 - [Development](docs/development.md): tests, the live agent check, releases and the web page
 - [drip.jrnxf.co](https://drip.jrnxf.co): guides for [Claude Code notifications](https://drip.jrnxf.co/claude-code-notifications) and [alerts when a command finishes](https://drip.jrnxf.co/notify-when-command-finishes)

@@ -44,8 +44,9 @@ queuing behind it: the waiting card turns into the done card in place. drip keep
 Markdown out of the card: it shows the words, without code fences, heading or list markers, or
 emphasis marks.
 
-**Clicks.** A click on an agent's card brings back the terminal the agent runs in, and in tmux,
-herdr or WezTerm the agent's own pane. The × that takes the icon's place while the pointer is on the
+**Clicks.** A click on an agent's card brings back the terminal the agent runs in, and in tmux the
+agent's own pane. For another multiplexer, give `drip hook` an `--on-click` command (see
+[recipes.md](recipes.md)). The × that takes the icon's place while the pointer is on the
 card, or a right-click, Control-click or Option-click anywhere on it, takes the card away and brings
 nothing forward, for when it is only in the way. `drip dismiss` does the same from the keyboard.
 
@@ -53,12 +54,11 @@ nothing forward, for when it is only in the way. `drip dismiss` does the same fr
 without a sound and count down 1.5 seconds: you are likely watching it already. `when_focused` in
 the [config](config.md), or `DRIP_WHEN_FOCUSED`, changes that: `quiet`, the default; `show`, as any
 other card; or `skip`, no card at all, not even one that needs you, but only when drip knows from
-tmux or herdr that the agent's own pane is the one in front, since several sessions often share one
+tmux that the agent's own pane is the one in front, since several sessions often share one
 terminal app. With `quiet`, a card that needs you always shows. Either way drip takes you to be
 watching only if you used the keyboard or mouse in the last minute, or the `away_after` you set: a
-terminal left in front while you are away raises its cards as usual. For an agent on another
-machine, the pane showing there is not enough: your herdr window must show that machine too
-(`herdr machine list` marks it `selected`), and if herdr cannot say, the card shows. A card that
+terminal left in front while you are away raises its cards as usual. drip cannot tell which pane
+shows on another machine, so a card from an agent there always shows as if you were away. A card that
 needs you and was skipped because you were watching comes back 30 seconds later, once, if the
 agent still waits and you are no longer watching.
 

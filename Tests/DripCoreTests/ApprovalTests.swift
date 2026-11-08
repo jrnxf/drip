@@ -152,7 +152,7 @@ struct ApprovalTests {
             time: now.timeIntervalSince1970, agent: .claude, machine: "devbox", environment: [:], payload: Self.claude)
         let card = try #require(try AgentHook.card(
             agent: .claude, payload: Self.claude,
-            in: event.surroundings(local(), activate: nil, herdrMachine: nil, stale: false)))
+            in: event.surroundings(local(), activate: nil, onClick: nil, stale: false)))
         #expect(card.id == "claude:s1@devbox")
         #expect(card.action == nil)
         #expect(card.waitLimit == Defaults.waitLimit)

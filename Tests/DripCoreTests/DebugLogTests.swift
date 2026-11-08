@@ -151,25 +151,25 @@ struct DebugLogTests {
         }
     }
 
-    @Test func aRemoteDecisionRecordsTheHerdrQueryItsAnswerAndHowLongItTook() throws {
-        let event = RemoteEvent(
-            time: now.timeIntervalSince1970, agent: .claude, machine: "devbox",
-            environment: ["HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t2", "HERDR_WORKSPACE_ID": "w1"], payload: Self.stop)
+    @Test func aRemoteDecisionRecordsThatItCannotTellWhichPaneShows() throws {
+        var event = RemoteEvent(
+            time: now.timeIntervalSince1970, agent: .claude, machine: "devbox", environment: [:], payload: Self.stop)
+        event.forwarded = ["HERDR_PANE_ID": "w1:p2"]
         let local = surroundings(["DRIP_DEBUG": "1"], paneShowing: nil)
         _ = try AgentHook.card(
             agent: .claude, payload: event.payload,
-            in: event.surroundings(local, activate: "com.mitchellh.ghostty", herdrMachine: "devbox"))
+            in: event.surroundings(local, activate: "com.mitchellh.ghostty", onClick: "my-focus"))
         let line = try #require(lines().first)
         let fields = line.split(separator: " ").map(String.init)
         #expect(fields[1] == "follow")
         for field in [
-            "machine=devbox", "herdr_machine=devbox", "pane=herdr:w1:p2", "query=\"herdr pane get w1:p2\"", "answer=unknown",
-            "remote_pane_unknown=true", "when_focused=quiet", "away_after=60.0", "activate=com.mitchellh.ghostty",
+            "machine=devbox", "remote_pane_unknown=true", "when_focused=quiet", "away_after=60.0",
+            "activate=com.mitchellh.ghostty",
         ] {
             #expect(line.contains(field), "missing \(field) in \(line)")
         }
-        #expect(line.contains("query_ms="))
-        // The unanswered pane query does not hide what drip noticed.
+        // No pane query, and nothing of the click command or what was forwarded.
+        #expect(!line.contains("query=") && !line.contains("my-focus") && !line.contains("w1:p2"))
         #expect(line.contains("frontmost=com.apple.Terminal") && line.contains("idle_seconds=3.0"))
     }
 

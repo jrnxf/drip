@@ -29,8 +29,18 @@ public enum TimedCommand {
     /// not. A command still going then gets SIGTERM, with the processes it started, and SIGKILL once
     /// it has closed its output, or `grace` seconds after SIGTERM at the latest, and does not answer
     /// even when it exits 0 meanwhile. Its stdout and stderr are read together, so one it fills never
-    /// holds it up.
-    public static func run(_ arguments: [String], timeout: Double, grace: Double = grace) -> Result<String, Failure> {
+    /// holds it up. Its stdin is `input`, which must fit in a pipe, `inputLimit` bytes, or else empty.
+    public static func run(
+        _ arguments: [String], input: String? = nil, timeout: Double, grace: Double = grace
+    ) -> Result<String, Failure> {
+        var reading: Int32 = -1
+        if let input {
+            switch inputPipe(holding: Array(input.utf8)) {
+            case let .success(descriptor): reading = descriptor
+            case let .failure(failure): return .failure(failure)
+            }
+        }
+        defer { if reading >= 0 { close(reading) } }
         var output: [Int32] = [-1, -1], errors: [Int32] = [-1, -1]
         guard pipe(&output) == 0 else { return .failure(Failure(stderr: "", reason: String(cString: strerror(errno)))) }
         guard pipe(&errors) == 0 else {
@@ -40,7 +50,7 @@ public enum TimedCommand {
         }
         // Only the command gets them: no other program drip starts keeps them open.
         for descriptor in output + errors { _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC) }
-        let (pid, spawned) = spawn(arguments, output: output[1], errors: errors[1])
+        let (pid, spawned) = spawn(arguments, input: reading, output: output[1], errors: errors[1])
         close(output[1])
         close(errors[1])
         guard spawned == 0 else {
@@ -119,15 +129,45 @@ public enum TimedCommand {
         return .success(String(decoding: said[output[0]] ?? [], as: UTF8.self))
     }
 
+    /// The most stdin `run` takes: what a pipe holds on every system drip runs on.
+    public static let inputLimit = 16 * 1024
+
+    /// The reading end of a new pipe that holds `bytes`, written before the command starts, so a
+    /// command that never reads them holds nothing up, and one that ends first breaks no pipe.
+    private static func inputPipe(holding bytes: [UInt8]) -> Result<Int32, Failure> {
+        guard bytes.count <= inputLimit else {
+            return .failure(Failure(stderr: "", reason: "input longer than \(inputLimit) bytes"))
+        }
+        var ends: [Int32] = [-1, -1]
+        guard pipe(&ends) == 0 else { return .failure(Failure(stderr: "", reason: String(cString: strerror(errno)))) }
+        for descriptor in ends { _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC) }
+        _ = fcntl(ends[1], F_SETFL, fcntl(ends[1], F_GETFL) | O_NONBLOCK)
+        var written = 0
+        while written < bytes.count {
+            let count = bytes[written...].withUnsafeBytes { write(ends[1], $0.baseAddress, $0.count) }
+            if count > 0 {
+                written += count
+            } else if count < 0, errno == EINTR {
+                continue
+            } else {
+                let reason = count < 0 ? String(cString: strerror(errno)) : "the pipe is full"
+                ends.forEach { close($0) }
+                return .failure(Failure(stderr: "", reason: reason))
+            }
+        }
+        close(ends[1])
+        return .success(ends[0])
+    }
+
     /// `1s`, or `0.5s`.
     static func describe(_ seconds: Double) -> String {
         seconds == seconds.rounded() ? "\(Int(seconds))s" : "\(seconds)s"
     }
 
-    /// Starts `/usr/bin/env` with `arguments`, its stdin from /dev/null and its stdout and stderr to
-    /// `output` and `errors`, in a process group of its own, with every signal handled the default way
-    /// and none blocked. The pid, and 0 or why it could not start.
-    private static func spawn(_ arguments: [String], output: Int32, errors: Int32) -> (pid_t, Int32) {
+    /// Starts `/usr/bin/env` with `arguments`, its stdin from `input`, or /dev/null when it is -1,
+    /// and its stdout and stderr to `output` and `errors`, in a process group of its own, with every
+    /// signal handled the default way and none blocked. The pid, and 0 or why it could not start.
+    private static func spawn(_ arguments: [String], input: Int32, output: Int32, errors: Int32) -> (pid_t, Int32) {
         #if canImport(Darwin)
         var actions: posix_spawn_file_actions_t?
         var attributes: posix_spawnattr_t?
@@ -137,7 +177,11 @@ public enum TimedCommand {
         #endif
         posix_spawn_file_actions_init(&actions)
         defer { posix_spawn_file_actions_destroy(&actions) }
-        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        if input >= 0 {
+            posix_spawn_file_actions_adddup2(&actions, input, 0)
+        } else {
+            posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        }
         posix_spawn_file_actions_adddup2(&actions, output, 1)
         posix_spawn_file_actions_adddup2(&actions, errors, 2)
         posix_spawnattr_init(&attributes)

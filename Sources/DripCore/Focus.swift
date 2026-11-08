@@ -7,7 +7,7 @@ public enum WhenFocused: String, CaseIterable, Sendable {
     /// As any other card.
     case show
     /// No card at all, not even one that waits for you, but only when drip knows the agent's own
-    /// tmux or herdr pane is the one in front and you used the keyboard or mouse within
+    /// tmux pane is the one in front and you used the keyboard or mouse within
     /// `away_after`; when it only knows the terminal app is, as `quiet`.
     case skip
 
@@ -32,8 +32,8 @@ public enum WhenFocused: String, CaseIterable, Sendable {
     public struct Front: Equatable, Sendable {
         /// Whether the app a click on the card brings forward is the frontmost app.
         public var app: Bool
-        /// Whether the agent's own tmux or herdr pane is the one showing, in an attached client; nil
-        /// when drip cannot tell, as outside tmux and herdr.
+        /// Whether the agent's own tmux pane is the one showing, in an attached client; nil when
+        /// drip cannot tell, as outside tmux.
         public var pane: Bool?
         /// Seconds since the keyboard or mouse was last used; nil when drip cannot tell, which counts
         /// as just now.

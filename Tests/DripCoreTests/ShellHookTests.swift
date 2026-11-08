@@ -164,9 +164,8 @@ struct SlowCommandCardTests {
         #expect(try card(WhenFocused.Front(app: true, pane: true, idle: 1), environment: ["DRIP_WHEN_FOCUSED": "show"]) != nil)
     }
 
-    @Test func theOrchestratorsVariableAndDripHookOffKeepItSilent() throws {
-        #expect(try card(away, environment: ["FM_TASK_ID": "task-1"]) == nil)
-        #expect(try card(away, environment: ["FM_TASK_ID": ""]) != nil)
+    @Test func onlyDripHookOffKeepsItSilent() throws {
+        // drip knows no other tool's variables: a tool that wants silence sets DRIP_HOOK=off.
         #expect(try card(away, environment: ["DRIP_HOOK": "off"]) == nil)
         #expect(try card(away, environment: ["DRIP_HOOK": "on"]) != nil)
     }
@@ -295,13 +294,12 @@ struct ZshHookTests {
         #expect(try run(command("vim x", seconds: 60), environment: environment).calls.isEmpty)
     }
 
-    @Test func itStaysSilentWithoutDripOrWhereTheOrchestratorSaysSo() throws {
+    @Test func itStaysSilentWithoutDripOrWithDripHookOff() throws {
         guard Self.zsh != nil else { return }
         let slow = command("make", seconds: 60)
         let silent = try run(slow, dripOnPath: false)
         #expect(silent.calls.isEmpty)
         #expect(silent.output.isEmpty, "\(silent.output)")
-        #expect(try run(slow, environment: ["FM_TASK_ID": "task-1"]).calls.isEmpty)
         #expect(try run(slow, environment: ["DRIP_HOOK": "off"]).calls.isEmpty)
         #expect(try run(slow).calls.count == 1)
     }

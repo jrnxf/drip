@@ -41,9 +41,11 @@ machine; nothing connects in.
 **The queue.** Each event is one line of JSON in `$XDG_STATE_HOME/drip/remote.jsonl` on the machine,
 or `~/.local/state/drip/remote.jsonl`, or `$DRIP_QUEUE` when set there: the hook's payload, the
 agent, the machine's name (`$DRIP_MACHINE`, or `uname -n`, in letters, digits, `.`, `_` and `-`,
-starting with a letter or digit), the time, and the session's `DRIP_HOOK`,
-Claude Code's attendance variables, and herdr's `HERDR_PANE_ID`, `HERDR_TAB_ID` and
-`HERDR_WORKSPACE_ID`. The hook takes a lock, with `flock` when the machine has it and else with a
+starting with a letter or digit), the time, the session's `DRIP_HOOK` and Claude Code's attendance
+variables, and the variables the session's `DRIP_FORWARD_ENV` names, for a click command to read.
+The hook keeps only names of letters, digits and `_`, at most 16 of them, and in their values only
+letters, digits and `. _ : @ / % + , = -`, cut at 256 characters. The
+hook takes a lock, with `flock` when the machine has it and else with a
 `remote.jsonl.lockdir` directory, so lines from sessions at once never mix, and once the queue
 passes 8 MB it moves it to `remote.jsonl.1`,
 replacing the one before: the two never take much more than 16 MB. The file is readable only by
@@ -75,26 +77,18 @@ run together show every card twice, each with its sound. Follow a machine by one
 takes over, so a launchd agent started at login while another is running does not restart in a loop.
 
 **Its cards.** A card from the machine names it, as in `api on devbox is done`, and its id is
-`<agent>:<session>@<machine>`, so it never replaces a card of a session on the Mac. When the agent
-runs in herdr, `when_focused` and `away_after` apply as they do on the Mac: drip asks the machine's
-herdr, with `herdr --machine <machine> pane get`, whether the agent's pane is the focused one there,
-and takes the app `--activate` names for the terminal in front. herdr marks a pane focused for any
-client attached to that machine, so drip cannot tell whether the herdr in front on the Mac shows
-that machine or Local. When herdr does not answer within 3 seconds, or the agent runs outside herdr,
-drip takes you not to be watching: its cards show, with their sound. The `DRIP_HOOK` and attendance
-of the session on the machine decide whether it raises cards, not the variables `drip follow` runs
-with. Its permission cards only tell, even with `approve` on: the answer stays in the terminal on
-the machine, and its hook there returns at once.
+`<agent>:<session>@<machine>`, so it never replaces a card of a session on the Mac. drip
+cannot tell which pane shows on the machine, so it takes you not to be watching: its cards show,
+with their sound, whatever `when_focused` says. The `DRIP_HOOK` and attendance of the session on
+the machine decide whether it raises cards, not the variables `drip follow` runs with. Its
+permission cards only tell, even with `approve` on: the answer stays in the terminal on the machine,
+and its hook there returns at once.
 
 **Clicks.** A click brings forward the terminal you ran `drip follow` from, or the app
-`--activate` names. In Ghostty, when the agent runs in herdr, Ghostty itself brings forward the
-terminal whose title herdr's default `window_title`, `{hostname}: {workspace}`, gives it: the one
-showing the machine, else the one showing this Mac, on whichever Space it is. The first such click
-asks you once to let drip control Ghostty. Then drip focuses the agent's workspace and tab on the
-machine with `herdr --machine <machine> workspace focus` and `tab focus`. That is as close as herdr lets a
-command get today: it cannot focus a pane on another machine by its id, nor switch the herdr on the
-Mac from Local to that machine, so you see the tab once your herdr shows the machine. herdr names
-the machine by the label you saved it under with `herdr machine`: by default, the one saved with the
-ssh target, else the one labeled with its host, else the host itself; `--herdr-machine <label>`
-names another. `drip follow`'s log says how each click went: the app brought forward, or macOS
-refusing to, and any herdr command refused, with why.
+`--activate` names. `drip follow devbox --on-click CMD` also runs `CMD` on the Mac, with the card's
+JSON on stdin: its `machine` names the machine, and its `env` holds what `DRIP_FORWARD_ENV` named in
+the agent's session. Only `drip follow` sets the command. Nothing in the queue can: drip reads the
+payload, the agent, the machine, the time and those variables from it, and nothing else. Treat the
+values in `env` as data. [recipes.md](recipes.md) has a command that focuses the agent's tab in
+herdr on the machine. `drip follow`'s log says how each click went: the app brought forward, or
+macOS refusing to, and a click command that failed.

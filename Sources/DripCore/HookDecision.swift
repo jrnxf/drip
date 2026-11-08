@@ -29,9 +29,6 @@ extension AgentHook {
         /// Whether the card's pane is the one its terminal shows, which `front` leaves to this when
         /// it says nil; nil when drip cannot tell.
         public var paneShowing: (Card) -> Bool?
-        /// Whether this Mac's herdr shows the machine a remote card's agent runs on, which its own
-        /// herdr says is in front whichever machine this Mac's window is on.
-        public var machineView: (Card) -> MachineView
         /// Called with a waiting card skipped because you were watching, and when the session's
         /// waiting record was written, so the card can come back with `resurfaced` if the agent
         /// still waits `WhenFocused.resurfaceDelay` seconds on.
@@ -55,7 +52,6 @@ extension AgentHook {
         public init(
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
             front: @escaping (Card) -> WhenFocused.Front, paneShowing: @escaping (Card) -> Bool? = { _ in nil },
-            machineView: @escaping (Card) -> MachineView = { _ in .selected },
             resurface: @escaping (Card, Double) -> Void = { _, _ in }, away: @escaping () -> Bool = { false },
             loadConfig: @escaping ([String: String]) throws -> ConfigFile = { try ConfigLoader.load(environment: $0) },
             resolver: @escaping (ConfigFile, [String: String]) throws -> CardResolver, origin: Origin? = nil,
@@ -67,7 +63,6 @@ extension AgentHook {
             self.isInstalled = isInstalled
             self.front = front
             self.paneShowing = paneShowing
-            self.machineView = machineView
             self.resurface = resurface
             self.away = away
             self.loadConfig = loadConfig
@@ -182,7 +177,8 @@ extension AgentHook {
         var resolver = try surroundings.resolver(try config.file.get(), environment)
         if let origin {
             resolver.environment.sender = origin.activate
-            resolver.environment.pane = origin.pane
+            resolver.environment.pane = nil
+            resolver.environment.forwarded = [:]
         }
         // A done card you chose not to see still takes away the card the session waits on, as it
         // would have replaced it. Which cards show does not depend on the session being known: only
@@ -205,7 +201,9 @@ extension AgentHook {
             ])
             return nil
         }
-        let card = try resolver.resolve(kind: event.kind, title: title, flags: flags)
+        var card = try resolver.resolve(kind: event.kind, title: title, flags: flags)
+        // A remote card's click runs only `drip follow --on-click`, never anything from the event.
+        if let origin { card.onClick = origin.click }
         if let id = card.id {
             if card.waits {
                 try? state.noteWaiting(id: id, tool: event.waitsOn, now: surroundings.now())
@@ -287,10 +285,9 @@ extension AgentHook {
         resurfacing: Bool, note: (String, String, [(String, String?)]) -> Void
     ) -> (card: Card?, front: WhenFocused.Front?) {
         let origin = surroundings.origin
-        // You may be watching the agent's terminal already. Asking about the pane costs a round trip
-        // to another machine, so only when it matters: its terminal in front, and you at it. For an
-        // agent there, only that machine's herdr can say whether its pane is in front; when it
-        // cannot, drip takes you not to be watching.
+        // You may be watching the agent's terminal already. Asking tmux about the pane costs a
+        // command, so only when it matters: its terminal in front, and you at it. For an agent on
+        // another machine, drip cannot tell, so it takes you not to be watching.
         let whenFocused = resolver.whenFocused
         guard whenFocused != .show else {
             note("card", "show", eventFields + [("reason", "when_focused_show"), ("waits", "\(card.waits)")])
@@ -298,7 +295,7 @@ extension AgentHook {
         }
         var front = surroundings.front(card)
         var query: [(String, String?)] = []
-        if front.pane == nil, front.app, front.present(awayAfter: resolver.awayAfter) {
+        if origin == nil, front.pane == nil, front.app, front.present(awayAfter: resolver.awayAfter) {
             let asked = Date()
             front.pane = surroundings.paneShowing(card)
             if log.enabled {
@@ -307,21 +304,6 @@ extension AgentHook {
                     ("answer", front.pane.map { $0 ? "showing" : "not_showing" } ?? "unknown"),
                     ("query_ms", "\(Int(Date().timeIntervalSince(asked) * 1000))"),
                 ]
-            }
-        }
-        // A remote card's pane showing on its machine is not enough: this Mac's herdr must show that
-        // machine too, or the window you watch is on Local. When it cannot say, you are not taken
-        // to be watching.
-        var machineSelected: String?
-        if origin != nil, front.pane == true {
-            switch surroundings.machineView(card) {
-            case .selected: machineSelected = "true"
-            case .notSelected:
-                machineSelected = "false"
-                front.pane = false
-            case let .unknown(reason):
-                machineSelected = "unknown: \(reason)"
-                front.pane = false
             }
         }
         let unknownRemote = origin != nil && front.pane == nil
@@ -339,8 +321,8 @@ extension AgentHook {
                 ("reason", reason), ("waits", "\(card.waits)"), ("when_focused", whenFocused.rawValue),
                 ("away_after", "\(resolver.awayAfter)"), ("idle_seconds", front.idle.map { String(format: "%.1f", $0) } ?? "unknown"),
                 ("frontmost", front.frontmost ?? "unknown"), ("topmost_visible", front.topmostVisible ?? "unknown"), ("activate", card.activate), ("app_in_front", "\(front.app)"),
-                ("pane", card.pane?.debugName), ("herdr_machine", card.pane?.herdrMachine),
-                ("pane_showing", front.pane.map { "\($0)" }), ("remote_pane_unknown", unknownRemote ? "true" : nil), ("machine_selected", machineSelected),
+                ("pane", card.pane?.debugName),
+                ("pane_showing", front.pane.map { "\($0)" }), ("remote_pane_unknown", unknownRemote ? "true" : nil),
             ] + query)
         }
         return (shown, front)
