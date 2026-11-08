@@ -146,6 +146,8 @@ public struct CardHistory {
             var kept = card
             kept.title = CardText.truncate(card.title, limit: Self.textLimit)
             kept.detail = card.detail.map { CardText.truncate($0, limit: Self.textLimit) }
+            // A click command is the caller's, for this card only: history never runs one.
+            kept.onClick = nil
             return try HistoryListing.json(HistoryEntry(time: time, missed: missed, card: kept, shown: shown(card)))
         }
         try StateFiles.locked(path) {
@@ -278,10 +280,11 @@ public enum HistoryListing {
     }
 
     /// The card to show again. A question's button goes, since nothing waits for its answer now; a
-    /// button that opens something stays.
+    /// button that opens something stays. A click command never runs again.
     public static func replay(_ entry: HistoryEntry) -> Card {
         var card = entry.card
         if card.action?.open == nil { card.action = nil }
+        card.onClick = nil
         return card
     }
 }

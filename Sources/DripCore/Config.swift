@@ -374,9 +374,10 @@ public struct EnvironmentSettings: Equatable {
     public var approve: Bool?
     /// The bundle identifier of the app drip was run from, from `__CFBundleIdentifier`.
     public var sender: String?
-    /// The terminal pane drip was run in, from `TMUX` and `TMUX_PANE`, herdr's `HERDR_PANE_ID`, or
-    /// `WEZTERM_PANE`.
+    /// The tmux pane drip was run in, from `TMUX` and `TMUX_PANE`.
     public var pane: TerminalPane?
+    /// The variables `DRIP_FORWARD_ENV` names, which a click's `--on-click` command reads.
+    public var forwarded: [String: String] = [:]
     /// Whether the debug log is on, from `DRIP_DEBUG`.
     public var debug: Bool?
 
@@ -450,6 +451,7 @@ public struct EnvironmentSettings: Equatable {
         debug = try Self.debug(environment: environment)
         sender = CardActivation.sender(in: environment)
         pane = TerminalPane(environment: environment)
+        forwarded = ForwardedEnvironment.read(environment)
     }
 }
 

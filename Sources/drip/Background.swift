@@ -39,7 +39,7 @@ enum BackgroundDrip {
             posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0)
         }
         // A file, as the log of a launchd agent that runs `drip follow`, nobody waits on: what goes
-        // wrong with a click, such as herdr refusing to focus the agent's tab, is said there.
+        // wrong with a click, such as an --on-click command that fails, is said there.
         var standardError = stat()
         if fstat(2, &standardError) == 0, standardError.st_mode & S_IFMT == S_IFREG {
             posix_spawn_file_actions_addinherit_np(&actions, 2)

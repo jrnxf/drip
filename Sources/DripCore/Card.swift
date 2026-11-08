@@ -266,6 +266,8 @@ public struct Card: Equatable, Sendable, Codable {
     /// The terminal pane drip was run in, which a click selects once `activate` is in front; nil
     /// when drip cannot tell, or when the card brings forward another app.
     public var pane: TerminalPane?
+    /// The command a click on the card runs, after it brings `activate` forward; nil for none.
+    public var onClick: OnClick?
     /// Set for a card that waits for you rather than counting down `seconds`: it stays until it is
     /// clicked or replaced, and gives way to a card waiting for its turn, but never stays longer
     /// than this. Nil for a card that counts down.
@@ -314,10 +316,15 @@ public struct Card: Equatable, Sendable, Codable {
         waits && action == nil
     }
 
-    /// Whether the card takes clicks: on its button, anywhere to bring the sending app forward, or
-    /// anywhere to take away a card that waits for you.
+    /// Whether the card takes clicks: on its button, anywhere to bring the sending app forward or run
+    /// its `--on-click` command, or anywhere to take away a card that waits for you.
     public var isClickable: Bool {
-        action != nil || activate != nil || waits
+        action != nil || opensOnClick || waits
+    }
+
+    /// Whether a click anywhere on the card does something: brings an app forward, or runs a command.
+    public var opensOnClick: Bool {
+        activate != nil || onClick != nil
     }
 
     /// Whether the card waits for you instead of counting down.

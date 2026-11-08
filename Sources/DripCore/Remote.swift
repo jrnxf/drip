@@ -21,12 +21,10 @@ public enum RemoteHook {
     /// two never take more than twice this, plus one event.
     public static let rotateSize = 8 * 1024 * 1024
 
-    /// The variables of the agent's session the hook passes on: the ones `drip hook` reads to decide
-    /// whether the session raises cards, and herdr's ids for the pane, tab and workspace it runs in.
-    public static let sessionVariables = [
-        "DRIP_HOOK", "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_ENTRYPOINT",
-        "HERDR_PANE_ID", "HERDR_TAB_ID", "HERDR_WORKSPACE_ID",
-    ]
+    /// The variables of the agent's session the hook passes on in `env`: the ones `drip hook` reads
+    /// to decide whether the session raises cards. The ones `DRIP_FORWARD_ENV` names go in `forward`,
+    /// which only a click's `--on-click` command reads.
+    public static let sessionVariables = ["DRIP_HOOK", "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_ENTRYPOINT"]
 
     /// `drip-remote-hook`, as `drip setup remote` prints it: POSIX sh, for a machine without drip.
     /// It never fails or holds up the agent's turn: it prints nothing and exits 0 whatever happens.
@@ -42,9 +40,10 @@ public enum RemoteHook {
             #
             # with the hook's JSON on stdin, or as an argument, as Codex's notify passes it. It appends
             # one line to $DRIP_QUEUE, or \#(defaultQueue),
-            # with the payload, the agent, this machine's name ($DRIP_MACHINE, or uname -n), and the
-            # session's DRIP_HOOK, Claude Code attendance and herdr pane, tab and workspace ids. It
-            # never fails or holds up the agent's turn: it prints nothing and exits 0.
+            # with the payload, the agent, this machine's name ($DRIP_MACHINE, or uname -n), the
+            # session's DRIP_HOOK and Claude Code attendance, and the variables DRIP_FORWARD_ENV names,
+            # separated by spaces, for a click's --on-click command on the Mac. It never fails or holds
+            # up the agent's turn: it prints nothing and exits 0.
 
             drip_queue() {
                 case ${1-} in claude | codex | gemini) agent=$1 ;; *) return 1 ;; esac
@@ -58,11 +57,12 @@ public enum RemoteHook {
                 size=$(wc -c <"$event.payload" | tr -d ' ')
                 # drip reads up to 4 MB of payload.
                 [ "$size" -gt 0 ] && [ "$size" -le 4194304 ] || return 1
-                # Letters, digits and . _ - only, starting with a letter or digit, as herdr names machines.
+                # Letters, digits and . _ - only, starting with a letter or digit, as a host name may be.
                 machine=$(printf '%s' "${DRIP_MACHINE:-$(uname -n)}" | tr -cd 'A-Za-z0-9._-' | sed 's/^[^A-Za-z0-9]*//' | cut -c 1-64)
+                forward=$(forward)
                 {
-                    printf '{"drip":1,"time":%s,"agent":"%s","machine":"%s","env":{\#(variables)},"payload":' \
-                        "$(date +%s)" "$agent" "${machine:-remote}" \#(values)
+                    printf '{"drip":1,"time":%s,"agent":"%s","machine":"%s","env":{\#(variables)},"forward":{%s},"payload":' \
+                        "$(date +%s)" "$agent" "${machine:-remote}" \#(values) "$forward"
                     # A JSON payload holds line breaks only between its values, where a space reads the same.
                     tr '\r\n' '  ' <"$event.payload"
                     printf '}\n'
@@ -114,6 +114,26 @@ public enum RemoteHook {
                 printf '%s' "$1" | tr -cd 'A-Za-z0-9._:@-' | cut -c 1-64
             }
 
+            # The members of "forward": each variable DRIP_FORWARD_ENV names, up to \#(ForwardedEnvironment.countLimit), that is
+            # set and not empty. A name must be a variable's name; a value keeps letters, digits and
+            # . _ : @ / % + , = - only, up to \#(ForwardedEnvironment.valueLimit) characters, so it needs no quoting.
+            forward() {
+                set -f
+                count=0
+                members=
+                for name in ${DRIP_FORWARD_ENV-}; do
+                    case $name in '' | [!A-Za-z_]* | *[!A-Za-z0-9_]*) continue ;; esac
+                    [ "${#name}" -le \#(ForwardedEnvironment.nameLimit) ] || continue
+                    count=$((count + 1))
+                    [ "$count" -le \#(ForwardedEnvironment.countLimit) ] || break
+                    eval "value=\${$name-}"
+                    value=$(printf '%s' "$value" | tr -cd 'A-Za-z0-9._:@/%+,=-' | cut -c 1-\#(ForwardedEnvironment.valueLimit))
+                    [ -n "$value" ] || continue
+                    members="$members${members:+,}\"$name\":\"$value\""
+                done
+                printf '%s' "$members"
+            }
+
             # Appends the event, first moving a queue past \#(rotateSize) bytes to $queue.1.
             append() {
                 if [ -f "$queue" ]; then
@@ -140,13 +160,21 @@ extension AgentHook {
         public var machine: String
         /// The app a click on the card brings forward; nil for none.
         public var activate: String?
-        /// The agent's herdr tab on the machine, which a click focuses once `activate` is in front.
-        public var pane: TerminalPane?
+        /// The command a click on the card runs, from `drip follow --on-click` on this Mac; nil for none.
+        public var onClick: String?
+        /// The variables `DRIP_FORWARD_ENV` named in the agent's session, for `onClick` to read.
+        public var forwarded: [String: String]
 
-        public init(machine: String, activate: String? = nil, pane: TerminalPane? = nil) {
+        public init(machine: String, activate: String? = nil, onClick: String? = nil, forwarded: [String: String] = [:]) {
             self.machine = machine
             self.activate = activate
-            self.pane = pane
+            self.onClick = onClick
+            self.forwarded = forwarded
+        }
+
+        /// What a click on the card runs: `onClick`, with the machine and its forwarded variables.
+        public var click: OnClick? {
+            onClick.map { OnClick(command: $0, machine: machine, environment: forwarded) }
         }
 
         /// A session's id on this machine: `<agent>:<session>@<machine>`, so it never replaces the
@@ -159,22 +187,29 @@ extension AgentHook {
 
 /// One event in the remote machine's queue, as `drip-remote-hook` writes it: a JSON object on one
 /// line with `drip` (the format, 1), `time` (seconds since 1970, on the remote clock), `agent`,
-/// `machine`, `env` (the session's variables, `RemoteHook.sessionVariables`) and `payload` (the
-/// hook's JSON).
+/// `machine`, `env` (the session's variables, `RemoteHook.sessionVariables`), `forward` (the
+/// variables `DRIP_FORWARD_ENV` names) and `payload` (the hook's JSON). drip reads nothing else from
+/// it: a click's command, and what a button opens, come only from this Mac.
 public struct RemoteEvent: Equatable, Sendable {
     public var time: Double
     public var agent: AgentHook.Agent
     public var machine: String
     /// The session's variables, as the hook found them; empty ones left out.
     public var environment: [String: String]
+    /// The variables `DRIP_FORWARD_ENV` named in the session, which only a click's command reads.
+    public var forwarded: [String: String]
     /// The hook's JSON.
     public var payload: String
 
-    public init(time: Double, agent: AgentHook.Agent, machine: String, environment: [String: String], payload: String) {
+    public init(
+        time: Double, agent: AgentHook.Agent, machine: String, environment: [String: String],
+        forwarded: [String: String] = [:], payload: String
+    ) {
         self.time = time
         self.agent = agent
         self.machine = machine
         self.environment = environment
+        self.forwarded = forwarded
         self.payload = payload
     }
 
@@ -192,7 +227,7 @@ public struct RemoteEvent: Equatable, Sendable {
         guard let name = object["agent"]?.string, let agent = AgentHook.Agent(rawValue: name) else {
             throw UsageError("no agent drip knows")
         }
-        guard let machine = object["machine"]?.string, TerminalPane.isMachineLabel(machine) else {
+        guard let machine = object["machine"]?.string, Self.isMachineName(machine) else {
             throw UsageError("no machine name")
         }
         guard let payload = object["payload"], payload.members != nil else {
@@ -202,12 +237,14 @@ public struct RemoteEvent: Equatable, Sendable {
         for member in object["env"]?.members ?? [] where RemoteHook.sessionVariables.contains(member.key) {
             if let value = member.value.string, !value.isEmpty { environment[member.key] = value }
         }
-        self.init(time: seconds, agent: agent, machine: machine, environment: environment, payload: payload.formatted())
+        self.init(
+            time: seconds, agent: agent, machine: machine, environment: environment,
+            forwarded: ForwardedEnvironment.read(members: object["forward"]?.members ?? []), payload: payload.formatted())
     }
 
     /// The variables of a session on this Mac, which an event from another machine never takes.
     static let localSessionVariables = RemoteHook.sessionVariables + [
-        "HERDR_ENV", "HERDR_SOCKET_PATH", "TMUX", "TMUX_PANE", "WEZTERM_PANE", CardActivation.senderVariable,
+        "TMUX", "TMUX_PANE", CardActivation.senderVariable, ForwardedEnvironment.variable,
     ]
 
     /// The environment the hook's rules read for this event: `local`, `drip follow`'s own, for the
@@ -221,11 +258,16 @@ public struct RemoteEvent: Equatable, Sendable {
     }
 
     /// Where the event came from, for `AgentHook.card`: its machine, the app a click brings forward,
-    /// and the agent's herdr tab on the saved herdr machine `herdrMachine`, when herdr names one.
-    public func origin(activate: String?, herdrMachine: String?) -> AgentHook.Origin {
-        AgentHook.Origin(
-            machine: machine, activate: activate,
-            pane: herdrMachine.flatMap { TerminalPane(herdrMachine: $0, hostName: machine, environment: environment) })
+    /// the command a click runs, `drip follow --on-click`, and the variables the session forwarded.
+    public func origin(activate: String?, onClick: String?) -> AgentHook.Origin {
+        AgentHook.Origin(machine: machine, activate: activate, onClick: onClick, forwarded: forwarded)
+    }
+
+    /// A machine's name, as the hook writes it: letters, digits, dots, hyphens and underscores,
+    /// starting with a letter or digit, up to 64.
+    static func isMachineName(_ text: String) -> Bool {
+        guard let first = text.first, first.isASCII, first.isLetter || first.isNumber, text.count <= 64 else { return false }
+        return text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || ".-_".contains($0)) }
     }
 
     /// Seconds between the event and `now`; none for an event from a remote clock ahead of this one.

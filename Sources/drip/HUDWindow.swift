@@ -259,10 +259,6 @@ struct HUDDisplay: CardDisplay {
         card.pane.flatMap(Terminal.isShowing)
     }
 
-    func machineView(_ card: Card) -> MachineView {
-        card.pane.map(Terminal.machineView) ?? .unknown("no pane")
-    }
-
     /// Ends `NSApplication.run()`. `stop` takes effect only after the next event, so post one.
     private func stopApplication() {
         NSApp.stop(nil)

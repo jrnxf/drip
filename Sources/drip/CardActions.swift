@@ -18,57 +18,41 @@ enum CardActions {
         DebugLog.record("click", decision, fields)
     }
 
-    /// Activation requests still on their way to Launch Services.
+    /// Activation requests still on their way to Launch Services, and click commands still running.
     private static let activations = DispatchGroup()
 
-    /// Brings the app with `bundleIdentifier` forward, as a click in the Dock would, then the
-    /// terminal `pane` in it, when the card names one. Launch Services does it, because a
-    /// background process asking an app to activate itself can be refused. For herdr on another
-    /// machine in Ghostty, Ghostty itself first brings forward the terminal that shows herdr, on
-    /// whichever Space it is. Says on `console` how each attempt went, macOS refusing it too.
+    /// What a click anywhere on `card` does: brings its app forward, as a click in the Dock would,
+    /// then its tmux pane, and runs its `--on-click` command, with the card on its stdin. Launch
+    /// Services brings the app forward, because a background process asking an app to activate
+    /// itself can be refused. Says on `console` how each went, macOS refusing too.
+    static func click(_ card: Card, console: Console) {
+        if let target = card.activate { activate(target, pane: card.pane, console: console) }
+        if let onClick = card.onClick { run(onClick, for: card, console: console) }
+    }
+
+    /// Brings the app with `bundleIdentifier` forward, then the terminal `pane` in it.
     static func activate(_ bundleIdentifier: String, pane: TerminalPane? = nil, console: Console) {
-        record("attempt", [("target", bundleIdentifier), ("pane", pane?.debugName), ("herdr_machine", pane?.herdrMachine)])
-        guard bundleIdentifier == TerminalPane.ghostty, let pane,
-              let script = pane.ghosttyRaiseScript(localHost: hostName)
-        else {
-            open(bundleIdentifier, pane: pane, console: console)
-            return
-        }
-        // Ghostty activates itself only when it is not the active app already, and only activating
-        // switches to the Space its terminal is on: when its terminals are all on another Space, drip
-        // takes the activation first, so Ghostty's own takes it back there.
-        let yielded = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleIdentifier
-            && !hasWindowOnThisSpace(bundleIdentifier)
-        if yielded { NSApp.activate(ignoringOtherApps: true) }
+        record("attempt", [("target", bundleIdentifier), ("pane", pane?.debugName)])
+        open(bundleIdentifier, pane: pane, console: console)
+    }
+
+    /// Runs `onClick` with `/bin/sh -c`, the click's payload on its stdin, for up to
+    /// `OnClick.timeout` seconds. The debug log notes how it ended, never what it printed.
+    private static func run(_ onClick: OnClick, for card: Card, console: Console) {
+        let payload = onClick.payload(for: card)
         activations.enter()
         DispatchQueue.global().async {
             defer { CardActions.activations.leave() }
-            if yielded { Thread.sleep(forTimeInterval: 0.1) }
-            switch Terminal.run(["osascript", "-e", script], timeout: raiseTimeout) {
-            case let .success(title) where !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
-                record("ghostty_raise", [("result", "ok")])
-                Terminal.select(pane, console: console)
-                report(bundleIdentifier, as: "Ghostty's \(title.trimmingCharacters(in: .whitespacesAndNewlines))", console: console)
-                return
+            let result = TimedCommand.run(["/bin/sh", "-c", onClick.command], input: payload, timeout: OnClick.timeout)
+            switch result {
             case .success:
-                record("ghostty_raise", [("result", "no_terminal")])
-                console.click("no Ghostty terminal shows herdr on \(pane.hostName ?? "the machine") or this Mac; bringing Ghostty forward")
+                record("on_click", [("result", "ok")])
             case let .failure(failure):
-                record("ghostty_raise", [("result", "failed"), ("reason", failure.reason)])
-                let said = failure.stderr.split(whereSeparator: \.isNewline).first.map(String.init)
-                console.click("cannot bring Ghostty's herdr terminal forward: \(said ?? failure.reason)")
+                record("on_click", [("result", "failed"), ("reason", failure.reason)])
+                let said = failure.stderr.split(whereSeparator: \.isNewline).first.map { String($0.prefix(300)) }
+                console.click("the --on-click command failed: \(said ?? failure.reason)")
             }
-            open(bundleIdentifier, pane: pane, console: console)
         }
-    }
-
-    /// This Mac's name, as herdr titles a terminal that shows it: `gethostname`, which, unlike
-    /// `ProcessInfo.hostName`, never waits on the network.
-    private static var hostName: String? {
-        var name = [CChar](repeating: 0, count: 256)
-        guard gethostname(&name, name.count) == 0 else { return nil }
-        let text = String(cString: name)
-        return text.isEmpty ? nil : text
     }
 
     /// Brings the app forward through Launch Services, then `pane` in it.
@@ -126,14 +110,10 @@ enum CardActions {
         }
     }
 
-    /// How long Ghostty has to bring forward its terminal that shows herdr.
-    private static let raiseTimeout = 5.0
-
-    /// Waits, briefly, for activations to be handed off, so exiting does not cut them short: long
-    /// enough for Ghostty to bring its terminal forward, then herdr on another machine to answer
-    /// both commands that select the agent's tab over ssh, and the report after.
+    /// Waits for activations to be handed off and click commands to end, so exiting does not cut
+    /// them short: long enough for an `--on-click` command's timeout, and its grace.
     static func waitForActivations() {
-        _ = activations.wait(timeout: .now() + raiseTimeout + 2 * Terminal.remoteTimeout + 2)
+        _ = activations.wait(timeout: .now() + OnClick.timeout + TimedCommand.grace + 1)
     }
 
     /// Answers a card's buttons: yes runs the action, no is reported through drip's exit status.

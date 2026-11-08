@@ -33,82 +33,30 @@ public enum CardActivation {
     }
 }
 
-/// The terminal pane drip runs in, when a multiplexer or terminal says which: a click on the card
-/// selects it once the terminal is in front, so the click lands on the session, not just the app.
+/// The tmux pane drip runs in: a click on the card selects it once the terminal is in front, so
+/// the click lands on the session, not just the app. Any other multiplexer or terminal is a
+/// recipe for `--on-click`.
 public struct TerminalPane: Equatable, Sendable, Codable {
     /// tmux's server socket, the first field of `TMUX`.
     public var tmuxSocket: String?
     /// tmux's pane id, such as `%3`, from `TMUX_PANE`.
     public var tmuxPane: String?
-    /// WezTerm's pane id, from `WEZTERM_PANE`.
-    public var weztermPane: String?
-    /// herdr's pane id, such as `w1:p2`, from `HERDR_PANE_ID`.
-    public var herdrPane: String?
-    /// herdr's tab id, such as `w1:t2`, from `HERDR_TAB_ID`.
-    public var herdrTab: String?
-    /// herdr's server socket, from `HERDR_SOCKET_PATH`, so a drip started elsewhere asks the same
-    /// server; nil for herdr's own default.
-    public var herdrSocket: String?
-    /// herdr's workspace id, such as `w1`, from `HERDR_WORKSPACE_ID`, for a pane on another machine.
-    public var herdrWorkspace: String?
-    /// The saved herdr machine the pane runs on, as `herdr --machine` names it, for an agent that
-    /// `drip follow` hears from over ssh; nil for a pane on this Mac.
-    public var herdrMachine: String?
-    /// That machine's own name, as the agent's hook gave it, which herdr's title for a terminal
-    /// that shows the machine starts with.
-    public var hostName: String?
 
-    public init(
-        tmuxSocket: String? = nil, tmuxPane: String? = nil, weztermPane: String? = nil,
-        herdrPane: String? = nil, herdrTab: String? = nil, herdrSocket: String? = nil,
-        herdrWorkspace: String? = nil, herdrMachine: String? = nil, hostName: String? = nil
-    ) {
+    public init(tmuxSocket: String? = nil, tmuxPane: String? = nil) {
         self.tmuxSocket = tmuxSocket
         self.tmuxPane = tmuxPane
-        self.weztermPane = weztermPane
-        self.herdrPane = herdrPane
-        self.herdrTab = herdrTab
-        self.herdrSocket = herdrSocket
-        self.herdrWorkspace = herdrWorkspace
-        self.herdrMachine = herdrMachine
-        self.hostName = hostName
     }
 
-    /// A herdr pane on the saved herdr machine `machine`, named `hostName` there, from the
-    /// `HERDR_PANE_ID`, `HERDR_TAB_ID` and `HERDR_WORKSPACE_ID` its agent ran with; nil when they
-    /// name no tab or workspace, or `machine` is no machine label.
-    public init?(herdrMachine machine: String, hostName: String? = nil, environment: [String: String]) {
-        func id(_ name: String) -> String? {
-            environment[name].flatMap { Self.isHerdrID($0) ? $0 : nil }
-        }
-        let tab = id("HERDR_TAB_ID"), workspace = id("HERDR_WORKSPACE_ID")
-        guard Self.isMachineLabel(machine), tab != nil || workspace != nil else { return nil }
-        self.init(
-            herdrPane: id("HERDR_PANE_ID"), herdrTab: tab, herdrWorkspace: workspace, herdrMachine: machine,
-            hostName: hostName.flatMap { Self.isMachineLabel($0) ? $0 : nil })
-    }
-
-    /// The pane the environment names; nil when it names none. The innermost comes first: tmux,
-    /// then herdr, then WezTerm, whose variables reach a multiplexer running inside it, where the
-    /// pane that matters is the multiplexer's.
+    /// The tmux pane the environment names; nil when it names none.
     public init?(environment: [String: String]) {
         func value(_ name: String) -> String? {
             environment[name].flatMap { $0.isEmpty ? nil : $0 }
         }
-        if let pane = value("TMUX_PANE"), Self.isPaneID(pane, prefix: "%"),
-           let socket = value("TMUX")?.split(separator: ",", maxSplits: 1).first.map(String.init),
-           socket.hasPrefix("/")
-        {
-            self.init(tmuxSocket: socket, tmuxPane: pane)
-        } else if value("HERDR_ENV") == "1", let pane = value("HERDR_PANE_ID"), Self.isHerdrID(pane) {
-            let tab = value("HERDR_TAB_ID").flatMap { Self.isHerdrID($0) ? $0 : nil }
-            let socket = value("HERDR_SOCKET_PATH").flatMap { $0.hasPrefix("/") ? $0 : nil }
-            self.init(herdrPane: pane, herdrTab: tab, herdrSocket: socket)
-        } else if let pane = value("WEZTERM_PANE"), Self.isPaneID(pane, prefix: "") {
-            self.init(weztermPane: pane)
-        } else {
-            return nil
-        }
+        guard let pane = value("TMUX_PANE"), Self.isPaneID(pane, prefix: "%"),
+              let socket = value("TMUX")?.split(separator: ",", maxSplits: 1).first.map(String.init),
+              socket.hasPrefix("/")
+        else { return nil }
+        self.init(tmuxSocket: socket, tmuxPane: pane)
     }
 
     /// A pane id: the prefix, then digits only, so it is never read as an option or a command.
@@ -118,99 +66,18 @@ public struct TerminalPane: Equatable, Sendable, Codable {
         return !digits.isEmpty && digits.count <= 12 && digits.allSatisfy { $0.isASCII && $0.isNumber }
     }
 
-    /// A herdr id, such as `w1J:p2`: letters, digits and colons, starting with a letter, so it is
-    /// never read as an option.
-    static func isHerdrID(_ text: String) -> Bool {
-        guard let first = text.first, first.isASCII, first.isLetter, text.count <= 64 else { return false }
-        return text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == ":") }
-    }
-
-    /// A saved herdr machine's label or id, as `herdr --machine` takes it: letters, digits, dots,
-    /// hyphens and underscores, starting with a letter or digit, so it is never read as an option.
-    public static func isMachineLabel(_ text: String) -> Bool {
-        guard let first = text.first, first.isASCII, first.isLetter || first.isNumber, text.count <= 64 else { return false }
-        return text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || ".-_".contains($0)) }
-    }
-
-    /// The `herdr` command line with `arguments`, against the pane's own server: on its machine, or
-    /// through its socket.
-    func herdr(_ arguments: [String]) -> [String] {
-        if let herdrMachine { return ["herdr", "--machine", herdrMachine] + arguments }
-        return (herdrSocket.map { ["HERDR_SOCKET_PATH=\($0)"] } ?? []) + ["herdr"] + arguments
-    }
-
-    /// The command whose output `isShowing(herdrPane:)` reads. For a pane on another machine, that
-    /// machine's herdr answers over ssh: it marks the pane focused when any client attached to it
-    /// shows the pane, whether or not this Mac's herdr shows that machine.
-    public var herdrShowingCommand: [String]? {
-        herdrPane.map { herdr(["pane", "get", $0]) }
-    }
-
     /// The commands that bring this pane forward in its terminal, each as the program and its
-    /// arguments. tmux: show the pane's window in the client attached to the pane's session, then
-    /// the pane. herdr: show the pane's tab, then the agent in the pane, which a pane with no agent
-    /// refuses; on another machine, its workspace, then its tab, as close as herdr lets a command
-    /// from another machine get. WezTerm: activate the pane.
+    /// arguments: show the pane's window in the client attached to the pane's session, then the pane.
     public var selectCommands: [[String]] {
-        if let pane = tmuxPane, let socket = tmuxSocket {
-            return [
-                ["tmux", "-S", socket, "select-window", "-t", pane],
-                ["tmux", "-S", socket, "select-pane", "-t", pane],
-            ]
-        }
-        if herdrMachine != nil {
-            return (herdrWorkspace.map { [herdr(["workspace", "focus", $0])] } ?? [])
-                + (herdrTab.map { [herdr(["tab", "focus", $0])] } ?? [])
-        }
-        if let pane = herdrPane {
-            return (herdrTab.map { [herdr(["tab", "focus", $0])] } ?? []) + [herdr(["agent", "focus", pane])]
-        }
-        if let pane = weztermPane {
-            return [["wezterm", "cli", "activate-pane", "--pane-id", pane]]
-        }
-        return []
+        guard let pane = tmuxPane, let socket = tmuxSocket else { return [] }
+        return [
+            ["tmux", "-S", socket, "select-window", "-t", pane],
+            ["tmux", "-S", socket, "select-pane", "-t", pane],
+        ]
     }
 }
 
 extension TerminalPane {
-    /// The titles `ghosttyRaiseScript` looks for, in order, each as an AppleScript string literal:
-    /// herdr's title for a terminal that shows the machine, then for one that shows `localHost`.
-    /// Nil for a pane on this Mac, or without the machine's name.
-    public func ghosttyTitlePrefixes(localHost: String?) -> [String]? {
-        guard herdrMachine != nil, let hostName else { return nil }
-        return ([hostName] + (localHost.map { [$0] } ?? []))
-            .map { "\"" + $0.replacing("\\", with: "\\\\").replacing("\"", with: "\\\"") + ": \"" }
-    }
-
-    /// Ghostty's bundle identifier.
-    public static let ghostty = "com.mitchellh.ghostty"
-
-    /// The AppleScript that brings forward the Ghostty terminal that shows herdr for a pane on
-    /// another machine, by herdr's default title, `<hostname>: <workspace>`: the one showing that
-    /// machine, else the one showing `localHost`, this Mac, whose herdr reaches the machine too. It
-    /// prints the title of the terminal it brought forward, or nothing when no title matches. Ghostty
-    /// switches to the Space the terminal is on. Nil for a pane on this Mac, or without the
-    /// machine's name.
-    public func ghosttyRaiseScript(localHost: String?) -> String? {
-        guard let prefixes = ghosttyTitlePrefixes(localHost: localHost) else { return nil }
-        return """
-            with timeout of 4 seconds
-                tell application id "\(Self.ghostty)"
-                    repeat with prefix in {\(prefixes.joined(separator: ", "))}
-                        repeat with candidate in terminals
-                            if name of candidate starts with (prefix as text) then
-                                activate
-                                focus candidate
-                                return name of candidate
-                            end if
-                        end repeat
-                    end repeat
-                end tell
-            end timeout
-            return ""
-            """
-    }
-
     /// A tmux client, as `tmuxClientFormat` lists it.
     public struct TmuxClient: Equatable, Sendable {
         public var pid: Int32
@@ -258,69 +125,10 @@ extension TerminalPane {
         return fields[0] == 1 && fields[1] == 1 && fields[2] > 0
     }
 
-    /// The saved herdr machine that `herdr machine list --json`'s output names for the ssh target
-    /// `target`, whose host is `host`: the one saved with that target, else the one labeled with
-    /// it or its host, else the one whose target has that host, by its label, or its id when the
-    /// label is no machine label. Nil when none matches or the output cannot be read.
-    public static func herdrMachine(forSSHTarget target: String, host: String?, inList output: String) -> String? {
-        guard let reply = try? JSONValue(parsing: output), let list = reply.elements else { return nil }
-        let machines = list.compactMap { machine -> (name: String, label: String?, target: String?)? in
-            let label = machine["label"]?.string, id = machine["id"]?.string
-            guard let name = [label, id].compactMap({ $0 }).first(where: isMachineLabel) else { return nil }
-            return (name, label, machine["target"]?.string)
-        }
-        func hostOf(_ target: String) -> String {
-            String(target.split(separator: "@").last?.split(separator: ":").first ?? "")
-        }
-        let names = [target] + (host.map { [$0] } ?? [])
-        let match = machines.first { $0.target == target }
-            ?? machines.first { $0.label.map(names.contains) == true }
-            ?? machines.first { machine in host.map { machine.target.map(hostOf) == $0 } == true }
-        return match?.name
-    }
-
     /// What drip logs when `command`, one of `selectCommands`, failed: the command, then the first
     /// line it wrote to stderr, or else why it stopped.
     public static func selectFailure(_ command: [String], stderr: String, reason: String) -> String {
         let said = stderr.split(whereSeparator: \.isNewline).first.map { String($0.prefix(300)) }
         return "cannot bring the agent's pane forward: \(command.joined(separator: " ")): \(said ?? reason)"
-    }
-
-    /// Whether `herdr pane get`'s output says the pane shows: herdr marks one pane focused, the
-    /// active pane of the active tab in the workspace its clients show. Nil when it cannot be read.
-    public static func isShowing(herdrPane output: String) -> Bool? {
-        guard let reply = try? JSONValue(parsing: output), case let .bool(focused)? = reply["result"]?["pane"]?["focused"]
-        else { return nil }
-        return focused
-    }
-}
-
-/// Whether this Mac's herdr window shows a saved machine, as `herdr machine list --json` says with
-/// its `selected` field, which a machine's own herdr cannot tell: it only knows some client shows
-/// its pane.
-public enum MachineView: Equatable, Sendable {
-    case selected
-    case notSelected
-    /// The list could not be read or does not name the machine; why, for the debug log.
-    case unknown(String)
-
-    /// The command whose output `init(machineList:machine:)` reads.
-    public static let listCommand = ["herdr", "machine", "list", "--json"]
-
-    /// What `output`, from `listCommand`, says about the saved machine `machine`, by its label.
-    public init(machineList output: String, machine: String) {
-        guard let list = try? JSONValue(parsing: output), let machines = list.elements else {
-            self = .unknown("unreadable machine list")
-            return
-        }
-        guard let found = machines.first(where: { $0["label"]?.string == machine }) else {
-            self = .unknown("machine not in list")
-            return
-        }
-        guard case let .bool(selected)? = found["selected"] else {
-            self = .unknown("no selected field")
-            return
-        }
-        self = selected ? .selected : .notSelected
     }
 }

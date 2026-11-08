@@ -206,7 +206,7 @@ final class IslandLayers {
         } else {
             makeRing(accent: accent, lineWidth: 2.4 * sizeScale, inset: 1.4 * sizeScale, glyph: card.ringGlyph, scale: scale)
         }
-        if card.action == nil, card.activate != nil { makeGoMark(scale: scale) }
+        if card.action == nil, card.opensOnClick { makeGoMark(scale: scale) }
         ring.opacity = 0
         content.addSublayer(ring)
 
@@ -1483,7 +1483,7 @@ final class IslandPresenter: CardPresenting {
             press(answer)
             return
         }
-        if let target = card.activate { CardActions.activate(target, pane: card.pane, console: console) }
+        if card.opensOnClick { CardActions.click(card, console: console) }
         leave(clicked: false)
     }
 
@@ -1526,10 +1526,10 @@ final class IslandPresenter: CardPresenting {
                 })
             }
         }
-        if card.activate != nil, card.action == nil {
+        if card.opensOnClick, card.action == nil {
             actions.append(NSAccessibilityCustomAction(name: CardAccessibility.open) { [weak self] () -> Bool in
-                guard let self, self.departure != nil, let target = self.card.activate else { return false }
-                CardActions.activate(target, pane: self.card.pane, console: self.console)
+                guard let self, self.departure != nil else { return false }
+                CardActions.click(self.card, console: self.console)
                 self.leave(clicked: false)
                 return true
             })

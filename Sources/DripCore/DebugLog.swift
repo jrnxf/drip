@@ -151,19 +151,14 @@ public struct DebugLog {
 
 #if !os(WASI)
 extension TerminalPane {
-    /// The pane as the debug log names it: its multiplexer and id, such as `herdr:w1:p2`.
+    /// The pane as the debug log names it: its multiplexer and id, such as `tmux:%3`.
     public var debugName: String? {
-        if let pane = tmuxPane { return "tmux:\(pane)" }
-        if let pane = herdrPane { return "herdr:\(pane)" }
-        if let pane = weztermPane { return "wezterm:\(pane)" }
-        return herdrTab.map { "herdr-tab:\($0)" }
+        tmuxPane.map { "tmux:\($0)" }
     }
 
-    /// The question `Terminal.isShowing` asks about the pane, without the socket or the machine's
-    /// address: `herdr pane get w1:p2`, or `tmux display-message`.
+    /// The question `Terminal.isShowing` asks about the pane, without the socket.
     public var debugQuery: String? {
-        if let pane = herdrPane { return "herdr pane get \(pane)" }
-        return tmuxPane == nil ? nil : "tmux display-message"
+        tmuxPane == nil ? nil : "tmux display-message"
     }
 }
 #endif

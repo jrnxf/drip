@@ -10,99 +10,32 @@ struct TerminalPaneTests {
             ["tmux", "-S", "/private/tmp/tmux-501/default", "select-window", "-t", "%3"],
             ["tmux", "-S", "/private/tmp/tmux-501/default", "select-pane", "-t", "%3"],
         ])
-        // tmux inside WezTerm: tmux's pane is the one that matters.
+        // tmux inside another multiplexer: tmux's pane is the one drip selects.
         #expect(TerminalPane(environment: ["TMUX": "/tmp/t,1,0", "TMUX_PANE": "%1", "WEZTERM_PANE": "7"])?.tmuxPane == "%1")
     }
 
-    @Test func wezTermNamesItsPane() {
-        let pane = TerminalPane(environment: ["WEZTERM_PANE": "12"])
-        #expect(pane == TerminalPane(weztermPane: "12"))
-        #expect(pane?.selectCommands == [["wezterm", "cli", "activate-pane", "--pane-id", "12"]])
-    }
-
-    @Test func herdrNamesItsPaneTabAndServer() throws {
-        let environment = [
-            "HERDR_ENV": "1", "HERDR_PANE_ID": "w1J:p2", "HERDR_TAB_ID": "w1J:t2", "HERDR_SOCKET_PATH": "/home/user/.config/herdr/herdr.sock",
-        ]
-        let pane = try #require(TerminalPane(environment: environment))
-        #expect(pane == TerminalPane(herdrPane: "w1J:p2", herdrTab: "w1J:t2", herdrSocket: "/home/user/.config/herdr/herdr.sock"))
-        let socket = "HERDR_SOCKET_PATH=/home/user/.config/herdr/herdr.sock"
-        #expect(pane.selectCommands == [
-            [socket, "herdr", "tab", "focus", "w1J:t2"],
-            [socket, "herdr", "agent", "focus", "w1J:p2"],
-        ])
-        #expect(pane.herdrShowingCommand == [socket, "herdr", "pane", "get", "w1J:p2"])
-        // Without a tab or a socket of its own: the agent, on herdr's default server.
-        let bare = try #require(TerminalPane(environment: ["HERDR_ENV": "1", "HERDR_PANE_ID": "w1:p1", "HERDR_SOCKET_PATH": "relative"]))
-        #expect(bare.selectCommands == [["herdr", "agent", "focus", "w1:p1"]])
-        // tmux inside herdr: tmux's pane; herdr inside WezTerm: herdr's.
-        #expect(TerminalPane(environment: environment.merging(["TMUX": "/tmp/t,1,0", "TMUX_PANE": "%1"]) { $1 })?.tmuxPane == "%1")
-        #expect(TerminalPane(environment: environment.merging(["WEZTERM_PANE": "7"]) { $1 })?.herdrPane == "w1J:p2")
-    }
-
-    @Test func herdrSaysWhetherThePaneIsFocused() {
-        #expect(TerminalPane.isShowing(herdrPane: #"{"id":"cli:pane:get","result":{"pane":{"focused":true,"pane_id":"w1:p2"}}}"#) == true)
-        #expect(TerminalPane.isShowing(herdrPane: #"{"result":{"pane":{"focused":false}}}"#) == false)
-        #expect(TerminalPane.isShowing(herdrPane: #"{"error":{"code":"pane_not_found"}}"#) == nil)
-        #expect(TerminalPane.isShowing(herdrPane: "not json") == nil)
-    }
-
-    @Test func herdrNamesTheMachineItSavedForTheSSHTarget() {
-        let list = #"""
-            [
-              {"id":"7fa0","label":"devbox.example.com","target":"devbox","enabled":true},
-              {"id":"91bc","label":"build","target":"me@build.example.com:2222","enabled":true},
-              {"id":"c3d4","label":"not a label","target":"odd","enabled":false}
-            ]
-            """#
-        func machine(_ target: String, _ host: String?) -> String? {
-            TerminalPane.herdrMachine(forSSHTarget: target, host: host, inList: list)
-        }
-        // Saved with that target, by its label.
-        #expect(machine("devbox", "devbox") == "devbox.example.com")
-        #expect(machine("me@build.example.com:2222", "build.example.com") == "build")
-        // Labeled with the target, or with its host.
-        #expect(machine("build", "build") == "build")
-        #expect(machine("me@devbox.example.com", "devbox.example.com") == "devbox.example.com")
-        // Saved with another target on the same host.
-        #expect(machine("build.example.com", "build.example.com") == "build")
-        // A label herdr would not take: its id.
-        #expect(machine("odd", "odd") == "c3d4")
-        #expect(machine("elsewhere", "elsewhere") == nil)
-        #expect(TerminalPane.herdrMachine(forSSHTarget: "devbox", host: "devbox", inList: "error: no herdr") == nil)
-        #expect(TerminalPane.herdrMachine(forSSHTarget: "devbox", host: nil, inList: "[]") == nil)
-    }
-
-    @Test func aFailedSelectCommandSaysWhatHerdrSaid() {
-        let command = ["herdr", "--machine", "agents", "workspace", "focus", "wA6"]
-        #expect(TerminalPane.selectFailure(
-            command, stderr: "error: unknown machine 'agents'; use `herdr machine list`\nmore\n", reason: "exit status 1")
-            == "cannot bring the agent's pane forward: herdr --machine agents workspace focus wA6: "
-            + "error: unknown machine 'agents'; use `herdr machine list`")
+    @Test func aFailedSelectCommandSaysWhatTmuxSaid() {
+        let command = ["tmux", "-S", "/tmp/t", "select-pane", "-t", "%3"]
+        #expect(TerminalPane.selectFailure(command, stderr: "can't find pane: %3\nmore\n", reason: "exit status 1")
+            == "cannot bring the agent's pane forward: tmux -S /tmp/t select-pane -t %3: can't find pane: %3")
         // Nothing on stderr: how it ended.
-        #expect(TerminalPane.selectFailure(command, stderr: "", reason: "no answer within 5s")
-            == "cannot bring the agent's pane forward: herdr --machine agents workspace focus wA6: no answer within 5s")
+        #expect(TerminalPane.selectFailure(command, stderr: "", reason: "no answer within 1s")
+            == "cannot bring the agent's pane forward: tmux -S /tmp/t select-pane -t %3: no answer within 1s")
     }
 
-    @Test func ghosttyLooksForTheTerminalThatShowsHerdrForTheMachine() {
-        let pane = TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox.example.com", hostName: "devbox")
-        // herdr's title for a terminal showing the machine, then for one showing this Mac.
-        #expect(pane.ghosttyTitlePrefixes(localHost: "my-mac.local") == [#""devbox: ""#, #""my-mac.local: ""#])
-        #expect(pane.ghosttyTitlePrefixes(localHost: nil) == [#""devbox: ""#])
-        // Quotes and backslashes in this Mac's name stay inside the string.
-        #expect(pane.ghosttyTitlePrefixes(localHost: #"odd"mac\"#) == [#""devbox: ""#, #""odd\"mac\\: ""#])
-        // A pane on this Mac, or one without the machine's name: nothing for Ghostty to find.
-        #expect(TerminalPane(herdrPane: "w1:p1").ghosttyTitlePrefixes(localHost: "my-mac.local") == nil)
-        #expect(TerminalPane(herdrPane: "w1:p1").ghosttyRaiseScript(localHost: "my-mac.local") == nil)
-        #expect(TerminalPane(herdrTab: "w1:t2", herdrMachine: "devbox").ghosttyTitlePrefixes(localHost: "my-mac.local") == nil)
-        #expect(TerminalPane(herdrMachine: "devbox", hostName: "-x", environment: ["HERDR_TAB_ID": "w1:t2"])?.hostName == nil)
+    @Test func otherTerminalsAndMultiplexersAreLeftToAClickCommand() {
+        // WezTerm and herdr name their panes, but drip selects only tmux's: --on-click does the rest.
+        for environment in [
+            ["WEZTERM_PANE": "12"], ["HERDR_ENV": "1", "HERDR_PANE_ID": "w1:p2", "HERDR_TAB_ID": "w1:t2"],
+        ] {
+            #expect(TerminalPane(environment: environment) == nil, "\(environment)")
+        }
     }
 
     @Test func anythingElseNamesNoPane() {
         for environment in [
             [:], ["TMUX_PANE": "%3"], ["TMUX": "/tmp/t,1,0", "TMUX_PANE": "3"], ["TMUX": "relative,1,0", "TMUX_PANE": "%3"],
-            ["TMUX": "/tmp/t,1,0", "TMUX_PANE": "%3;rm"], ["WEZTERM_PANE": "-1"], ["WEZTERM_PANE": ""],
-            ["HERDR_PANE_ID": "w1:p2"], ["HERDR_ENV": "1", "HERDR_PANE_ID": "-w1"], ["HERDR_ENV": "1", "HERDR_PANE_ID": "w1;rm"],
+            ["TMUX": "/tmp/t,1,0", "TMUX_PANE": "%3;rm"],
         ] {
             #expect(TerminalPane(environment: environment) == nil, "\(environment)")
         }

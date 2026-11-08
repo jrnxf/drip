@@ -4,8 +4,7 @@ import Foundation
 import AppKit
 #endif
 
-/// The terminal a card came from, through the tools its multiplexer or terminal provides: tmux,
-/// herdr and WezTerm's command lines, which need no permission.
+/// The terminal a card came from, through tmux's command line, which needs no permission.
 enum Terminal {
     /// What `arguments`, a program found on `PATH` and its arguments, after any `NAME=value` for its
     /// environment, prints, when it exits 0 within `timeout` seconds; nil otherwise, as when the
@@ -23,10 +22,6 @@ enum Terminal {
         TimedCommand.run(arguments, timeout: timeout)
     }
 
-    /// How long herdr on another machine, which answers over ssh, has to answer a click, and to say
-    /// whether the agent's pane is in front, which holds its card up meanwhile.
-    static let remoteTimeout = 5.0, remoteShowingTimeout = 3.0
-
     /// The clients attached to the pane's tmux server, and the session the pane is in; nil outside
     /// tmux, or when tmux cannot say.
     private static func tmux(_ pane: TerminalPane) -> (session: String, clients: [TerminalPane.TmuxClient])? {
@@ -41,8 +36,7 @@ enum Terminal {
 
     /// Brings the pane forward in its terminal, once the terminal app is in front: in tmux, the
     /// client that shows the pane's session, or else the one used last, switches to it, then its
-    /// window and the pane are selected; in WezTerm the pane is activated. herdr on another machine
-    /// answers over ssh, so its commands get longer. Says on `console` which command failed.
+    /// window and the pane are selected. Says on `console` which command failed.
     static func select(_ pane: TerminalPane, console: Console) {
         if let socket = pane.tmuxSocket, let id = pane.tmuxPane, let found = tmux(pane),
            let client = TerminalPane.client(for: found.session, among: found.clients), client.session != found.session
@@ -50,8 +44,8 @@ enum Terminal {
             _ = output(["tmux", "-S", socket, "switch-client", "-c", client.name, "-t", id])
         }
         for command in pane.selectCommands {
-            let result = run(command, timeout: pane.herdrMachine == nil ? 1 : remoteTimeout)
-            // The program only: its arguments name sockets and machines.
+            let result = run(command, timeout: 1)
+            // The program only: its arguments name sockets.
             DebugLog.record("click", "pane_select", [
                 ("program", command.first), ("result", { if case .failure = result { return "failed" } else { return "ok" } }()),
                 ("reason", { if case let .failure(failure) = result { return failure.reason } else { return nil } }()),
@@ -62,27 +56,12 @@ enum Terminal {
         }
     }
 
-    /// Whether the pane is the one its tmux client or herdr shows; nil when drip cannot tell, as
-    /// outside both, or when herdr on another machine does not answer in time.
+    /// Whether the pane is the one its tmux client shows; nil when drip cannot tell, as outside tmux.
     static func isShowing(_ pane: TerminalPane) -> Bool? {
-        if let command = pane.herdrShowingCommand {
-            return output(command, timeout: pane.herdrMachine == nil ? 1 : remoteShowingTimeout)
-                .flatMap(TerminalPane.isShowing(herdrPane:))
-        }
         guard let socket = pane.tmuxSocket, let id = pane.tmuxPane,
               let output = output(["tmux", "-S", socket, "display-message", "-p", "-t", id, TerminalPane.tmuxShowingFormat])
         else { return nil }
         return TerminalPane.isShowing(tmuxDisplay: output)
-    }
-
-    /// Whether this Mac's herdr shows the machine the pane runs on; unknown when the pane is not on
-    /// another machine or herdr cannot say.
-    static func machineView(_ pane: TerminalPane) -> MachineView {
-        guard let machine = pane.herdrMachine else { return .unknown("not a remote pane") }
-        switch run(MachineView.listCommand, timeout: 3) {
-        case let .success(output): return MachineView(machineList: output, machine: machine)
-        case let .failure(failure): return .unknown(failure.reason)
-        }
     }
 
     #if canImport(AppKit)

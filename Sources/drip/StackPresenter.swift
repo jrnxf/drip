@@ -767,7 +767,7 @@ final class StackPresenter: CardPresenting {
             press(answer, on: entry)
             return
         }
-        if let target = entry.card.activate { CardActions.activate(target, pane: entry.card.pane, console: console) }
+        if entry.card.opensOnClick { CardActions.click(entry.card, console: console) }
         entry.dismissed = entry.dismissed ?? false
     }
 
@@ -854,11 +854,11 @@ final class StackPresenter: CardPresenting {
                         return true
                     })
                 }
-            } else if entry.card.activate != nil {
+            } else if entry.card.opensOnClick {
                 actions.append(NSAccessibilityCustomAction(name: "\(CardAccessibility.open): \(title)") {
                     [weak self, weak entry] () -> Bool in
-                    guard let self, let entry, !entry.isLeaving, let target = entry.card.activate else { return false }
-                    CardActions.activate(target, pane: entry.card.pane, console: self.console)
+                    guard let self, let entry, !entry.isLeaving else { return false }
+                    CardActions.click(entry.card, console: self.console)
                     entry.dismissed = entry.dismissed ?? false
                     return true
                 })

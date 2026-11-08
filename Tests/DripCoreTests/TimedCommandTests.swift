@@ -46,10 +46,20 @@ struct TimedCommandTests {
 
     @Test func aCommandThatAnswersInTimeSaysWhatItPrinted() {
         #expect(TimedCommand.run(["printf", "%s\\n", "one", "two"], timeout: 5) == .success("one\ntwo\n"))
-        // `NAME=value` first sets the program's environment, as for herdr's socket.
+        // `NAME=value` first sets the program's environment.
         #expect(TimedCommand.run(["DRIP_TIMED=yes", "sh", "-c", "echo $DRIP_TIMED"], timeout: 5) == .success("yes\n"))
         // Nothing to read on stdin.
         #expect(TimedCommand.run(["cat"], timeout: 5) == .success(""))
+    }
+
+    @Test func aCommandReadsItsInputOnStdin() {
+        #expect(TimedCommand.run(["sh", "-c", "tr a-z A-Z"], input: "one\n", timeout: 5) == .success("ONE\n"))
+        // A command that never reads it, or ends first, holds nothing up.
+        #expect(TimedCommand.run(["true"], input: String(repeating: "x", count: TimedCommand.inputLimit), timeout: 5)
+            == .success(""))
+        // More than a pipe holds is refused before anything runs.
+        #expect(TimedCommand.run(["cat"], input: String(repeating: "x", count: TimedCommand.inputLimit + 1), timeout: 5)
+            == .failure(TimedCommand.Failure(stderr: "", reason: "input longer than \(TimedCommand.inputLimit) bytes")))
     }
 
     @Test func aCommandThatFailsSaysHowAndWhatItWroteToStderr() {

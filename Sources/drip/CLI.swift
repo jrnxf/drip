@@ -30,9 +30,6 @@ protocol CardDisplay {
     /// Whether the card's pane is the one its terminal shows; nil when drip cannot tell.
     func paneShowing(_ card: Card) -> Bool?
 
-    /// Whether this Mac's herdr shows the machine the card's pane runs on.
-    func machineView(_ card: Card) -> MachineView
-
     /// Draws the card offscreen into a PNG file; `at` seconds into its entrance, or its exit when
     /// `leaving`.
     func render(
@@ -219,10 +216,6 @@ struct DripCLI {
             target: target, queue: command.queue, maxAge: command.maxAge,
             ssh: [environment["DRIP_SSH"].flatMap { $0.isEmpty ? nil : $0 } ?? "/usr/bin/ssh"],
             positionPath: FollowPosition.path(target: target, environment: environment))
-        // herdr names a machine by the label it was saved under, which need not be the ssh target.
-        let herdrMachine = command.herdrMachine(savedMachines: {
-            Terminal.output(["herdr", "machine", "list", "--json"], timeout: 5)
-        })
         // The config is read with each event, but its warnings are said once.
         let config = ConfigWarnedOnce(read: { try ConfigLoader.load(environment: $0) }, warn: console.warn)
         var local = surroundings(console)
@@ -230,7 +223,7 @@ struct DripCLI {
         local.resolver = { try self.makeResolver(console, file: $0, environment: $1, warn: false) }
         let follower = RemoteFollower(settings: settings, handle: { event, stale in
             var surroundings = event.surroundings(
-                local, activate: activate, herdrMachine: herdrMachine, stale: stale)
+                local, activate: activate, onClick: command.onClick, stale: stale)
             let looked = surroundings
             // This drip stays up, so it looks again itself.
             surroundings.resurface = { card, noted in
@@ -253,7 +246,7 @@ struct DripCLI {
                 console.error("\(target): a \(event.agent.rawValue) event from \(event.machine): \(error)")
             }
         }, log: { console.error($0) })
-        console.error("following \(target)" + (herdrMachine.map { ", which herdr calls \($0)" } ?? ""))
+        console.error("following \(target)")
         do {
             try follower.run()
         } catch {
@@ -531,7 +524,6 @@ struct DripCLI {
         AgentHook.Surroundings(
             environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
             isInstalled: display.isInstalled, front: display.front(of:), paneShowing: display.paneShowing,
-            machineView: display.machineView(_:),
             resurface: { card, noted in
                 #if canImport(AppKit)
                 guard let agent else { return }
@@ -613,10 +605,6 @@ struct UnavailableDisplay: CardDisplay {
 
     func paneShowing(_ card: Card) -> Bool? {
         nil
-    }
-
-    func machineView(_ card: Card) -> MachineView {
-        .unknown("no GUI session")
     }
 
     func render(
