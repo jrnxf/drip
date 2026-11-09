@@ -10,19 +10,19 @@
 </p>
 
 
-drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you.
+drip is a command that shows a card at your Mac's notch. Call it from a script, a build or a shell
+hook to say that something finished, failed or needs an answer.
 
-A glance tells you what finished and how it went: a build, a deploy, a test run, or a coding agent
-such as Claude Code, Codex or Gemini CLI. It is not Notification Center, so a card needs no macOS
-privacy grant. drip returns at once, so it never slows the script that calls it. On a Mac without a
-notch, the card grows out of the top edge of the screen.
+A card needs no macOS privacy grant, because drip does not use Notification Center. drip returns at
+once, so it never slows the script that calls it. On a Mac without a notch, the card grows out of
+the top edge of the screen.
 
 - **One command, any script.** `drip ok "deployed"` shows a green card with an icon, a sound and a countdown.
 - **Wraps commands.** `drip run make test` shows how it went and how long it took, and keeps the exit code.
-- **Coding agents.** A card tells you which project needs you, and why.
-- **Slow shell commands.** Any zsh command that takes 10 seconds or more gets a card, with nothing to type.
-- **Remote machines.** Agents on a Linux box over ssh raise their cards on your Mac.
-- **Questions.** `--yes Deploy --no Cancel` waits for a click and exits 0 or 1.
+- **Questions.** `--yes Deploy --no Cancel` waits for a click. It exits 0 for yes, 1 for no and 5 for no answer.
+- **Slow shell commands.** A zsh recipe gives a card to any command that runs 10 seconds or more.
+- **Coding agents.** Recipes for Claude Code, Codex and Gemini CLI call `drip hook` to show a card when the agent needs you.
+- **Remote machines.** A Linux box you reach over ssh can raise its cards on your Mac.
 - **Nothing lost.** Cards that come up while the screen is locked play back when you return.
 
 Requires macOS 13 or newer.
@@ -66,8 +66,9 @@ watching that terminal.
 
 ## Coding agents
 
-drip gives building blocks. [Recipes](recipes/README.md) are examples that decide when to notify:
-you copy one into the agent's settings and adapt it. Nothing is installed for you.
+drip has no built-in agent support. `drip hook` turns an agent's hook event into a card. A
+[recipe](recipes/README.md) is a settings snippet that picks the events that show one. Copy a recipe
+into the agent's settings and adapt it. Nothing is installed for you.
 
 | Recipe | What it does |
 | --- | --- |
@@ -79,11 +80,11 @@ you copy one into the agent's settings and adapt it. Nothing is installed for yo
 | [orchestrator](recipes/orchestrator/) | Many sessions at once: cards from the one you talk to, not its workers |
 
 Start with [permission-cards](recipes/permission-cards/). It has the hooks for Claude Code, Codex
-and Gemini CLI. The card's title is the project, such as `my-app needs you`, and a click brings back
-the agent's terminal. [docs/agents.md](docs/agents.md) is the reference for `drip hook`,
-`drip watching` and `DRIP_HOOK`.
+and Gemini CLI. [recipes/](recipes/README.md) also has click recipes for herdr, WezTerm and Ghostty,
+and examples for Aider and opencode. [docs/agents.md](docs/agents.md) is the reference for
+`drip hook`, `drip watching` and `DRIP_HOOK`.
 
-An agent on a Linux box you reach over ssh, with no drip there, raises its cards on your Mac. See
+To show the cards of an agent on a Linux box you reach over ssh, with no drip there, see
 [docs/remote.md](docs/remote.md).
 
 ## Clicks
@@ -135,6 +136,7 @@ sound = "Submarine"
 ## More
 
 - [Install, from source, and uninstall](docs/install.md)
+- [Recipes](recipes/README.md): when agents notify, and clicks for herdr, WezTerm and Ghostty
 - [Troubleshooting](docs/troubleshooting.md): no card, permissions, privacy and the debug log
 - [Development](docs/development.md): tests, the live agent check, releases and the web page
 - [drip.jrnxf.co](https://drip.jrnxf.co): guides for [Claude Code notifications](https://drip.jrnxf.co/claude-code-notifications) and [alerts when a command finishes](https://drip.jrnxf.co/notify-when-command-finishes)
