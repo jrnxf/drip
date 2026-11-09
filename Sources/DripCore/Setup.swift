@@ -94,7 +94,8 @@ public enum AgentSetup {
                             throw UsageError("--remote needs each hook's command to say '\(local)', not '\(command)'")
                         }
                         return JSONMember(
-                            member.key, .string(command.replacingCharacters(in: range, with: RemoteHook.command(for: agent))))
+                            member.key,
+                            .string(command[..<range.lowerBound] + RemoteHook.command(for: agent) + command[range.upperBound...]))
                     })
                 case let .array(elements): return .array(try elements.map(convert))
                 default: return value
