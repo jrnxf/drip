@@ -345,7 +345,7 @@ sound = "Submarine"
 
 - [Install, from source, and uninstall](docs/install.md)
 - [Recipes](recipes/README.md): when agents notify, and clicks for herdr, WezTerm and Ghostty
-- [`scripts/tour.sh`](scripts/tour.sh): an interactive tour of every card and helper, one step at a time, on your own Mac
+- [`scripts/tour.sh`](scripts/tour.sh): a 10-step tour of the cards, run with Next and Stop cards at the notch
 - [What scripts can rely on](docs/contract.md): flags, exit codes, `history --json` and the click payload
 - [Troubleshooting](docs/troubleshooting.md): no card, permissions, privacy and the debug log
 - [Development](docs/development.md): tests, the live agent check, releases and the web page

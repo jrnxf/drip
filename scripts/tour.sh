@@ -1,24 +1,22 @@
 #!/bin/sh
-# An interactive tour of everything drip ships with. For each feature it prints what the next card
-# shows and the exact command, waits for you, then runs it, so you watch real cards at the notch.
-# Run it on a Mac, in a terminal, with the notch in view:
+# A tour of what drip ships with, run entirely through drip's own cards. Run it on a Mac, with the
+# notch in view, from any terminal:
 #
 #   scripts/tour.sh                  # the drip on your PATH
 #   scripts/tour.sh --bin PATH       # another drip binary
 #   scripts/tour.sh --build          # a fresh `swift build -c release` copy from this checkout
-#   scripts/tour.sh --dry-run        # print every step and command, run nothing, wait for nothing
+#   scripts/tour.sh --dry-run        # print every step and its commands; show no cards
 #
-# At each step: Enter runs it, s skips it, q quits. Ctrl-C leaves at any time.
+# After that one command you never type again. Before each of the 10 steps a question card says
+# what the step shows. Click Next to run the step, or Stop to end the tour. A card nobody answers,
+# or a click beside its buttons, asks again instead of moving on.
 #
 # It never edits your drip config or any agent's settings. Every command runs with an empty config
 # folder, so cards have the built-in look, and with DRIP_WHEN_FOCUSED=show and DRIP_HOOK=on, so the
-# terminal you run it in does not hide the agent cards. With --bin or --build it also runs in a
+# terminal you run it in does not hide the agent card. With --bin or --build it also runs in a
 # world of its own (its own card queue, history, pause and agent state in a temporary folder,
 # deleted on exit), so it never touches the drip you use. With the drip on your PATH its cards go
 # through your own drip, and so do its history entries and its pause, which it ends on exit.
-#
-# --auto runs every step without asking. It is for trying the script against a stand-in --bin that
-# only logs its arguments; do not use it for a real tour, where cards would pile up.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -30,12 +28,11 @@ die() {
 
 usage() {
     cat <<'EOF'
-usage: scripts/tour.sh [--bin PATH | --build] [--dry-run] [--auto]
+usage: scripts/tour.sh [--bin PATH | --build] [--dry-run]
 
   --bin PATH   use this drip binary (default: drip on PATH), in a world of its own
   --build      use a fresh swift build -c release copy of this checkout, in a world of its own
-  --dry-run    print every step and command; run nothing and wait for nothing
-  --auto       run every step without asking (for a stand-in --bin)
+  --dry-run    print every step and its commands; show no cards
   -h, --help   this text
 EOF
 }
@@ -43,7 +40,6 @@ EOF
 bin=
 build=0
 dry_run=0
-auto=0
 while [ $# -gt 0 ]; do
     case $1 in
         --bin)
@@ -53,7 +49,6 @@ while [ $# -gt 0 ]; do
             ;;
         --build) build=1; shift ;;
         --dry-run) dry_run=1; shift ;;
-        --auto) auto=1; shift ;;
         -h | --help) usage; exit 0 ;;
         *) usage >&2; die "unknown option: $1" ;;
     esac
@@ -73,7 +68,7 @@ cleanup() {
         # another card of yours.
         [ "$paused" -eq 0 ] || "$drip_bin" resume >/dev/null 2>&1 || true
         if [ "$ran" -eq 1 ]; then
-            for id in tour-stay tour-click tour-deploy tour-a tour-b claude:tour-1 codex:tour-2 gemini:tour-3; do
+            for id in tour-nav tour-stay tour-click tour-deploy claude:tour-1; do
                 "$drip_bin" dismiss --id "$id" >/dev/null 2>&1 || true
             done
         fi
@@ -87,9 +82,6 @@ trap 'exit 143' TERM
 
 if [ "$dry_run" -eq 0 ]; then
     [ "$(uname -s)" = Darwin ] || die "run this on a Mac: drip shows its cards at the notch"
-    if [ "$auto" -eq 0 ]; then
-        [ -t 0 ] && [ -t 1 ] || die "run this in a terminal: it asks before each step"
-    fi
     work=$(mktemp -d "${TMPDIR:-/tmp}/drip-tour.XXXXXX")
     if [ "$build" -eq 1 ]; then
         command -v swift >/dev/null 2>&1 || die "swift is missing. Fix: xcode-select --install"
@@ -104,7 +96,7 @@ if [ "$dry_run" -eq 0 ]; then
     case $bin in /*) ;; *) bin=$PWD/$bin ;; esac
     drip_bin=$bin
     # This drip needs the commands the tour shows; an older one lacks some of them.
-    for sub in run hook remote-hook watching history dismiss pause resume; do
+    for sub in run hook history dismiss pause resume; do
         "$drip_bin" help "$sub" >/dev/null 2>&1 ||
             die "this drip has no 'drip $sub' (version: $("$drip_bin" --version 2>&1 || true)). Fix: update drip, or use --build"
     done
@@ -123,310 +115,121 @@ drip() {
     "$drip_bin" "$@"
 }
 
-queue_file=$work/remote.jsonl
-click_log=$work/click.json
-remote_hook=$work/drip-remote-hook
-if [ "$dry_run" -eq 1 ]; then
-    queue_file=/tmp/drip-tour/remote.jsonl
-    click_log=/tmp/drip-tour/click.json
-    remote_hook=/tmp/drip-tour/drip-remote-hook
-fi
-
-# Canned payloads, as Claude Code, Codex and Gemini CLI send them to their hooks.
-claude_prompt='{"hook_event_name":"UserPromptSubmit","session_id":"tour-1","cwd":"/home/user/my-app","prompt":"split the parser out"}'
+# The sample payload Claude Code sends its PermissionRequest hook.
 claude_permission='{"hook_event_name":"PermissionRequest","session_id":"tour-1","cwd":"/home/user/my-app","tool_name":"Bash","tool_input":{"command":"npm install"}}'
-claude_stop='{"hook_event_name":"Stop","session_id":"tour-1","cwd":"/home/user/my-app","last_assistant_message":"Split the parser out of the CLI and added tests."}'
-claude_failure='{"hook_event_name":"StopFailure","session_id":"tour-1","cwd":"/home/user/my-app","error":"rate_limit","last_assistant_message":"API Error: Rate limit reached"}'
-codex_permission='{"hook_event_name":"PermissionRequest","session_id":"tour-2","turn_id":"t1","cwd":"/home/user/api","tool_name":"Bash","tool_input":{"command":"cargo test"}}'
-gemini_permission='{"hook_event_name":"Notification","notification_type":"ToolPermission","session_id":"tour-3","cwd":"/home/user/site","message":"Gemini wants to run npm test"}'
 
+total=10
 n=0
-payload_note=
 
-heading() {
-    printf '\n== %s ==\n' "$1"
+# ask TITLE DETAIL: a question card with Next and Stop. Returns 0 for Next and 1 for Stop. A card
+# nobody answers (exit 5) is asked again; any other failure is the tour's.
+ask() {
+    while :; do
+        code=0
+        drip info "$1" -d "$2" --yes Next --no Stop --id tour-nav --activate none || code=$?
+        case $code in
+            0) return 0 ;;
+            1) return 1 ;;
+            5) sleep 1 ;;
+            *) die "drip exited $code while asking; is a GUI session running?" ;;
+        esac
+    done
 }
 
-note() {
-    printf '\n-- %s\n' "$1"
-}
-
-# step TITLE WATCH COMMAND [EXIT-HINT]: prints the step, asks, runs COMMAND with eval. The commands
-# are written as you would type them; `drip` there is this tour's binary. EXIT-HINT names what the
-# exit status means, and the status is then printed after the command.
+# step NAME DETAIL COMMANDS: asks, then runs COMMANDS with eval. The commands are written as you
+# would type them; `drip` there is this tour's binary.
 step() {
     n=$((n + 1))
-    printf '\n[%d] %s\n    Watch for: %s\n' "$n" "$1" "$2"
-    if [ -n "$payload_note" ]; then
-        printf '    Sample payload on stdin:\n'
-        printf '%s\n' "$payload_note" | sed 's/^/      /'
-    fi
-    printf '%s\n' "$3" | sed -e '1s/^/    $ /' -e '2,$s/^/      /'
-    payload_note=
-    [ "$dry_run" -eq 0 ] || return 0
-    if [ "$auto" -eq 0 ]; then
-        printf '    [Enter] run  [s] skip  [q] quit: '
-        answer=q
-        read -r answer </dev/tty || true
-        case $answer in
-            [qQ]*) echo "tour: stopped at step $n"; exit 0 ;;
-            [sS]*) echo "    skipped"; return 0 ;;
-        esac
+    title="drip tour $n/$total: $1"
+    if [ "$dry_run" -eq 1 ]; then
+        printf '\n[%d/%d] %s\n    asks: drip info "%s" -d "%s" --yes Next --no Stop --id tour-nav --activate none\n' \
+            "$n" "$total" "$1" "$title" "$2"
+        printf '%s\n' "$3" | sed -e '1s/^/    runs: /' -e '2,$s/^/          /'
+        return 0
     fi
     ran=1
-    rc=0
-    eval "$3" || rc=$?
-    if [ -n "${4-}" ]; then
-        echo "    exit status: $rc ($4)"
-    elif [ "$rc" -ne 0 ]; then
-        echo "    exit status: $rc"
+    echo "tour: $title"
+    if ! ask "$title" "$2"; then
+        drip info "Tour stopped" -d "Run scripts/tour.sh again any time." --seconds 4 --wait
+        exit 0
     fi
-    return 0
+    eval "$3" || true
 }
 
-if [ "$dry_run" -eq 1 ]; then
-    echo "tour: dry run - nothing below runs. 'drip' is the binary the tour would use."
-else
-    echo "tour: using $drip_bin ($("$drip_bin" --version 2>&1 || true))"
-    if [ "$installed" -eq 1 ]; then
-        echo "tour: this is your own drip: its cards, history and pause are yours."
-    else
-        echo "tour: a world of its own in $work, deleted on exit."
-    fi
-    echo "tour: Enter runs a step, s skips it, q quits. Look at the notch after each step."
+[ "$dry_run" -eq 0 ] || echo "tour: dry run - no cards. 'drip' is the binary the tour would use."
+
+step "four kinds" \
+    "ok, warn, fail and info, sent together to show as one stack. Each card names its kind." \
+    'drip ok "ok" -d "green check, Glass sound" --seconds 6
+drip warn "warn" -d "orange, Purr sound" --seconds 6
+drip fail "fail" -d "red, Basso sound" --seconds 6
+drip info "info" -d "blue, Tink sound" --seconds 6'
+
+step "icon, color, sound" \
+    "One card with Claude's bundled mark, a purple color and the Hero sound." \
+    'drip ok "A custom look" -d "--icon mark:claude --color purple --sound Hero" --icon mark:claude --color purple --sound Hero --seconds 8'
+
+step "--open and --button" \
+    "A card with a View PR button. Hover the card, then click the button to open example.com." \
+    'drip info "A link button" -d "Hover me, then click View PR" --open https://example.com --button "View PR" --seconds 12'
+
+step "--yes and --no" \
+    "A Deploy or Cancel question. The next card says which you clicked and the exit code drip returned." \
+    'rc=0
+drip warn "Deploy to prod?" -d "Click Deploy or Cancel" --yes Deploy --no Cancel --seconds 30 || rc=$?
+case $rc in
+    0) drip ok "You clicked Deploy" -d "drip exited 0" --seconds 6 ;;
+    1) drip warn "You clicked Cancel" -d "drip exited 1" --seconds 6 ;;
+    *) drip info "No answer" -d "drip exited $rc" --seconds 6 ;;
+esac'
+
+step "--id replace in place" \
+    "One card with the same id, updated 3 times: it changes in place, it is not a new card." \
+    'drip info "Deploying" -d "update 1 of 3: building" --id tour-deploy --seconds 10
+sleep 3
+drip info "Deploying" -d "update 2 of 3: testing" --id tour-deploy --seconds 10
+sleep 3
+drip ok "Deployed" -d "update 3 of 3: same card, same id" --id tour-deploy --seconds 6'
+
+step "--stay and drip dismiss" \
+    "A red card that stays with a pulsing dot. In 6 seconds the tour runs drip dismiss and it goes." \
+    'drip fail "Needs a look" -d "--stay: no countdown. drip dismiss clears me in 6 seconds" --stay --id tour-stay
+sleep 6
+drip dismiss --id tour-stay'
+
+step "--on-click" \
+    "Click the next card. Its --on-click command runs and a new card confirms it." \
+    'drip info "Click me" -d "Your click runs a command" --id tour-click --seconds 20 --wait --on-click "cat >/dev/null; \"$drip_bin\" ok \"Click received\" -d \"Your --on-click command ran\" --seconds 6"'
+
+step "drip run" \
+    "Two commands: one that passes, a green card, and one that fails with exit 3, a red card." \
+    'drip run --seconds 6 sh -c "sleep 1"
+drip run --seconds 6 sh -c "sleep 1; exit 3"'
+
+step "pause, resume, history" \
+    "Two cards sent while paused are held. On resume they play back. Then a card sums up drip history --missed." \
+    'paused=1
+drip pause 2m >/dev/null 2>&1
+drip ok "Held card 1" -d "sent while paused" --seconds 5
+drip warn "Held card 2" -d "sent while paused" --seconds 5
+sleep 1
+drip resume >/dev/null 2>&1
+paused=0
+sleep 4
+missed=$(drip history --missed -n 2 --json | sed -n "s/.*\"title\":\"\([^\"]*\)\".*/\1/p" | paste -sd, - | sed "s/,/, /g")
+drip info "drip history --missed" -d "${missed:-nothing missed} (the missed notice and the history list)" --seconds 8'
+
+step "drip hook --approve" \
+    "A permission card for npm install, from a sample Claude Code payload, with Allow and Deny. The next card shows what drip printed." \
+    'answer=$(printf "%s\n" "$claude_permission" | drip hook claude --approve) || true
+drip ok "Hook answered" -d "drip hook printed: ${answer:-nothing, so the terminal would ask}" --seconds 8'
+
+if [ "$n" -ne "$total" ]; then
+    die "internal: $n steps, expected $total"
 fi
-
-heading "The four kinds"
-
-step "ok" \
-    "a green card with a check, a title and a gray detail line, and the Glass sound" \
-    'drip ok "Build finished" -d "make test: 246 passed in 3.2s"'
-
-step "warn" \
-    "an orange card, and the Purr sound" \
-    'drip warn "Disk almost full" -d "/ is 94% used"'
-
-step "fail" \
-    "a red card, and the Basso sound" \
-    'drip fail "Deploy failed" -d "staging: health check timed out after 30s"'
-
-step "info, also the default" \
-    "a blue card with no kind named: the first word is the title" \
-    'drip "Build finished"'
-
-note "Custom presets live in the config file (see docs/config.md); the tour never edits it."
-
-heading "How a card looks"
-
-step "Detail and seconds" \
-    "a card that stays fully visible for 8 seconds instead of 4.5" \
-    'drip ok "Held longer" -d "This card stays fully visible for 8 seconds" --seconds 8'
-
-step "Icons" \
-    "three cards: an SF Symbol, Finder's own app icon, and Claude's bundled mark" \
-    'drip info "SF Symbol" --icon bolt.fill --seconds 6
-drip info "App icon" --icon app:com.apple.finder --seconds 6
-drip info "Agent mark" --icon mark:claude --seconds 6'
-
-step "Sounds" \
-    "one card with the Hero sound, then one in silence" \
-    'drip ok "Sound: Hero" --sound Hero
-sleep 2
-drip ok "Sound: none" --sound none'
-
-step "Colors" \
-    "a purple card, then one in a hex color" \
-    'drip info "Purple" --color purple --seconds 5
-drip info "Hex color" --color "#ff6b35" --seconds 5'
-
-step "Title and detail from stdin" \
-    "a card whose title is the first line and whose detail is the rest" \
-    'printf "Title from stdin\nEvery other line becomes the detail.\n" | drip ok'
-
-step "Several cards at once" \
-    "five cards: three stack under the notch, and the rest wait in a small drop that counts them" \
-    'for i in 1 2 3 4 5; do drip info "Card $i of 5" -d "Cards stack below the first" --seconds 6; done'
-
-heading "Buttons and questions"
-
-step "A link button: --open and --button" \
-    "hover the card and a View PR button stands where the countdown ring was; a click opens example.com" \
-    'drip info "Pull request ready" -d "Hover the card, then click the button" --open https://example.com --button "View PR" --seconds 10'
-
-step "A question: --yes and --no" \
-    "a card with Deploy and Cancel. Click one, or wait 20 seconds for no answer" \
-    'drip warn "Deploy to prod?" -d "v1.4.0" --yes Deploy --no Cancel --seconds 20' \
-    "0 Deploy, 1 Cancel, 5 no answer"
-
-step "A question in an && chain" \
-    "a card with a Merge button. Click it and the echo after && runs" \
-    'drip info "Merge it?" -d "checks green, 1 approval" --yes Merge --seconds 15 && echo "merged"' \
-    "0 Merge, 5 no answer"
-
-heading "Replace, stay, click, wait"
-
-step "Replace in place: --id" \
-    "a card that stays, then, 3 seconds later, a green card taking its place on screen" \
-    'drip info "Deploying" -d "api 1.4.2" --stay --id tour-deploy
-sleep 3
-drip ok "Deployed" -d "api 1.4.2" --id tour-deploy'
-
-step "A card that waits: --stay" \
-    "a red card with a pulsing white dot, no countdown. It stays until you click it" \
-    'drip fail "Needs a look" -d "This card stays until you click it" --stay --id tour-stay'
-
-step "Your own click: --on-click" \
-    "a card that stays. Click it: the command receives the card as one line of JSON on stdin" \
-    'drip info "Click me" -d "Your click runs a command" --stay --id tour-click --on-click "cat > \"$click_log\""'
-
-step "What the click command received" \
-    "no card: the JSON your click wrote, or a note that you did not click yet" \
-    'if [ -s "$click_log" ]; then cat "$click_log"; else echo "(no click yet: click the card above first)"; fi'
-
-step "Hold the script: --wait" \
-    "a card, and the second echo only after it has gone" \
-    'echo "before the card"; drip ok "Waited" -d "drip returns when this card is gone" --seconds 3 --wait; echo "after the card"'
-
-heading "drip run"
-
-step "drip run, a command that passes" \
-    "after 2 seconds, a green card: sh finished, with how long it took" \
-    'drip run --seconds 5 sh -c "sleep 2"' \
-    "the command's own"
-
-step "drip run, a command that fails" \
-    "after 1 second, a red card: sh failed (exit 3)" \
-    'drip run --seconds 5 sh -c "sleep 1; exit 3"' \
-    "the command's own, 3"
-
-heading "Clearing the notch"
-
-step "drip dismiss" \
-    "two cards that stay; Card A goes by id, then everything on screen goes" \
-    'drip info "Card A" --stay --id tour-a
-drip warn "Card B" --stay --id tour-b
-sleep 3
-drip dismiss --id tour-a
-sleep 3
-drip dismiss'
-
-heading "Pause, missed cards and history"
-
-step "drip pause" \
-    "no card: drip says how long is left. Cards are held from now on" \
-    'paused=1; drip pause 2m; drip pause'
-
-step "A card while paused" \
-    "nothing: the card is held, and shows when you resume" \
-    'drip warn "Held while paused" -d "You see this after drip resume" --seconds 6'
-
-step "drip history --missed" \
-    "no card: a listing with the held card, marked missed" \
-    'drip history --missed'
-
-step "drip resume" \
-    "the held card plays back now" \
-    'drip resume; paused=0'
-
-step "drip history" \
-    "no card: the last cards, newest first, as they showed" \
-    'drip history -n 6'
-
-step "drip history --json" \
-    "no card: the newest card as one line of JSON, for scripts" \
-    'drip history --json -n 1'
-
-step "drip history --replay" \
-    "the last 2 cards again, in order" \
-    'drip history -n 2 --replay'
-
-heading "Coding agents: drip hook"
-
-note "A recipe in recipes/ puts these hooks in an agent's settings. The tour never does: it feeds sample payloads to the hook by hand."
-
-payload_note=$claude_permission
-step "A permission request from Claude Code" \
-    "an info card that stays: my-app needs you, with the command Claude wants to run" \
-    'printf "%s\n" "$claude_permission" | drip hook claude'
-
-payload_note=$claude_stop
-step "The turn is done" \
-    "the same session's card turns into a green done card in place" \
-    'printf "%s\n" "$claude_stop" | drip hook claude'
-
-payload_note=$claude_failure
-step "A turn that ends on an error" \
-    "a red card: my-app stopped, with the error" \
-    'printf "%s\n" "$claude_failure" | drip hook claude'
-
-payload_note=$codex_permission
-step "Codex asks too" \
-    "an info card that stays: api needs you, with the command Codex wants to run" \
-    'printf "%s\n" "$codex_permission" | drip hook codex'
-
-payload_note=$gemini_permission
-step "Gemini CLI asks too" \
-    "an info card that stays, with Gemini's message" \
-    'printf "%s\n" "$gemini_permission" | drip hook gemini'
-
-payload_note=$claude_permission
-step "--approve: answer from the card" \
-    "a permission card with Allow and Deny. Click one: drip prints the agent's answer on stdout. A click on the card body, or 9 minutes, prints nothing" \
-    'printf "%s\n" "$claude_permission" | drip hook claude --approve' \
-    "0, and the answer above"
-
-note "--min-turn counts from the prompt you sent. The next three steps send the prompt, then a done event."
-
-payload_note=$claude_prompt
-step "A prompt starts the turn" \
-    "no card: drip notes when the turn began" \
-    'printf "%s\n" "$claude_prompt" | drip hook claude'
-
-payload_note=$claude_stop
-step "--min-turn 30: the turn was too short" \
-    "no done card: the turn ran well under 30 seconds" \
-    'printf "%s\n" "$claude_stop" | drip hook claude --min-turn 30'
-
-payload_note=$claude_stop
-step "--min-turn 2: the turn was long enough" \
-    "after 3 seconds, a green done card: the turn ran longer than 2 seconds" \
-    'sleep 3; printf "%s\n" "$claude_stop" | drip hook claude --min-turn 2'
-
-payload_note=$claude_permission
-step "--only needs-you" \
-    "the permission card shows; 3 seconds later the done event takes it away and shows no done card" \
-    'printf "%s\n" "$claude_permission" | drip hook claude --only needs-you
-sleep 3
-printf "%s\n" "$claude_stop" | drip hook claude --only needs-you'
-
-payload_note=$claude_stop
-step "DRIP_HOOK=off" \
-    "no card: this session asked for none" \
-    'printf "%s\n" "$claude_stop" | DRIP_HOOK=off drip hook claude'
-
-heading "Watching and remote agents"
-
-step "drip watching" \
-    "no card: the exit status says whether you are watching this terminal now" \
-    'drip watching' \
-    "0 watching, 1 not watching, 2 cannot tell"
-
-step "A card only when you are away" \
-    "usually nothing, since you are at this terminal. Click another app, wait out away_after (see docs/config.md), and run it again to see the card" \
-    'drip watching || drip ok "You were away" -d "This card shows only when you are not watching"'
-
-step "drip remote-hook, the script" \
-    "no card: the first lines of the script you save on a machine without drip" \
-    'drip remote-hook | head -n 14'
-
-payload_note=$claude_stop
-step "drip-remote-hook queues an event" \
-    "no card: the hook writes one line of JSON to a queue file here, standing in for the other machine" \
-    'drip remote-hook > "$remote_hook" && chmod +x "$remote_hook"
-printf "%s\n" "$claude_stop" | DRIP_QUEUE="$queue_file" DRIP_MACHINE=devbox "$remote_hook" claude --min-turn 30
-cat "$queue_file"'
-
-note "drip follow <ssh-target> shows those queued cards on this Mac. It needs ssh to another machine, so the tour skips it. See docs/remote.md."
-
-heading "Done"
-echo "That is every part of drip a card can show. The docs: docs/usage.md, docs/agents.md and recipes/README.md."
+if [ "$dry_run" -eq 1 ]; then
+    echo
+    echo "tour: after the last step: drip ok \"Tour done\""
+    exit 0
+fi
+drip ok "Tour done" -d "That is the tour. The docs: docs/usage.md, docs/agents.md and recipes/README.md." --seconds 8 --wait
