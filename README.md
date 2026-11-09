@@ -13,9 +13,12 @@
 drip is a command that shows a card at your Mac's notch. Call it from a script, a build or a shell
 hook to say that something finished, failed or needs an answer.
 
-A card needs no macOS privacy grant, because drip does not use Notification Center. drip returns at
+No permission prompt: drip draws its own card, not a Notification Center banner, so a card needs no
+macOS privacy grant. drip returns at
 once, so it never slows the script that calls it. On a Mac without a notch, the card grows out of
 the top edge of the screen.
+
+[Recipes](recipes/README.md) · [Docs](docs/usage.md) · [drip.jrnxf.co](https://drip.jrnxf.co)
 
 - **One command, any script.** `drip ok "deployed"` shows a green card with an icon, a sound and a countdown.
 - **Wraps commands.** `drip run make test` shows how it went and how long it took, and keeps the exit code.
@@ -40,11 +43,21 @@ and Intel, with no Xcode needed. To build from source, see [docs/install.md](doc
 ## Quick start
 
 ```sh
-drip "build finished"                                  # an info card
-drip ok "tests passed" -d "246 passed in 3.2s"         # ok, warn, fail or info, with a detail line
-git log -1 --format='%s%n%an' | drip ok                # first line is the title, the rest the detail
+# A card
+drip "build finished"
+
+# A kind and a detail line
+drip ok "tests passed" -d "246 passed in 3.2s"
+
+# The first line of stdin is the title, the rest the detail
+git log -1 --format='%s%n%an' | drip ok
+
+# Replace a card in place
+drip info "deploying" --id deploy
+drip ok "deployed" --id deploy
+
+# Ask a question (exit 0 yes, 1 no, 5 no answer)
 drip warn "Deploy to prod?" --yes Deploy --no Cancel && ./deploy.sh
-drip info "deploying" --id deploy && drip ok "deployed" --id deploy   # replaces the card in place
 ```
 
 `drip --help` lists every option. [docs/usage.md](docs/usage.md) is the full reference, and
@@ -66,20 +79,20 @@ watching that terminal.
 
 ## Coding agents
 
-drip has no built-in agent support. `drip hook` turns an agent's hook event into a card. A
-[recipe](recipes/README.md) is a settings snippet that picks the events that show one. Copy a recipe
-into the agent's settings and adapt it. Nothing is installed for you.
+`drip hook` turns an agent's hook event into a card. drip gives you hooks and recipes, not automatic
+integrations. A [recipe](recipes/README.md) is a settings snippet that picks the events that show a
+card. Copy one into the agent's settings and adapt it.
 
-| Recipe | What it does |
+| Recipe | When it notifies |
 | --- | --- |
-| [permission-cards](recipes/permission-cards/) (suggested) | A card when the agent needs you, and nothing else |
-| [attention](recipes/attention/) | Also a card when an error ends a turn |
-| [everything](recipes/everything/) | Also a done card for every turn |
-| [long-turns](recipes/long-turns/) | As everything, but no done card for a turn under 30 seconds |
-| [approve-from-card](recipes/approve-from-card/) | permission-cards, with Allow and Deny on the card |
-| [orchestrator](recipes/orchestrator/) | Many sessions at once: cards from the one you talk to, not its workers |
+| [Permission cards](recipes/permission-cards/) (suggested) | When the agent needs you, and nothing else |
+| [Attention](recipes/attention/) | Also when an error ends a turn |
+| [Everything](recipes/everything/) | Also a done card for every turn |
+| [Long turns](recipes/long-turns/) | As Everything, but no done card for a turn under 30 seconds |
+| [Approve from card](recipes/approve-from-card/) | As Permission cards, with Allow and Deny on the card |
+| [Orchestrator](recipes/orchestrator/) | Many sessions at once: cards from the one you talk to, not its workers |
 
-Start with [permission-cards](recipes/permission-cards/). It has the hooks for Claude Code, Codex
+Start with [Permission cards](recipes/permission-cards/). It has the hooks for Claude Code, Codex
 and Gemini CLI. [recipes/](recipes/README.md) also has click recipes for herdr, WezTerm and Ghostty,
 and examples for Aider and opencode. [docs/agents.md](docs/agents.md) is the reference for
 `drip hook`, `drip watching` and `DRIP_HOOK`.
