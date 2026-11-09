@@ -7,6 +7,7 @@ import Foundation
 import Testing
 
 struct SetupTests {
+#if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
     @Test func everyRecipeSnippetIsOneDripCanInstall() throws {
         for name in Recipes.names {
             for agent in AgentHook.Agent.allCases {
@@ -17,7 +18,9 @@ struct SetupTests {
             }
         }
     }
+#endif
 
+#if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
     @Test func theRecipesNameTheEventsEachAgentHas() throws {
         let everything = try Recipes.snippet("everything", .claude)
         #expect(everything.events.map(\.key) == [
@@ -41,7 +44,9 @@ struct SetupTests {
         }
         #expect(try Recipes.snippet("attention", .claude).events.map(\.key).contains("StopFailure"))
     }
+#endif
 
+#if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
     @Test func theRecipeFlagsAreOnTheCommandsTheyChange() throws {
         func commands(_ name: String, _ agent: AgentHook.Agent) throws -> [String: String] {
             Dictionary(uniqueKeysWithValues: try Recipes.snippet(name, agent).events.compactMap { event in
@@ -57,6 +62,7 @@ struct SetupTests {
         #expect(long["PermissionRequest"] == "drip hook claude")
         #expect(try commands("long-turns", .gemini)["AfterAgent"] == "drip hook gemini --min-turn 30")
     }
+#endif
 
     @Test func aSnippetOfAnyOtherCommandIsRefused() {
         let other = #"{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]}}"#
@@ -73,6 +79,7 @@ struct SetupTests {
         #expect(empty?.events.isEmpty == true)
     }
 
+#if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
     @Test func remoteChangesTheCommandAndKeepsTheFlags() throws {
         let snippet = try Recipes.snippet("long-turns", .claude).remote()
         #expect(snippet.text.contains(#""command": "drip-remote-hook claude --min-turn 30""#))
@@ -80,7 +87,9 @@ struct SetupTests {
         #expect(!snippet.text.contains("drip hook"))
         #expect(try Recipes.snippet("everything", .gemini).remote().text.contains(#""name": "drip""#))
     }
+#endif
 
+#if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
     @Test func anEmptyOrMissingFileGetsTheSnippet() throws {
         for text in [nil, "", "  \n"] {
             for agent in AgentHook.Agent.allCases {
@@ -92,7 +101,9 @@ struct SetupTests {
             }
         }
     }
+#endif
 
+#if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
     @Test func mergingKeepsEverythingElseInOrder() throws {
         let text = """
             {
@@ -123,7 +134,9 @@ struct SetupTests {
         #expect(merge.text.hasSuffix("}"))
         #expect(try AgentSetup.merge(merge.text, snippet: snippet) == nil)
     }
+#endif
 
+#if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
     @Test func runningItAgainChangesNothing() throws {
         for agent in AgentHook.Agent.allCases {
             let snippet = try Recipes.snippet("attention", agent)
@@ -133,6 +146,8 @@ struct SetupTests {
     }
 
     /// Another recipe takes the place of the one before: drip's hooks are replaced, not added to.
+#endif
+#if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
     @Test func aNewRecipeReplacesDripsOldHooksAndLeavesTheRest() throws {
         let everything = try Recipes.snippet("everything", .claude)
         let cards = try Recipes.snippet("permission-cards", .claude)
@@ -161,6 +176,8 @@ struct SetupTests {
     }
 
     /// A hook that already runs drip counts, whatever path names drip, so drip is never added twice.
+#endif
+#if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
     @Test func drippedHooksAreFound() throws {
         let text = """
             {"hooks": {
@@ -177,7 +194,9 @@ struct SetupTests {
         #expect(!AgentSetup.runsDrip(command: "dripper hook claude", agent: .claude))
         #expect(!AgentSetup.runsDrip(command: "drip ok hook claude", agent: .claude))
     }
+#endif
 
+#if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
     @Test func aFileDripCannotReadIsLeftAlone() throws {
         let snippet = try Recipes.snippet("everything", .claude)
         let refused = [
@@ -191,6 +210,7 @@ struct SetupTests {
             try AgentSetup.merge("{\n  // comments\n  \"a\": 1\n}", snippet: snippet)
         }
     }
+#endif
 
     @Test func settingsPathsFollowTheEnvironment() {
         let home = ["HOME": "/home/user"]

@@ -162,9 +162,11 @@ struct RemoteEventTests {
         #expect(claude.agent == .claude)
         #expect(claude.remote)
         #expect(claude.snippet == "recipes/everything/claude.json")
+        #if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
         let hooks = try Recipes.snippet("long-turns", .claude).remote().text
         #expect(hooks.contains(#""command": "drip-remote-hook claude --min-turn 30""#))
         #expect(!hooks.contains("drip hook"))
+        #endif
         // A snippet is needed for an agent, and --remote is for an agent's snippet only.
         for arguments in [["setup", "claude"], ["setup", "claude", "s.json", "--remote", "--print"], ["setup", "remote", "s.json"],
                           ["setup", "zsh", "--remote"]] {
