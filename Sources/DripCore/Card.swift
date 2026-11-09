@@ -196,9 +196,6 @@ public enum Defaults {
     public static let stackMaxRange: ClosedRange<Int> = 1...6
     /// `away_after`, in seconds: 0 never takes you to be at the screen.
     public static let awayAfterRange: ClosedRange<Double> = 0...3600
-    /// `done_after`, in seconds: 0 shows every done card. No longer than `waitLimit`, for which drip
-    /// keeps when a turn started.
-    public static let doneAfterRange: ClosedRange<Double> = 0...600
     /// A number as a setting's message says it: 60, not 60.0.
     public static func number(_ value: Double) -> String {
         value == value.rounded() ? String(Int(value)) : String(value)

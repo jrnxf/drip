@@ -1,5 +1,5 @@
 {
-  "about": "What drip expects from each agent's hooks, for scripts/agent-contract.sh. events: every event drip setup hooks, with the fields drip reads and their JSON types (reads), and the other fields the agent was last seen sending (seen). flow: the events one live session sends drip, in order. same: fields a permission request and the tool call that follows it must agree on, for drip to take the right card away. requestOnly: keys of a same object that only the permission request carries, which drip leaves out when it matches the call. Tests/DripCoreTests/ContractTests.swift keeps the events in step with drip setup.",
+  "about": "What drip expects from each agent's hooks, for scripts/agent-contract.sh. events: every event the recipes hook, with the fields drip reads and their JSON types (reads), and the other fields the agent was last seen sending (seen). flow: the events one live session sends drip, in order. same: fields a permission request and the tool call that follows it must agree on, for drip to take the right card away. requestOnly: keys of a same object that only the permission request carries, which drip leaves out when it matches the call. Tests/DripCoreTests/ContractTests.swift keeps the events in step with the recipes.",
   "agents": {
     "claude": {
       "events": {

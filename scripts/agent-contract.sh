@@ -1,6 +1,6 @@
 #!/bin/sh
 # Checks drip's hooks against the latest Claude Code, Codex and Gemini CLI, live: one short session of
-# each in a terminal of its own, through the hooks `drip setup` writes, so a change in what an agent's
+# each in a terminal of its own, through the hooks the recipes show, so a change in what an agent's
 # hooks send shows up here before it shows up as cards that never come or never go. Runs on a locked
 # Mac too, and shows nothing at the notch.
 #

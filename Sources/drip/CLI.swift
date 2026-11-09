@@ -96,8 +96,10 @@ struct DripCLI {
         case let .invocation(.hook(command)):
             DebugLog.process = .hook
             return hook(command)
-        case let .invocation(.setup(command)):
-            return setup(command)
+        case .invocation(.remoteHook):
+            return remoteHook()
+        case let .invocation(.watching(command)):
+            return watching(command)
         case let .invocation(.finished(command)):
             return finished(command)
         case let .invocation(.follow(command)):
@@ -149,7 +151,8 @@ struct DripCLI {
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
             }
             guard let card = try AgentHook.card(
-                agent: command.agent, payload: payload, flags: flags, in: surroundings(console, resurfacing: command.agent))
+                agent: command.agent, payload: payload, flags: flags, policy: command.policy,
+                in: surroundings(console, resurfacing: command.agent))
             else {
                 return ExitStatus.shown
             }
@@ -238,7 +241,9 @@ struct DripCLI {
                 }
             }
             do {
-                guard let card = try AgentHook.card(agent: event.agent, payload: event.payload, in: surroundings) else {
+                guard let card = try AgentHook.card(
+                    agent: event.agent, payload: event.payload, policy: event.policy, in: surroundings)
+                else {
                     return
                 }
                 _ = self.deliver([card], wait: false, remind: false, console: console)
@@ -299,51 +304,47 @@ struct DripCLI {
         }
     }
 
-    /// Adds drip's hooks to the agent's settings, or prints them.
-    private func setup(_ command: SetupCommand) -> Int32 {
-        if let shell = command.shell {
-            if command.printOnly {
-                print(ShellHook.snippet(for: shell), terminator: "")
-                return ExitStatus.shown
-            }
-            let console = Console()
-            switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(shell) {
-            case let .done(lines, warnings):
-                warnings.forEach(console.warn)
-                lines.forEach { print($0) }
-                return ExitStatus.shown
-            case let .refused(reason, snippet):
-                console.error(reason)
-                print(snippet, terminator: "")
-                return ExitStatus.setupFailed
-            case let .failed(message):
-                console.error(message)
-                return ExitStatus.setupFailed
-            }
-        }
-        guard let agent = command.agent else {
-            print(RemoteHook.script, terminator: "")
-            return ExitStatus.shown
-        }
-        if command.printOnly || command.remote {
-            print(AgentSetup.snippet(for: agent, remote: command.remote), terminator: "")
-            return ExitStatus.shown
-        }
+    /// Whether you are watching a terminal, by exit status: 0 yes, 1 no, 2 cannot tell.
+    private func watching(_ command: WatchingCommand) -> Int32 {
         let console = Console()
-        switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(agent) {
-        case let .done(lines, warnings):
-            warnings.forEach(console.warn)
-            lines.forEach { print($0) }
-            remindIfPaused(console)
-            return ExitStatus.shown
-        case let .refused(reason, snippet):
-            console.error(reason)
-            print(snippet, terminator: "")
-            return ExitStatus.setupFailed
-        case let .failed(message):
-            console.error(message)
-            return ExitStatus.setupFailed
+        let environment = ProcessInfo.processInfo.environment
+        guard display.hasGUISession else {
+            console.error("cannot tell whether you are watching: there is no GUI session")
+            return Watching.Answer.unknown.status
         }
+        var pane = TerminalPane(environment: environment)
+        if let id = command.pane {
+            guard let socket = pane?.tmuxSocket else {
+                console.error("cannot tell which tmux pane --pane means: drip is not run inside tmux")
+                return Watching.Answer.unknown.status
+            }
+            pane = TerminalPane(tmuxSocket: socket, tmuxPane: id)
+        } else if environment["TMUX_PANE"] == nil {
+            pane = nil
+        }
+        let resolver: CardResolver
+        do {
+            resolver = try makeResolver(console)
+        } catch {
+            return report(error, console)
+        }
+        var card = Card(preset: .info, title: "watching")
+        card.pane = pane
+        card.activate = command.app ?? CardActivation.sender(in: environment)
+        // The terminal that shows the pane now is the app to look at, not the one tmux started in.
+        card = display.prepare([card], console: Console(quiet: true)).first ?? card
+        let answer = Watching.answer(
+            for: card, awayAfter: resolver.awayAfter, front: display.front(of:), paneShowing: display.paneShowing)
+        if answer == .unknown {
+            console.error("cannot tell which terminal to look at: give --app, or run drip in a terminal")
+        }
+        return answer.status
+    }
+
+    /// Prints the hook script for another machine.
+    private func remoteHook() -> Int32 {
+        print(RemoteHook.script, terminator: "")
+        return ExitStatus.shown
     }
 
     /// Everything that can fail is checked here, before the cards are handed off. `record` is false

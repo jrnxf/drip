@@ -151,22 +151,18 @@ struct RemoteEventTests {
         #expect(stream.position?.offset == long.count + 1)
     }
 
-    @Test func setupPrintsTheRemoteHookAndItsHooks() throws {
-        guard case let .invocation(.setup(remote)) = CommandLineParser.parse(["setup", "remote"]) else {
+    @Test func remoteHookPrintsTheRemoteHook() throws {
+        guard case .invocation(.remoteHook) = CommandLineParser.parse(["remote-hook"]) else {
             Issue.record(); return
         }
-        #expect(remote.agent == nil)
-        guard case let .invocation(.setup(claude)) = CommandLineParser.parse(["setup", "claude", "--remote"]) else {
-            Issue.record(); return
+        // The hook script takes the flags a recipe writes after the agent.
+        #expect(RemoteHook.script.contains("--min-turn"))
+        #expect(!RemoteHook.script.contains("drip setup"))
+        // No options: the hooks come from a recipe, written by hand.
+        for arguments in [["remote-hook", "s.json"], ["remote-hook", "--remote"]] {
+            guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
+            #expect(status == ExitStatus.usage, "\(arguments)")
         }
-        #expect(claude.agent == .claude)
-        #expect(claude.remote)
-        #expect(AgentSetup.snippet(for: .claude, remote: true).contains(#""command": "drip-remote-hook claude""#))
-        #expect(!AgentSetup.snippet(for: .claude, remote: true).contains("drip hook"))
-        guard case let .exit(status, _) = CommandLineParser.parse(["setup", "codex", "--print", "--remote"]) else {
-            Issue.record(); return
-        }
-        #expect(status == ExitStatus.usage)
     }
 
     @Test func followTakesTheMachineAndItsOptions() throws {
@@ -378,6 +374,27 @@ struct RemoteFollowTests {
         // Nothing left behind but the queue and its lock.
         let left = try FileManager.default.contentsOfDirectory(atPath: (queue as NSString).deletingLastPathComponent)
         #expect(Set(left).isSubset(of: ["remote.jsonl", "remote.jsonl.lock"]))
+    }
+
+    /// `--min-turn` and `--only` ride the queue line for `drip follow` to apply. `--approve` does not,
+    /// and a word the hook does not know is not taken for the payload.
+    @Test func theHookQueuesItsFlagsAsAFilter() throws {
+        let stop = #"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"Stop"}"#
+        try hook(["claude", "--min-turn", "30", "--only", "needs-you", "--approve"], stdin: stop)
+        try hook(["claude", "--approve", "--min-turn", "7.5"], stdin: stop)
+        // The flags may follow the payload argument too, as Codex's notify passes it first.
+        try hook(["codex", "--only", "needs-you", #"{"type":"agent-turn-complete","thread-id":"t1"}"#])
+        // Values that are not numbers or not known are left out, not queued as they are.
+        try hook(["claude", "--min-turn", "$(id)", "--only", "everything"], stdin: stop)
+        try hook(["claude"], stdin: stop)
+        let events = try queueLines().map { try RemoteEvent(line: $0) }
+        #expect(events.map(\.policy) == [
+            AgentHook.Policy(minTurn: 30, only: .needsYou), AgentHook.Policy(minTurn: 7.5),
+            AgentHook.Policy(only: .needsYou), AgentHook.Policy(), AgentHook.Policy(),
+        ])
+        #expect(try events.map { try AgentHook.event(agent: $0.agent, payload: $0.payload).id }
+            == ["claude:s1", "claude:s1", "codex:t1", "claude:s1", "claude:s1"])
+        #expect(!(try queueLines().joined()).contains("approve"))
     }
 
     @Test func theMachinesNameStartsWithALetterOrDigit() throws {
@@ -872,17 +889,20 @@ struct RemoteDecisionTests {
             now: { now })
     }
 
-    func remote(_ payload: String, environment: [String: String] = [:], time: Double? = nil) -> RemoteEvent {
+    func remote(
+        _ payload: String, environment: [String: String] = [:], time: Double? = nil,
+        policy: AgentHook.Policy = AgentHook.Policy()
+    ) -> RemoteEvent {
         RemoteEvent(
             time: time ?? now.timeIntervalSince1970, agent: .claude, machine: "devbox", environment: environment,
-            payload: payload)
+            policy: policy, payload: payload)
     }
 
     func card(
         _ event: RemoteEvent, _ local: AgentHook.Surroundings, onClick: String? = nil, stale: Bool = false
     ) throws -> Card? {
         try AgentHook.card(
-            agent: event.agent, payload: event.payload,
+            agent: event.agent, payload: event.payload, policy: event.policy,
             in: event.surroundings(local, activate: "com.mitchellh.ghostty", onClick: onClick, stale: stale))
     }
 
@@ -919,7 +939,7 @@ struct RemoteDecisionTests {
         #expect(throws: UsageError.self) { try card(remote(Self.stop, environment: ["DRIP_HOOK": "maybe"]), local()) }
     }
 
-    /// Which cards show under `agent_cards = "attention"` does not depend on the event naming a session.
+    /// Which cards show under `--only needs-you` does not depend on the event naming a session.
     @Test(arguments: [
         (#"{"cwd":"/home/user/api","hook_event_name":"Stop"}"#, false),
         (#"{"session_id":"","cwd":"/home/user/api","hook_event_name":"Stop"}"#, false),
@@ -928,36 +948,45 @@ struct RemoteDecisionTests {
         (#"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"PermissionRequest","tool_name":"Bash"}"#, true),
         (#"{"cwd":"/home/user/api","hook_event_name":"StopFailure","error":"rate_limit"}"#, true),
         (#"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"StopFailure","error":"rate_limit"}"#, true),
-    ] as [(String, Bool)], [true, false])
-    func attentionFiltersDoneCardsWhetherOrNotTheEventNamesASession(
-        _ case: (payload: String, shows: Bool), viaConfig: Bool
-    ) throws {
-        var surroundings = local(viaConfig ? [:] : ["DRIP_AGENT_CARDS": "attention"])
-        if viaConfig {
-            surroundings.resolver = { _, environment in CardResolver(config: Config(agentCards: .attention), environment: try EnvironmentSettings(environment: environment)) }
-        }
-        let direct = try AgentHook.card(agent: .claude, payload: `case`.payload, in: surroundings)
-        let viaRemote = try card(remote(`case`.payload), surroundings)
+    ] as [(String, Bool)])
+    func onlyNeedsYouFiltersDoneCardsWhetherOrNotTheEventNamesASession(_ case: (payload: String, shows: Bool)) throws {
+        let policy = AgentHook.Policy(only: .needsYou)
+        let direct = try AgentHook.card(agent: .claude, payload: `case`.payload, policy: policy, in: local())
+        let viaRemote = try card(remote(`case`.payload, policy: policy), local())
         #expect((direct != nil) == `case`.shows, "\(`case`.payload)")
         #expect((viaRemote != nil) == `case`.shows, "remote \(`case`.payload)")
-        // The default shows every card, with or without a session.
+        // Without the flag every card shows, with or without a session.
         #expect(try AgentHook.card(agent: .claude, payload: `case`.payload, in: local()) != nil)
     }
 
-    /// Without a session id there is no turn start to count `done_after` from: the done card shows.
-    @Test func aSessionlessDoneCardIsNotHeldBackByDoneAfter() throws {
-        var surroundings = local()
-        surroundings.resolver = { _, environment in CardResolver(config: Config(doneAfter: 30), environment: try EnvironmentSettings(environment: environment)) }
-        #expect(try AgentHook.card(agent: .claude, payload: #"{"cwd":"/home/user/api","hook_event_name":"Stop"}"#, in: surroundings) != nil)
+    /// Without a session id there is no turn start to count `--min-turn` from: the done card shows.
+    @Test func aSessionlessDoneCardIsNotHeldBackByMinTurn() throws {
+        #expect(try AgentHook.card(
+            agent: .claude, payload: #"{"cwd":"/home/user/api","hook_event_name":"Stop"}"#,
+            policy: AgentHook.Policy(minTurn: 30), in: local()) != nil)
     }
 
-    @Test func theConfigOnThisMacDecides() throws {
-        #expect(try card(remote(Self.stop), local(["DRIP_AGENT_CARDS": "attention"])) == nil)
-        #expect(try card(remote(Self.permission), local(["DRIP_AGENT_CARDS": "attention"])) != nil)
-        // done_after counts from the prompt the machine reported.
+    @Test func theFilterTheMachinesHookGaveDecides() throws {
+        let only = AgentHook.Policy(only: .needsYou)
+        #expect(try card(remote(Self.stop, policy: only), local()) == nil)
+        #expect(try card(remote(Self.permission, policy: only), local()) != nil)
+        // --min-turn counts from the prompt the machine reported.
         let prompt = #"{"session_id":"s1","hook_event_name":"UserPromptSubmit"}"#
         #expect(try card(remote(prompt), local()) == nil)
-        #expect(try card(remote(Self.stop), local(["DRIP_DONE_AFTER": "30"])) == nil)
+        #expect(try card(remote(Self.stop, policy: AgentHook.Policy(minTurn: 30)), local()) == nil)
+        // The flag is the machine's: this Mac's own settings do not add one.
+        #expect(try card(remote(Self.stop), local()) != nil)
+    }
+
+    @Test func aQueueLineCarriesTheFilterAndNeverApprove() throws {
+        let line = #"{"drip":1,"time":1800000000,"agent":"claude","machine":"devbox","env":{},"forward":{},"filter":{"min_turn":"30","only":"needs-you"},"payload":{"hook_event_name":"Stop"}}"#
+        let event = try RemoteEvent(line: line)
+        #expect(event.policy == AgentHook.Policy(approve: false, minTurn: 30, only: .needsYou))
+        // A filter that is not one drip knows is ignored, as is a line without one.
+        let odd = line.replacingOccurrences(of: #"{"min_turn":"30","only":"needs-you"}"#, with: #"{"min_turn":"-1","only":"all","approve":true}"#)
+        #expect(try RemoteEvent(line: odd).policy == AgentHook.Policy())
+        let none = line.replacingOccurrences(of: #""filter":{"min_turn":"30","only":"needs-you"},"#, with: "")
+        #expect(try RemoteEvent(line: none).policy == AgentHook.Policy())
     }
 
     @Test func aRemoteCardTakesYouNotToBeWatchingIt() throws {

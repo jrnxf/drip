@@ -9,11 +9,6 @@ import Foundation
 /// on the Mac reads the queue over ssh and shows each event's card by the same rules as
 /// `drip hook`.
 public enum RemoteHook {
-    /// The command the remote machine's agent hooks run, as `drip setup <agent> --remote` prints them.
-    public static func command(for agent: AgentHook.Agent) -> String {
-        "drip-remote-hook \(agent.rawValue)"
-    }
-
     /// The queue file on the remote machine, as its shell spells it.
     public static let defaultQueue = "${XDG_STATE_HOME:-$HOME/.local/state}/drip/remote.jsonl"
 
@@ -26,7 +21,7 @@ public enum RemoteHook {
     /// which only a click's `--on-click` command reads.
     public static let sessionVariables = ["DRIP_HOOK", "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_ENTRYPOINT"]
 
-    /// `drip-remote-hook`, as `drip setup remote` prints it: POSIX sh, for a machine without drip.
+    /// `drip-remote-hook`, as `drip remote-hook` prints it: POSIX sh, for a machine without drip.
     /// It never fails or holds up the agent's turn: it prints nothing and exits 0 whatever happens.
     public static var script: String {
         let variables = sessionVariables.map { "\"\($0)\":\"%s\"" }.joined(separator: ",")
@@ -34,26 +29,41 @@ public enum RemoteHook {
         return #"""
             #!/bin/sh
             # drip-remote-hook: queues a coding agent's hook event for `drip follow` on a Mac.
-            # Written by `drip setup remote`. The agent's hooks run it as `drip hook` runs on a Mac:
+            # Printed by `drip remote-hook`. The agent's hooks run it as `drip hook` runs on a Mac:
             #
-            #   drip-remote-hook claude|codex|gemini [payload]
+            #   drip-remote-hook claude|codex|gemini [--min-turn SECONDS] [--only needs-you] [payload]
             #
             # with the hook's JSON on stdin, or as an argument, as Codex's notify passes it. It appends
             # one line to $DRIP_QUEUE, or \#(defaultQueue),
             # with the payload, the agent, this machine's name ($DRIP_MACHINE, or uname -n), the
-            # session's DRIP_HOOK and Claude Code attendance, and the variables DRIP_FORWARD_ENV names,
-            # separated by spaces, for a click's --on-click command on the Mac. It never fails or holds
-            # up the agent's turn: it prints nothing and exits 0.
+            # session's DRIP_HOOK and Claude Code attendance, the two flags above, which drip follow
+            # applies as drip hook does, and the variables DRIP_FORWARD_ENV names, separated by spaces,
+            # for a click's --on-click command on the Mac. --approve is accepted and ignored: an
+            # agent on another machine cannot hear a click. It never fails or holds up the agent's
+            # turn: it prints nothing and exits 0.
 
             drip_queue() {
                 case ${1-} in claude | codex | gemini) agent=$1 ;; *) return 1 ;; esac
+                shift
+                min_turn=
+                only=
+                payload_arg=0
+                while [ $# -gt 0 ]; do
+                    case $1 in
+                        --min-turn) [ $# -ge 2 ] || return 1; min_turn=$(printf '%s' "$2" | tr -cd '0-9.' | cut -c 1-8); shift 2 ;;
+                        --only) [ $# -ge 2 ] || return 1; [ "$2" = needs-you ] && only=$2; shift 2 ;;
+                        --approve) shift ;;
+                        -*) shift ;;
+                        *) payload_arg=1; payload=$1; break ;;
+                    esac
+                done
                 queue=${DRIP_QUEUE:-\#(defaultQueue)}
                 dir=$(dirname "$queue")
                 umask 077
                 mkdir -p "$dir" || return 1
                 event=$(mktemp "$dir/.event.XXXXXX") || return 1
                 trap 'rm -f "$event" "$event.payload"; [ -z "${held-}" ] || rm -rf "$held"' EXIT
-                if [ $# -ge 2 ]; then printf '%s' "$2"; else cat; fi >"$event.payload" || return 1
+                if [ "$payload_arg" -eq 1 ]; then printf '%s' "$payload"; else cat; fi >"$event.payload" || return 1
                 size=$(wc -c <"$event.payload" | tr -d ' ')
                 # drip reads up to 4 MB of payload.
                 [ "$size" -gt 0 ] && [ "$size" -le 4194304 ] || return 1
@@ -61,8 +71,8 @@ public enum RemoteHook {
                 machine=$(printf '%s' "${DRIP_MACHINE:-$(uname -n)}" | tr -cd 'A-Za-z0-9._-' | sed 's/^[^A-Za-z0-9]*//' | cut -c 1-64)
                 forward=$(forward)
                 {
-                    printf '{"drip":1,"time":%s,"agent":"%s","machine":"%s","env":{\#(variables)},"forward":{%s},"payload":' \
-                        "$(date +%s)" "$agent" "${machine:-remote}" \#(values) "$forward"
+                    printf '{"drip":1,"time":%s,"agent":"%s","machine":"%s","env":{\#(variables)},"forward":{%s},"filter":{%s},"payload":' \
+                        "$(date +%s)" "$agent" "${machine:-remote}" \#(values) "$forward" "$(filter)"
                     # A JSON payload holds line breaks only between its values, where a space reads the same.
                     tr '\r\n' '  ' <"$event.payload"
                     printf '}\n'
@@ -114,6 +124,15 @@ public enum RemoteHook {
                 printf '%s' "$1" | tr -cd 'A-Za-z0-9._:@-' | cut -c 1-64
             }
 
+            # The members of "filter": the flags the hook was given that drip follow applies, each only
+            # when it is set and valid.
+            filter() {
+                members=
+                case $min_turn in '' | *[!0-9.]* | *.*.* | .) ;; *) members="\"min_turn\":\"$min_turn\"" ;; esac
+                [ -z "$only" ] || members="$members${members:+,}\"only\":\"$only\""
+                printf '%s' "$members"
+            }
+
             # The members of "forward": each variable DRIP_FORWARD_ENV names, up to \#(ForwardedEnvironment.countLimit), that is
             # set and not empty. A name must be a variable's name; a value keeps letters, digits and
             # . _ : @ / % + , = - only, up to \#(ForwardedEnvironment.valueLimit) characters, so it needs no quoting.
@@ -146,7 +165,17 @@ public enum RemoteHook {
             (drip_queue "$@") >/dev/null 2>&1
             # An agent that writes the payload to stdin gets a broken pipe if the hook ends before
             # reading it, as when the event was not queued: read the rest, unless it came as an argument.
-            [ $# -ge 2 ] || [ -t 0 ] || cat >/dev/null 2>&1
+            argument=0
+            skip=1
+            for word in "$@"; do
+                if [ "$skip" -eq 1 ]; then skip=0; continue; fi
+                case $word in
+                    --min-turn | --only) skip=1 ;;
+                    --approve | -*) ;;
+                    *) argument=1; break ;;
+                esac
+            done
+            [ "$argument" -eq 1 ] || [ -t 0 ] || cat >/dev/null 2>&1
             exit 0
 
             """#
@@ -188,7 +217,8 @@ extension AgentHook {
 /// One event in the remote machine's queue, as `drip-remote-hook` writes it: a JSON object on one
 /// line with `drip` (the format, 1), `time` (seconds since 1970, on the remote clock), `agent`,
 /// `machine`, `env` (the session's variables, `RemoteHook.sessionVariables`), `forward` (the
-/// variables `DRIP_FORWARD_ENV` names) and `payload` (the hook's JSON). drip reads nothing else from
+/// variables `DRIP_FORWARD_ENV` names), `filter` (the hook's `--min-turn` and `--only`) and
+/// `payload` (the hook's JSON). drip reads nothing else from
 /// it: a click's command, and what a button opens, come only from this Mac.
 public struct RemoteEvent: Equatable, Sendable {
     public var time: Double
@@ -198,13 +228,16 @@ public struct RemoteEvent: Equatable, Sendable {
     public var environment: [String: String]
     /// The variables `DRIP_FORWARD_ENV` named in the session, which only a click's command reads.
     public var forwarded: [String: String]
+    /// What the hook's flags asked: `--min-turn` and `--only`. Never `approve`.
+    public var policy: AgentHook.Policy
     /// The hook's JSON.
     public var payload: String
 
     public init(
         time: Double, agent: AgentHook.Agent, machine: String, environment: [String: String],
-        forwarded: [String: String] = [:], payload: String
+        forwarded: [String: String] = [:], policy: AgentHook.Policy = AgentHook.Policy(), payload: String
     ) {
+        self.policy = policy
         self.time = time
         self.agent = agent
         self.machine = machine
@@ -239,7 +272,19 @@ public struct RemoteEvent: Equatable, Sendable {
         }
         self.init(
             time: seconds, agent: agent, machine: machine, environment: environment,
-            forwarded: ForwardedEnvironment.read(members: object["forward"]?.members ?? []), payload: payload.formatted())
+            forwarded: ForwardedEnvironment.read(members: object["forward"]?.members ?? []),
+            policy: Self.policy(object["filter"]), payload: payload.formatted())
+    }
+
+    /// The flags a hook queued, as text. A value drip does not know is left out, as the hook leaves
+    /// it out, so a newer hook never makes an older drip fail.
+    static func policy(_ filter: JSONValue?) -> AgentHook.Policy {
+        var policy = AgentHook.Policy()
+        if let text = filter?["min_turn"]?.string, let seconds = Double(text), AgentHook.Policy.minTurnRange.contains(seconds) {
+            policy.minTurn = seconds
+        }
+        if let text = filter?["only"]?.string { policy.only = AgentHook.Policy.Only(rawValue: text) }
+        return policy
     }
 
     /// The variables of a session on this Mac, which an event from another machine never takes.

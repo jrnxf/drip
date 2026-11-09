@@ -2,7 +2,7 @@
 // installs the latest Claude Code, Codex and Gemini CLI, builds drip and this file, and runs it.
 //
 // Each agent gets one short interactive session in a terminal of its own (tmux), through the hooks
-// `drip setup` writes, in a world of its own under ~/.cache/drip-agent-contract: drip's state, config
+// the recipes show, in a world of its own under ~/.cache/drip-agent-contract: drip's state, config
 // and card queue, the agent's home and settings. It never touches the drip, the history or the agents
 // in use. drip is paused there, so the cards go to its history and never to the notch, and the check
 // runs on a locked Mac too. A recorder stands in for `drip` on the hooks' PATH: it keeps each payload
@@ -526,14 +526,6 @@ struct World {
         return environment
     }
 
-    /// drip's environment with the agent's home as HOME, for `drip setup`: Gemini CLI's settings are
-    /// in `~/.gemini`.
-    var setupEnvironment: [String: String] {
-        var environment = environment
-        if agent == .gemini { environment["HOME"] = agentHome }
-        return environment
-    }
-
     /// Makes the world, with everything but drip's hooks, which `installHooks` adds once the login
     /// is known to work. Nil when it is ready, else what went wrong.
     func make(harness: String) -> String? {
@@ -608,10 +600,34 @@ struct World {
         return nil
     }
 
-    /// drip's hooks, as `drip setup` adds them. Nil when they went in, else what went wrong.
+    /// drip's hooks, written the way the recipes say: one `drip hook <agent>` handler per event. Nil
+    /// when they went in, else what went wrong.
     func installHooks() -> String? {
-        let ran = run([drip, "setup", agent.rawValue], environment: setupEnvironment)
-        return ran.status == 0 ? nil : firstLine(ran.err + ran.out)
+        let events: [String]
+        let file: String
+        switch agent {
+        case .claude:
+            events = ["PermissionRequest", "Notification", "Stop", "StopFailure", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "ElicitationResult"]
+            file = path(agentHome, "settings.json")
+        case .codex:
+            events = ["PermissionRequest", "Stop", "PostToolUse", "UserPromptSubmit"]
+            file = path(agentHome, "hooks.json")
+        case .gemini:
+            events = ["Notification", "AfterAgent", "AfterTool", "BeforeAgent"]
+            file = path(agentHome, ".gemini/settings.json")
+        }
+        var handler: [String: Any] = ["type": "command", "command": "drip hook \(agent.rawValue)"]
+        if agent == .gemini { handler["name"] = "drip" }
+        var hooks: [String: Any] = [:]
+        for event in events {
+            var group: [String: Any] = ["hooks": [handler]]
+            if agent == .claude, event == "Notification" { group["matcher"] = "elicitation_dialog" }
+            hooks[event] = [group]
+        }
+        var settings = (readJSON(file) as? [String: Any]) ?? [:]
+        settings["hooks"] = hooks
+        write(jsonText(settings, pretty: true) + "\n", to: file)
+        return readJSON(file) == nil ? "could not write \(file)" : nil
     }
 
     /// Stops what the world started: its terminal, and any drip still holding cards.
@@ -1338,7 +1354,7 @@ func attempt(_ agent: Agent, _ number: Int, options: Options, runDirectory: Stri
     if let problem { return skip(.failed(problem)) }
     let login = checkLogin(world)
     guard case .ready = login else { return skip(login) }
-    if let problem = world.installHooks() { return skip(.failed("drip setup \(agent.rawValue) failed: \(problem)")) }
+    if let problem = world.installHooks() { return skip(.failed("writing the \(agent.rawValue) hooks failed: \(problem)")) }
 
     let contract = Contract.load(options.contractFile, agent: agent)
     let session = Session(world: world, contract: contract)

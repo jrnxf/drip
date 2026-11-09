@@ -161,7 +161,7 @@ public enum AgentHook {
         public var tool: String?
         /// Another name for the same call, which a card waiting on that name goes for too.
         public var alsoTool: String?
-        /// Whether you sent the agent a prompt, which starts a turn: `done_after` counts from it.
+        /// Whether you sent the agent a prompt, which starts a turn: `--min-turn` counts from it.
         public var startsTurn: Bool
 
         public init(id: String, tool: String? = nil, alsoTool: String? = nil, startsTurn: Bool = false) {
@@ -182,15 +182,6 @@ public enum AgentHook {
         case nothing
     }
 
-    /// The events drip's hooks run on that take a waiting card away, by agent.
-    public static func clearEvents(for agent: Agent) -> [String] {
-        switch agent {
-        case .claude: return ["PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "ElicitationResult"]
-        case .codex: return ["PostToolUse", "UserPromptSubmit"]
-        case .gemini: return ["AfterTool", "BeforeAgent"]
-        }
-    }
-
     /// `DRIP_HOOK`: `off` keeps `drip hook` silent, as an orchestrator sets for its background
     /// sessions; `on` shows cards even from a session nobody attends; `attention` is for an
     /// orchestrator's own session: it shows the cards that need you and skips the done cards.
@@ -198,25 +189,43 @@ public enum AgentHook {
         case on, off, attention
     }
 
-    /// Which of an agent's cards show, from `agent_cards` in the config: `all`, or only the cards that
-    /// need you (a permission, a question, an error), as `DRIP_HOOK=attention` does for one session.
-    /// Unlike `DRIP_HOOK=attention`, it still keeps sessions nobody attends quiet.
-    public enum Cards: String, CaseIterable, Sendable {
-        case all, attention
+    /// What a recipe asks of `drip hook` in the flags of its hook command: the choices about when to
+    /// notify that need what drip knows across events. drip itself has no opinion: with none given,
+    /// every event shows its card.
+    public struct Policy: Equatable, Sendable {
+        /// Which cards show: every one, or only those that need you (a permission, a question, an
+        /// error), as `DRIP_HOOK=attention` does for one session.
+        public enum Only: String, CaseIterable, Sendable, ExpressibleByArgument {
+            case needsYou = "needs-you"
+        }
 
-        public static let `default` = Cards.all
+        /// Whether the card for a permission has Allow and Deny, and a click is the agent's answer.
+        /// Local only: an agent on another machine has no way to hear it.
+        public var approve: Bool
+        /// The shortest turn, in seconds, whose done card shows; 0 shows every one.
+        public var minTurn: Double
+        public var only: Only?
+
+        /// `--min-turn` takes up to this many seconds, no longer than `Defaults.waitLimit`, for which
+        /// drip keeps when a turn started.
+        public static let minTurnRange: ClosedRange<Double> = 0...600
+
+        public init(approve: Bool = false, minTurn: Double = 0, only: Only? = nil) {
+            self.approve = approve
+            self.minTurn = minTurn
+            self.only = only
+        }
     }
 
-    /// Whether the done card `event` is left out, under `cards`: it needs nobody under `attention`,
-    /// and a turn shorter than `doneAfter` seconds, from `turnStarted` to `now`, likely ended while you
-    /// still had it in mind. A card that needs you, or says the turn failed, always goes on.
-    public static func skipsDone(
-        _ event: Event, cards: Cards, doneAfter: Double, turnStarted: Double?, now: Double
-    ) -> Bool {
+    /// Whether the done card `event` is left out, under `policy`: it needs nobody under
+    /// `only needs-you`, and a turn shorter than `minTurn` seconds, from `turnStarted` to `now`, likely
+    /// ended while you still had it in mind. A card that needs you, or says the turn failed, always
+    /// goes on.
+    public static func skipsDone(_ event: Event, policy: Policy, turnStarted: Double?, now: Double) -> Bool {
         guard event.kind == Preset.ok.name, !event.stays else { return false }
-        if cards == .attention { return true }
-        guard doneAfter > 0, let turnStarted else { return false }
-        return now - turnStarted < doneAfter
+        if policy.only == .needsYou { return true }
+        guard policy.minTurn > 0, let turnStarted else { return false }
+        return now - turnStarted < policy.minTurn
     }
 
     /// `DRIP_HOOK` as set, nil when unset or empty. Throws a `UsageError` for any other value than a

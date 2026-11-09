@@ -44,7 +44,7 @@ struct CommandTests {
 
     /// `drip help run` shows run's help, as `drip run --help` does.
     @Test func helpForASubcommand() {
-        for name in ["run", "hook", "setup", "history", "pause", "resume", "show"] {
+        for name in ["run", "hook", "remote-hook", "history", "pause", "resume", "show"] {
             guard case let .exit(status, help) = CommandLineParser.parse(["help", name]),
                   case let .exit(_, flag) = CommandLineParser.parse([name, "--help"]),
                   case let .exit(_, short) = CommandLineParser.parse([name, "-h"])
@@ -191,8 +191,7 @@ struct CommandTests {
             (["run"], "drip run --help"), (["run", "--nope", "make"], "drip run --help"),
             (["run", "--version"], "drip run --help"),
             (["hook"], "drip hook --help"), (["hook", "cursor"], "drip hook --help"),
-            (["setup"], "drip setup --help"), (["setup", "cursor"], "drip setup --help"),
-            (["setup", "claude", "--seconds", "3"], "drip setup --help"),
+            (["remote-hook", "extra"], "drip remote-hook --help"),
             (["history", "--json", "--replay"], "drip history --help"),
         ]
         for (arguments, help) in mistakes {
@@ -307,22 +306,52 @@ struct CommandTests {
         #expect(gemini.agent == .gemini)
     }
 
-    @Test func setupTakesTheAgentAndPrint() throws {
-        for agent in AgentHook.Agent.allCases {
-            guard case let .invocation(.setup(setup)) = CommandLineParser.parse(["setup", agent.rawValue])
-            else { Issue.record("\(agent)"); continue }
-            #expect(setup.agent == agent)
-            #expect(!setup.printOnly)
-        }
-        guard case let .invocation(.setup(printing)) = CommandLineParser.parse(["setup", "codex", "--print"])
+    @Test func hookTakesTheHelperFlags() throws {
+        guard case let .invocation(.hook(plain)) = CommandLineParser.parse(["hook", "claude"]) else { Issue.record(); return }
+        #expect(plain.policy == AgentHook.Policy())
+        guard case let .invocation(.hook(all)) = CommandLineParser.parse(
+            ["hook", "claude", "--approve", "--min-turn", "30", "--only", "needs-you", "--seconds", "3"])
         else { Issue.record(); return }
-        #expect(printing.agent == .codex)
-        #expect(printing.printOnly)
-        // Without an agent, one line says what is missing, not the whole help; a mistake is a usage error.
-        guard case let .exit(status, missing) = CommandLineParser.parse(["setup"]) else { Issue.record(); return }
-        #expect(status == ExitStatus.usage)
-        #expect(missing == "drip: missing the agent: drip setup claude, drip setup codex, drip setup gemini or drip setup zsh\n"
-            + "See 'drip setup --help'.")
+        #expect(all.policy == AgentHook.Policy(approve: true, minTurn: 30, only: .needsYou))
+        guard case let .invocation(.hook(fraction)) = CommandLineParser.parse(["hook", "codex", "--min-turn", "7.5"])
+        else { Issue.record(); return }
+        #expect(fraction.policy.minTurn == 7.5)
+        // A hook's mistakes exit 1: Claude Code reads 2 as "block".
+        for arguments in [["hook", "claude", "--min-turn", "soon"], ["hook", "claude", "--min-turn", "601"],
+                          ["hook", "claude", "--min-turn", "-1"], ["hook", "claude", "--only", "everything"]] {
+            guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
+            #expect(status == ExitStatus.hookFailed, "\(arguments)")
+        }
+    }
+
+    @Test func watchingTakesAPaneAndAnApp() throws {
+        guard case let .invocation(.watching(plain)) = CommandLineParser.parse(["watching"]) else { Issue.record(); return }
+        #expect(plain.pane == nil && plain.app == nil)
+        guard case let .invocation(.watching(both)) = CommandLineParser.parse(
+            ["watching", "--pane", "%3", "--app", "com.mitchellh.ghostty"])
+        else { Issue.record(); return }
+        #expect(both.pane == "%3")
+        #expect(both.app == "com.mitchellh.ghostty")
+        for arguments in [["watching", "--pane", "3"], ["watching", "--pane", "%3;ls"], ["watching", "--app", "no spaces"],
+                          ["watching", "extra"]] {
+            guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
+            #expect(status == ExitStatus.usage, "\(arguments)")
+        }
+    }
+
+    @Test func remoteHookTakesNothing() throws {
+        guard case .invocation(.remoteHook) = CommandLineParser.parse(["remote-hook"]) else { Issue.record(); return }
+        for arguments in [["remote-hook", "--print"], ["remote-hook", "claude"]] {
+            guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
+            #expect(status == ExitStatus.usage, "\(arguments)")
+        }
+    }
+
+    /// drip setup is gone: the word is no subcommand.
+    @Test func setupIsNoSubcommand() {
+        if case .invocation(.remoteHook) = CommandLineParser.parse(["setup", "zsh"]) { Issue.record() }
+        guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
+        #expect(!help.contains("drip setup"), "\(help)")
     }
 
     @Test func hookMistakesExitOneNotTwo() {
@@ -416,9 +445,8 @@ struct CommandTests {
         #expect(help.hasPrefix("OVERVIEW: Show a brief card at the notch on macOS.\n\nUSAGE: drip [KIND] [TITLE] [options]"), "\(help)")
         #expect(help.contains("drip run [options] [--] <command> [args...]"), "\(help)")
         #expect(help.contains("drip hook claude|codex|gemini [options]"), "\(help)")
-        #expect(help.contains("drip setup claude|codex|gemini [--print | --remote]"), "\(help)")
-        #expect(help.contains("drip setup remote"), "\(help)")
-        #expect(help.contains("drip setup zsh [--print]"), "\(help)")
+        #expect(!help.contains("snippet-file"), "\(help)")
+        #expect(help.contains("drip remote-hook"), "\(help)")
         #expect(!help.contains("__finished"), "\(help)")
         #expect(help.contains("drip follow <ssh-target> [options]"), "\(help)")
         #expect(help.contains("drip history [--missed] [-n N | --all] [--json | --replay]"), "\(help)")
@@ -429,7 +457,7 @@ struct CommandTests {
         }
         #expect(order.allSatisfy { $0 != nil }, "\(help)")
         #expect(order.compactMap { $0 } == order.compactMap { $0 }.sorted(), "\(help)")
-        for subcommand in ["run", "hook", "setup", "history", "pause", "resume"] {
+        for subcommand in ["run", "hook", "remote-hook", "history", "pause", "resume"] {
             #expect(help.contains("\n  \(subcommand) "), "\(subcommand)")
         }
         #expect(help.contains("--seconds"), "\(help)")

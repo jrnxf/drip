@@ -18,7 +18,7 @@ struct ApprovalTests {
 
     /// What `drip hook` reads around an event on this Mac, with the terminal where `front` says.
     func local(
-        _ environment: [String: String] = ["DRIP_APPROVE": "1"],
+        _ environment: [String: String] = [:],
         front: WhenFocused.Front = WhenFocused.Front(app: false, pane: false, idle: 0), away: Bool = false
     ) -> AgentHook.Surroundings {
         AgentHook.Surroundings(
@@ -30,6 +30,13 @@ struct ApprovalTests {
             hasGUISession: true, isInstalled: { _ in false }, front: { _ in front }, away: { away },
             resolver: { _, environment in CardResolver(config: Config(), environment: try EnvironmentSettings(environment: environment)) },
             now: { now })
+    }
+
+    /// The card `drip hook` makes, with `--approve` unless it is off.
+    func ask(
+        _ agent: AgentHook.Agent, _ payload: String, _ surroundings: AgentHook.Surroundings, approve: Bool = true
+    ) throws -> Card? {
+        try AgentHook.card(agent: agent, payload: payload, policy: AgentHook.Policy(approve: approve), in: surroundings)
     }
 
     @Test func theAnswerIsWhatTheAgentReads() throws {
@@ -74,7 +81,7 @@ struct ApprovalTests {
     /// replaced it, or a dismiss came for it: the card is handed back to be noted as missed, nothing
     /// was pressed, and the terminal asks.
     @Test func aPermissionCardDroppedBeforeItShowsGivesNoAnswer() throws {
-        let asking = AgentHook.asking(try #require(try AgentHook.card(agent: .claude, payload: Self.claude, in: local([:]))))
+        let asking = AgentHook.asking(try #require(try ask(.claude, Self.claude, local(), approve: false)))
         let settings = StackSettings(mode: .chain, max: 3)
 
         let replaced = CardStack(settings: settings, cards: [asking])
@@ -96,25 +103,17 @@ struct ApprovalTests {
         #expect(AgentHook.Approval(pressed: nil, status: ExitStatus.notClicked) == nil)
     }
 
-    @Test func theSettingIsOffUnlessTurnedOn() throws {
-        #expect(!CardResolver().approve)
-        let config = try ConfigLoader.parse("approve = true", path: "config.toml").config
-        #expect(config == Config(approve: true))
-        #expect(CardResolver(config: config).approve)
-        let off = try EnvironmentSettings(environment: ["DRIP_APPROVE": "0"])
-        #expect(off == EnvironmentSettings(approve: false))
-        #expect(!CardResolver(config: config, environment: off).approve)
-        #expect(CardResolver(environment: try EnvironmentSettings(environment: ["DRIP_APPROVE": "yes"])).approve)
-        #expect(try EnvironmentSettings(environment: ["DRIP_APPROVE": ""]) == EnvironmentSettings())
-        let error = #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_APPROVE": "maybe"]) }
-        #expect(error?.message == "DRIP_APPROVE must be 1 or 0, not 'maybe'")
-        #expect(throws: ConfigError.self) { try ConfigLoader.parse("approve = \"yes\"", path: "config.toml") }
+    @Test func approveIsAFlagOfTheHookAndOffByDefault() throws {
+        #expect(!AgentHook.Policy().approve)
+        let parsed = try #require(try? HookCommand.parse(["claude", "--approve"]))
+        #expect(parsed.policy.approve)
+        #expect(!(try HookCommand.parse(["claude"])).policy.approve)
     }
 
     @Test(arguments: [AgentHook.Agent.claude, .codex])
     func aPermissionCardAsksWithApproveOn(_ agent: AgentHook.Agent) throws {
         let payload = agent == .claude ? Self.claude : Self.codex
-        let card = try #require(try AgentHook.card(agent: agent, payload: payload, in: local()))
+        let card = try #require(try ask(agent, payload, local()))
         #expect(card.action == CardAction(label: "Allow", open: nil, decline: "Deny"))
         #expect(card.waitsForAnswer)
         #expect(card.waitLimit == Defaults.approveWait)
@@ -122,7 +121,7 @@ struct ApprovalTests {
         #expect(card.id == "\(agent.rawValue):s1")
 
         // Off, as by default: the card only tells you, as before.
-        let plain = try #require(try AgentHook.card(agent: agent, payload: payload, in: local([:])))
+        let plain = try #require(try ask(agent, payload, local(), approve: false))
         #expect(plain.action == nil)
         #expect(plain.waitLimit == Defaults.waitLimit)
         var same = card
@@ -136,15 +135,15 @@ struct ApprovalTests {
         let question = #"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"Notification","message":"Claude has a question","notification_type":"elicitation_dialog"}"#
         let stop = #"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"Stop","last_assistant_message":"Done."}"#
         for payload in [notice, question, stop] {
-            let card = try #require(try AgentHook.card(agent: .claude, payload: payload, in: local()))
+            let card = try #require(try ask(.claude, payload, local()))
             #expect(card.action == nil, "\(payload)")
         }
         // Gemini CLI asks for nothing drip can answer.
         let gemini = #"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"Notification","notification_type":"ToolPermission","message":"Gemini wants to run ls"}"#
-        #expect(try AgentHook.card(agent: .gemini, payload: gemini, in: local())?.action == nil)
+        #expect(try ask(.gemini, gemini, local())?.action == nil)
         // No session to take the card away by.
         let sessionless = #"{"cwd":"/home/user/api","hook_event_name":"PermissionRequest","tool_name":"Bash"}"#
-        #expect(try #require(try AgentHook.card(agent: .claude, payload: sessionless, in: local())).action == nil)
+        #expect(try #require(try ask(.claude, sessionless, local())).action == nil)
     }
 
     @Test func aRemoteCardOnlyTells() throws {
@@ -159,7 +158,7 @@ struct ApprovalTests {
     }
 
     @Test func aCardHeldWhileYouAreAwayOnlyTells() throws {
-        let card = try #require(try AgentHook.card(agent: .claude, payload: Self.claude, in: local(away: true)))
+        let card = try #require(try ask(.claude, Self.claude, local(away: true)))
         #expect(card.action == nil)
     }
 
@@ -167,18 +166,18 @@ struct ApprovalTests {
     /// tells you, and the hook returns at once. Claude Code asks at once, so its card asks too.
     @Test func codexAsksOnTheCardOnlyWhileYouAreNotWatching() throws {
         let watching = WhenFocused.Front(app: true, pane: true, idle: 0)
-        #expect(try AgentHook.card(agent: .codex, payload: Self.codex, in: local(front: watching))?.action == nil)
-        #expect(try AgentHook.card(agent: .claude, payload: Self.claude, in: local(front: watching))?.action != nil)
+        #expect(try ask(.codex, Self.codex, local(front: watching))?.action == nil)
+        #expect(try ask(.claude, Self.claude, local(front: watching))?.action != nil)
         // when_focused = "show" looks at nothing for the card, but the answer still does.
-        let show = ["DRIP_APPROVE": "1", "DRIP_WHEN_FOCUSED": "show"]
-        #expect(try AgentHook.card(agent: .codex, payload: Self.codex, in: local(show, front: watching))?.action == nil)
-        #expect(try AgentHook.card(agent: .codex, payload: Self.codex, in: local(show))?.action != nil)
+        let show = ["DRIP_WHEN_FOCUSED": "show"]
+        #expect(try ask(.codex, Self.codex, local(show, front: watching))?.action == nil)
+        #expect(try ask(.codex, Self.codex, local(show))?.action != nil)
         // Another pane, another app, or nobody at the screen: not watching.
         for front in [
             WhenFocused.Front(app: true, pane: false, idle: 0), WhenFocused.Front(app: false, pane: true, idle: 0),
             WhenFocused.Front(app: true, pane: true, idle: WhenFocused.defaultAwayAfter),
         ] {
-            #expect(try AgentHook.card(agent: .codex, payload: Self.codex, in: local(front: front))?.action != nil, "\(front)")
+            #expect(try ask(.codex, Self.codex, local(front: front))?.action != nil, "\(front)")
         }
     }
 

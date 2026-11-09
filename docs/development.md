@@ -35,7 +35,7 @@ runs anywhere.
 GitHub's macOS runner on every push, with Accessibility granted to its helper up front, and keeps
 the screenshots as the `mac-e2e-screenshots` artifact. It checks what a person
 would look for at the notch, and needs none: it shows cards
-from a release build, runs the hooks `drip setup claude` and `drip setup codex` write with the
+from a release build, runs the hooks the `everything` recipe shows for Claude Code and Codex with the
 payloads Claude Code and Codex send, moves the pointer onto cards, clicks them and beside them, pauses and resumes,
 and attaches tmux from Ghostty and Terminal. It prints `ok` or `FAIL` for each thing it expects, from
 what drip records in its history, which windows it has on screen, which app is in front, what tmux
@@ -67,7 +67,7 @@ the drop or for looking at its motion after a change.
 The tests replay payloads recorded once, so they cannot see Claude Code, Codex or Gemini CLI change
 what their hooks send. `scripts/agent-contract.sh` can: it installs the latest release of each with
 npm, builds drip from the checkout, and runs one short interactive session of each agent in a
-terminal of its own (tmux), through the hooks `drip setup` writes. Each session asks for a shell
+terminal of its own (tmux), through the hooks the `everything` recipe shows. Each session asks for a shell
 command the agent must ask permission to run, approves it through the terminal, then sends a second
 prompt while a card waits, and checks what a person would see: the waiting card appears, it goes
 once approved, a prompt takes a waiting card away, each turn ends with a done card, and a session

@@ -255,28 +255,10 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         } catch {
             return failure(error, status: ExitStatus.hookFailed, subcommand: HookCommand.configuration.commandName)
         }
-    case let .invocation(.setup(command)):
-        if let shell = command.shell {
-            if command.printOnly {
-                return send(["exit": ExitStatus.shown, "message": ShellHook.snippet(for: shell)])
-            }
-            return send([
-                "exit": ExitStatus.setupFailed,
-                "message": "drip: drip setup zsh adds a block to your .zshrc on your Mac, not in this page. "
-                    + "drip setup zsh --print shows it here.",
-            ])
-        }
-        guard let agent = command.agent else {
-            return send(["exit": ExitStatus.shown, "message": RemoteHook.script])
-        }
-        if command.printOnly || command.remote {
-            return send(["exit": ExitStatus.shown, "message": AgentSetup.snippet(for: agent, remote: command.remote)])
-        }
-        return send([
-            "exit": ExitStatus.setupFailed,
-            "message": "drip: drip setup adds hooks to your agent's settings on your Mac, not in this page. "
-                + "drip setup \(agent.rawValue) --print shows them here.",
-        ])
+    case .invocation(.remoteHook):
+        return send(["exit": ExitStatus.shown, "message": RemoteHook.script])
+    case .invocation(.watching):
+        return send(["exit": ExitStatus.cannotTell, "message": "drip: watching looks at your Mac's screen, not this page"])
     case .invocation(.follow):
         return send(["exit": ExitStatus.followFailed, "message": "drip: drip follow reads another machine over ssh from your Mac, not from this page"])
     case let .invocation(.dismiss(command)):

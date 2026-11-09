@@ -14,7 +14,7 @@ any release.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown, or handed off to be shown without `--wait`; a question was answered yes. |
-| 1 | A question was answered no; `drip hook` could not make a card; or `drip setup`, `drip pause`, `drip resume`, `drip dismiss` or `drip follow` could not do its work. |
+| 1 | A question was answered no; `drip hook` could not make a card; or `drip pause`, `drip resume`, `drip dismiss` or `drip follow` could not do its work. |
 | 2 | Usage error. `drip hook` never exits 2. |
 | 3 | No GUI session, for example over ssh. `drip hook` exits 0 then. |
 | 4 | The config file is invalid. |
@@ -55,7 +55,7 @@ characters. It leaves the rest out.
 These are drip's own, and can change in any release without notice:
 
 - the queue that `drip-remote-hook` writes on another machine (`remote.jsonl`) and its line format,
-  and the script that `drip setup remote` prints;
+  and the script that `drip remote-hook` prints;
 - the history file (`history.jsonl`), held cards (`held.jsonl`) and how drip stores a card in them:
   read the history with `drip history --json`;
 - the other state files next to them, and the format of the [debug log](troubleshooting.md#debug-log);

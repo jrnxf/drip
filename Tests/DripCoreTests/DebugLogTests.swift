@@ -184,7 +184,8 @@ struct DebugLogTests {
     @Test func everyKindOfDecisionIsLogged() throws {
         let on = ["DRIP_DEBUG": "1"]
         _ = try AgentHook.card(agent: .claude, payload: Self.stop, in: surroundings(on.merging(["DRIP_HOOK": "off"]) { $1 }))
-        _ = try AgentHook.card(agent: .claude, payload: Self.stop, in: surroundings(on.merging(["DRIP_AGENT_CARDS": "attention"]) { $1 }))
+        _ = try AgentHook.card(
+            agent: .claude, payload: Self.stop, policy: AgentHook.Policy(only: .needsYou), in: surroundings(on))
         _ = try AgentHook.card(agent: .claude, payload: Self.permission, in: surroundings(on.merging(["DRIP_WHEN_FOCUSED": "show"]) { $1 }))
         var stale = surroundings(on)
         stale.showsCards = false

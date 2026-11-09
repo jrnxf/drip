@@ -60,37 +60,185 @@ drip run make test
 drip run --open "$CI_URL" --button "View run" ./deploy.sh
 ```
 
-Or skip typing it: `drip setup zsh` adds a block to `~/.zshrc` that gives a card to any command that
-runs 10 seconds or more, only when you are not watching that terminal. A fast command runs no drip
-at all. `DRIP_SLOW_AFTER` sets the threshold and `DRIP_SLOW_IGNORE` leaves commands out; see
-[the zsh block](docs/usage.md#without-typing-drip-run).
+Or skip typing it. The [zsh-slow-commands recipe](recipes/zsh-slow-commands/README.md) is a block
+for `~/.zshrc` that gives a card to any command that runs 10 seconds or more, only when you are not
+watching that terminal. A fast command runs no drip at all. Paste this at the end of `~/.zshrc`,
+then run `exec zsh`:
+
+<details>
+<summary>The zsh block</summary>
+
+```zsh
+# >>> drip: a card when a slow command finishes >>>
+# From the drip recipe zsh-slow-commands. Delete this block to remove it.
+# A command that runs 10 seconds or more shows a card when it ends, unless you are
+# watching this terminal. No drip runs for a faster command.
+#   DRIP_SLOW_AFTER   seconds a command must run for a card; 0 turns the cards off, and
+#                     anything but a number leaves them off
+#   DRIP_SLOW_IGNORE  more commands to leave out, space-separated, besides the editors, pagers,
+#                     ssh and REPLs named below
+# Silent where drip is missing, and where DRIP_HOOK=off.
+if zmodload zsh/datetime 2>/dev/null && autoload -Uz add-zsh-hook 2>/dev/null; then
+  typeset -g __drip_command __drip_expanded
+  typeset -gF __drip_start
+  typeset -ga __drip_ignore=(
+    vim vi nvim view nano pico micro emacs hx kak less more most man info bat tail watch ssh
+    mosh telnet sftp ftp nc screen tmux zellij herdr top htop btop glances nvtop python
+    python3 node deno bun irb pry ipython lua ghci psql mysql sqlite3 redis-cli mongosh gdb
+    lldb claude codex gemini aider opencode fzf nnn lf ranger yazi mc tig lazygit k9s fg bg su
+    zsh bash fish sh drip
+  )
+
+  # Each function sets the shell's options to zsh's own for its run, so setopt in your rc
+  # file (globsubst, nounset, shwordsplit) cannot change what they do.
+  __drip_preexec() {
+    emulate -L zsh
+    __drip_command=$1
+    __drip_expanded=$3
+    __drip_start=$EPOCHREALTIME
+  }
+
+  # Whether the command line starts a command in the ignore list, past any assignments,
+  # sudo and the like.
+  __drip_ignored() {
+    emulate -L zsh
+    local word
+    local -a ignore=($__drip_ignore ${=DRIP_SLOW_IGNORE-})
+    for word in ${(z)1}; do
+      case $word in
+        *=* | -* | sudo | command | builtin | exec | env | nocorrect | noglob | nohup | time) continue ;;
+      esac
+      word=${${(Q)word}:t}
+      (( ${ignore[(Ie)$word]} ))
+      return
+    done
+    return 1
+  }
+
+  __drip_precmd() {
+    local code=$?
+    emulate -L zsh
+    [[ -n $__drip_command ]] || return $code
+    local command=$__drip_command expanded=$__drip_expanded
+    __drip_command=
+    local seconds=$(( EPOCHREALTIME - __drip_start ))
+    local after=${DRIP_SLOW_AFTER:-10}
+    [[ $after == <->(|.<->) ]] || return $code
+    (( after > 0 && seconds >= after )) || return $code
+    [[ ${DRIP_HOOK-} != off ]] || return $code
+    (( $+commands[drip] )) || return $code
+    __drip_ignored $expanded && return $code
+    command drip __finished --status $code --seconds $seconds -- "$command" >/dev/null 2>&1 &!
+    return $code
+  }
+
+  add-zsh-hook preexec __drip_preexec
+  add-zsh-hook precmd __drip_precmd
+fi
+# <<< drip <<<
+```
+
+</details>
+
+`DRIP_SLOW_AFTER` sets the threshold and `DRIP_SLOW_IGNORE` leaves commands out. To remove it,
+delete the block.
 
 ## Coding agents
 
-One command adds drip's hooks to the agent's own settings, keeps everything else in the file, and
-backs the old one up next to it:
+drip gives building blocks. [Recipes](recipes/README.md) are examples that decide when to notify:
+you copy one and adapt it. Nothing is installed for you, and no recipe is built into drip.
 
-```sh
-drip setup claude   # Claude Code, in ~/.claude/settings.json
-drip setup codex    # Codex, in ~/.codex/hooks.json; then run /hooks in Codex to trust them
-drip setup gemini   # Gemini CLI, in ~/.gemini/settings.json
+| Recipe | What it does |
+| --- | --- |
+| [permission-cards](recipes/permission-cards/) (suggested) | A card when the agent needs you, and nothing else |
+| [attention](recipes/attention/) | Also a card when an error ends a turn |
+| [everything](recipes/everything/) | Also a done card for every turn |
+| [long-turns](recipes/long-turns/) | As everything, but no done card for a turn under 30 seconds |
+| [approve-from-card](recipes/approve-from-card/) | permission-cards, with Allow and Deny on the card |
+| [orchestrator](recipes/orchestrator/) | Many sessions at once: cards from the one you talk to, not its workers |
+
+[recipes/](recipes/README.md) also has click recipes for herdr, WezTerm and Ghostty, and examples
+for Aider and opencode.
+
+Quick start for Claude Code: add this to `~/.claude/settings.json`. If the file has a `hooks` entry,
+merge the events and keep your own.
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ]
+  }
+}
 ```
 
-The card's title is the project, such as `my-app needs you` with `Claude wants to run npm install`,
-or `my-app is done` with the agent's last message. A card that needs you stays until you answer in
-the terminal, and then turns into the done card in place. A click brings back the agent's terminal,
-and its pane in tmux. For any other multiplexer, add `--on-click` (see [Clicks](#clicks)). While you watch the agent's terminal, its done card comes
-without a sound.
+It gives a card when Claude needs you, a permission or a question, and nothing else. The
+[permission-cards](recipes/permission-cards/) recipe has the snippets for Codex and Gemini CLI.
 
-Opt in with `approve = true` in the config, or `DRIP_APPROVE=1`, and a Claude Code or Codex
-permission card has Allow and Deny: a click answers the agent, and no click leaves it to the
-terminal. See [docs/agents.md](docs/agents.md).
-
-Fewer cards: `agent_cards = "attention"` in the config shows only the cards that need you, and
-`DRIP_HOOK=off` silences one agent, such as an orchestrator's background workers.
-
-[docs/agents.md](docs/agents.md) has every event and card, the hooks to add by hand, and recipes for
-Aider and opencode.
+The card's title is the project, such as `my-app needs you` with `Claude wants to run npm install`.
+A card that needs you stays until you answer in the terminal. A click brings back the agent's
+terminal, and its pane in tmux. While you watch the agent's terminal, its done card comes without a
+sound. [docs/agents.md](docs/agents.md) is the reference for `drip hook`, `drip watching` and
+`DRIP_HOOK`.
 
 ### Agents on another machine
 
@@ -99,8 +247,7 @@ small POSIX sh hook queues each event on the machine, and `drip follow` on the M
 over ssh. The Mac connects out; nothing connects in.
 
 ```sh
-drip setup remote | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
-drip setup claude --remote   # prints the hooks to add on the machine
+drip remote-hook | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
 drip follow devbox           # on the Mac; --launchd prints a launchd agent to keep it running
 ```
 
@@ -117,7 +264,7 @@ JSON on stdin, such as:
 {"app":"com.mitchellh.ghostty","env":{"WEZTERM_PANE":"7"},"id":"claude:s1","kind":"info","title":"my-app needs you","v":1}
 ```
 
-`env` holds only the variables that `DRIP_FORWARD_ENV` names. [docs/recipes.md](docs/recipes.md)
+`env` holds only the variables that `DRIP_FORWARD_ENV` names. [The click recipes](recipes/README.md)
 uses it to focus a pane in herdr or WezTerm, or a Ghostty window on another Space.
 
 ## Away, paused and missed
@@ -139,7 +286,7 @@ keep cards out of a screen share.
 ```
 drip [KIND] [TITLE] [options]
 drip run [options] [--] <command> [args...]
-drip setup claude|codex|gemini|zsh|remote
+drip remote-hook
 drip follow <ssh-target> [options]
 drip history [--missed] [-n N | --all] [--json | --replay]
 drip dismiss [--id ID]
@@ -173,7 +320,6 @@ Every key is optional, in `~/.config/drip/config.toml`:
 ```toml
 size        = "regular"   # compact | regular | large
 stack       = "chain"     # chain | push | off: how cards stack
-agent_cards = "all"       # all | attention: only the cards that need you
 
 [preset.deploy]           # a look of your own: drip deploy "shipped"
 icon  = "paperplane.fill"
@@ -193,12 +339,12 @@ sound = "Submarine"
 | Kept afterwards | `drip history` | Notification Center's list |
 | Buttons and answers | `--yes`, `--no`: exits 0, 1 or 5 | terminal-notifier 3 and alerter: actions or a reply, printed |
 | Wraps a command | `drip run`: status, exit code and time | no |
-| Coding agents | `drip setup claude`, `codex`, `gemini` | a hook you write |
+| Coding agents | a hook snippet from a [recipe](recipes/README.md) | a hook you write |
 
 ## More
 
 - [Install, from source, and uninstall](docs/install.md)
-- [Click recipes](docs/recipes.md): herdr, WezTerm and Ghostty across Spaces
+- [Recipes](recipes/README.md): when agents notify, and clicks for herdr, WezTerm and Ghostty
 - [What scripts can rely on](docs/contract.md): flags, exit codes, `history --json` and the click payload
 - [Troubleshooting](docs/troubleshooting.md): no card, permissions, privacy and the debug log
 - [Development](docs/development.md): tests, the live agent check, releases and the web page

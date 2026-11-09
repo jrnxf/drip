@@ -98,22 +98,6 @@ extension CardResolver {
     public var awayAfter: Double {
         environment.awayAfter ?? config.awayAfter ?? WhenFocused.defaultAwayAfter
     }
-
-    /// `DRIP_AGENT_CARDS`, then the config's `agent_cards`, then all.
-    public var agentCards: AgentHook.Cards {
-        environment.agentCards ?? config.agentCards ?? .default
-    }
-
-    /// `DRIP_DONE_AFTER`, then the config's `done_after`, then 0: every done card shows.
-    public var doneAfter: Double {
-        environment.doneAfter ?? config.doneAfter ?? 0
-    }
-
-    /// `DRIP_APPROVE`, then the config's `approve`, then off: a permission card only tells you the
-    /// agent waits, and you answer in the terminal.
-    public var approve: Bool {
-        environment.approve ?? config.approve ?? false
-    }
 }
 
 /// Whether you went to the agent's terminal while its permission card waits, for an agent that holds
@@ -129,5 +113,40 @@ public struct TerminalArrival: Sendable {
     public mutating func arrived(_ front: WhenFocused.Front) -> Bool {
         defer { wasInFront = front.inFront }
         return wasInFront == false && front.inFront
+    }
+}
+
+/// `drip watching`: whether you are watching a terminal, by the detection a card makes before it
+/// shows, for a recipe to keep itself quiet by.
+public enum Watching {
+    public enum Answer: Equatable, Sendable {
+        /// The terminal is in front, its pane showing when one was given, and you are at the screen.
+        case watching
+        case notWatching
+        /// drip has no terminal app to look at.
+        case unknown
+
+        /// 0 for watching, 1 for not, 2 for cannot tell.
+        public var status: Int32 {
+            switch self {
+            case .watching: return ExitStatus.shown
+            case .notWatching: return ExitStatus.notWatching
+            case .unknown: return ExitStatus.cannotTell
+            }
+        }
+    }
+
+    /// The answer for a card that stands for the terminal: its `activate` the app, its `pane` the tmux
+    /// pane. `front` and `paneShowing` look at the screen and ask tmux, the pane only when it matters:
+    /// the app in front and you at it.
+    public static func answer(
+        for card: Card, awayAfter: Double, front: (Card) -> WhenFocused.Front, paneShowing: (Card) -> Bool?
+    ) -> Answer {
+        guard card.activate != nil else { return .unknown }
+        var found = front(card)
+        if found.pane == nil, found.app, found.present(awayAfter: awayAfter) {
+            found.pane = paneShowing(card)
+        }
+        return found.watching(awayAfter: awayAfter) ? .watching : .notWatching
     }
 }

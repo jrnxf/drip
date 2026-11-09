@@ -126,14 +126,14 @@
         </article>
         <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
           <div class="module mb-18 flex flex-col rounded-[20px] p-16">
-            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Hear from coding agents"><div class="glyphs" aria-hidden="true"><span>HOOK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip setup claude</code>my-app needs you, then my-app is done</p></div>
+            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Hear from coding agents"><div class="glyphs" aria-hidden="true"><span>HOOK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip hook claude</code>my-app needs you, then my-app is done</p></div>
             <div class="mt-14 flex flex-1 items-center gap-14">
               <div class="readout"></div>
               <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Hear from coding agents">PLAY</button>
             </div>
           </div>
           <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">02</span><span class="t">Hear from coding agents</span></h3>
-          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink"><code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> points the agent's hooks at drip. A card names the project and what the agent needs, then says when it has finished.</p>
+          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink">A hook snippet from a recipe you pick points the agent's hooks at drip. A card names the project and what the agent needs, then says when it has finished.</p>
         </article>
         <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
           <div class="module mb-18 flex flex-col rounded-[20px] p-16">
@@ -193,7 +193,7 @@
           <tr><th scope="row">time</th><td>4.5 s by default; <code>--seconds</code> takes 0.5 to 60; <code>--stay</code> keeps a card until it is clicked</td></tr>
           <tr><th scope="row">buttons</th><td><code>--open</code> opens a URL or a file; <code>--yes</code> and <code>--no</code> ask, then exit 0 on yes, 1 on no and 5 without an answer</td></tr>
           <tr><th scope="row">icons</th><td>SF Symbols, image files, app icons, and marks for Claude, Codex and Gemini</td></tr>
-          <tr><th scope="row">agents</th><td><code>drip setup claude</code>, <code>codex</code> or <code>gemini</code> adds drip to the agent's own hooks</td></tr>
+          <tr><th scope="row">agents</th><td>a recipe's hook snippet, added to the agent's own settings</td></tr>
           <tr><th scope="row">replace</th><td><code>--id</code>: a newer card with the same id takes the older one's place</td></tr>
           <tr><th scope="row">dismiss</th><td>a click brings the sender forward; the × on hover, a right-click or <code>drip dismiss</code> takes a card away without that</td></tr>
           <tr><th scope="row">history</th><td><code>drip history</code> lists past cards; <code>--missed</code>, the ones held while the screen was locked</td></tr>
@@ -1507,7 +1507,7 @@ const FEATURES = [
   },
   { // 02 Hear from coding agents
     steps: [
-      // The two hooks drip setup claude adds, in the order they fire: Notification, then Stop.
+      // The two hooks a recipe adds, in the order they fire: Notification, then Stop.
       { shown: "drip hook claude", note: "Claude needs you", line: `drip hook claude '${CLAUDE("PermissionRequest", { tool_name: "Bash", tool_input: { command: "npm test" }, tool_use_id: "toolu_1" })}'` },
       { sleep: 2.6 },
       { shown: "drip hook claude", note: "Claude is done", line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'` },

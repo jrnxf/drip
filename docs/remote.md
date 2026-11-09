@@ -1,7 +1,7 @@
 # Agents on another machine
 
 An agent on a Linux box you reach over ssh, with no screen and no drip there, raises its cards on
-your Mac by the same rules as one on the Mac: `DRIP_HOOK`, `agent_cards`, `done_after`,
+your Mac by the same rules as one on the Mac: `DRIP_HOOK`, `--min-turn`, `--only`,
 `when_focused` and the rest of the [config](config.md). Its hooks run `drip-remote-hook`, a small
 POSIX sh script that appends each event to a queue file there, and `drip follow` on the Mac reads
 that queue over ssh and shows each event's card as `drip hook` would. The Mac connects out to the
@@ -10,12 +10,13 @@ machine; nothing connects in.
 1. On the Mac, save the hook on the machine, here `devbox`, in a folder on its `PATH`:
 
    ```sh
-   drip setup remote | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
+   drip remote-hook | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
    ```
 
-2. Add the hooks that run it to the agent's settings on the machine. `drip setup claude --remote`
-   prints them, the same hooks as `drip setup claude` adds on a Mac with `drip-remote-hook claude`
-   as their command; likewise `codex` and `gemini`.
+2. Add the hooks that run it to the agent's settings on the machine. Take a [recipe](../recipes/README.md)'s
+   snippet, such as [permission-cards](../recipes/permission-cards/), and write `drip-remote-hook claude`
+   in place of `drip hook claude` in each command; likewise `codex` and `gemini`. `--min-turn` and
+   `--only needs-you` go through the queue, and `drip follow` applies them. `--approve` does not.
 
 3. On the Mac, follow the machine, by any name `ssh` takes, a `Host` from `~/.ssh/config` too:
 
@@ -81,7 +82,7 @@ takes over, so a launchd agent started at login while another is running does no
 cannot tell which pane shows on the machine, so it takes you not to be watching: its cards show,
 with their sound, whatever `when_focused` says. The `DRIP_HOOK` and attendance of the session on
 the machine decide whether it raises cards, not the variables `drip follow` runs with. Its
-permission cards only tell, even with `approve` on: the answer stays in the terminal on the machine,
+permission cards only tell, even with `--approve` in the snippet: the answer stays in the terminal on the machine,
 and its hook there returns at once.
 
 **Clicks.** A click brings forward the terminal you ran `drip follow` from, or the app
@@ -89,6 +90,6 @@ and its hook there returns at once.
 JSON on stdin: its `machine` names the machine, and its `env` holds what `DRIP_FORWARD_ENV` named in
 the agent's session. Only `drip follow` sets the command. Nothing in the queue can: drip reads the
 payload, the agent, the machine, the time and those variables from it, and nothing else. Treat the
-values in `env` as data. [recipes.md](recipes.md) has a command that focuses the agent's tab in
+values in `env` as data. The [click-herdr recipe](../recipes/click-herdr/) has a command that focuses the agent's tab in
 herdr on the machine. `drip follow`'s log says how each click went: the app brought forward, or
 macOS refusing to, and a click command that failed.
