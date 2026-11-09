@@ -7,6 +7,8 @@
 #   scripts/tour.sh --build          # a fresh `swift build -c release` copy from this checkout
 #   scripts/tour.sh --dry-run        # print every step and its commands; show no cards
 #
+# --dry-run also fails when a card that needs no click shows for more than 3 seconds.
+#
 # After that one command you never type again. Before each of the 10 steps a question card says
 # what the step shows. Click Next to run the step, or Stop to end the tour. A card nobody answers,
 # or a click beside its buttons, asks again instead of moving on.
@@ -150,7 +152,7 @@ step() {
     ran=1
     echo "tour: $title"
     if ! ask "$title" "$2"; then
-        drip info "Tour stopped" -d "Run scripts/tour.sh again any time." --seconds 4 --wait
+        drip info "Tour stopped" -d "Run scripts/tour.sh again any time." --seconds 3 --wait
         exit 0
     fi
     eval "$3" || true
@@ -160,69 +162,69 @@ step() {
 
 step "four kinds" \
     "ok, warn, fail and info, sent together to show as one stack. Each card names its kind." \
-    'drip ok "ok" -d "green check, Glass sound" --seconds 6
-drip warn "warn" -d "orange, Purr sound" --seconds 6
-drip fail "fail" -d "red, Basso sound" --seconds 6
-drip info "info" -d "blue, Tink sound" --seconds 6'
+    'drip ok "ok" -d "green check, Glass sound" --seconds 3
+drip warn "warn" -d "orange, Purr sound" --seconds 3
+drip fail "fail" -d "red, Basso sound" --seconds 3
+drip info "info" -d "blue, Tink sound" --seconds 3'
 
 step "icon, color, sound" \
     "One card with Claude's bundled mark, a purple color and the Hero sound." \
-    'drip ok "A custom look" -d "--icon mark:claude --color purple --sound Hero" --icon mark:claude --color purple --sound Hero --seconds 8'
+    'drip ok "A custom look" -d "--icon mark:claude --color purple --sound Hero" --icon mark:claude --color purple --sound Hero --seconds 3'
 
 step "--open and --button" \
     "A card with a View PR button. Hover the card, then click the button to open example.com." \
-    'drip info "A link button" -d "Hover me, then click View PR" --open https://example.com --button "View PR" --seconds 12'
+    'drip info "A link button" -d "Hover me, then click View PR" --open https://example.com --button "View PR" --seconds 10'
 
 step "--yes and --no" \
     "A Deploy or Cancel question. The next card says which you clicked and the exit code drip returned." \
     'rc=0
-drip warn "Deploy to prod?" -d "Click Deploy or Cancel" --yes Deploy --no Cancel --seconds 30 || rc=$?
+drip warn "Deploy to prod?" -d "Click Deploy or Cancel" --yes Deploy --no Cancel --seconds 15 || rc=$?
 case $rc in
-    0) drip ok "You clicked Deploy" -d "drip exited 0" --seconds 6 ;;
-    1) drip warn "You clicked Cancel" -d "drip exited 1" --seconds 6 ;;
-    *) drip info "No answer" -d "drip exited $rc" --seconds 6 ;;
+    0) drip ok "You clicked Deploy" -d "drip exited 0" --seconds 3 ;;
+    1) drip warn "You clicked Cancel" -d "drip exited 1" --seconds 3 ;;
+    *) drip info "No answer" -d "drip exited $rc" --seconds 3 ;;
 esac'
 
 step "--id replace in place" \
     "One card with the same id, updated 3 times: it changes in place, it is not a new card." \
-    'drip info "Deploying" -d "update 1 of 3: building" --id tour-deploy --seconds 10
-sleep 3
-drip info "Deploying" -d "update 2 of 3: testing" --id tour-deploy --seconds 10
-sleep 3
-drip ok "Deployed" -d "update 3 of 3: same card, same id" --id tour-deploy --seconds 6'
+    'drip info "Deploying" -d "update 1 of 3: building" --id tour-deploy --seconds 3
+sleep 1
+drip info "Deploying" -d "update 2 of 3: testing" --id tour-deploy --seconds 3
+sleep 1
+drip ok "Deployed" -d "update 3 of 3: same card, same id" --id tour-deploy --seconds 3'
 
 step "--stay and drip dismiss" \
-    "A red card that stays with a pulsing dot. In 6 seconds the tour runs drip dismiss and it goes." \
-    'drip fail "Needs a look" -d "--stay: no countdown. drip dismiss clears me in 6 seconds" --stay --id tour-stay
-sleep 6
+    "A red card that stays with a pulsing dot. Two seconds later the tour runs drip dismiss." \
+    'drip fail "Needs a look" -d "--stay: no countdown. drip dismiss clears me in 2 seconds" --stay --id tour-stay
+sleep 2
 drip dismiss --id tour-stay'
 
 step "--on-click" \
     "Click the next card. Its --on-click command runs and a new card confirms it." \
-    'drip info "Click me" -d "Your click runs a command" --id tour-click --seconds 20 --wait --on-click "cat >/dev/null; \"$drip_bin\" ok \"Click received\" -d \"Your --on-click command ran\" --seconds 6"'
+    'drip info "Click me" -d "Your click runs a command" --id tour-click --seconds 15 --wait --on-click "cat >/dev/null; \"$drip_bin\" ok \"Click received\" -d \"Your --on-click command ran\" --seconds 3"'
 
 step "drip run" \
     "Two commands: one that passes, a green card, and one that fails with exit 3, a red card." \
-    'drip run --seconds 6 sh -c "sleep 1"
-drip run --seconds 6 sh -c "sleep 1; exit 3"'
+    'drip run --seconds 3 sh -c "sleep 1"
+drip run --seconds 3 sh -c "sleep 1; exit 3"'
 
 step "pause, resume, history" \
     "Two cards sent while paused are held. On resume they play back. Then a card sums up drip history --missed." \
     'paused=1
 drip pause 2m >/dev/null 2>&1
-drip ok "Held card 1" -d "sent while paused" --seconds 5
-drip warn "Held card 2" -d "sent while paused" --seconds 5
+drip ok "Held card 1" -d "sent while paused" --seconds 3
+drip warn "Held card 2" -d "sent while paused" --seconds 3
 sleep 1
 drip resume >/dev/null 2>&1
 paused=0
-sleep 4
+sleep 2
 missed=$(drip history --missed -n 2 --json | sed -n "s/.*\"title\":\"\([^\"]*\)\".*/\1/p" | paste -sd, - | sed "s/,/, /g")
-drip info "drip history --missed" -d "${missed:-nothing missed} (the missed notice and the history list)" --seconds 8'
+drip info "drip history --missed" -d "${missed:-nothing missed}" --seconds 3'
 
 step "drip hook --approve" \
     "A permission card for npm install, from a sample Claude Code payload, with Allow and Deny. The next card shows what drip printed." \
     'answer=$(printf "%s\n" "$claude_permission" | drip hook claude --approve) || true
-drip ok "Hook answered" -d "drip hook printed: ${answer:-nothing, so the terminal would ask}" --seconds 8'
+drip ok "Hook answered" -d "printed: ${answer:-nothing, so the terminal asks}" --seconds 3'
 
 if [ "$n" -ne "$total" ]; then
     die "internal: $n steps, expected $total"
@@ -230,6 +232,17 @@ fi
 if [ "$dry_run" -eq 1 ]; then
     echo
     echo "tour: after the last step: drip ok \"Tour done\""
+    # A card that needs no click shows for 3 seconds at most, so the tour stays quick.
+    slow=$(awk '/--seconds [0-9.]+/ && !/--yes|--open|--on-click/ {
+        match($0, /--seconds [0-9.]+/)
+        if (substr($0, RSTART + 10, RLENGTH - 10) + 0 > 3) print NR ": " $0
+    }' "$0")
+    if [ -n "$slow" ]; then
+        echo "tour: FAIL - a card with no click shows for more than 3 seconds:" >&2
+        echo "$slow" >&2
+        exit 1
+    fi
+    echo "tour: ok - no card without a click shows for more than 3 seconds"
     exit 0
 fi
-drip ok "Tour done" -d "That is the tour. The docs: docs/usage.md, docs/agents.md and recipes/README.md." --seconds 8 --wait
+drip ok "Tour done" -d "That is the tour. The docs: docs/usage.md, docs/agents.md and recipes/README.md." --seconds 3 --wait
