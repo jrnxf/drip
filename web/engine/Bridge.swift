@@ -255,17 +255,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         } catch {
             return failure(error, status: ExitStatus.hookFailed, subcommand: HookCommand.configuration.commandName)
         }
-    case let .invocation(.setup(command)):
-        if let shell = command.shell {
-            if command.printOnly {
-                return send(["exit": ExitStatus.shown, "message": ShellHook.snippet(for: shell)])
-            }
-            return send([
-                "exit": ExitStatus.setupFailed,
-                "message": "drip: drip setup zsh adds a block to your .zshrc on your Mac, not in this page. "
-                    + "drip setup zsh --print shows it here.",
-            ])
-        }
+    case .invocation(.remoteHook):
         return send(["exit": ExitStatus.shown, "message": RemoteHook.script])
     case .invocation(.watching):
         return send(["exit": ExitStatus.cannotTell, "message": "drip: watching looks at your Mac's screen, not this page"])

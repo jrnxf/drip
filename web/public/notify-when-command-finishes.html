@@ -95,7 +95,7 @@
           "name": "Can I get a card for every slow command without typing drip run?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes, in zsh: drip setup zsh adds a block to ~/.zshrc that shows the card for any command that ran 10 seconds or more, unless you are looking at that terminal. DRIP_SLOW_AFTER changes the 10 seconds."
+            "text": "Yes, in zsh: the zsh-slow-commands recipe is a block to paste into ~/.zshrc that shows the card for any command that ran 10 seconds or more, unless you are looking at that terminal. DRIP_SLOW_AFTER changes the 10 seconds."
           }
         },
         {
@@ -136,11 +136,8 @@ drip run --open "$CI_URL" --button "View run" ./deploy.sh</code></pre>
         <li><b>In a script, call drip directly</b> for your own words: <code>./backup.sh &amp;&amp; drip ok "backup done" || drip fail "backup failed"</code>.</li>
       </ol>
       <h2>Without typing drip run</h2>
-      <p><code>drip setup zsh</code> adds a block to <code>~/.zshrc</code> that shows the same card for any command that ran 10 seconds or more. It shows only when you are not looking at that terminal, and never for an editor, <code>ssh</code>, <code>less</code>, <code>top</code> or a REPL. A fast command starts no drip at all.</p>
-      <pre><code>drip setup zsh
-exec zsh
-export DRIP_SLOW_AFTER=30   # in ~/.zshrc: seconds before a card</code></pre>
-      <p><code>DRIP_SLOW_AFTER</code> sets the seconds (<code>0</code> turns the cards off) and <code>DRIP_SLOW_IGNORE</code> adds commands to leave out. To remove it, delete the block between <code># &gt;&gt;&gt; drip</code> and <code># &lt;&lt;&lt; drip &lt;&lt;&lt;</code> from <code>~/.zshrc</code>. fish is not supported yet.</p>
+      <p>The <a href="https://github.com/jrnxf/drip/tree/main/recipes/zsh-slow-commands">zsh-slow-commands recipe</a> is a block to paste into <code>~/.zshrc</code>. It shows the same card for any command that ran 10 seconds or more. It shows only when you are not looking at that terminal, and never for an editor, <code>ssh</code>, <code>less</code>, <code>top</code> or a REPL. A fast command starts no drip at all.</p>
+      <p>Paste the block, then run <code>exec zsh</code>. <code>DRIP_SLOW_AFTER</code> sets the seconds (<code>0</code> turns the cards off) and <code>DRIP_SLOW_IGNORE</code> adds commands to leave out. To remove it, delete the block between <code># &gt;&gt;&gt; drip</code> and <code># &lt;&lt;&lt; drip &lt;&lt;&lt;</code> from <code>~/.zshrc</code>. fish is not supported yet.</p>
       <h2>FAQ</h2>
       <h3>How is this different from osascript's display notification?</h3>
       <p><code>osascript -e 'display notification "done"'</code> posts to Notification Center, under Script Editor's name and settings, and knows nothing about the command. <code>drip run</code> shows a card at the notch that says whether the command passed, its exit code and how long it took. See <a href="/vs">drip vs terminal-notifier, osascript and alerter</a>.</p>
@@ -151,7 +148,7 @@ export DRIP_SLOW_AFTER=30   # in ~/.zshrc: seconds before a card</code></pre>
       <h3>Can it ask before the next step runs?</h3>
       <p>Yes. <code>drip warn "Deploy to prod?" --yes Deploy --no Cancel &amp;&amp; ./deploy.sh</code> waits for a click: drip exits 0 on yes, 1 on no and 5 when nobody answers.</p>
       <h3>Can I get a card for every slow command without typing drip run?</h3>
-      <p>Yes, in zsh: <code>drip setup zsh</code> adds a block to <code>~/.zshrc</code> that shows the card for any command that ran 10 seconds or more, unless you are looking at that terminal. <code>DRIP_SLOW_AFTER</code> changes the 10 seconds.</p>
+      <p>Yes, in zsh: the <a href="https://github.com/jrnxf/drip/tree/main/recipes/zsh-slow-commands">zsh-slow-commands recipe</a> is a block to paste into <code>~/.zshrc</code> that shows the card for any command that ran 10 seconds or more, unless you are looking at that terminal. <code>DRIP_SLOW_AFTER</code> changes the 10 seconds.</p>
       <h3>Does it work over ssh or on Linux?</h3>
       <p>No. drip needs a Mac running macOS 13 or newer with someone logged in to the screen; over ssh there is no GUI session, so drip exits 3.</p>
     </article>

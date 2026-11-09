@@ -7,86 +7,6 @@ import Foundation
 import Testing
 
 struct ShellHookTests {
-    static let block = ShellHook.snippet(for: .zsh)
-
-    @Test func theBlockIsOneMarkedRegionThatEndsWithANewline() {
-        #expect(Self.block.hasPrefix(ShellHook.begin + "\n"))
-        #expect(Self.block.hasSuffix(ShellHook.end + "\n"))
-        #expect(Self.block.components(separatedBy: "\n").filter { $0 == ShellHook.begin }.count == 1)
-        // The defaults the docs promise.
-        #expect(Self.block.contains("${DRIP_SLOW_AFTER:-10}"))
-        for word in ["vim", "ssh", "less", "top", "python", "tmux"] {
-            #expect(ShellHook.defaultIgnore.contains(word), "\(word)")
-        }
-    }
-
-    @Test func theRcFileIsZshrcInZdotdirOrHome() {
-        #expect(ShellHook.rcPath(for: .zsh, environment: ["HOME": "/home/user"]) == "/home/user/.zshrc")
-        #expect(ShellHook.rcPath(for: .zsh, environment: ["HOME": "/home/user", "ZDOTDIR": "/home/user/.config/zsh"])
-            == "/home/user/.config/zsh/.zshrc")
-        #expect(ShellHook.rcPath(for: .zsh, environment: ["HOME": "/home/user", "ZDOTDIR": ""]) == "/home/user/.zshrc")
-    }
-
-    @Test func anEmptyOrMissingFileGetsTheBlock() throws {
-        for text in [nil, ""] {
-            let merge = try #require(try ShellHook.merge(text, shell: .zsh))
-            #expect(merge.text == Self.block)
-            #expect(!merge.updated)
-        }
-    }
-
-    @Test func theBlockGoesAfterWhatIsThereSetOffByABlankLine() throws {
-        for text in ["export A=1\n", "export A=1", "export A=1\n\n"] {
-            let merge = try #require(try ShellHook.merge(text, shell: .zsh))
-            #expect(merge.text == "export A=1\n\n" + Self.block, "\(text.debugDescription)")
-        }
-    }
-
-    @Test func runningItAgainChangesNothing() throws {
-        let once = try #require(try ShellHook.merge("export A=1\n", shell: .zsh)).text
-        #expect(try ShellHook.merge(once, shell: .zsh) == nil)
-        let after = once + "alias l='ls -l'\n"
-        #expect(try ShellHook.merge(after, shell: .zsh) == nil)
-    }
-
-    @Test func anOutOfDateBlockIsReplacedWhereItStands() throws {
-        let old = "\(ShellHook.begin)\n# an older drip\n\(ShellHook.end)\n"
-        let merge = try #require(try ShellHook.merge("export A=1\n\(old)alias l='ls -l'\n", shell: .zsh))
-        #expect(merge.text == "export A=1\n\(Self.block)alias l='ls -l'\n")
-        #expect(merge.updated)
-        // At the very end of a file with no newline after the block.
-        let bare = try #require(try ShellHook.merge("\(ShellHook.begin)\nold\n\(ShellHook.end)", shell: .zsh))
-        #expect(bare.text == Self.block)
-    }
-
-    @Test func aBlockCutInTwoOrDoubledIsLeftAlone() {
-        for text in [
-            "\(ShellHook.begin)\nno end\n", "no begin\n\(ShellHook.end)\n",
-            "\(ShellHook.end)\n\(ShellHook.begin)\n", Self.block + Self.block,
-        ] {
-            #expect(throws: ShellHook.Refusal.self) { try ShellHook.merge(text, shell: .zsh) }
-        }
-    }
-
-    @Test func setupZshIsParsedAsAShell() throws {
-        guard case let .invocation(.setup(setup)) = CommandLineParser.parse(["setup", "zsh"]) else {
-            Issue.record(); return
-        }
-        #expect(setup.shell == .zsh)
-        guard case let .invocation(.setup(printing)) = CommandLineParser.parse(["setup", "zsh", "--print"]) else {
-            Issue.record(); return
-        }
-        #expect(printing.printOnly)
-        guard case let .invocation(.setup(remote)) = CommandLineParser.parse(["setup", "remote"]) else {
-            Issue.record(); return
-        }
-        #expect(remote.shell == nil)
-        guard case let .exit(status, _) = CommandLineParser.parse(["setup", "zsh", "--remote"]) else {
-            Issue.record(); return
-        }
-        #expect(status == ExitStatus.usage)
-    }
-
     @Test func theFinishedCommandTakesTheCommandLineAfterTheDashes() throws {
         guard case let .invocation(.finished(command)) = CommandLineParser.parse([
             "__finished", "--status", "2", "--seconds", "12.5", "--", "make", "-j", "4", "test",
@@ -106,6 +26,39 @@ struct ShellHookTests {
 }
 
 #if !os(WASI)
+/// The zsh block in the `zsh-slow-commands` recipe, which the user pastes into `~/.zshrc`.
+enum ZshRecipe {
+    static let begin = "# >>> drip: a card when a slow command finishes >>>"
+    static let end = "# <<< drip <<<"
+
+    static var block: String {
+        get throws {
+            let blocks = try Recipes.blocks("zsh-slow-commands", language: "zsh")
+            guard blocks.count == 1 else { throw RecipeError.missing("zsh-slow-commands has \(blocks.count) zsh blocks") }
+            return blocks[0] + "\n"
+        }
+    }
+}
+
+struct ZshRecipeTests {
+    @Test func theBlockIsOneMarkedRegionThatEndsWithANewline() throws {
+        let block = try ZshRecipe.block
+        #expect(block.hasPrefix(ZshRecipe.begin + "\n"))
+        #expect(block.hasSuffix(ZshRecipe.end + "\n"))
+        #expect(block.components(separatedBy: "\n").filter { $0 == ZshRecipe.begin }.count == 1)
+        // The defaults the recipe promises.
+        #expect(block.contains("${DRIP_SLOW_AFTER:-10}"))
+        for word in ["vim", "ssh", "less", "top", "python", "tmux"] {
+            #expect(block.contains(word), "\(word)")
+        }
+        #expect(!block.contains("drip setup"))
+    }
+
+    @Test func theFinishedCommandIsTheOneTheBlockCalls() throws {
+        #expect(try ZshRecipe.block.contains("command drip __finished --status"))
+    }
+}
+
 /// Whether you are told about a slow command, by where the terminal it ran in is.
 struct SlowCommandCardTests {
     func surroundings(
@@ -202,7 +155,7 @@ struct ZshHookTests {
         defer { try? FileManager.default.removeItem(atPath: directory) }
         // The hooks are called by hand below: left registered, zsh would run them for each line of the script too.
         let unhook = "add-zsh-hook -d preexec __drip_preexec; add-zsh-hook -d precmd __drip_precmd\n"
-        try (ShellHook.snippet(for: .zsh) + unhook + script).write(toFile: directory + "/zshrc", atomically: true, encoding: .utf8)
+        try (ZshRecipe.block + unhook + script).write(toFile: directory + "/zshrc", atomically: true, encoding: .utf8)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: zsh)
         process.arguments = ["-f", directory + "/zshrc"]
@@ -321,7 +274,7 @@ struct ZshHookTests {
         // stay the command's, not go back to zero, which would read as decades.
         let result = try run("""
             cat > "$HOME/block" <<'DRIP_TEST_BLOCK'
-            \(ShellHook.snippet(for: .zsh))DRIP_TEST_BLOCK
+            \(try ZshRecipe.block)DRIP_TEST_BLOCK
             __drip_preexec 'source ~/.zshrc' 'source ~/.zshrc' 'source ~/.zshrc'; source "$HOME/block"; add-zsh-hook -d preexec __drip_preexec; add-zsh-hook -d precmd __drip_precmd
             (exit 0); __drip_precmd
             """, environment: ["DRIP_SLOW_AFTER": "5"])

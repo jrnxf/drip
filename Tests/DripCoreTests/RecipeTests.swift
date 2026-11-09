@@ -82,7 +82,7 @@ struct RecipeTests {
         let folders = try FileManager.default.contentsOfDirectory(atPath: Recipes.folder.path)
         for folder in folders where !folder.hasPrefix(".") && !folder.hasSuffix(".md") {
             let text = try String(contentsOf: Recipes.folder.appendingPathComponent("\(folder)/README.md"), encoding: .utf8)
-            for word in ["git clone", "recipes/", "/Users/", "drip setup claude", "drip setup codex", "drip setup gemini"] {
+            for word in ["git clone", "recipes/", "/Users/", "drip setup"] {
                 #expect(!text.contains(word), "\(folder) mentions \(word)")
             }
         }

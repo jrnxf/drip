@@ -13,13 +13,13 @@ enum Recipes {
     static let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().appendingPathComponent("recipes")
 
-    /// The fenced `json` blocks of a recipe's README.
-    static func blocks(_ name: String) throws -> [String] {
+    /// The fenced blocks of a recipe's README, `json` ones unless another language is asked for.
+    static func blocks(_ name: String, language: String = "json") throws -> [String] {
         let readme = try String(contentsOf: folder.appendingPathComponent("\(name)/README.md"), encoding: .utf8)
         var blocks: [String] = []
         var current: [Substring]?
         for line in readme.split(separator: "\n", omittingEmptySubsequences: false) {
-            if line == "```json" {
+            if line == "```\(language)" {
                 current = []
             } else if line == "```", let lines = current {
                 blocks.append(lines.joined(separator: "\n"))

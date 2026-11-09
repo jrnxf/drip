@@ -96,8 +96,8 @@ struct DripCLI {
         case let .invocation(.hook(command)):
             DebugLog.process = .hook
             return hook(command)
-        case let .invocation(.setup(command)):
-            return setup(command)
+        case .invocation(.remoteHook):
+            return remoteHook()
         case let .invocation(.watching(command)):
             return watching(command)
         case let .invocation(.finished(command)):
@@ -341,28 +341,8 @@ struct DripCLI {
         return answer.status
     }
 
-    /// Sets up the shell, or prints the hook script for another machine.
-    private func setup(_ command: SetupCommand) -> Int32 {
-        if let shell = command.shell {
-            if command.printOnly {
-                print(ShellHook.snippet(for: shell), terminator: "")
-                return ExitStatus.shown
-            }
-            let console = Console()
-            switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(shell) {
-            case let .done(lines, warnings):
-                warnings.forEach(console.warn)
-                lines.forEach { print($0) }
-                return ExitStatus.shown
-            case let .refused(reason, snippet):
-                console.error(reason)
-                print(snippet, terminator: "")
-                return ExitStatus.setupFailed
-            case let .failed(message):
-                console.error(message)
-                return ExitStatus.setupFailed
-            }
-        }
+    /// Prints the hook script for another machine.
+    private func remoteHook() -> Int32 {
         print(RemoteHook.script, terminator: "")
         return ExitStatus.shown
     }

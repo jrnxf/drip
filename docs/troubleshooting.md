@@ -20,7 +20,7 @@ recordings. Run `drip pause` for those instead (see [Pausing](usage.md#pausing))
 
 drip makes no network connections of its own, sends nothing anywhere and collects no analytics:
 the one connection is the ssh that `drip follow` runs to the machine you name. It only reads and
-writes your config, the rc file that `drip setup zsh` edits, its history, and small state
+writes your config, its history, and small state
 files next to it: the opt-in [debug log](#debug-log), the pause, `drip dismiss`'s requests, which card each agent session waits on and
 the folder it runs in, each forgotten after 10 minutes, and where `drip follow` is in each
 machine's queue.

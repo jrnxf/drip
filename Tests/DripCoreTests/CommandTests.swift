@@ -44,7 +44,7 @@ struct CommandTests {
 
     /// `drip help run` shows run's help, as `drip run --help` does.
     @Test func helpForASubcommand() {
-        for name in ["run", "hook", "setup", "history", "pause", "resume", "show"] {
+        for name in ["run", "hook", "remote-hook", "history", "pause", "resume", "show"] {
             guard case let .exit(status, help) = CommandLineParser.parse(["help", name]),
                   case let .exit(_, flag) = CommandLineParser.parse([name, "--help"]),
                   case let .exit(_, short) = CommandLineParser.parse([name, "-h"])
@@ -191,8 +191,7 @@ struct CommandTests {
             (["run"], "drip run --help"), (["run", "--nope", "make"], "drip run --help"),
             (["run", "--version"], "drip run --help"),
             (["hook"], "drip hook --help"), (["hook", "cursor"], "drip hook --help"),
-            (["setup"], "drip setup --help"), (["setup", "cursor"], "drip setup --help"),
-            (["setup", "zsh", "--seconds", "3"], "drip setup --help"),
+            (["remote-hook", "extra"], "drip remote-hook --help"),
             (["history", "--json", "--replay"], "drip history --help"),
         ]
         for (arguments, help) in mistakes {
@@ -340,24 +339,19 @@ struct CommandTests {
         }
     }
 
-    @Test func setupTakesZshOrRemote() throws {
-        guard case let .invocation(.setup(zsh)) = CommandLineParser.parse(["setup", "zsh", "--print"])
-        else { Issue.record(); return }
-        #expect(zsh.shell == .zsh)
-        #expect(zsh.printOnly)
-        guard case let .invocation(.setup(remote)) = CommandLineParser.parse(["setup", "remote"])
-        else { Issue.record(); return }
-        #expect(remote.shell == nil)
-        // --print is for zsh, and a coding agent is not a target: its hooks come from a recipe.
-        for arguments in [["setup", "remote", "--print"], ["setup", "claude"], ["setup", "codex", "hooks.json"]] {
+    @Test func remoteHookTakesNothing() throws {
+        guard case .invocation(.remoteHook) = CommandLineParser.parse(["remote-hook"]) else { Issue.record(); return }
+        for arguments in [["remote-hook", "--print"], ["remote-hook", "claude"]] {
             guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
             #expect(status == ExitStatus.usage, "\(arguments)")
         }
-        // Without a target, one line says what is missing, not the whole help.
-        guard case let .exit(status, missing) = CommandLineParser.parse(["setup"]) else { Issue.record(); return }
-        #expect(status == ExitStatus.usage)
-        #expect(missing == "drip: missing the target: drip setup zsh or drip setup remote\n"
-            + "See 'drip setup --help'.")
+    }
+
+    /// drip setup is gone: the word is no subcommand.
+    @Test func setupIsNoSubcommand() {
+        if case .invocation(.remoteHook) = CommandLineParser.parse(["setup", "zsh"]) { Issue.record() }
+        guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
+        #expect(!help.contains("drip setup"), "\(help)")
     }
 
     @Test func hookMistakesExitOneNotTwo() {
@@ -452,8 +446,7 @@ struct CommandTests {
         #expect(help.contains("drip run [options] [--] <command> [args...]"), "\(help)")
         #expect(help.contains("drip hook claude|codex|gemini [options]"), "\(help)")
         #expect(!help.contains("snippet-file"), "\(help)")
-        #expect(help.contains("drip setup remote"), "\(help)")
-        #expect(help.contains("drip setup zsh [--print]"), "\(help)")
+        #expect(help.contains("drip remote-hook"), "\(help)")
         #expect(!help.contains("__finished"), "\(help)")
         #expect(help.contains("drip follow <ssh-target> [options]"), "\(help)")
         #expect(help.contains("drip history [--missed] [-n N | --all] [--json | --replay]"), "\(help)")
@@ -464,7 +457,7 @@ struct CommandTests {
         }
         #expect(order.allSatisfy { $0 != nil }, "\(help)")
         #expect(order.compactMap { $0 } == order.compactMap { $0 }.sorted(), "\(help)")
-        for subcommand in ["run", "hook", "setup", "history", "pause", "resume"] {
+        for subcommand in ["run", "hook", "remote-hook", "history", "pause", "resume"] {
             #expect(help.contains("\n  \(subcommand) "), "\(subcommand)")
         }
         #expect(help.contains("--seconds"), "\(help)")

@@ -26,6 +26,7 @@ in full, says which file it goes in, and says how to merge it by hand.
 | [click-wezterm](click-wezterm/) | A click focuses the WezTerm pane |
 | [click-ghostty-spaces](click-ghostty-spaces/) | A click focuses the Ghostty terminal across Spaces |
 | [quiet-while-watching](quiet-while-watching/) | Run a command only when you are not watching, with `drip watching` |
+| [zsh-slow-commands](zsh-slow-commands/) | A card when a command in zsh runs 10 seconds or more |
 | [aider](aider/) | A card when Aider is done |
 | [opencode](opencode/) | A card for opencode's permissions and idle sessions |
 

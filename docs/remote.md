@@ -10,7 +10,7 @@ machine; nothing connects in.
 1. On the Mac, save the hook on the machine, here `devbox`, in a folder on its `PATH`:
 
    ```sh
-   drip setup remote | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
+   drip remote-hook | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
    ```
 
 2. Add the hooks that run it to the agent's settings on the machine. Take a [recipe](../recipes/README.md)'s

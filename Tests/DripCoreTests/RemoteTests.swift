@@ -151,15 +151,15 @@ struct RemoteEventTests {
         #expect(stream.position?.offset == long.count + 1)
     }
 
-    @Test func setupPrintsTheRemoteHook() throws {
-        guard case let .invocation(.setup(remote)) = CommandLineParser.parse(["setup", "remote"]) else {
+    @Test func remoteHookPrintsTheRemoteHook() throws {
+        guard case .invocation(.remoteHook) = CommandLineParser.parse(["remote-hook"]) else {
             Issue.record(); return
         }
-        #expect(remote.shell == nil)
         // The hook script takes the flags a recipe writes after the agent.
         #expect(RemoteHook.script.contains("--min-turn"))
-        // --remote and a snippet are gone: the hooks come from a recipe, written by hand.
-        for arguments in [["setup", "remote", "s.json"], ["setup", "zsh", "--remote"], ["setup", "claude", "--remote"]] {
+        #expect(!RemoteHook.script.contains("drip setup"))
+        // No options: the hooks come from a recipe, written by hand.
+        for arguments in [["remote-hook", "s.json"], ["remote-hook", "--remote"]] {
             guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
             #expect(status == ExitStatus.usage, "\(arguments)")
         }

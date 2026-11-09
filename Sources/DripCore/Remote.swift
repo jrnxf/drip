@@ -21,7 +21,7 @@ public enum RemoteHook {
     /// which only a click's `--on-click` command reads.
     public static let sessionVariables = ["DRIP_HOOK", "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_ENTRYPOINT"]
 
-    /// `drip-remote-hook`, as `drip setup remote` prints it: POSIX sh, for a machine without drip.
+    /// `drip-remote-hook`, as `drip remote-hook` prints it: POSIX sh, for a machine without drip.
     /// It never fails or holds up the agent's turn: it prints nothing and exits 0 whatever happens.
     public static var script: String {
         let variables = sessionVariables.map { "\"\($0)\":\"%s\"" }.joined(separator: ",")
@@ -29,7 +29,7 @@ public enum RemoteHook {
         return #"""
             #!/bin/sh
             # drip-remote-hook: queues a coding agent's hook event for `drip follow` on a Mac.
-            # Written by `drip setup remote`. The agent's hooks run it as `drip hook` runs on a Mac:
+            # Printed by `drip remote-hook`. The agent's hooks run it as `drip hook` runs on a Mac:
             #
             #   drip-remote-hook claude|codex|gemini [--min-turn SECONDS] [--only needs-you] [payload]
             #

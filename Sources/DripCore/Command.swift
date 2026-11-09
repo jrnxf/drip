@@ -22,8 +22,6 @@ public enum ExitStatus {
     /// exit 2 from a hook as "block", and Gemini CLI reads any code but 0 and 1 as "deny", which after
     /// a turn makes it try the turn again.
     public static let hookFailed: Int32 = 1
-    /// `drip setup zsh` left the rc file alone: a symlink or read-only.
-    public static let setupFailed: Int32 = 1
     /// `drip pause` or `drip resume` could not write the pause to the state directory.
     public static let pauseFailed: Int32 = 1
     /// `drip dismiss` could not write its request to the state directory.
@@ -289,8 +287,7 @@ public struct DripCommand: ParsableCommand {
             drip [KIND] [TITLE] [options]
             drip run [options] [--] <command> [args...]
             drip hook claude|codex|gemini [options] [payload]
-            drip setup remote
-            drip setup zsh [--print]
+            drip remote-hook
             drip watching [--pane ID] [--app BUNDLE-ID]
             drip follow <ssh-target> [options]
             drip history [--missed] [-n N | --all] [--json | --replay]
@@ -301,7 +298,7 @@ public struct DripCommand: ParsableCommand {
             """,
         version: dripVersion,
         subcommands: [
-            ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, WatchingCommand.self, FollowCommand.self,
+            ShowCommand.self, RunCommand.self, HookCommand.self, RemoteHookCommand.self, WatchingCommand.self, FollowCommand.self,
             HistoryCommand.self, DebugCommand.self, DismissCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self,
             BackgroundCommand.self, FinishedCommand.self,
         ],
@@ -322,7 +319,7 @@ public struct DripCommand: ParsableCommand {
           drip info "my-app needs you" --stay --icon app:com.openai.chat
           drip ok "tests passed" --on-click 'jq -r .title >>~/clicked.log'
           drip watching --pane "$TMUX_PANE" || drip ok "tests passed"
-          drip setup zsh
+          drip remote-hook | ssh devbox 'cat > ~/bin/drip-remote-hook'
           drip follow devbox
           drip dismiss
           drip pause 30m
@@ -332,8 +329,7 @@ public struct DripCommand: ParsableCommand {
     static let exitCodes = """
         EXIT CODES:
           0  The card was shown, or handed off to be shown; a question was answered yes.
-          1  A question was answered no, drip hook could not make a card, drip setup left the
-             rc file alone, or drip watching says you are not watching.
+          1  A question was answered no, drip hook could not make a card, or drip watching says you are not watching.
           2  Usage error; for drip watching, that it cannot tell.
           3  No GUI session, such as over ssh (drip hook exits 0 instead).
           4  The config file is invalid.
@@ -487,54 +483,20 @@ public struct HookCommand: ParsableCommand {
     }
 }
 
-/// `drip setup zsh`: adds a card for slow commands to zsh. `drip setup remote`: prints the hook for
-/// agents on another machine.
-public struct SetupCommand: ParsableCommand {
-    /// What `drip setup` sets up: zsh, or `remote`, the hook for agents on another machine.
-    public enum Target: String, CaseIterable, ExpressibleByArgument {
-        case remote, zsh
-    }
-
+/// `drip remote-hook`: prints the hook script for agents on another machine.
+public struct RemoteHookCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
-        commandName: "setup",
-        abstract: "Add a card for slow commands to zsh, or print the hook script for agents on another machine.",
-        usage: """
-            drip setup remote
-            drip setup zsh [--print]
-            """,
+        commandName: "remote-hook",
+        abstract: "Print the drip-remote-hook script for a machine without drip.",
+        usage: "drip remote-hook",
         discussion: """
-            drip setup zsh adds a block to ~/.zshrc (in ZDOTDIR, if set) that shows a card for any \
-            command that ran 10 seconds or more, unless you are watching that terminal; \
-            DRIP_SLOW_AFTER changes the 10 and DRIP_SLOW_IGNORE adds commands to leave out. Run it \
-            again to update the block. A file that is a symlink or read-only, as home-manager makes, \
-            is left alone: drip prints the block to add yourself and exits 1. drip setup remote prints \
-            drip-remote-hook, a shell script to save on a machine whose agent drip follow shows the \
-            cards of. drip does not edit a coding agent's settings: a recipe shows the hooks to add.
+            drip remote-hook prints drip-remote-hook, a shell script to save on a machine whose \
+            agent drip follow shows the cards of. drip does not edit a coding agent's settings: \
+            a recipe shows the hooks to add.
             """
     )
 
-    /// Optional here so that `drip setup` alone is a one-line error, not the whole help.
-    @Argument(help: ArgumentHelp(
-        "zsh for a card for slow commands, or remote for the hook script of another machine.",
-        valueName: "target"))
-    var target: Target?
-
-    /// The shell whose rc file gets a card for slow commands; nil for `remote`.
-    public var shell: ShellHook.Shell? {
-        target.flatMap { ShellHook.Shell(rawValue: $0.rawValue) }
-    }
-
-    @Flag(name: .customLong("print"), help: "Print the zsh block instead of adding it.")
-    public var printOnly = false
-
     public init() {}
-
-    public func validate() throws {
-        guard let target else {
-            throw ValidationError("missing the target: drip setup zsh or drip setup remote")
-        }
-        if printOnly, target != .zsh { throw ValidationError("--print is for drip setup zsh") }
-    }
 }
 
 /// `drip watching [--pane ID] [--app BUNDLE-ID]`: says by its exit status whether you are watching a terminal.
@@ -573,7 +535,7 @@ public struct WatchingCommand: ParsableCommand {
 }
 
 /// `drip __finished --status <n> --seconds <n> -- <command line>`: the card for a command that ran long,
-/// which the zsh block `drip setup zsh` adds starts. It is not for typing.
+/// which the block of the zsh-slow-commands recipe starts. It is not for typing.
 public struct FinishedCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "__finished",
@@ -615,7 +577,7 @@ public struct FollowCommand: ParsableCommand {
             shows each one's card as drip hook would on this Mac, by the same config and DRIP_HOOK. \
             It runs until stopped, reconnecting when the connection drops, and takes up after the last \
             event it handled. Events older than --max-age when they arrive, as after the Mac slept, \
-            show no card, but still take away the cards they would. drip setup remote prints the hook; --launchd prints a launchd agent that keeps \
+            show no card, but still take away the cards they would. drip remote-hook prints the hook; --launchd prints a launchd agent that keeps \
             drip follow running.
             """
     )
@@ -888,7 +850,7 @@ public enum Invocation {
     case show(ShowCommand)
     case run(RunCommand)
     case hook(HookCommand)
-    case setup(SetupCommand)
+    case remoteHook(RemoteHookCommand)
     case watching(WatchingCommand)
     case finished(FinishedCommand)
     case follow(FollowCommand)
@@ -926,7 +888,7 @@ public enum CommandLineParser {
             case let command as ShowCommand: return .invocation(.show(command))
             case let command as RunCommand: return .invocation(.run(command))
             case let command as HookCommand: return .invocation(.hook(command))
-            case let command as SetupCommand: return .invocation(.setup(command))
+            case is RemoteHookCommand: return .invocation(.remoteHook(RemoteHookCommand()))
             case let command as WatchingCommand: return .invocation(.watching(command))
             case let command as FinishedCommand: return .invocation(.finished(command))
             case let command as FollowCommand: return .invocation(.follow(command))

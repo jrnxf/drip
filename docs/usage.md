@@ -7,8 +7,7 @@ drip [KIND] [TITLE] [options]
 drip run [options] [--] <command> [args...]
 drip hook claude|codex|gemini [options] [payload]
 drip watching [--pane ID] [--app BUNDLE-ID]
-drip setup zsh [--print]
-drip setup remote
+drip remote-hook
 drip follow <ssh-target> [options]
 drip history [--missed] [-n N | --all] [--json | --replay]
 drip debug [--clear]
@@ -375,7 +374,7 @@ runs at once, and the cards still in the stack play out without it.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown; a question was answered yes, the moment it was clicked. |
-| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason but no GUI session; `drip setup` could not write the rc file; `drip pause` or `drip resume` could not write the pause; `drip dismiss` could not write its request; or `drip follow` could not start, as when it cannot write its state directory. |
+| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason but no GUI session; `drip pause` or `drip resume` could not write the pause; `drip dismiss` could not write its request; or `drip follow` could not start, as when it cannot write its state directory. |
 | 2 | Usage error. |
 | 3 | No GUI session, for example over ssh; `drip hook` exits 0 then. |
 | 4 | The config file is invalid; the message names the key and line. |
@@ -399,16 +398,12 @@ drip run --open "$CI_URL" --button "View run" ./deploy.sh
 
 ## Without typing `drip run`
 
-`drip setup zsh` adds a block to `~/.zshrc` (`$ZDOTDIR/.zshrc` when that is set) that gives a card to
-any command that ran 10 seconds or more, with nothing in front of it. The card is the one `drip run`
-makes: green with `make test finished`, or red with `make test failed (exit 2)`, and the time as its
-detail. It shows only when you are not watching that terminal, by the same rules as an agent's done
-card: drip's [`when_focused` and `away_after`](config.md), and your tmux pane.
-
-```sh
-drip setup zsh          # adds the block; run it again to update it, and then: exec zsh
-drip setup zsh --print  # prints the block without changing anything
-```
+The [zsh-slow-commands recipe](../recipes/zsh-slow-commands/README.md) is a block to paste into
+`~/.zshrc` (`$ZDOTDIR/.zshrc` when that is set). It gives a card to any command that ran 10 seconds
+or more, with nothing in front of it. The card is the one `drip run` makes: green with
+`make test finished`, or red with `make test failed (exit 2)`, and the time as its detail. It shows
+only when you are not watching that terminal, by the same rules as an agent's done card: drip's
+[`when_focused` and `away_after`](config.md), and your tmux pane. Paste the block, then run `exec zsh`.
 
 The block costs a prompt nothing noticeable: zsh times the command itself and starts drip only for a
 slow one, so a fast command runs no drip at all. It does nothing where drip is not installed.

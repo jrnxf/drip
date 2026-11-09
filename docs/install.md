@@ -37,6 +37,6 @@ command is `drip hook claude`, `drip hook codex` or `drip hook gemini` in `~/.cl
 `~/.codex/hooks.json` (or `config.toml`) and `~/.gemini/settings.json`. If you set `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, the files
 are there instead. drip installs nothing else: no daemon, no login item, no preferences. If you
 [follow another machine](remote.md), stop and delete the launchd agents you saved
-for it, and on the machine delete `drip-remote-hook`, its queue and the hooks that run it. If you ran
-`drip setup zsh`, delete the block in `~/.zshrc` that starts with `# >>> drip` and ends with
-`# <<< drip <<<`, and the `.zshrc.drip-backup-<date>-<time>` next to it.
+for it, and on the machine delete `drip-remote-hook`, its queue and the hooks that run it. If you added the
+[zsh block](../recipes/zsh-slow-commands/README.md), delete it from `~/.zshrc`: it starts with
+`# >>> drip` and ends with `# <<< drip <<<`.
