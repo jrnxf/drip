@@ -9,20 +9,22 @@
   <img src="docs/demo.gif" width="400" alt="drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then Claude needs you, with Claude needs your permission to use Bash, replaced in place by Deploy failed, with staging: health check timed out after 30s, then the question Deploy to prod?, with Deploy and Cancel buttons, until it times out">
 </p>
 
-drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you.
 
-A glance tells you what finished and how it went: a build, a deploy, a test run, or a coding agent
-such as Claude Code, Codex or Gemini CLI. It is not Notification Center, so a card needs no macOS
-privacy grant. A custom icon or sound file in a protected folder can trigger a Files and Folders
-prompt. drip returns at once, so it never slows the script that calls it. On a Mac without a notch, the
-card grows out of the top edge of the screen.
+drip is a command that shows a card at your Mac's notch. Call it from a script, a build or a shell
+hook to say that something finished, failed or needs an answer.
+
+No permission prompt: drip draws its own card, not a Notification Center banner. drip returns at
+once, so it never slows the script that calls it. On a Mac without a notch, the card grows out of
+the top edge of the screen.
+
+[Recipes](recipes/README.md) · [Docs](docs/usage.md) · [drip.jrnxf.co](https://drip.jrnxf.co)
 
 - **One command, any script.** `drip ok "deployed"` shows a green card with an icon, a sound and a countdown.
 - **Wraps commands.** `drip run make test` shows how it went and how long it took, and keeps the exit code.
-- **Coding agents.** One setup command and a card tells you which project needs you, and why.
-- **Slow shell commands.** Any zsh command that takes 10 seconds or more gets a card, with nothing to type.
-- **Remote machines.** Agents on a Linux box over ssh raise their cards on your Mac.
-- **Questions.** `--yes Deploy --no Cancel` waits for a click and exits 0 or 1.
+- **Questions.** `--yes Deploy --no Cancel` waits for a click. It exits 0 for yes, 1 for no and 5 for no answer.
+- **Slow shell commands.** A zsh recipe gives a card to any command that runs 10 seconds or more.
+- **Coding agents.** Recipes for Claude Code, Codex and Gemini CLI call `drip hook` to show a card when the agent needs you.
+- **Remote machines.** A Linux box you reach over ssh can raise its cards on your Mac.
 - **Nothing lost.** Cards that come up while the screen is locked play back when you return.
 
 Requires macOS 13 or newer.
@@ -35,237 +37,73 @@ drip ok "hello"
 ```
 
 A green card grows out of the notch. Homebrew installs a prebuilt universal binary for Apple silicon
-and Intel, with no Xcode needed. To build from source, or for notes on signing and pre-releases, see
-[docs/install.md](docs/install.md).
+and Intel, with no Xcode needed. To build from source, see [docs/install.md](docs/install.md).
 
 ## Quick start
 
 ```sh
-drip "build finished"                                  # an info card
-drip ok "tests passed" -d "246 passed in 3.2s"         # ok, warn, fail or info, with a detail line
-drip fail "deploy failed" -d "$err" --seconds 8
-git log -1 --format='%s%n%an' | drip ok                # first line is the title, the rest the detail
+# A card
+drip "build finished"
+
+# A kind and a detail line
+drip ok "tests passed" -d "246 passed in 3.2s"
+
+# The first line of stdin is the title, the rest the detail
+git log -1 --format='%s%n%an' | drip ok
+
+# Replace a card in place
+drip info "deploying" --id deploy
+drip ok "deployed" --id deploy
+
+# Ask a question (exit 0 yes, 1 no, 5 no answer)
 drip warn "Deploy to prod?" --yes Deploy --no Cancel && ./deploy.sh
-drip info "deploying" --id deploy && drip ok "deployed" --id deploy   # replaces the card in place
 ```
+
+`drip --help` lists every option. [docs/usage.md](docs/usage.md) is the full reference, and
+[docs/contract.md](docs/contract.md) lists what scripts can rely on.
 
 ## Alert when a command finishes
 
 Put `drip run` in front of any command. It shows a green card on exit 0, or a red one with the exit
-code, with the time it took as the detail, then exits with the command's own status, so scripts and
-`&&` chains work as before.
+code, then exits with the command's own status, so scripts and `&&` chains work as before.
 
 ```sh
 drip run make test
 drip run --open "$CI_URL" --button "View run" ./deploy.sh
 ```
 
-Or skip typing it. The [zsh-slow-commands recipe](recipes/zsh-slow-commands/README.md) is a block
-for `~/.zshrc` that gives a card to any command that runs 10 seconds or more, only when you are not
-watching that terminal. A fast command runs no drip at all. Paste this at the end of `~/.zshrc`,
-then run `exec zsh`:
-
-<details>
-<summary>The zsh block</summary>
-
-```zsh
-# >>> drip: a card when a slow command finishes >>>
-# From the drip recipe zsh-slow-commands. Delete this block to remove it.
-# A command that runs 10 seconds or more shows a card when it ends, unless you are
-# watching this terminal. No drip runs for a faster command.
-#   DRIP_SLOW_AFTER   seconds a command must run for a card; 0 turns the cards off, and
-#                     anything but a number leaves them off
-#   DRIP_SLOW_IGNORE  more commands to leave out, space-separated, besides the editors, pagers,
-#                     ssh and REPLs named below
-# Silent where drip is missing, and where DRIP_HOOK=off.
-if zmodload zsh/datetime 2>/dev/null && autoload -Uz add-zsh-hook 2>/dev/null; then
-  typeset -g __drip_command __drip_expanded
-  typeset -gF __drip_start
-  typeset -ga __drip_ignore=(
-    vim vi nvim view nano pico micro emacs hx kak less more most man info bat tail watch ssh
-    mosh telnet sftp ftp nc screen tmux zellij herdr top htop btop glances nvtop python
-    python3 node deno bun irb pry ipython lua ghci psql mysql sqlite3 redis-cli mongosh gdb
-    lldb claude codex gemini aider opencode fzf nnn lf ranger yazi mc tig lazygit k9s fg bg su
-    zsh bash fish sh drip
-  )
-
-  # Each function sets the shell's options to zsh's own for its run, so setopt in your rc
-  # file (globsubst, nounset, shwordsplit) cannot change what they do.
-  __drip_preexec() {
-    emulate -L zsh
-    __drip_command=$1
-    __drip_expanded=$3
-    __drip_start=$EPOCHREALTIME
-  }
-
-  # Whether the command line starts a command in the ignore list, past any assignments,
-  # sudo and the like.
-  __drip_ignored() {
-    emulate -L zsh
-    local word
-    local -a ignore=($__drip_ignore ${=DRIP_SLOW_IGNORE-})
-    for word in ${(z)1}; do
-      case $word in
-        *=* | -* | sudo | command | builtin | exec | env | nocorrect | noglob | nohup | time) continue ;;
-      esac
-      word=${${(Q)word}:t}
-      (( ${ignore[(Ie)$word]} ))
-      return
-    done
-    return 1
-  }
-
-  __drip_precmd() {
-    local code=$?
-    emulate -L zsh
-    [[ -n $__drip_command ]] || return $code
-    local command=$__drip_command expanded=$__drip_expanded
-    __drip_command=
-    local seconds=$(( EPOCHREALTIME - __drip_start ))
-    local after=${DRIP_SLOW_AFTER:-10}
-    [[ $after == <->(|.<->) ]] || return $code
-    (( after > 0 && seconds >= after )) || return $code
-    [[ ${DRIP_HOOK-} != off ]] || return $code
-    (( $+commands[drip] )) || return $code
-    __drip_ignored $expanded && return $code
-    command drip __finished --status $code --seconds $seconds -- "$command" >/dev/null 2>&1 &!
-    return $code
-  }
-
-  add-zsh-hook preexec __drip_preexec
-  add-zsh-hook precmd __drip_precmd
-fi
-# <<< drip <<<
-```
-
-</details>
-
-`DRIP_SLOW_AFTER` sets the threshold and `DRIP_SLOW_IGNORE` leaves commands out. To remove it,
-delete the block.
+To skip typing it, the [zsh-slow-commands recipe](recipes/zsh-slow-commands/README.md) is a block for
+`~/.zshrc`. It gives a card to any command that runs 10 seconds or more, only when you are not
+watching that terminal.
 
 ## Coding agents
 
-drip gives building blocks. [Recipes](recipes/README.md) are examples that decide when to notify:
-you copy one and adapt it. Nothing is installed for you, and no recipe is built into drip.
+`drip hook` turns an agent's hook event into a card. drip gives you hooks and recipes, not automatic
+integrations. A [recipe](recipes/README.md) is a settings snippet that picks the events that show a
+card. Copy one into the agent's settings and adapt it.
 
-| Recipe | What it does |
+| Recipe | When it notifies |
 | --- | --- |
-| [permission-cards](recipes/permission-cards/) (suggested) | A card when the agent needs you, and nothing else |
-| [attention](recipes/attention/) | Also a card when an error ends a turn |
-| [everything](recipes/everything/) | Also a done card for every turn |
-| [long-turns](recipes/long-turns/) | As everything, but no done card for a turn under 30 seconds |
-| [approve-from-card](recipes/approve-from-card/) | permission-cards, with Allow and Deny on the card |
-| [orchestrator](recipes/orchestrator/) | Many sessions at once: cards from the one you talk to, not its workers |
+| [Permission cards](recipes/permission-cards/) (suggested) | When the agent needs you, and nothing else |
+| [Attention](recipes/attention/) | Also when an error ends a turn |
+| [Everything](recipes/everything/) | Also a done card for every turn |
+| [Long turns](recipes/long-turns/) | As Everything, but no done card for a turn under 30 seconds |
+| [Approve from card](recipes/approve-from-card/) | As Permission cards, with Allow and Deny on the card |
+| [Orchestrator](recipes/orchestrator/) | Many sessions at once: cards from the one you talk to, not its workers |
 
-[recipes/](recipes/README.md) also has click recipes for herdr, WezTerm and Ghostty, and examples
-for Aider and opencode.
+Start with [Permission cards](recipes/permission-cards/). It has the hooks for Claude Code, Codex
+and Gemini CLI. [recipes/](recipes/README.md) also has click recipes for herdr, WezTerm and Ghostty,
+and examples for Aider and opencode. [docs/agents.md](docs/agents.md) is the reference for
+`drip hook`, `drip watching` and `DRIP_HOOK`.
 
-Quick start for Claude Code: add this to `~/.claude/settings.json`. If the file has a `hooks` entry,
-merge the events and keep your own.
-
-```json
-{
-  "hooks": {
-    "PermissionRequest": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "drip hook claude"
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "elicitation_dialog",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "drip hook claude"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "drip hook claude"
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "drip hook claude"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "drip hook claude"
-          }
-        ]
-      }
-    ],
-    "ElicitationResult": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "drip hook claude"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-It gives a card when Claude needs you, a permission or a question, and nothing else. The
-[permission-cards](recipes/permission-cards/) recipe has the snippets for Codex and Gemini CLI.
-
-The card's title is the project, such as `my-app needs you` with `Claude wants to run npm install`.
-A card that needs you stays until you answer in the terminal. A click brings back the agent's
-terminal, and its pane in tmux. While you watch the agent's terminal, its done card comes without a
-sound. [docs/agents.md](docs/agents.md) is the reference for `drip hook`, `drip watching` and
-`DRIP_HOOK`.
-
-### Agents on another machine
-
-An agent on a Linux box you reach over ssh, with no drip there, raises its cards on your Mac. A
-small POSIX sh hook queues each event on the machine, and `drip follow` on the Mac reads that queue
-over ssh. The Mac connects out; nothing connects in.
-
-```sh
-drip remote-hook | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
-drip follow devbox           # on the Mac; --launchd prints a launchd agent to keep it running
-```
-
-[docs/remote.md](docs/remote.md) has the setup step by step, the queue, and how a click reaches the
-agent's pane with `drip follow --on-click`.
+To show the cards of an agent on a Linux box you reach over ssh, with no drip there, see
+[docs/remote.md](docs/remote.md).
 
 ## Clicks
 
-A click on a card brings its terminal forward. Add `--on-click CMD` to `drip`, `drip run`,
-`drip hook` or `drip follow`, and a click also runs `CMD` with `/bin/sh -c`. It reads one line of
-JSON on stdin, such as:
-
-```json
-{"app":"com.mitchellh.ghostty","env":{"WEZTERM_PANE":"7"},"id":"claude:s1","kind":"info","title":"my-app needs you","v":1}
-```
-
-`env` holds only the variables that `DRIP_FORWARD_ENV` names. [The click recipes](recipes/README.md)
-uses it to focus a pane in herdr or WezTerm, or a Ghostty window on another Space.
+A click on a card brings its terminal forward. Add `--on-click CMD` to run a command on a click too.
+The [click recipes](recipes/README.md) focus a pane in herdr or WezTerm, or a Ghostty window on
+another Space.
 
 ## Away, paused and missed
 
@@ -281,45 +119,13 @@ drip dismiss            # take the cards on screen away, without going to the te
 drip does not follow Focus, since reading it would take a permission, so `drip pause` is how you
 keep cards out of a screen share.
 
-## Usage
-
-```
-drip [KIND] [TITLE] [options]
-drip run [options] [--] <command> [args...]
-drip remote-hook
-drip follow <ssh-target> [options]
-drip history [--missed] [-n N | --all] [--json | --replay]
-drip dismiss [--id ID]
-drip pause [DURATION]
-drip resume
-drip --help | help <subcommand>
-```
-
-| Option | What it does |
-| --- | --- |
-| `-d`, `--detail TEXT` | Gray text under the title. |
-| `-s`, `--seconds N` | Time on screen, 0.5 to 60. Default 4.5. |
-| `--icon SYMBOL\|PATH\|app:ID` | An SF Symbol, an image file, or an app's own icon. |
-| `--sound NAME\|none`, `--color HEX\|NAME` | Override the preset's sound or color. |
-| `--open URL --button LABEL` | A button that opens a URL or a file. |
-| `--yes LABEL`, `--no LABEL` | Ask a question: exits 0 for yes, 1 for no, 5 for no answer. |
-| `--id ID` | A newer card with the same id replaces this one in place. |
-| `--stay` | Stay until clicked, without holding the script. |
-| `--on-click CMD` | Run `CMD` on a click, with the card as JSON on stdin. |
-| `--wait` | Exit only once the card has gone. |
-
-The kinds are `ok` (green), `warn` (orange), `fail` (red) and `info` (blue), plus any preset you
-define. [docs/usage.md](docs/usage.md) has every flag, the exit codes, the history format, clicks,
-stacking, and how cards move at the notch. [docs/contract.md](docs/contract.md) lists what scripts can
-rely on.
-
 ## Config
 
 Every key is optional, in `~/.config/drip/config.toml`:
 
 ```toml
-size        = "regular"   # compact | regular | large
-stack       = "chain"     # chain | push | off: how cards stack
+size  = "regular"         # compact | regular | large
+stack = "chain"           # chain | push | off: how cards stack
 
 [preset.deploy]           # a look of your own: drip deploy "shipped"
 icon  = "paperplane.fill"
@@ -334,25 +140,21 @@ sound = "Submarine"
 | | drip | terminal-notifier, osascript, alerter |
 | --- | --- | --- |
 | Shows | its own card, from the notch | a Notification Center banner or alert |
-| Permission | none for a card; a Files and Folders prompt only for an icon or sound in a protected folder | Notifications |
+| Permission | none for a card | Notifications |
 | Focus and Do Not Disturb | shows anyway; `drip pause` holds cards | follows Focus |
 | Kept afterwards | `drip history` | Notification Center's list |
-| Buttons and answers | `--yes`, `--no`: exits 0, 1 or 5 | terminal-notifier 3 and alerter: actions or a reply, printed |
 | Wraps a command | `drip run`: status, exit code and time | no |
-| Coding agents | a hook snippet from a [recipe](recipes/README.md) | a hook you write |
 
 ## More
 
 - [Install, from source, and uninstall](docs/install.md)
 - [Recipes](recipes/README.md): when agents notify, and clicks for herdr, WezTerm and Ghostty
-- [What scripts can rely on](docs/contract.md): flags, exit codes, `history --json` and the click payload
 - [Troubleshooting](docs/troubleshooting.md): no card, permissions, privacy and the debug log
 - [Development](docs/development.md): tests, the live agent check, releases and the web page
 - [drip.jrnxf.co](https://drip.jrnxf.co): guides for [Claude Code notifications](https://drip.jrnxf.co/claude-code-notifications) and [alerts when a command finishes](https://drip.jrnxf.co/notify-when-command-finishes)
 
-**Privacy.** drip makes no network connections of its own and collects no analytics; the one
-connection is the ssh that `drip follow` runs. Its history, in `~/.local/state/drip`, is readable
-only by you.
+drip makes no network connections of its own and collects no analytics. The one connection is the
+ssh that `drip follow` runs. See [Privacy](docs/troubleshooting.md#privacy).
 
 ## License
 
