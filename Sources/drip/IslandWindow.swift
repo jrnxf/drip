@@ -174,7 +174,10 @@ final class IslandLayers {
         if let image, image.isSymbol {
             // White mark on an accent disc for the built-in symbols; one-layer symbols draw white.
             let palette = NSImage.SymbolConfiguration(paletteColors: [.white, accent])
-            let tinted = image.image.withSymbolConfiguration(palette) ?? image.image
+            // Applied on top of the symbol's own size and weight: a bare palette would reset them, and
+            // the symbol would be drawn at the default 15 points and stretched to the icon's size.
+            let tinted = image.image.withSymbolConfiguration(image.image.symbolConfiguration.applying(palette))
+                ?? image.image
             icon.contents = tinted.layerContents(forContentsScale: scale)
         } else if let image {
             // A picture, such as an agent's app icon, is drawn as it is.

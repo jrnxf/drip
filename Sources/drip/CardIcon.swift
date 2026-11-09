@@ -182,11 +182,37 @@ struct CardIcon {
             let size = NSSize(width: crop.width * scale, height: crop.height * scale)
             let target = NSRect(
                 x: rect.midX - size.width / 2, y: rect.midY - size.height / 2, width: size.width, height: size.height)
-            image.draw(in: target, from: crop, operation: .sourceOver, fraction: 1)
+            guard let context = NSGraphicsContext.current else { return false }
+            context.imageInterpolation = .high
+            // How many pixels the source's crop spans on screen, which picks the picture to draw.
+            let pixelsPerPoint = abs(context.cgContext.convertToDeviceSpace(CGSize(width: 1, height: 1)).width)
+            let wanted = target.width * pixelsPerPoint * source.width / crop.width
+            let picture = sharpest(image, forPixels: wanted) ?? image
+            picture.draw(in: target, from: crop, operation: .sourceOver, fraction: 1)
             return true
         }
         fitted.isTemplate = false
         return fitted
+    }
+
+    /// How many times the pixels an icon is shown in that its picture holds, at least: shrinking a
+    /// bigger picture smooths the edges, and stretching a smaller one blurs them.
+    private static let oversampling: CGFloat = 2
+
+    /// `image` cut down to its one picture that suits showing `pixels` across: the smallest with
+    /// `oversampling` times as many, or the largest there is. An app's icon holds a picture per size, and
+    /// drawing the whole image would take the one for the points it reports, 32, and stretch it.
+    /// Nil when a picture is vector, which draws sharp as it is.
+    private static func sharpest(_ image: NSImage, forPixels pixels: CGFloat) -> NSImage? {
+        let bitmaps = image.representations.filter { $0.pixelsWide > 0 && $0.pixelsHigh > 0 }
+        guard !bitmaps.isEmpty, bitmaps.count == image.representations.count else { return nil }
+        let target = Int((pixels * oversampling).rounded(.up))
+        let chosen = bitmaps.filter { $0.pixelsWide >= target }.min { $0.pixelsWide < $1.pixelsWide }
+            ?? bitmaps.max { $0.pixelsWide < $1.pixelsWide }
+        guard let chosen else { return nil }
+        let single = NSImage(size: image.size)
+        single.addRepresentation(chosen)
+        return single
     }
 }
 #endif
