@@ -149,6 +149,7 @@ sound = "Submarine"
 
 - [Install, from source, and uninstall](docs/install.md)
 - [Recipes](recipes/README.md): when agents notify, and clicks for herdr, WezTerm and Ghostty
+- [`scripts/tour.sh`](scripts/tour.sh): a 10-step tour of the cards, run with Next and Stop cards at the notch
 - [Troubleshooting](docs/troubleshooting.md): no card, permissions, privacy and the debug log
 - [Development](docs/development.md): tests, the live agent check, releases and the web page
 - [drip.jrnxf.co](https://drip.jrnxf.co): guides for [Claude Code notifications](https://drip.jrnxf.co/claude-code-notifications) and [alerts when a command finishes](https://drip.jrnxf.co/notify-when-command-finishes)
