@@ -278,7 +278,7 @@ let codexHome = path(scratch, "codex")
 for directory in ["state", "config", "queue", "bin", "shots", "projects/e2e-app", "claude", "codex"] {
     try? fileManager.createDirectory(atPath: path(scratch, directory), withIntermediateDirectories: true)
 }
-// The hooks `drip setup` writes run `drip`, found on PATH: this one.
+// The hooks the recipes show run `drip`, found on PATH: this one.
 try? fileManager.createSymbolicLink(atPath: path(scratch, "bin", "drip"), withDestinationPath: dripProgram)
 
 /// The environment every drip, hook and tmux pane here runs with. A click on a card brings Terminal
@@ -754,7 +754,7 @@ func show(_ arguments: [String], extra: [String: String] = [:]) -> [CGRect] {
     return cardsOnScreen()
 }
 
-// MARK: - The agents' hooks, as `drip setup` writes them
+// MARK: - The agents' hooks, as a person adds them
 
 func readJSON(_ file: String) -> [String: Any]? {
     fileManager.contents(atPath: file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
@@ -767,6 +767,18 @@ func hookCommands(_ file: String, event: String, matching value: String? = nil) 
         guard let matcher = group["matcher"] as? String, !matcher.isEmpty, matcher != "*", let value else { return true }
         return value.range(of: "^(?:\(matcher))$", options: .regularExpression) != nil
     }.flatMap { ($0["hooks"] as? [[String: Any]] ?? []).compactMap { $0["command"] as? String } }
+}
+
+/// Writes a settings file with one `command` handler for each event, as the recipes show.
+func writeHooks(_ file: String, command: String, events: [String], matchers: [String: String] = [:]) {
+    var hooks: [String: Any] = [:]
+    for event in events {
+        var group: [String: Any] = ["hooks": [["type": "command", "command": command]]]
+        if let matcher = matchers[event] { group["matcher"] = matcher }
+        hooks[event] = [group]
+    }
+    let data = try? JSONSerialization.data(withJSONObject: ["hooks": hooks], options: [.prettyPrinted])
+    fileManager.createFile(atPath: file, contents: data)
 }
 
 /// Runs every hook a Claude Code event runs, as Claude Code would.
@@ -1000,30 +1012,21 @@ if canClick {
     skip(3, "clicks: \(ungranted)")
 }
 
-// 4. Claude Code, through the hooks `drip setup claude` writes.
-check(4, "drip setup claude") { expect in
+// 4. Claude Code: the hooks a person adds to ~/.claude/settings.json by hand.
+check(4, "Claude Code settings.json") { expect in
     let settings = path(claudeHome, "settings.json")
-    // An older drip's Notification hook, and one of the person's own, which setup keeps.
-    let old: [String: Any] = ["hooks": [
-        "Notification": [["matcher": "permission_prompt|elicitation_dialog",
-                          "hooks": [["type": "command", "command": "drip hook claude"]]]],
-        "Stop": [["hooks": [["type": "command", "command": "echo mine"]]]],
-    ]]
-    fileManager.createFile(atPath: settings, contents: try? JSONSerialization.data(withJSONObject: old))
-    let setup = dripRun(["setup", "claude", path(options.repo, "recipes/everything/claude.json")])
-    expect.expect(setup.status == 0, "it exits 0 (\(setup.status))")
+    writeHooks(settings, command: "drip hook claude",
+               events: ["PermissionRequest", "Notification", "Stop", "StopFailure", "PostToolUse", "PostToolUseFailure",
+                        "UserPromptSubmit", "ElicitationResult"],
+               matchers: ["Notification": "elicitation_dialog"])
     for event in ["PermissionRequest", "Stop", "StopFailure", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit",
                   "ElicitationResult"]
     {
-        expect.expect(hookCommands(settings, event: event).contains("drip hook claude"), "it adds the \(event) hook")
+        expect.expect(hookCommands(settings, event: event).contains("drip hook claude"), "it has the \(event) hook")
     }
     expect.expect(hookCommands(settings, event: "Notification", matching: "permission_prompt").isEmpty
         && !hookCommands(settings, event: "Notification", matching: "elicitation_dialog").isEmpty,
-        "it brings the Notification hook's matcher up to elicitation_dialog")
-    expect.expect(hookCommands(settings, event: "Stop").contains("echo mine"), "it keeps the person's own hook")
-    let files = (try? fileManager.contentsOfDirectory(atPath: claudeHome)) ?? []
-    expect.expect(files.contains { $0.hasPrefix("settings.json.drip-backup-") }, "it backs the old file up")
-    expect.expect(setup.out.contains("Claude Code can also notify you itself"), "it says Claude Code can notify too")
+        "the Notification hook takes elicitation_dialog only")
 }
 check(4, "approving in the terminal") { expect in
     let session = fresh("claude")
@@ -1290,19 +1293,14 @@ if canClick {
     skip(9, "VoiceOver's actions: \(ungranted)")
 }
 
-// 10. Codex, through the hooks `drip setup codex` writes.
-check(10, "drip setup codex") { expect in
-    try? "notify = [\"drip\", \"hook\", \"codex\"]\nmodel = \"gpt-5.5\"\n"
-        .write(toFile: path(codexHome, "config.toml"), atomically: true, encoding: .utf8)
-    let setup = dripRun(["setup", "codex", path(options.repo, "recipes/everything/codex.json")])
-    expect.expect(setup.status == 0, "it exits 0 (\(setup.status))")
+// 10. Codex: the hooks a person adds to ~/.codex/hooks.json by hand.
+check(10, "Codex hooks.json") { expect in
+    writeHooks(path(codexHome, "hooks.json"), command: "drip hook codex",
+               events: ["PermissionRequest", "Stop", "PostToolUse", "UserPromptSubmit"])
     let hooks = path(codexHome, "hooks.json")
     for event in ["PermissionRequest", "Stop", "PostToolUse", "UserPromptSubmit"] {
-        expect.expect(hookCommands(hooks, event: event).contains("drip hook codex"), "it adds the \(event) hook")
+        expect.expect(hookCommands(hooks, event: event).contains("drip hook codex"), "it has the \(event) hook")
     }
-    let config = (try? String(contentsOfFile: path(codexHome, "config.toml"), encoding: .utf8)) ?? ""
-    expect.expect(!config.contains("notify") && config.contains("model"), "it takes drip's notify out of config.toml, and keeps the rest")
-    expect.expect(setup.out.contains("/hooks"), "it says to trust the hooks with /hooks")
 }
 check(10, "approving a Codex command") { expect in
     let session = fresh("codex")

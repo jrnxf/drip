@@ -67,22 +67,8 @@ at all. `DRIP_SLOW_AFTER` sets the threshold and `DRIP_SLOW_IGNORE` leaves comma
 
 ## Coding agents
 
-drip gives the building blocks. A [recipe](recipes/README.md) decides when to notify. Nothing is
-installed until you pick one, and no recipe is built into drip.
-
-The suggested start is [permission-cards](recipes/permission-cards/): a card when the agent needs
-you, a permission or a question, and nothing else. Quick start:
-
-```sh
-drip setup claude recipes/permission-cards/claude.json   # Claude Code, in ~/.claude/settings.json
-drip setup codex recipes/permission-cards/codex.json     # Codex, in ~/.codex/hooks.json; then run /hooks in Codex to trust them
-drip setup gemini recipes/permission-cards/gemini.json   # Gemini CLI, in ~/.gemini/settings.json
-```
-
-`drip setup` keeps everything else in the file and backs the old one up next to it. The recipes
-folder is in this repo. Clone it or read the files on GitHub.
-
-### Recipes
+drip gives building blocks. [Recipes](recipes/README.md) are examples that decide when to notify:
+you copy one and adapt it. Nothing is installed for you, and no recipe is built into drip.
 
 | Recipe | What it does |
 | --- | --- |
@@ -91,16 +77,90 @@ folder is in this repo. Clone it or read the files on GitHub.
 | [everything](recipes/everything/) | Also a done card for every turn |
 | [long-turns](recipes/long-turns/) | As everything, but no done card for a turn under 30 seconds |
 | [approve-from-card](recipes/approve-from-card/) | permission-cards, with Allow and Deny on the card |
-| [orchestrator](recipes/orchestrator/) | The lead session only, not its background workers |
+| [orchestrator](recipes/orchestrator/) | Many sessions at once: cards from the one you talk to, not its workers |
 
 [recipes/](recipes/README.md) also has click recipes for herdr, WezTerm and Ghostty, and examples
 for Aider and opencode.
 
+Quick start for Claude Code: add this to `~/.claude/settings.json`. If the file has a `hooks` entry,
+merge the events and keep your own.
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+It gives a card when Claude needs you, a permission or a question, and nothing else. The
+[permission-cards](recipes/permission-cards/) recipe has the snippets for Codex and Gemini CLI.
+
 The card's title is the project, such as `my-app needs you` with `Claude wants to run npm install`.
 A card that needs you stays until you answer in the terminal. A click brings back the agent's
 terminal, and its pane in tmux. While you watch the agent's terminal, its done card comes without a
-sound. [docs/agents.md](docs/agents.md) is the reference for `drip hook`, `drip setup`,
-`drip watching` and `DRIP_HOOK`.
+sound. [docs/agents.md](docs/agents.md) is the reference for `drip hook`, `drip watching` and
+`DRIP_HOOK`.
 
 ### Agents on another machine
 
@@ -110,7 +170,6 @@ over ssh. The Mac connects out; nothing connects in.
 
 ```sh
 drip setup remote | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
-drip setup claude recipes/permission-cards/claude.json --remote   # prints the hooks to add on the machine
 drip follow devbox           # on the Mac; --launchd prints a launchd agent to keep it running
 ```
 
@@ -149,7 +208,7 @@ keep cards out of a screen share.
 ```
 drip [KIND] [TITLE] [options]
 drip run [options] [--] <command> [args...]
-drip setup claude|codex|gemini|zsh|remote
+drip setup zsh|remote
 drip follow <ssh-target> [options]
 drip history [--missed] [-n N | --all] [--json | --replay]
 drip dismiss [--id ID]
@@ -202,7 +261,7 @@ sound = "Submarine"
 | Kept afterwards | `drip history` | Notification Center's list |
 | Buttons and answers | `--yes`, `--no`: exits 0, 1 or 5 | terminal-notifier 3 and alerter: actions or a reply, printed |
 | Wraps a command | `drip run`: status, exit code and time | no |
-| Coding agents | `drip setup claude`, `codex`, `gemini` with a recipe | a hook you write |
+| Coding agents | a hook snippet from a [recipe](recipes/README.md) | a hook you write |
 
 ## More
 

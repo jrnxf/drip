@@ -7,48 +7,32 @@ notify. Nothing is installed until you pick a recipe, and no recipe is built int
 This page is the reference for the helpers. For the policy, read the recipes: they say what shows
 a card, for whom, and how to change it.
 
-## drip setup
+## Hook snippets
 
-```sh
-drip setup claude recipes/permission-cards/claude.json   # in ~/.claude/settings.json
-drip setup codex recipes/permission-cards/codex.json     # in ~/.codex/hooks.json
-drip setup gemini recipes/permission-cards/gemini.json   # in ~/.gemini/settings.json
-drip setup claude -                                      # the snippet on stdin
-```
+drip has no hook set of its own and no installer. A [recipe](../recipes/README.md) is a snippet you
+add to the agent's settings by hand, and it is the whole policy:
 
-`drip setup <agent> <snippet>` merges a snippet into the agent's own settings. drip has no hook set
-of its own: the snippet is the whole policy.
+| Agent | Settings file |
+| --- | --- |
+| Claude Code | `~/.claude/settings.json` (`$CLAUDE_CONFIG_DIR/settings.json`) |
+| Codex | `~/.codex/hooks.json` (`$CODEX_HOME/hooks.json`) |
+| Gemini CLI | `~/.gemini/settings.json` |
 
 A snippet is JSON of the shape `{ "hooks": { "<Event>": [group] } }`, as the agent's settings take
-it. Every handler must run `drip hook <agent>`. drip rejects a snippet that runs anything else, and
-says which event.
+it. If the file has a `hooks` entry already, merge the events and keep your own hooks. Each handler
+runs `drip hook <agent>`.
 
-The merge:
-
-- keeps everything else in the file and its order, and backs the old file up next to it as
-  `settings.json.drip-backup-<date>-<time>`;
-- replaces drip's own hooks in place for the events in the snippet, and takes drip's hooks out of
-  the events that are not;
-- leaves other tools' hooks alone, and says what it added or took out;
-- changes nothing when the file has the snippet's hooks already.
-
-`CLAUDE_CONFIG_DIR` and `CODEX_HOME` move the files, as they do for the agents. A file that is a
-symlink or read-only, as home-manager and other dotfile managers make, is never written or replaced,
-and neither is one that is not plain JSON, such as one with comments. drip says why, prints the
-hooks to add where the file comes from, and exits 1.
-
-Codex runs a new hook only once you trust it: run `/hooks` in Codex after `drip setup codex`.
-`drip setup codex` also takes drip's older `notify` out of `config.toml`, or every done card shows
-twice. Claude Code can notify you itself, through your terminal: if each card comes with a second
+Codex runs a new hook only once you trust it: run `/hooks` in Codex. If your Codex `config.toml`
+has an older `notify = ["drip", "hook", "codex"]` line, delete it, or every done card shows twice.
+Claude Code can notify you itself, through your terminal: if each card comes with a second
 notification, set Local notifications to disabled in its `/config`.
 
 A settings file shared with machines without drip makes each hook fail there with "command not
 found". Guard the command in the snippet:
-`command -v drip >/dev/null && drip hook claude || true`. drip finds its own hook by the words
-`drip hook claude` in it.
+`command -v drip >/dev/null && drip hook claude || true`.
 
-`drip setup claude <snippet> --remote` turns a snippet into the hooks for a machine that has no drip,
-with `drip-remote-hook claude` in place of `drip hook claude`. See [remote.md](remote.md).
+For a machine that has no drip, write `drip-remote-hook claude` in place of `drip hook claude`. See
+[remote.md](remote.md).
 
 ## drip hook
 

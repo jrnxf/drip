@@ -68,25 +68,23 @@ struct ShellHookTests {
         }
     }
 
-    @Test func setupZshIsParsedAsAShellNotAnAgent() throws {
+    @Test func setupZshIsParsedAsAShell() throws {
         guard case let .invocation(.setup(setup)) = CommandLineParser.parse(["setup", "zsh"]) else {
             Issue.record(); return
         }
         #expect(setup.shell == .zsh)
-        #expect(setup.agent == nil)
         guard case let .invocation(.setup(printing)) = CommandLineParser.parse(["setup", "zsh", "--print"]) else {
             Issue.record(); return
         }
         #expect(printing.printOnly)
-        guard case let .invocation(.setup(claude)) = CommandLineParser.parse(["setup", "claude", "hooks.json"]) else {
+        guard case let .invocation(.setup(remote)) = CommandLineParser.parse(["setup", "remote"]) else {
             Issue.record(); return
         }
-        #expect(claude.shell == nil)
-        guard case let .exit(status, message) = CommandLineParser.parse(["setup", "zsh", "--remote"]) else {
+        #expect(remote.shell == nil)
+        guard case let .exit(status, _) = CommandLineParser.parse(["setup", "zsh", "--remote"]) else {
             Issue.record(); return
         }
         #expect(status == ExitStatus.usage)
-        #expect(message.hasPrefix("drip: --remote is for an agent's snippet"), "\(message)")
     }
 
     @Test func theFinishedCommandTakesTheCommandLineAfterTheDashes() throws {

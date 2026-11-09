@@ -192,7 +192,7 @@ struct CommandTests {
             (["run", "--version"], "drip run --help"),
             (["hook"], "drip hook --help"), (["hook", "cursor"], "drip hook --help"),
             (["setup"], "drip setup --help"), (["setup", "cursor"], "drip setup --help"),
-            (["setup", "claude", "--seconds", "3"], "drip setup --help"),
+            (["setup", "zsh", "--seconds", "3"], "drip setup --help"),
             (["history", "--json", "--replay"], "drip history --help"),
         ]
         for (arguments, help) in mistakes {
@@ -340,28 +340,23 @@ struct CommandTests {
         }
     }
 
-    @Test func setupTakesTheAgentAndPrint() throws {
-        for agent in AgentHook.Agent.allCases {
-            guard case let .invocation(.setup(setup)) = CommandLineParser.parse(["setup", agent.rawValue, "hooks.json"])
-            else { Issue.record("\(agent)"); continue }
-            #expect(setup.agent == agent)
-            #expect(setup.snippet == "hooks.json")
-            #expect(!setup.printOnly && !setup.remote)
-        }
-        // `-` reads the snippet from stdin.
-        guard case let .invocation(.setup(piped)) = CommandLineParser.parse(["setup", "codex", "-", "--remote"])
+    @Test func setupTakesZshOrRemote() throws {
+        guard case let .invocation(.setup(zsh)) = CommandLineParser.parse(["setup", "zsh", "--print"])
         else { Issue.record(); return }
-        #expect(piped.snippet == "-")
-        #expect(piped.remote)
-        // The agents need a snippet, and --print is for zsh.
-        for arguments in [["setup", "codex"], ["setup", "codex", "x.json", "--print"], ["setup", "zsh", "x.json"]] {
+        #expect(zsh.shell == .zsh)
+        #expect(zsh.printOnly)
+        guard case let .invocation(.setup(remote)) = CommandLineParser.parse(["setup", "remote"])
+        else { Issue.record(); return }
+        #expect(remote.shell == nil)
+        // --print is for zsh, and a coding agent is not a target: its hooks come from a recipe.
+        for arguments in [["setup", "remote", "--print"], ["setup", "claude"], ["setup", "codex", "hooks.json"]] {
             guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
             #expect(status == ExitStatus.usage, "\(arguments)")
         }
-        // Without an agent, one line says what is missing, not the whole help; a mistake is a usage error.
+        // Without a target, one line says what is missing, not the whole help.
         guard case let .exit(status, missing) = CommandLineParser.parse(["setup"]) else { Issue.record(); return }
         #expect(status == ExitStatus.usage)
-        #expect(missing == "drip: missing the agent: drip setup claude, drip setup codex, drip setup gemini or drip setup zsh\n"
+        #expect(missing == "drip: missing the target: drip setup zsh or drip setup remote\n"
             + "See 'drip setup --help'.")
     }
 
@@ -456,7 +451,7 @@ struct CommandTests {
         #expect(help.hasPrefix("OVERVIEW: Show a brief card at the notch on macOS.\n\nUSAGE: drip [KIND] [TITLE] [options]"), "\(help)")
         #expect(help.contains("drip run [options] [--] <command> [args...]"), "\(help)")
         #expect(help.contains("drip hook claude|codex|gemini [options]"), "\(help)")
-        #expect(help.contains("drip setup claude|codex|gemini <snippet-file | -> [--remote]"), "\(help)")
+        #expect(!help.contains("snippet-file"), "\(help)")
         #expect(help.contains("drip setup remote"), "\(help)")
         #expect(help.contains("drip setup zsh [--print]"), "\(help)")
         #expect(!help.contains("__finished"), "\(help)")

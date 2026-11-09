@@ -1,11 +1,11 @@
 # Recipes
 
-drip gives you building blocks: cards, `drip hook`, `drip setup`, `drip watching`. A recipe decides
-when to notify. Nothing is installed until you pick one. No recipe is built into the drip binary.
+drip gives you building blocks: cards, `drip hook`, `drip watching`, `--on-click`. A recipe decides
+when to notify. Recipes are examples. Read one, copy the part you want, and change it. Nothing is
+installed for you, and no recipe is built into the drip binary.
 
-A recipe is a folder of plain files: a `README.md`, and one hook snippet per agent
-(`claude.json`, `codex.json`, `gemini.json`). Read it, install it with
-`drip setup <agent> recipes/<name>/<agent>.json`, and edit it as you like.
+Most recipes are a hook snippet for Claude Code, Codex and Gemini CLI. Each README has the snippet
+in full, says which file it goes in, and says how to merge it by hand.
 
 ## Notify when
 
@@ -16,7 +16,7 @@ A recipe is a folder of plain files: a `README.md`, and one hook snippet per age
 | [everything](everything/) | Also a done card for every turn |
 | [long-turns](long-turns/) | As everything, but no done card for a turn under 30 seconds |
 | [approve-from-card](approve-from-card/) | permission-cards, with Allow and Deny on the card |
-| [orchestrator](orchestrator/) | The lead session only, not its workers (no snippet) |
+| [orchestrator](orchestrator/) | Many sessions at once: cards from the one you talk to, not its workers (no snippet) |
 
 ## Clicks and other tools
 
@@ -29,4 +29,4 @@ A recipe is a folder of plain files: a `README.md`, and one hook snippet per age
 | [aider](aider/) | A card when Aider is done |
 | [opencode](opencode/) | A card for opencode's permissions and idle sessions |
 
-Install one notify recipe per agent. A new `drip setup` replaces the hooks of the last one.
+Use one notify recipe per agent.

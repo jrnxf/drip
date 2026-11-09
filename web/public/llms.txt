@@ -8,7 +8,7 @@
 - [Every flag, exit code and the history](https://github.com/jrnxf/drip/blob/main/docs/usage.md)
 - [Every config key](https://github.com/jrnxf/drip/blob/main/docs/config.md)
 - [Recipes: when coding agents notify](https://github.com/jrnxf/drip/blob/main/recipes/README.md)
-- [Coding agent helpers: drip hook, setup, watching](https://github.com/jrnxf/drip/blob/main/docs/agents.md)
+- [Coding agent helpers: drip hook, watching](https://github.com/jrnxf/drip/blob/main/docs/agents.md)
 - [Claude Code, Codex and Gemini CLI notifications](https://drip.jrnxf.co/claude-code-notifications)
 - [Alert when a command finishes](https://drip.jrnxf.co/notify-when-command-finishes)
 - [Compared with terminal-notifier, osascript, alerter](https://drip.jrnxf.co/vs)

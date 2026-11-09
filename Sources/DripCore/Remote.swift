@@ -9,11 +9,6 @@ import Foundation
 /// on the Mac reads the queue over ssh and shows each event's card by the same rules as
 /// `drip hook`.
 public enum RemoteHook {
-    /// The command the remote machine's agent hooks run, as `drip setup <agent> --remote` prints them.
-    public static func command(for agent: AgentHook.Agent) -> String {
-        "drip-remote-hook \(agent.rawValue)"
-    }
-
     /// The queue file on the remote machine, as its shell spells it.
     public static let defaultQueue = "${XDG_STATE_HOME:-$HOME/.local/state}/drip/remote.jsonl"
 

@@ -341,8 +341,7 @@ struct DripCLI {
         return answer.status
     }
 
-    /// Puts the hooks of a snippet file in the agent's settings, or prints the snippet for another
-    /// machine, or sets up the shell.
+    /// Sets up the shell, or prints the hook script for another machine.
     private func setup(_ command: SetupCommand) -> Int32 {
         if let shell = command.shell {
             if command.printOnly {
@@ -364,56 +363,8 @@ struct DripCLI {
                 return ExitStatus.setupFailed
             }
         }
-        guard let agent = command.agent, let source = command.snippet else {
-            print(RemoteHook.script, terminator: "")
-            return ExitStatus.shown
-        }
-        let console = Console()
-        let snippet: AgentSetup.Snippet
-        do {
-            snippet = try AgentSetup.Snippet(parsing: try Self.readSnippet(source), agent: agent)
-            if command.remote {
-                print(try snippet.remote().text, terminator: "")
-                return ExitStatus.shown
-            }
-        } catch let error as UsageError {
-            return report(error, console, subcommand: SetupCommand.configuration.commandName)
-        } catch {
-            console.error("\(error)")
-            return ExitStatus.usage
-        }
-        switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(snippet) {
-        case let .done(lines, warnings):
-            warnings.forEach(console.warn)
-            lines.forEach { print($0) }
-            remindIfPaused(console)
-            return ExitStatus.shown
-        case let .refused(reason, snippet):
-            console.error(reason)
-            print(snippet, terminator: "")
-            return ExitStatus.setupFailed
-        case let .failed(message):
-            console.error(message)
-            return ExitStatus.setupFailed
-        }
-    }
-
-    /// The text of the snippet file, or of stdin for `-`. A snippet is a few lines: at most 1 MB.
-    private static func readSnippet(_ source: String) throws -> String {
-        let limit = 1024 * 1024
-        if source == "-" {
-            guard let text = StandardInput.read(limit: limit) else {
-                throw UsageError("no snippet on stdin: pipe it in, or give a file")
-            }
-            return text
-        }
-        let path = (source as NSString).expandingTildeInPath
-        guard let data = FileManager.default.contents(atPath: path), data.count <= limit,
-              let text = String(data: data, encoding: .utf8)
-        else {
-            throw UsageError("cannot read '\(source)' as a snippet: it must be a UTF-8 text file of at most 1 MB")
-        }
-        return text
+        print(RemoteHook.script, terminator: "")
+        return ExitStatus.shown
     }
 
     /// Everything that can fail is checked here, before the cards are handed off. `record` is false

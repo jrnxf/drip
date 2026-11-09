@@ -151,25 +151,15 @@ struct RemoteEventTests {
         #expect(stream.position?.offset == long.count + 1)
     }
 
-    @Test func setupPrintsTheRemoteHookAndItsHooks() throws {
+    @Test func setupPrintsTheRemoteHook() throws {
         guard case let .invocation(.setup(remote)) = CommandLineParser.parse(["setup", "remote"]) else {
             Issue.record(); return
         }
-        #expect(remote.agent == nil)
-        guard case let .invocation(.setup(claude)) = CommandLineParser.parse(["setup", "claude", "recipes/everything/claude.json", "--remote"]) else {
-            Issue.record(); return
-        }
-        #expect(claude.agent == .claude)
-        #expect(claude.remote)
-        #expect(claude.snippet == "recipes/everything/claude.json")
-        #if !os(WASI) // Reads the recipes folder, which the browser's sandbox has not.
-        let hooks = try Recipes.snippet("long-turns", .claude).remote().text
-        #expect(hooks.contains(#""command": "drip-remote-hook claude --min-turn 30""#))
-        #expect(!hooks.contains("drip hook"))
-        #endif
-        // A snippet is needed for an agent, and --remote is for an agent's snippet only.
-        for arguments in [["setup", "claude"], ["setup", "claude", "s.json", "--remote", "--print"], ["setup", "remote", "s.json"],
-                          ["setup", "zsh", "--remote"]] {
+        #expect(remote.shell == nil)
+        // The hook script takes the flags a recipe writes after the agent.
+        #expect(RemoteHook.script.contains("--min-turn"))
+        // --remote and a snippet are gone: the hooks come from a recipe, written by hand.
+        for arguments in [["setup", "remote", "s.json"], ["setup", "zsh", "--remote"], ["setup", "claude", "--remote"]] {
             guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
             #expect(status == ExitStatus.usage, "\(arguments)")
         }

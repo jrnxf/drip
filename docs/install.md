@@ -32,11 +32,9 @@ brew uninstall drip                       # or: sudo rm /usr/local/bin/drip, for
 rm -rf ~/.config/drip ~/.local/state/drip # the config and the history
 ```
 
-Then take drip's hooks out of the agents' settings, if you ran `drip setup`: the entries whose
+Then take drip's hooks out of the agents' settings, if you added them: the entries whose
 command is `drip hook claude`, `drip hook codex` or `drip hook gemini` in `~/.claude/settings.json`,
-`~/.codex/hooks.json` (or `config.toml`) and `~/.gemini/settings.json`. Delete the backups
-`drip setup` left next to those files, named `<file>.drip-backup-<date>-<time>`, if you do not need
-them. If you set `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, the files
+`~/.codex/hooks.json` (or `config.toml`) and `~/.gemini/settings.json`. If you set `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, the files
 are there instead. drip installs nothing else: no daemon, no login item, no preferences. If you
 [follow another machine](remote.md), stop and delete the launchd agents you saved
 for it, and on the machine delete `drip-remote-hook`, its queue and the hooks that run it. If you ran

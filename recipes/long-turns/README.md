@@ -2,7 +2,7 @@
 
 Every card of [everything](../everything/), but no done card for a turn shorter than 30 seconds.
 
-For: people who send many short prompts. You have a short turn in mind, so its done card is noise.
+For: people who send many short prompts. A short turn's done card is noise.
 
 ## How it works
 
@@ -12,18 +12,211 @@ machine, `drip follow` applies the same filter.
 
 ## Install
 
-```sh
-drip setup claude recipes/long-turns/claude.json   # Claude Code, in ~/.claude/settings.json
-drip setup codex recipes/long-turns/codex.json     # Codex, in ~/.codex/hooks.json; then run /hooks in Codex to trust them
-drip setup gemini recipes/long-turns/gemini.json   # Gemini CLI, in ~/.gemini/settings.json
+Add the `hooks` entry for your agent to its settings file. If the file has a `hooks` entry already, merge the events by hand and keep your own hooks. If it does not exist, create it with this content.
+
+### Claude Code
+
+File: `~/.claude/settings.json` (`$CLAUDE_CONFIG_DIR/settings.json` if you set it)
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude --min-turn 30"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude --min-turn 30"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ]
+  }
+}
 ```
 
-Or pipe a snippet: `curl -fsSL <raw-url> | drip setup claude -`. Read it first.
+If each card comes with a second notification from Claude Code itself, set Local notifications to disabled in its `/config`.
 
-`drip setup` keeps every other hook, backs the old file up next to it, and replaces drip's own
-earlier hooks. It never writes a file that is a symlink, read-only or not plain JSON: it says why
-and exits 1. Run it again with another recipe to switch. See the [reference](../../docs/agents.md#drip-setup).
+### Codex
 
+File: `~/.codex/hooks.json` (`$CODEX_HOME/hooks.json` if you set it)
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex --min-turn 30"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Codex runs a new hook only after you trust it: run `/hooks` in Codex. If your `config.toml` has an older `notify = ["drip", "hook", "codex"]` line, delete it, or each done card shows twice.
+
+### Gemini CLI
+
+File: `~/.gemini/settings.json`
+
+```json
+{
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "name": "drip",
+            "type": "command",
+            "command": "drip hook gemini"
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "name": "drip",
+            "type": "command",
+            "command": "drip hook gemini --min-turn 30"
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "hooks": [
+          {
+            "name": "drip",
+            "type": "command",
+            "command": "drip hook gemini"
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "name": "drip",
+            "type": "command",
+            "command": "drip hook gemini"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+To switch to another recipe, replace drip's `hooks` entries with that recipe's. Every handler must run `drip hook <agent>`.
 ## Change it
 
-Change 30 to another number of seconds (0 to 600) in the JSON, and run `drip setup` again.
+Change 30 to another number of seconds (0 to 600).
