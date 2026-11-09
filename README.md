@@ -13,9 +13,9 @@
 drip is a command that shows a card at your Mac's notch. Call it from a script, a build or a shell
 hook to say that something finished, failed or needs an answer.
 
-No permission prompt: drip draws its own card, not a Notification Center banner, so a card needs no
-macOS privacy grant. drip returns at once, so it never slows the script that calls it. On a Mac
-without a notch, the card grows out of the top edge of the screen.
+No permission prompt: drip draws its own card, not a Notification Center banner. drip returns at
+once, so it never slows the script that calls it. On a Mac without a notch, the card grows out of
+the top edge of the screen.
 
 [Recipes](recipes/README.md) · [Docs](docs/usage.md) · [drip.jrnxf.co](https://drip.jrnxf.co)
 
