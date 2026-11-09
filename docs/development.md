@@ -88,7 +88,7 @@ uses your own login: run `codex login` first if you have none. Setup checks each
 session, prints what is ready, then runs the check once. After that a check never prompts and never
 opens a browser: an agent whose login is missing or no longer works is skipped with the one line
 that fixes it. So is one whose API quota runs out mid-session, as when Gemini CLI stops at its
-usage limit dialog, unless a check had already failed by then.
+usage limit dialog or Codex at its workspace spend-cap dialog, unless a check had already failed by then.
 
 This repo ships the check only: no schedule and no alert. Running it, weekly say, and telling you
 when it fails or needs a login are up to your own scheduler, which runs `scripts/agent-contract.sh`
