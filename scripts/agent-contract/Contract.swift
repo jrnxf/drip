@@ -610,7 +610,8 @@ struct World {
 
     /// drip's hooks, as `drip setup` adds them. Nil when they went in, else what went wrong.
     func installHooks() -> String? {
-        let ran = run([drip, "setup", agent.rawValue], environment: setupEnvironment)
+        let snippet = path(options.repo, "recipes/everything/\(agent.rawValue).json")
+        let ran = run([drip, "setup", agent.rawValue, snippet], environment: setupEnvironment)
         return ran.status == 0 ? nil : firstLine(ran.err + ran.out)
     }
 

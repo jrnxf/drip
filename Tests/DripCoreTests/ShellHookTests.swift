@@ -78,7 +78,7 @@ struct ShellHookTests {
             Issue.record(); return
         }
         #expect(printing.printOnly)
-        guard case let .invocation(.setup(claude)) = CommandLineParser.parse(["setup", "claude"]) else {
+        guard case let .invocation(.setup(claude)) = CommandLineParser.parse(["setup", "claude", "hooks.json"]) else {
             Issue.record(); return
         }
         #expect(claude.shell == nil)
@@ -86,7 +86,7 @@ struct ShellHookTests {
             Issue.record(); return
         }
         #expect(status == ExitStatus.usage)
-        #expect(message.hasPrefix("drip: --remote is for an agent's hooks"), "\(message)")
+        #expect(message.hasPrefix("drip: --remote is for an agent's snippet"), "\(message)")
     }
 
     @Test func theFinishedCommandTakesTheCommandLineAfterTheDashes() throws {

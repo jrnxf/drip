@@ -46,13 +46,13 @@ to no one.
 
 A line is `time process event decision key=value ...`. `process` is `hook`, `follow` or `cli`; the
 `event` is `card` (shown or skipped, and `reason`), `clear` (a card an agent's next step took away),
-`approve` (whether a permission card got Allow and Deny: `ask`, or `skip` and `reason`) or
+`approve` (whether a permission card got Allow and Deny, with `--approve`: `ask`, or `skip` and `reason`) or
 `click`. What it records, and nothing else:
 
 - the agent (`claude`, `codex` or `gemini`), the machine it ran on, the card's kind (`ok`, `warn`, ...)
   and whether it waits for you;
 - the first 8 characters of the session id;
-- the settings that decided: `when_focused`, `away_after`, `agent_cards`, `done_after`, and `DRIP_HOOK`;
+- the settings that decided: `when_focused`, `away_after`, `--min-turn`, `--only`, and `DRIP_HOOK`;
 - what drip noticed: the bundle identifier of the frontmost app and of the app a click brings
   forward, seconds since the keyboard or mouse was last used (both on every card line, `unknown`
   when drip did not ask, and the frontmost `none` when no app is in front), `topmost_visible`, the

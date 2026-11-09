@@ -28,6 +28,10 @@ public enum ExitStatus {
     public static let pauseFailed: Int32 = 1
     /// `drip dismiss` could not write its request to the state directory.
     public static let dismissFailed: Int32 = 1
+    /// `drip watching`: you are not watching the terminal.
+    public static let notWatching: Int32 = 1
+    /// `drip watching`: drip cannot tell, as it has no terminal app to look at.
+    public static let cannotTell: Int32 = 2
     /// `drip follow` could not start: the state directory cannot be written.
     public static let followFailed: Int32 = 1
 
@@ -285,9 +289,10 @@ public struct DripCommand: ParsableCommand {
             drip [KIND] [TITLE] [options]
             drip run [options] [--] <command> [args...]
             drip hook claude|codex|gemini [options] [payload]
-            drip setup claude|codex|gemini [--print | --remote]
+            drip setup claude|codex|gemini <snippet-file | -> [--remote]
             drip setup remote
             drip setup zsh [--print]
+            drip watching [--pane ID] [--app BUNDLE-ID]
             drip follow <ssh-target> [options]
             drip history [--missed] [-n N | --all] [--json | --replay]
             drip debug [--clear]
@@ -297,7 +302,7 @@ public struct DripCommand: ParsableCommand {
             """,
         version: dripVersion,
         subcommands: [
-            ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, FollowCommand.self,
+            ShowCommand.self, RunCommand.self, HookCommand.self, SetupCommand.self, WatchingCommand.self, FollowCommand.self,
             HistoryCommand.self, DebugCommand.self, DismissCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self,
             BackgroundCommand.self, FinishedCommand.self,
         ],
@@ -317,7 +322,8 @@ public struct DripCommand: ParsableCommand {
           drip fail "deploy failed" --stay
           drip info "my-app needs you" --stay --icon app:com.openai.chat
           drip ok "tests passed" --on-click 'jq -r .title >>~/clicked.log'
-          drip setup claude
+          drip setup claude hooks.json
+          drip watching --pane "$TMUX_PANE" || drip ok "tests passed"
           drip setup zsh
           drip follow devbox
           drip dismiss
@@ -328,9 +334,9 @@ public struct DripCommand: ParsableCommand {
     static let exitCodes = """
         EXIT CODES:
           0  The card was shown, or handed off to be shown; a question was answered yes.
-          1  A question was answered no, drip hook could not make a card, or drip setup left the
-             settings alone.
-          2  Usage error.
+          1  A question was answered no, drip hook could not make a card, drip setup left the
+             settings alone, or drip watching says you are not watching.
+          2  Usage error; for drip watching, that it cannot tell.
           3  No GUI session, such as over ssh (drip hook exits 0 instead).
           4  The config file is invalid.
           5  drip asked with --yes and no button was clicked.
@@ -415,21 +421,24 @@ public struct HookCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "hook",
         abstract: "Show a card from a Claude Code, Codex or Gemini CLI hook.",
-        usage: "drip hook claude|codex|gemini [options] [payload]",
+        usage: "drip hook claude|codex|gemini [--approve] [--min-turn SECONDS] [--only needs-you] [options] [payload]",
         discussion: """
             The payload is the hook's JSON, on stdin as hooks pass it, or an argument as Codex's older \
             notify does. The card names the project and whether the agent needs you, is done or \
             stopped on an error, and each session's card replaces its last. A card that says the \
             agent needs you goes once you answer in the terminal: the hooks that report a tool ran or \
-            a prompt was sent take it away and show nothing. drip setup adds these hooks for you. \
-            Without a GUI session, as over ssh, drip shows nothing and exits 0, and so it does for a \
-            session nobody attends, such as claude -p, and wherever DRIP_HOOK=off; DRIP_HOOK=on \
-            shows cards even then, and DRIP_HOOK=attention shows only the cards that need you or \
-            report an error, not the done cards, for an orchestrator's own session. With approve on \
-            in the config, or DRIP_APPROVE=1, the card that asks for Claude Code's or Codex's \
-            permission has Allow and Deny, and drip prints a click as the agent's answer; nothing \
-            clicked in 9 minutes prints nothing, and the terminal asks. Any failure exits 1, \
-            since an agent reads some other codes as "block".
+            a prompt was sent take it away and show nothing. Which events run drip hook is yours to \
+            choose, in the agent's settings: drip setup adds the hooks of a recipe file. Without a \
+            GUI session, as over ssh, drip shows nothing and exits 0, and so it does for a session \
+            nobody attends, such as claude -p, and wherever DRIP_HOOK=off; DRIP_HOOK=on shows cards \
+            even then, and DRIP_HOOK=attention shows only the cards that need you or report an \
+            error, not the done cards, for an orchestrator's own session. With --approve, the card \
+            that asks for Claude Code's or Codex's permission has Allow and Deny, and drip prints a \
+            click as the agent's answer; nothing clicked in 9 minutes prints nothing, and the \
+            terminal asks. With --min-turn, a done card shows only for a turn that ran that many \
+            seconds or more. With --only needs-you, the done cards never show, but still take away \
+            the card the session waits on. Any failure exits 1, since an agent reads some other \
+            codes as "block".
             """
     )
 
@@ -445,7 +454,22 @@ public struct HookCommand: ParsableCommand {
     @Argument(help: ArgumentHelp("The hook's JSON. Read from stdin when absent.", valueName: "payload"))
     public var payload: String?
 
+    @Flag(help: "Give the card for a permission Allow and Deny buttons, and print a click as the agent's answer.")
+    public var approve = false
+
+    @Option(name: .customLong("min-turn"), help: ArgumentHelp(
+        "Show a done card only when the turn ran at least this many seconds.", valueName: "seconds"))
+    var minTurnText: String?
+
+    @Option(help: ArgumentHelp("Show only the cards that need you: a permission, a question or an error.", valueName: "needs-you"))
+    var only: AgentHook.Policy.Only?
+
     @OptionGroup public var options: CardOptions
+
+    /// What the flags ask of the hook.
+    public var policy: AgentHook.Policy {
+        AgentHook.Policy(approve: approve, minTurn: minTurnText.flatMap(Double.init) ?? 0, only: only)
+    }
 
     public init() {}
 
@@ -454,10 +478,18 @@ public struct HookCommand: ParsableCommand {
         if agentName == nil {
             throw ValidationError("missing the agent: drip hook claude, drip hook codex or drip hook gemini")
         }
+        if let minTurnText {
+            guard let seconds = Double(minTurnText), AgentHook.Policy.minTurnRange.contains(seconds) else {
+                let range = AgentHook.Policy.minTurnRange
+                throw ValidationError(
+                    "--min-turn: '\(minTurnText)' is not a number of seconds from \(Defaults.number(range.lowerBound)) "
+                        + "to \(Defaults.number(range.upperBound))")
+            }
+        }
     }
 }
 
-/// `drip setup claude|codex|gemini [--print | --remote]`: adds drip's hooks to a coding agent's
+/// `drip setup claude|codex|gemini <snippet>`: puts the hooks of a snippet file in a coding agent's
 /// settings. `drip setup remote`: prints the hook for agents on another machine.
 public struct SetupCommand: ParsableCommand {
     /// What `drip setup` sets up: an agent, or `remote`, the hook for agents on another machine.
@@ -467,34 +499,44 @@ public struct SetupCommand: ParsableCommand {
 
     public static let configuration = CommandConfiguration(
         commandName: "setup",
-        abstract: "Add drip's hooks to Claude Code's, Codex's or Gemini CLI's settings, or a card for slow commands to zsh.",
+        abstract: "Put the hooks of a snippet file in Claude Code's, Codex's or Gemini CLI's settings, or a card for slow commands in zsh.",
         usage: """
-            drip setup claude|codex|gemini [--print | --remote]
+            drip setup claude|codex|gemini <snippet-file | -> [--remote]
             drip setup remote
             drip setup zsh [--print]
             """,
         discussion: """
-            Adds drip hook to ~/.claude/settings.json, ~/.codex/hooks.json or ~/.gemini/settings.json, \
-            keeping everything else, and backs the old file up next to it. Running it again changes \
-            nothing. A settings file that is a symlink or read-only, as home-manager makes, or that \
-            is not plain JSON is left alone: drip prints the hooks to add yourself and exits 1. For \
-            Codex it also takes drip out of notify in ~/.codex/config.toml, which the Stop hook replaces. \
-            For an agent on another machine, which drip follow shows the cards of: drip setup remote \
-            prints drip-remote-hook, a shell script to save there, and --remote prints the hooks that \
-            run it, for the agent's settings there. drip setup zsh adds a block to ~/.zshrc (in ZDOTDIR, \
-            if set) that shows a card for any command that ran 10 seconds or more, unless you are \
-            watching that terminal; DRIP_SLOW_AFTER changes the 10 and DRIP_SLOW_IGNORE adds commands \
-            to leave out. Run it again to update the block.
+            Which events show a card is your choice, and the snippet file holds it: the hooks that \
+            run drip hook, as the agent's settings file holds them, in a { "hooks": { ... } } object. \
+            Write your own, or take one from a recipe in the drip repository. drip merges it into \
+            ~/.claude/settings.json, ~/.codex/hooks.json or ~/.gemini/settings.json, replacing the \
+            hooks that already run drip hook there, so a different snippet switches recipes, and \
+            keeping every other hook and setting. It backs the old file up next to it. Running it \
+            again with the same snippet changes nothing. Give - to read the snippet from stdin. A \
+            snippet may hold only hooks that run drip hook for the agent it is for. A settings file \
+            that is a symlink or read-only, as home-manager makes, or that is not plain JSON is left \
+            alone: drip prints the snippet to add yourself and exits 1. For Codex it also takes drip \
+            out of notify in ~/.codex/config.toml, which the hooks replace. For an agent on another \
+            machine, which drip follow shows the cards of: drip setup remote prints drip-remote-hook, \
+            a shell script to save there, and --remote prints the snippet with its hooks changed to \
+            run it, for the agent's settings there. drip setup zsh adds a block to ~/.zshrc (in \
+            ZDOTDIR, if set) that shows a card for any command that ran 10 seconds or more, unless \
+            you are watching that terminal; DRIP_SLOW_AFTER changes the 10 and DRIP_SLOW_IGNORE adds \
+            commands to leave out. Run it again to update the block.
             """
     )
 
     /// Optional here so that `drip setup` alone is a one-line error, not the whole help.
     @Argument(help: ArgumentHelp(
-        "The agent whose settings get drip's hooks, or remote for the hook script of another machine.",
+        "The agent whose settings get the hooks, remote for the hook script of another machine, or zsh.",
         valueName: "agent"))
     var target: Target?
 
-    /// The agent whose settings get drip's hooks; nil for `drip setup remote`.
+    /// The snippet file with the hooks, or `-` for stdin.
+    @Argument(help: ArgumentHelp("The file with the hooks to add, or - for stdin.", valueName: "snippet"))
+    public var snippet: String?
+
+    /// The agent whose settings get the hooks; nil for `drip setup remote` and zsh.
     public var agent: AgentHook.Agent? {
         target.flatMap { AgentHook.Agent(rawValue: $0.rawValue) }
     }
@@ -504,10 +546,10 @@ public struct SetupCommand: ParsableCommand {
         target.flatMap { ShellHook.Shell(rawValue: $0.rawValue) }
     }
 
-    @Flag(name: .customLong("print"), help: "Print drip's hooks for the agent's settings instead of adding them.")
+    @Flag(name: .customLong("print"), help: "Print the zsh block instead of adding it.")
     public var printOnly = false
 
-    @Flag(help: "Print the hooks for the agent's settings on another machine, which run drip-remote-hook.")
+    @Flag(help: "Print the snippet with its hooks changed to run drip-remote-hook, for the agent's settings on another machine.")
     public var remote = false
 
     public init() {}
@@ -517,11 +559,52 @@ public struct SetupCommand: ParsableCommand {
             throw ValidationError(
                 "missing the agent: drip setup claude, drip setup codex, drip setup gemini or drip setup zsh")
         }
-        if shell != nil, remote {
-            throw ValidationError("--remote is for an agent's hooks; drip setup zsh --print prints the zsh block")
+        if agent != nil {
+            if snippet == nil {
+                throw ValidationError(
+                    "missing the snippet: drip setup \(target.rawValue) <file>, or - for stdin. "
+                        + "A recipe in the drip repository has one for each agent")
+            }
+            if printOnly { throw ValidationError("--print is for drip setup zsh; --remote prints an agent's snippet") }
+        } else {
+            if snippet != nil { throw ValidationError("drip setup \(target.rawValue) takes no snippet") }
+            if remote { throw ValidationError("--remote is for an agent's snippet, as in: drip setup claude hooks.json --remote") }
+            if printOnly, target != .zsh { throw ValidationError("--print is for drip setup zsh") }
         }
-        if target != .remote, printOnly, remote {
-            throw ValidationError("--remote prints the hooks already: give --print or --remote, not both")
+    }
+}
+
+/// `drip watching [--pane ID] [--app BUNDLE-ID]`: says by its exit status whether you are watching a terminal.
+public struct WatchingCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "watching",
+        abstract: "Tell by the exit status whether you are watching a terminal now.",
+        usage: "drip watching [--pane ID] [--app BUNDLE-ID]",
+        discussion: """
+            Exits 0 when you are likely watching: the terminal is in front and you used the keyboard or \
+            mouse within away_after seconds, and with --pane, that tmux pane is the one showing. \
+            Exits 1 when you are not, and 2 when drip cannot tell, such as without a pane or app to \
+            look at, or without a GUI session. It is what drip's own cards ask before they show. The \
+            pane and app default to the tmux pane and the app drip runs in. Use it to keep a recipe \
+            quiet while you watch: drip watching || drip ok "tests passed"
+            """
+    )
+
+    @Option(help: ArgumentHelp("The tmux pane to look at, such as %3. (default: $TMUX_PANE)", valueName: "id"))
+    public var pane: String?
+
+    @Option(help: ArgumentHelp(
+        "The terminal app to look at. (default: the app drip was run from)", valueName: "bundle-id"))
+    public var app: String?
+
+    public init() {}
+
+    public func validate() throws {
+        if let pane, !TerminalPane.isPaneID(pane, prefix: "%") {
+            throw ValidationError("--pane: '\(pane)' is not a tmux pane id such as %3")
+        }
+        if let app, !CardActivation.isBundleIdentifier(app) {
+            throw ValidationError("--app: '\(app)' is not a bundle identifier such as com.apple.Terminal")
         }
     }
 }
@@ -843,6 +926,7 @@ public enum Invocation {
     case run(RunCommand)
     case hook(HookCommand)
     case setup(SetupCommand)
+    case watching(WatchingCommand)
     case finished(FinishedCommand)
     case follow(FollowCommand)
     case history(HistoryCommand)
@@ -880,6 +964,7 @@ public enum CommandLineParser {
             case let command as RunCommand: return .invocation(.run(command))
             case let command as HookCommand: return .invocation(.hook(command))
             case let command as SetupCommand: return .invocation(.setup(command))
+            case let command as WatchingCommand: return .invocation(.watching(command))
             case let command as FinishedCommand: return .invocation(.finished(command))
             case let command as FollowCommand: return .invocation(.follow(command))
             case let command as HistoryCommand: return .invocation(.history(command))

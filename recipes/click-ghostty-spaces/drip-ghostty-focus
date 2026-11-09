@@ -1,0 +1,16 @@
+#!/bin/sh
+machine=$(jq -r '.machine // empty')
+[ -n "$machine" ] || exit 0
+osascript - "$machine" <<'APPLESCRIPT'
+on run argv
+  tell application id "com.mitchellh.ghostty"
+    repeat with candidate in terminals
+      if name of candidate contains (item 1 of argv) then
+        activate
+        focus candidate
+        return
+      end if
+    end repeat
+  end tell
+end run
+APPLESCRIPT

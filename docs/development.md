@@ -35,7 +35,7 @@ runs anywhere.
 GitHub's macOS runner on every push, with Accessibility granted to its helper up front, and keeps
 the screenshots as the `mac-e2e-screenshots` artifact. It checks what a person
 would look for at the notch, and needs none: it shows cards
-from a release build, runs the hooks `drip setup claude` and `drip setup codex` write with the
+from a release build, runs the hooks `drip setup claude` and `drip setup codex` write from the `everything` recipe with the
 payloads Claude Code and Codex send, moves the pointer onto cards, clicks them and beside them, pauses and resumes,
 and attaches tmux from Ghostty and Terminal. It prints `ok` or `FAIL` for each thing it expects, from
 what drip records in its history, which windows it has on screen, which app is in front, what tmux

@@ -67,30 +67,40 @@ at all. `DRIP_SLOW_AFTER` sets the threshold and `DRIP_SLOW_IGNORE` leaves comma
 
 ## Coding agents
 
-One command adds drip's hooks to the agent's own settings, keeps everything else in the file, and
-backs the old one up next to it:
+drip gives the building blocks. A [recipe](recipes/README.md) decides when to notify. Nothing is
+installed until you pick one, and no recipe is built into drip.
+
+The suggested start is [permission-cards](recipes/permission-cards/): a card when the agent needs
+you, a permission or a question, and nothing else. Quick start:
 
 ```sh
-drip setup claude   # Claude Code, in ~/.claude/settings.json
-drip setup codex    # Codex, in ~/.codex/hooks.json; then run /hooks in Codex to trust them
-drip setup gemini   # Gemini CLI, in ~/.gemini/settings.json
+drip setup claude recipes/permission-cards/claude.json   # Claude Code, in ~/.claude/settings.json
+drip setup codex recipes/permission-cards/codex.json     # Codex, in ~/.codex/hooks.json; then run /hooks in Codex to trust them
+drip setup gemini recipes/permission-cards/gemini.json   # Gemini CLI, in ~/.gemini/settings.json
 ```
 
-The card's title is the project, such as `my-app needs you` with `Claude wants to run npm install`,
-or `my-app is done` with the agent's last message. A card that needs you stays until you answer in
-the terminal, and then turns into the done card in place. A click brings back the agent's terminal,
-and its pane in tmux. For any other multiplexer, add `--on-click` (see [Clicks](#clicks)). While you watch the agent's terminal, its done card comes
-without a sound.
+`drip setup` keeps everything else in the file and backs the old one up next to it. The recipes
+folder is in this repo. Clone it or read the files on GitHub.
 
-Opt in with `approve = true` in the config, or `DRIP_APPROVE=1`, and a Claude Code or Codex
-permission card has Allow and Deny: a click answers the agent, and no click leaves it to the
-terminal. See [docs/agents.md](docs/agents.md).
+### Recipes
 
-Fewer cards: `agent_cards = "attention"` in the config shows only the cards that need you, and
-`DRIP_HOOK=off` silences one agent, such as an orchestrator's background workers.
+| Recipe | What it does |
+| --- | --- |
+| [permission-cards](recipes/permission-cards/) (suggested) | A card when the agent needs you, and nothing else |
+| [attention](recipes/attention/) | Also a card when an error ends a turn |
+| [everything](recipes/everything/) | Also a done card for every turn |
+| [long-turns](recipes/long-turns/) | As everything, but no done card for a turn under 30 seconds |
+| [approve-from-card](recipes/approve-from-card/) | permission-cards, with Allow and Deny on the card |
+| [orchestrator](recipes/orchestrator/) | The lead session only, not its background workers |
 
-[docs/agents.md](docs/agents.md) has every event and card, the hooks to add by hand, and recipes for
-Aider and opencode.
+[recipes/](recipes/README.md) also has click recipes for herdr, WezTerm and Ghostty, and examples
+for Aider and opencode.
+
+The card's title is the project, such as `my-app needs you` with `Claude wants to run npm install`.
+A card that needs you stays until you answer in the terminal. A click brings back the agent's
+terminal, and its pane in tmux. While you watch the agent's terminal, its done card comes without a
+sound. [docs/agents.md](docs/agents.md) is the reference for `drip hook`, `drip setup`,
+`drip watching` and `DRIP_HOOK`.
 
 ### Agents on another machine
 
@@ -100,7 +110,7 @@ over ssh. The Mac connects out; nothing connects in.
 
 ```sh
 drip setup remote | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
-drip setup claude --remote   # prints the hooks to add on the machine
+drip setup claude recipes/permission-cards/claude.json --remote   # prints the hooks to add on the machine
 drip follow devbox           # on the Mac; --launchd prints a launchd agent to keep it running
 ```
 
@@ -117,7 +127,7 @@ JSON on stdin, such as:
 {"app":"com.mitchellh.ghostty","env":{"WEZTERM_PANE":"7"},"id":"claude:s1","kind":"info","title":"my-app needs you","v":1}
 ```
 
-`env` holds only the variables that `DRIP_FORWARD_ENV` names. [docs/recipes.md](docs/recipes.md)
+`env` holds only the variables that `DRIP_FORWARD_ENV` names. [The click recipes](recipes/README.md)
 uses it to focus a pane in herdr or WezTerm, or a Ghostty window on another Space.
 
 ## Away, paused and missed
@@ -173,7 +183,6 @@ Every key is optional, in `~/.config/drip/config.toml`:
 ```toml
 size        = "regular"   # compact | regular | large
 stack       = "chain"     # chain | push | off: how cards stack
-agent_cards = "all"       # all | attention: only the cards that need you
 
 [preset.deploy]           # a look of your own: drip deploy "shipped"
 icon  = "paperplane.fill"
@@ -193,12 +202,12 @@ sound = "Submarine"
 | Kept afterwards | `drip history` | Notification Center's list |
 | Buttons and answers | `--yes`, `--no`: exits 0, 1 or 5 | terminal-notifier 3 and alerter: actions or a reply, printed |
 | Wraps a command | `drip run`: status, exit code and time | no |
-| Coding agents | `drip setup claude`, `codex`, `gemini` | a hook you write |
+| Coding agents | `drip setup claude`, `codex`, `gemini` with a recipe | a hook you write |
 
 ## More
 
 - [Install, from source, and uninstall](docs/install.md)
-- [Click recipes](docs/recipes.md): herdr, WezTerm and Ghostty across Spaces
+- [Recipes](recipes/README.md): when agents notify, and clicks for herdr, WezTerm and Ghostty
 - [What scripts can rely on](docs/contract.md): flags, exit codes, `history --json` and the click payload
 - [Troubleshooting](docs/troubleshooting.md): no card, permissions, privacy and the debug log
 - [Development](docs/development.md): tests, the live agent check, releases and the web page

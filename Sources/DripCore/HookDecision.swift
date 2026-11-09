@@ -81,7 +81,8 @@ extension AgentHook {
     /// session waits on and when its turn started. Throws a `UsageError` for a payload it cannot
     /// read or a `DRIP_HOOK` it does not know, and a `ConfigError` for an invalid config.
     public static func card(
-        agent: Agent, payload: String, flags: CardFlags = CardFlags(), in surroundings: Surroundings
+        agent: Agent, payload: String, flags: CardFlags = CardFlags(), policy: Policy = Policy(),
+        in surroundings: Surroundings
     ) throws -> Card? {
         let environment = surroundings.environment
         // The config file is read once for the event, and only when something asks for it.
@@ -184,10 +185,7 @@ extension AgentHook {
         // would have replaced it. Which cards show does not depend on the session being known: only
         // the lookups by its id do.
         let turnStarted = id.flatMap { state.turnStarted(id: $0, now: surroundings.now()) }
-        if skipsDone(
-            event, cards: resolver.agentCards, doneAfter: resolver.doneAfter,
-            turnStarted: turnStarted, now: surroundings.now().timeIntervalSince1970)
-        {
+        if skipsDone(event, policy: policy, turnStarted: turnStarted, now: surroundings.now().timeIntervalSince1970) {
             var took = false
             if let id, state.takeWaiting(Clear(id: id), now: surroundings.now()) {
                 took = true
@@ -195,8 +193,8 @@ extension AgentHook {
             }
             let turn = turnStarted.map { surroundings.now().timeIntervalSince1970 - $0 }
             note("card", "skip", eventFields + [
-                ("reason", "done_card_filtered"), ("agent_cards", resolver.agentCards.rawValue),
-                ("done_after", "\(resolver.doneAfter)"), ("turn_seconds", turn.map { String(format: "%.1f", $0) }),
+                ("reason", "done_card_filtered"), ("only", policy.only?.rawValue),
+                ("min_turn", "\(policy.minTurn)"), ("turn_seconds", turn.map { String(format: "%.1f", $0) }),
                 ("took_waiting", "\(took)"),
             ])
             return nil
@@ -215,7 +213,7 @@ extension AgentHook {
             card, surroundings: surroundings, resolver: resolver, log: log, fields: eventFields, resurfacing: false, note: note)
         guard let shown = looked.card else { return nil }
         // The card goes by its id when the agent moves on, as one you answered in the terminal.
-        guard event.asksPermission, origin == nil, resolver.approve, shown.id != nil else { return shown }
+        guard event.asksPermission, origin == nil, policy.approve, shown.id != nil else { return shown }
         // Held until you are back, the card would hold the agent's answer as long.
         if surroundings.away() {
             note("approve", "skip", eventFields + [("reason", "away")])

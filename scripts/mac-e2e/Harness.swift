@@ -1010,7 +1010,7 @@ check(4, "drip setup claude") { expect in
         "Stop": [["hooks": [["type": "command", "command": "echo mine"]]]],
     ]]
     fileManager.createFile(atPath: settings, contents: try? JSONSerialization.data(withJSONObject: old))
-    let setup = dripRun(["setup", "claude"])
+    let setup = dripRun(["setup", "claude", path(options.repo, "recipes/everything/claude.json")])
     expect.expect(setup.status == 0, "it exits 0 (\(setup.status))")
     for event in ["PermissionRequest", "Stop", "StopFailure", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit",
                   "ElicitationResult"]
@@ -1294,7 +1294,7 @@ if canClick {
 check(10, "drip setup codex") { expect in
     try? "notify = [\"drip\", \"hook\", \"codex\"]\nmodel = \"gpt-5.5\"\n"
         .write(toFile: path(codexHome, "config.toml"), atomically: true, encoding: .utf8)
-    let setup = dripRun(["setup", "codex"])
+    let setup = dripRun(["setup", "codex", path(options.repo, "recipes/everything/codex.json")])
     expect.expect(setup.status == 0, "it exits 0 (\(setup.status))")
     let hooks = path(codexHome, "hooks.json")
     for event in ["PermissionRequest", "Stop", "PostToolUse", "UserPromptSubmit"] {

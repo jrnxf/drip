@@ -12,9 +12,6 @@ stack     = "chain"           # chain | push | off: how cards stack
 stack_max = 3                 # most cards on screen at once, 1 to 6
 when_focused = "quiet"        # quiet | show | skip: an agent's card while you watch its terminal
 away_after = 60               # seconds without keyboard or mouse before you count as away; 0: always away
-agent_cards = "all"           # all | attention: only the cards that need you, and no done cards
-done_after = 0                # seconds: no done card for a turn shorter than this; 0 shows them all
-approve = false               # true: Allow and Deny on an agent's permission card (see Coding agents)
 debug = false                 # true: keep the debug log, a diagnostic aid (see Debug log)
 
 [preset.ok]                  # override a built-in preset, any subset of keys
@@ -32,7 +29,7 @@ icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this fi
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
 `DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`, `DRIP_AWAY_AFTER`,
-`DRIP_AGENT_CARDS`, `DRIP_DONE_AFTER`, `DRIP_APPROVE`, `DRIP_DEBUG`, and for the
+`DRIP_DEBUG`, and for the
 [zsh block](usage.md#without-typing-drip-run) `DRIP_SLOW_AFTER` and `DRIP_SLOW_IGNORE`;
 `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
 environment exits 2 when drip makes a card from it (1 for `drip hook`); a command that makes none,

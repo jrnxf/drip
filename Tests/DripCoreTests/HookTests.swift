@@ -473,28 +473,29 @@ struct HookTests {
         }
     }
 
-    @Test func aDoneCardIsLeftOutUnderAttentionOrForAQuickTurn() {
+    @Test func aDoneCardIsLeftOutUnderOnlyNeedsYouOrForAQuickTurn() {
         let done = AgentHook.Event(kind: "ok", title: "api is done", id: "claude:s1")
         let failed = AgentHook.Event(kind: "fail", title: "api stopped", id: "claude:s1")
         let waits = AgentHook.Event(kind: "info", title: "api needs you", id: "claude:s1", stays: true)
-        func skips(_ event: AgentHook.Event, _ cards: AgentHook.Cards = .all, after: Double = 0, started: Double? = 100) -> Bool {
-            AgentHook.skipsDone(event, cards: cards, doneAfter: after, turnStarted: started, now: 120)
+        func skips(_ event: AgentHook.Event, only: AgentHook.Policy.Only? = nil, minTurn: Double = 0, started: Double? = 100) -> Bool {
+            AgentHook.skipsDone(
+                event, policy: AgentHook.Policy(minTurn: minTurn, only: only), turnStarted: started, now: 120)
         }
         #expect(!skips(done))
-        #expect(skips(done, .attention))
-        // A 20 second turn, under done_after = 30 but not 10.
-        #expect(skips(done, after: 30))
-        #expect(!skips(done, after: 10))
+        #expect(skips(done, only: .needsYou))
+        // A 20 second turn, under --min-turn 30 but not 10.
+        #expect(skips(done, minTurn: 30))
+        #expect(!skips(done, minTurn: 10))
         // No turn seen, as when drip's hooks came mid-turn: the card shows.
-        #expect(!skips(done, after: 30, started: nil))
+        #expect(!skips(done, minTurn: 30, started: nil))
         for event in [failed, waits] {
-            #expect(!skips(event, .attention, after: 30))
+            #expect(!skips(event, only: .needsYou, minTurn: 30))
         }
     }
 
     @Test func eachAgentsHooksShowOrClear() throws {
         for agent in AgentHook.Agent.allCases {
-            for event in AgentHook.clearEvents(for: agent) {
+            for event in Recipes.clearEvents(for: agent) {
                 let outcome = try AgentHook.outcome(agent: agent, payload: """
                     {"session_id":"s","turn_id":"t","hook_event_name":"\(event)","tool_name":"x","tool_use_id":"u"}
                     """)
@@ -545,18 +546,18 @@ struct HookTests {
               #"{"hook_event_name":"Notification","session_id":"s","message":"m","notification_type":"idle_prompt"}"#,
               #"{"hook_event_name":"PermissionRequest","session_id":"s","tool_name":"Bash"}"#],
              [#"{"hook_event_name":"StopFailure","session_id":"s","error":"rate_limit"}"#],
-             AgentHook.clearEvents(for: .claude).map { #"{"hook_event_name":"\#($0)","session_id":"s","tool_use_id":"u"}"# }),
+             Recipes.clearEvents(for: .claude).map { #"{"hook_event_name":"\#($0)","session_id":"s","tool_use_id":"u"}"# }),
             (.codex,
              [#"{"hook_event_name":"Stop","session_id":"s"}"#,
               #"{"type":"agent-turn-complete","thread-id":"s","last-assistant-message":"ok"}"#],
              [#"{"hook_event_name":"PermissionRequest","session_id":"s","turn_id":"t","tool_name":"Bash"}"#],
              [],
-             AgentHook.clearEvents(for: .codex).map { #"{"hook_event_name":"\#($0)","session_id":"s","turn_id":"t","tool_name":"x"}"# }),
+             Recipes.clearEvents(for: .codex).map { #"{"hook_event_name":"\#($0)","session_id":"s","turn_id":"t","tool_name":"x"}"# }),
             (.gemini,
              [#"{"hook_event_name":"AfterAgent","session_id":"s","prompt_response":"ok"}"#],
              [#"{"hook_event_name":"Notification","session_id":"s","message":"m","notification_type":"ToolPermission"}"#],
              [],
-             AgentHook.clearEvents(for: .gemini).map { #"{"hook_event_name":"\#($0)","session_id":"s"}"# }),
+             Recipes.clearEvents(for: .gemini).map { #"{"hook_event_name":"\#($0)","session_id":"s"}"# }),
         ]
         for (agent, done, waiting, failure, clear) in payloads {
             #expect(try AgentHook.speaks(for: agent, environment: attention))

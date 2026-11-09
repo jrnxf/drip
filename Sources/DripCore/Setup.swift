@@ -4,48 +4,9 @@ import FoundationEssentials
 import Foundation
 #endif
 
-/// `drip setup`: drip's hooks, in a coding agent's own settings.
+/// `drip setup`: the hooks of a snippet file, in a coding agent's own settings. drip has no list of
+/// events of its own: which events show a card is the snippet's choice, as a recipe makes it.
 public enum AgentSetup {
-    /// One of drip's hooks: the event it runs on, and the matcher that picks which of them.
-    struct Hook: Equatable {
-        var event: String
-        var matcher: String?
-    }
-
-    /// drip's hooks for the agent, in the order setup adds them: those that show a card, then those
-    /// that take a waiting card away once the agent moves on (`AgentHook.clearEvents`).
-    static func hooks(for agent: AgentHook.Agent) -> [Hook] {
-        let shows: [Hook]
-        switch agent {
-        case .claude:
-            // PermissionRequest says what Claude wants to do, so the Notification hook is only for
-            // questions. Not idle_prompt: it comes a minute after every finished turn, and its card
-            // would replace the done card that says what Claude did.
-            shows = [
-                Hook(event: "PermissionRequest"),
-                Hook(event: "Notification", matcher: "elicitation_dialog"),
-                Hook(event: "Stop"),
-                Hook(event: "StopFailure"),
-            ]
-        case .codex:
-            shows = [Hook(event: "PermissionRequest"), Hook(event: "Stop")]
-        case .gemini:
-            shows = [Hook(event: "Notification"), Hook(event: "AfterAgent")]
-        }
-        return shows + AgentHook.clearEvents(for: agent).map { Hook(event: $0) }
-    }
-
-    /// Matchers drip's own hooks had before, which setup brings up to date: Claude's Notification
-    /// hook also showed permission prompts before drip read PermissionRequest.
-    static let oldMatchers: [String: Set<String>] = [
-        "Notification": ["permission_prompt|elicitation_dialog", "permission_prompt|idle_prompt|elicitation_dialog"],
-    ]
-
-    /// The command each of drip's hooks runs.
-    public static func command(for agent: AgentHook.Agent) -> String {
-        "drip hook \(agent.rawValue)"
-    }
-
     /// The settings file drip's hooks go in, from the environment: Claude Code's moves with
     /// `CLAUDE_CONFIG_DIR`, Codex's with `CODEX_HOME`.
     public static func settingsPath(for agent: AgentHook.Agent, environment: [String: String]) -> String {
@@ -65,42 +26,99 @@ public enum AgentSetup {
         (settingsPath(for: .codex, environment: environment) as NSString).deletingLastPathComponent + "/config.toml"
     }
 
-    /// One of drip's hook groups, as the settings file holds it; with `remote`, as it is on another
-    /// machine, where it runs `drip-remote-hook`.
-    static func group(_ hook: Hook, agent: AgentHook.Agent, remote: Bool = false) -> JSONValue {
-        let command = remote ? RemoteHook.command(for: agent) : command(for: agent)
-        var handler = [JSONMember("type", .string("command")), JSONMember("command", .string(command))]
-        if agent == .gemini {
-            // Gemini CLI names a hook in its /hooks list, and enables and disables it by that name.
-            handler.insert(JSONMember("name", .string("drip")), at: 0)
+    /// The hooks to put in a settings file, read from a snippet: `{ "hooks": { "<Event>": [ group ] } }`,
+    /// where each group is as the agent's settings hold it and each of its handlers runs
+    /// `drip hook <agent>`. Anything else is not drip's to install.
+    public struct Snippet: Equatable {
+        /// The groups for each event, in the snippet's order.
+        public var events: [JSONMember]
+        /// The agent the snippet is for.
+        public var agent: AgentHook.Agent
+
+        /// Reads a snippet. Throws a `UsageError` saying what is wrong with it.
+        public init(parsing text: String, agent: AgentHook.Agent) throws {
+            self.agent = agent
+            let value: JSONValue
+            do {
+                value = try JSONValue(parsing: text)
+            } catch let error as JSONError {
+                throw UsageError("the snippet is not plain JSON (\(error))")
+            }
+            guard let members = value.members, members.allSatisfy({ $0.key == "hooks" }),
+                  let hooks = members.last?.value.members
+            else {
+                throw UsageError("the snippet must be a JSON object with one \"hooks\" object, as the agent's settings hold hooks")
+            }
+            var events: [JSONMember] = []
+            for event in hooks {
+                guard let groups = event.value.elements else {
+                    throw UsageError("the snippet's \"\(event.key)\" must be a list of hook groups")
+                }
+                // An event with no groups has no drip hook to put there.
+                guard !groups.isEmpty else { continue }
+                for group in groups {
+                    guard let handlers = group["hooks"]?.elements, !handlers.isEmpty else {
+                        throw UsageError("each hook group in the snippet's \"\(event.key)\" needs a non-empty \"hooks\" list")
+                    }
+                    for handler in handlers {
+                        guard let command = handler["command"]?.string, AgentSetup.runsDrip(command: command, agent: agent) else {
+                            throw UsageError(
+                                "the snippet's \"\(event.key)\" hook must run drip hook \(agent.rawValue), "
+                                    + "which drip setup keeps up to date; add other hooks to the settings yourself")
+                        }
+                    }
+                }
+                events.append(event)
+            }
+            self.events = events
         }
-        var members = [JSONMember("hooks", .array([.object(handler)]))]
-        if let matcher = hook.matcher {
-            members.insert(JSONMember("matcher", .string(matcher)), at: 0)
+
+        /// The snippet as text.
+        public var text: String {
+            JSONValue.object([JSONMember("hooks", .object(events))]).formatted() + "\n"
         }
-        return .object(members)
+
+        /// The snippet with its hooks changed to run `drip-remote-hook`, as they do on another
+        /// machine, where there is no drip. Throws a `UsageError` for a command that does not say
+        /// `drip hook <agent>` plainly.
+        public func remote() throws -> Snippet {
+            let local = "drip hook \(agent.rawValue)"
+            func convert(_ value: JSONValue) throws -> JSONValue {
+                switch value {
+                case let .object(members):
+                    return .object(try members.map { member in
+                        guard member.key == "command", let command = member.value.string else {
+                            return JSONMember(member.key, try convert(member.value))
+                        }
+                        guard let range = command.range(of: local) else {
+                            throw UsageError("--remote needs each hook's command to say '\(local)', not '\(command)'")
+                        }
+                        return JSONMember(
+                            member.key, .string(command.replacingCharacters(in: range, with: RemoteHook.command(for: agent))))
+                    })
+                case let .array(elements): return .array(try elements.map(convert))
+                default: return value
+                }
+            }
+            var copy = self
+            copy.events = try events.map { JSONMember($0.key, try convert($0.value)) }
+            return copy
+        }
     }
 
-    /// drip's hooks as the settings file holds them, as `drip setup --print` shows them; with
-    /// `remote`, as `drip setup --remote` shows them for another machine.
-    public static func snippet(for agent: AgentHook.Agent, remote: Bool = false) -> String {
-        let events = hooks(for: agent).map { JSONMember($0.event, .array([group($0, agent: agent, remote: remote)])) }
-        return JSONValue.object([JSONMember("hooks", .object(events))]).formatted() + "\n"
-    }
-
-    /// What adding drip's hooks changes in a settings file.
+    /// What putting a snippet in a settings file changes.
     public struct Merge: Equatable {
         /// The whole new file.
         public var text: String
-        /// The events drip's hooks were added to.
-        public var added: [String]
-        /// The events whose drip hook's matcher was brought up to date.
-        public var updated: [String] = []
+        /// The events whose drip hooks were added or replaced.
+        public var installed: [String]
+        /// The events drip's hooks were taken out of, because the snippet has none for them.
+        public var removed: [String]
 
-        public init(text: String, added: [String], updated: [String] = []) {
+        public init(text: String, installed: [String], removed: [String] = []) {
             self.text = text
-            self.added = added
-            self.updated = updated
+            self.installed = installed
+            self.removed = removed
         }
     }
 
@@ -113,10 +131,26 @@ public enum AgentSetup {
         }
     }
 
-    /// Adds drip's hooks to a settings file's text, or to an empty file when `text` is nil, keeping
-    /// everything else in its order and its indent, except those for `skipping`, events that run drip
-    /// from somewhere else. Nil when drip's hooks are all there already.
-    public static func merge(_ text: String?, agent: AgentHook.Agent, skipping: Set<String> = []) throws -> Merge? {
+    /// `group` without its handlers that run drip, or nil when none is left.
+    static func strippingDrip(_ group: JSONValue, agent: AgentHook.Agent) -> JSONValue? {
+        guard runsDrip(group, agent: agent) else { return group }
+        guard var members = group.members, let at = members.firstIndex(where: { $0.key == "hooks" }),
+              let handlers = members[at].value.elements
+        else { return nil }
+        let kept = handlers.filter { handler in
+            !(handler["command"]?.string.map { runsDrip(command: $0, agent: agent) } ?? false)
+        }
+        guard !kept.isEmpty else { return nil }
+        members[at].value = .array(kept)
+        return .object(members)
+    }
+
+    /// Puts a snippet's hooks in a settings file's text, or in an empty file when `text` is nil, keeping
+    /// everything else in its order and its indent. The hooks in the file that run drip are replaced:
+    /// in place for an event the snippet names, and taken out of every other. Nil when the file holds
+    /// the snippet's hooks already.
+    public static func merge(_ text: String?, snippet: Snippet) throws -> Merge? {
+        let agent = snippet.agent
         let empty = text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
         var root: [JSONMember]
         if empty {
@@ -138,50 +172,55 @@ public enum AgentSetup {
         default: throw Refusal(description: "has a \"hooks\" that is not an object")
         }
 
-        var added: [String] = []
-        var updated: [String] = []
-        for hook in hooks(for: agent) where !skipping.contains(hook.event) {
-            let index = events.lastIndex { $0.key == hook.event }
-            let before = index.map { events[$0].value }
+        var installed: [String] = []
+        var removed: [String] = []
+        let wanted = Set(snippet.events.map(\.key))
+        // The events the snippet leaves out lose their drip hooks.
+        for index in events.indices.reversed() where !wanted.contains(events[index].key) {
+            guard let groups = events[index].value.elements else { continue }
+            let kept = groups.compactMap { strippingDrip($0, agent: agent) }
+            guard kept != groups else { continue }
+            removed.insert(events[index].key, at: 0)
+            if kept.isEmpty { events.remove(at: index) } else { events[index].value = .array(kept) }
+        }
+        for event in snippet.events {
+            let index = events.lastIndex { $0.key == event.key }
             var groups: [JSONValue]
             switch index.map({ events[$0].value }) {
             case nil: groups = []
             case let .array(elements)?: groups = elements
-            default: throw Refusal(description: "has a \"hooks\".\"\(hook.event)\" that is not a list")
+            default: throw Refusal(description: "has a \"hooks\".\"\(event.key)\" that is not a list")
             }
-            if let index = groups.firstIndex(where: { runsDrip($0, agent: agent) }) {
-                // drip's own group with a matcher drip no longer uses: bring it up to date.
-                guard let matcher = hook.matcher, var members = groups[index].members,
-                      let at = members.firstIndex(where: { $0.key == "matcher" }),
-                      let old = members[at].value.string, old != matcher,
-                      oldMatchers[hook.event]?.contains(old) ?? false,
-                      groups[index]["hooks"]?.elements?.count == 1
-                else { continue }
-                members[at].value = .string(matcher)
-                groups[index] = .object(members)
-                updated.append(hook.event)
-            } else {
-                groups.append(group(hook, agent: agent))
-                added.append(hook.event)
+            var result: [JSONValue] = []
+            var placed = false
+            for group in groups {
+                guard runsDrip(group, agent: agent) else {
+                    result.append(group)
+                    continue
+                }
+                if !placed {
+                    result += event.value.elements ?? []
+                    placed = true
+                }
+                if let rest = strippingDrip(group, agent: agent) { result.append(rest) }
             }
-            if let index {
-                if before != .array(groups) { events[index].value = .array(groups) }
-            } else {
-                events.append(JSONMember(hook.event, .array(groups)))
-            }
+            if !placed { result += event.value.elements ?? [] }
+            guard result != groups || index == nil else { continue }
+            installed.append(event.key)
+            if let index { events[index].value = .array(result) } else { events.append(JSONMember(event.key, .array(result))) }
         }
-        guard !added.isEmpty || !updated.isEmpty else { return nil }
+        guard !installed.isEmpty || !removed.isEmpty else { return nil }
 
         if let index = root.lastIndex(where: { $0.key == "hooks" }) {
-            root[index].value = .object(events)
-        } else {
+            if events.isEmpty { root.remove(at: index) } else { root[index].value = .object(events) }
+        } else if !events.isEmpty {
             root.append(JSONMember("hooks", .object(events)))
         }
         let original = empty ? "" : text ?? ""
         let indent = JSONValue.indent(of: original)
         // A new file, or one that ended with a newline, ends with one.
         let newline = empty || original.hasSuffix("\n") ? "\n" : ""
-        return Merge(text: JSONValue.object(root).formatted(indent: indent) + newline, added: added, updated: updated)
+        return Merge(text: JSONValue.object(root).formatted(indent: indent) + newline, installed: installed, removed: removed)
     }
 
     /// The events, in order, whose hooks in a settings file's text run drip. None when it is not JSON.
@@ -376,11 +415,13 @@ public struct SetupInstaller {
         case failed(String)
     }
 
-    public func install(_ agent: AgentHook.Agent) -> Outcome {
+    /// Puts the snippet's hooks in the agent's settings file.
+    public func install(_ snippet: AgentSetup.Snippet) -> Outcome {
+        let agent = snippet.agent
         let path = AgentSetup.settingsPath(for: agent, environment: environment)
-        let snippet = AgentSetup.snippet(for: agent)
+        let text = snippet.text
         func refused(_ path: String, _ problem: String, _ advice: String = "add these hooks to it yourself") -> Outcome {
-            .refused(reason: "\(display(path)) \(problem), so drip leaves it alone: \(advice).", snippet: snippet)
+            .refused(reason: "\(display(path)) \(problem), so drip leaves it alone: \(advice).", snippet: text)
         }
 
         var lines: [String] = []
@@ -389,7 +430,7 @@ public struct SetupInstaller {
         var hints: [String] = []
         var writes: [(path: String, text: String)] = []
 
-        // Codex: the hooks may be in config.toml already, and a notify that runs drip must go.
+        // Codex: the hooks may be in config.toml too, and a notify that runs drip must go.
         var config: (path: String, value: CodexConfig)?
         if agent == .codex {
             let configPath = AgentSetup.codexConfigPath(environment: environment)
@@ -397,51 +438,44 @@ public struct SetupInstaller {
                 config = (configPath, CodexConfig(text))
             }
         }
-        let inConfig = config?.value.dripHookEvents ?? []
-        if let config, AgentSetup.hooks(for: agent).allSatisfy({ inConfig.contains($0.event) }) {
-            lines.append("drip's hooks are already in \(display(config.path)).")
+        let existing: String?
+        if FileManager.default.fileExists(atPath: path) {
+            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+                return refused(path, "cannot be read as text")
+            }
+            existing = text
         } else {
-            let existing: String?
-            if FileManager.default.fileExists(atPath: path) {
-                guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
-                    return refused(path, "cannot be read as text")
+            existing = nil
+        }
+        do {
+            if let merge = try AgentSetup.merge(existing, snippet: snippet) {
+                if let problem = problem(writing: path) {
+                    return refused(path, problem, problem.hasPrefix("is a symlink")
+                        ? "add these hooks where it comes from" : "add these hooks to it yourself")
                 }
-                existing = text
+                writes.append((path, merge.text))
+                if !merge.installed.isEmpty {
+                    let noun = merge.installed.count == 1 ? "hook" : "hooks"
+                    lines.append("Put drip's \(Self.list(merge.installed)) \(noun) in \(display(path)).")
+                }
+                if !merge.removed.isEmpty {
+                    let noun = merge.removed.count == 1 ? "hook" : "hooks"
+                    lines.append("Took drip's \(Self.list(merge.removed)) \(noun) out of \(display(path)).")
+                }
+                if agent == .codex, !merge.installed.isEmpty {
+                    hints.append("Codex runs a new hook only once you trust it: run /hooks in Codex.")
+                }
             } else {
-                existing = nil
+                lines.append("drip's hooks in \(display(path)) are the snippet's already.")
             }
-            do {
-                if let merge = try AgentSetup.merge(existing, agent: agent, skipping: inConfig) {
-                    if let problem = problem(writing: path) {
-                        return refused(path, problem, problem.hasPrefix("is a symlink")
-                            ? "add these hooks where it comes from" : "add these hooks to it yourself")
-                    }
-                    writes.append((path, merge.text))
-                    if !merge.added.isEmpty {
-                        let noun = merge.added.count == 1 ? "hook" : "hooks"
-                        lines.append("Added drip's \(Self.list(merge.added)) \(noun) to \(display(path)).")
-                    }
-                    if !merge.updated.isEmpty {
-                        let noun = merge.updated.count == 1 ? "hook's matcher" : "hooks' matchers"
-                        lines.append("Brought drip's \(Self.list(merge.updated)) \(noun) up to date in \(display(path)).")
-                    }
-                    if agent == .codex, !merge.added.isEmpty {
-                        hints.append("Codex runs a new hook only once you trust it: run /hooks in Codex.")
-                    }
-                } else if let config, !inConfig.isEmpty {
-                    lines.append("drip's hooks are already in \(display(config.path)) and \(display(path)).")
-                } else {
-                    lines.append("drip's hooks are already in \(display(path)).")
-                }
-            } catch let refusal as AgentSetup.Refusal {
-                return refused(path, refusal.description)
-            } catch {
-                return .failed("\(display(path)): \(error)")
-            }
+        } catch let refusal as AgentSetup.Refusal {
+            return refused(path, refusal.description)
+        } catch {
+            return .failed("\(display(path)): \(error)")
         }
 
-        if let config, !inConfig.isEmpty, let text = try? String(contentsOfFile: path, encoding: .utf8) {
-            for event in AgentSetup.dripEvents(in: text, agent: agent) where inConfig.contains(event) {
+        if let config, !config.value.dripHookEvents.isEmpty, let text = try? String(contentsOfFile: path, encoding: .utf8) {
+            for event in AgentSetup.dripEvents(in: text, agent: agent) where config.value.dripHookEvents.contains(event) {
                 warnings.append(
                     "\(display(config.path)) and \(display(path)) both run drip on \(event): take it out of one, "
                         + "or every \(event) card shows twice")
@@ -455,7 +489,7 @@ public struct SetupInstaller {
                     "take out its notify, which also runs drip and would show every done card twice, then add these hooks")
             }
             writes.insert((config.path, config.value.withoutDripNotify), at: 0)
-            lines.append("Removed notify from \(display(config.path)): the Stop hook shows the done card instead.")
+            lines.append("Removed notify from \(display(config.path)): the hooks show the cards instead.")
         } else if let config, config.value.otherDripNotify {
             warnings.append(
                 "the notify in \(display(config.path)) runs drip too: take drip out of it, or every done card shows twice")
@@ -476,7 +510,7 @@ public struct SetupInstaller {
                 return .failed("could not write \(display(write.path)): \(error.localizedDescription)\(changed)")
             }
         }
-        if agent == .claude {
+        if agent == .claude, !snippet.events.isEmpty {
             hints.append(
                 "Claude Code can also notify you itself, through your terminal: if each card comes with a "
                     + "second notification, set Local notifications to disabled in its /config.")

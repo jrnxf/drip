@@ -307,17 +307,57 @@ struct CommandTests {
         #expect(gemini.agent == .gemini)
     }
 
+    @Test func hookTakesTheHelperFlags() throws {
+        guard case let .invocation(.hook(plain)) = CommandLineParser.parse(["hook", "claude"]) else { Issue.record(); return }
+        #expect(plain.policy == AgentHook.Policy())
+        guard case let .invocation(.hook(all)) = CommandLineParser.parse(
+            ["hook", "claude", "--approve", "--min-turn", "30", "--only", "needs-you", "--seconds", "3"])
+        else { Issue.record(); return }
+        #expect(all.policy == AgentHook.Policy(approve: true, minTurn: 30, only: .needsYou))
+        guard case let .invocation(.hook(fraction)) = CommandLineParser.parse(["hook", "codex", "--min-turn", "7.5"])
+        else { Issue.record(); return }
+        #expect(fraction.policy.minTurn == 7.5)
+        // A hook's mistakes exit 1: Claude Code reads 2 as "block".
+        for arguments in [["hook", "claude", "--min-turn", "soon"], ["hook", "claude", "--min-turn", "601"],
+                          ["hook", "claude", "--min-turn", "-1"], ["hook", "claude", "--only", "everything"]] {
+            guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
+            #expect(status == ExitStatus.hookFailed, "\(arguments)")
+        }
+    }
+
+    @Test func watchingTakesAPaneAndAnApp() throws {
+        guard case let .invocation(.watching(plain)) = CommandLineParser.parse(["watching"]) else { Issue.record(); return }
+        #expect(plain.pane == nil && plain.app == nil)
+        guard case let .invocation(.watching(both)) = CommandLineParser.parse(
+            ["watching", "--pane", "%3", "--app", "com.mitchellh.ghostty"])
+        else { Issue.record(); return }
+        #expect(both.pane == "%3")
+        #expect(both.app == "com.mitchellh.ghostty")
+        for arguments in [["watching", "--pane", "3"], ["watching", "--pane", "%3;ls"], ["watching", "--app", "no spaces"],
+                          ["watching", "extra"]] {
+            guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
+            #expect(status == ExitStatus.usage, "\(arguments)")
+        }
+    }
+
     @Test func setupTakesTheAgentAndPrint() throws {
         for agent in AgentHook.Agent.allCases {
-            guard case let .invocation(.setup(setup)) = CommandLineParser.parse(["setup", agent.rawValue])
+            guard case let .invocation(.setup(setup)) = CommandLineParser.parse(["setup", agent.rawValue, "hooks.json"])
             else { Issue.record("\(agent)"); continue }
             #expect(setup.agent == agent)
-            #expect(!setup.printOnly)
+            #expect(setup.snippet == "hooks.json")
+            #expect(!setup.printOnly && !setup.remote)
         }
-        guard case let .invocation(.setup(printing)) = CommandLineParser.parse(["setup", "codex", "--print"])
+        // `-` reads the snippet from stdin.
+        guard case let .invocation(.setup(piped)) = CommandLineParser.parse(["setup", "codex", "-", "--remote"])
         else { Issue.record(); return }
-        #expect(printing.agent == .codex)
-        #expect(printing.printOnly)
+        #expect(piped.snippet == "-")
+        #expect(piped.remote)
+        // The agents need a snippet, and --print is for zsh.
+        for arguments in [["setup", "codex"], ["setup", "codex", "x.json", "--print"], ["setup", "zsh", "x.json"]] {
+            guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
+            #expect(status == ExitStatus.usage, "\(arguments)")
+        }
         // Without an agent, one line says what is missing, not the whole help; a mistake is a usage error.
         guard case let .exit(status, missing) = CommandLineParser.parse(["setup"]) else { Issue.record(); return }
         #expect(status == ExitStatus.usage)
@@ -416,7 +456,7 @@ struct CommandTests {
         #expect(help.hasPrefix("OVERVIEW: Show a brief card at the notch on macOS.\n\nUSAGE: drip [KIND] [TITLE] [options]"), "\(help)")
         #expect(help.contains("drip run [options] [--] <command> [args...]"), "\(help)")
         #expect(help.contains("drip hook claude|codex|gemini [options]"), "\(help)")
-        #expect(help.contains("drip setup claude|codex|gemini [--print | --remote]"), "\(help)")
+        #expect(help.contains("drip setup claude|codex|gemini <snippet-file | -> [--remote]"), "\(help)")
         #expect(help.contains("drip setup remote"), "\(help)")
         #expect(help.contains("drip setup zsh [--print]"), "\(help)")
         #expect(!help.contains("__finished"), "\(help)")

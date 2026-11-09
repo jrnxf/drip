@@ -35,12 +35,6 @@ public struct Config: Equatable {
     public var whenFocused: WhenFocused?
     /// Seconds without the keyboard or mouse after which drip takes you to be away from the screen.
     public var awayAfter: Double?
-    /// Which of an agent's cards show.
-    public var agentCards: AgentHook.Cards?
-    /// The shortest turn, in seconds, whose done card shows.
-    public var doneAfter: Double?
-    /// Whether a permission card asks with Allow and Deny.
-    public var approve: Bool?
     /// Whether drip keeps its debug log, `DebugLog`.
     public var debug: Bool?
     /// Overrides of built-in presets, and custom presets, by name.
@@ -49,14 +43,10 @@ public struct Config: Equatable {
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
-        awayAfter: Double? = nil, agentCards: AgentHook.Cards? = nil, doneAfter: Double? = nil,
-        approve: Bool? = nil, debug: Bool? = nil, presets: [String: PresetOverride] = [:]
+        awayAfter: Double? = nil, debug: Bool? = nil, presets: [String: PresetOverride] = [:]
     ) {
         self.debug = debug
-        self.approve = approve
         self.awayAfter = awayAfter
-        self.agentCards = agentCards
-        self.doneAfter = doneAfter
         self.seconds = seconds
         self.size = size
         self.sound = sound
@@ -196,9 +186,6 @@ private struct ConfigReader {
                 config.stackMax = Int(value)
             case "when_focused": config.whenFocused = try choice(item, key: key, WhenFocused.self)
             case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
-            case "agent_cards": config.agentCards = try choice(item, key: key, AgentHook.Cards.self)
-            case "done_after": config.doneAfter = try seconds(item, key: key, in: Defaults.doneAfterRange)
-            case "approve": config.approve = try boolean(item, key: key)
             case "debug": config.debug = try boolean(item, key: key)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
@@ -366,12 +353,6 @@ public struct EnvironmentSettings: Equatable {
     public var whenFocused: WhenFocused?
     /// Seconds without the keyboard or mouse after which drip takes you to be away from the screen.
     public var awayAfter: Double?
-    /// Which of an agent's cards show.
-    public var agentCards: AgentHook.Cards?
-    /// The shortest turn, in seconds, whose done card shows.
-    public var doneAfter: Double?
-    /// Whether a permission card asks with Allow and Deny, from `DRIP_APPROVE`.
-    public var approve: Bool?
     /// The bundle identifier of the app drip was run from, from `__CFBundleIdentifier`.
     public var sender: String?
     /// The tmux pane drip was run in, from `TMUX` and `TMUX_PANE`.
@@ -384,14 +365,10 @@ public struct EnvironmentSettings: Equatable {
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
-        awayAfter: Double? = nil, agentCards: AgentHook.Cards? = nil, doneAfter: Double? = nil,
-        approve: Bool? = nil, sender: String? = nil, debug: Bool? = nil
+        awayAfter: Double? = nil, sender: String? = nil, debug: Bool? = nil
     ) {
         self.debug = debug
-        self.approve = approve
         self.awayAfter = awayAfter
-        self.agentCards = agentCards
-        self.doneAfter = doneAfter
         self.sender = sender
         self.whenFocused = whenFocused
         self.stack = stack
@@ -403,7 +380,7 @@ public struct EnvironmentSettings: Equatable {
     }
 
     /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK, DRIP_STACK_MAX,
-    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_AGENT_CARDS, DRIP_DONE_AFTER, DRIP_APPROVE and DRIP_DEBUG. Empty
+    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER and DRIP_DEBUG. Empty
     /// values are ignored; invalid ones are usage errors. Also notes the app drip was run from, from
     /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
@@ -428,7 +405,6 @@ public struct EnvironmentSettings: Equatable {
         motion = try choice("DRIP_MOTION", Motion.self)
         stack = try choice("DRIP_STACK", StackSettings.Choice.self)
         whenFocused = try choice("DRIP_WHEN_FOCUSED", WhenFocused.self)
-        agentCards = try choice("DRIP_AGENT_CARDS", AgentHook.Cards.self)
         func seconds(_ name: String, in range: ClosedRange<Double>) throws -> Double? {
             guard let text = value(name) else { return nil }
             guard let seconds = Double(text), range.contains(seconds) else {
@@ -439,7 +415,6 @@ public struct EnvironmentSettings: Equatable {
             return seconds
         }
         awayAfter = try seconds("DRIP_AWAY_AFTER", in: Defaults.awayAfterRange)
-        doneAfter = try seconds("DRIP_DONE_AFTER", in: Defaults.doneAfterRange)
         if let text = value("DRIP_STACK_MAX") {
             guard let max = Int(text), Defaults.stackMaxRange.contains(max) else {
                 throw UsageError("DRIP_STACK_MAX must be a whole number from 1 to 6, not '\(text)'")
@@ -447,7 +422,6 @@ public struct EnvironmentSettings: Equatable {
             stackMax = max
         }
         sound = value("DRIP_SOUND").map(Sound.init(parsing:))
-        approve = try Self.switch("DRIP_APPROVE", environment: environment)
         debug = try Self.debug(environment: environment)
         sender = CardActivation.sender(in: environment)
         pane = TerminalPane(environment: environment)

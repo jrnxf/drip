@@ -98,6 +98,8 @@ struct DripCLI {
             return hook(command)
         case let .invocation(.setup(command)):
             return setup(command)
+        case let .invocation(.watching(command)):
+            return watching(command)
         case let .invocation(.finished(command)):
             return finished(command)
         case let .invocation(.follow(command)):
@@ -149,7 +151,8 @@ struct DripCLI {
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
             }
             guard let card = try AgentHook.card(
-                agent: command.agent, payload: payload, flags: flags, in: surroundings(console, resurfacing: command.agent))
+                agent: command.agent, payload: payload, flags: flags, policy: command.policy,
+                in: surroundings(console, resurfacing: command.agent))
             else {
                 return ExitStatus.shown
             }
@@ -238,7 +241,9 @@ struct DripCLI {
                 }
             }
             do {
-                guard let card = try AgentHook.card(agent: event.agent, payload: event.payload, in: surroundings) else {
+                guard let card = try AgentHook.card(
+                    agent: event.agent, payload: event.payload, policy: event.policy, in: surroundings)
+                else {
                     return
                 }
                 _ = self.deliver([card], wait: false, remind: false, console: console)
@@ -299,7 +304,45 @@ struct DripCLI {
         }
     }
 
-    /// Adds drip's hooks to the agent's settings, or prints them.
+    /// Whether you are watching a terminal, by exit status: 0 yes, 1 no, 2 cannot tell.
+    private func watching(_ command: WatchingCommand) -> Int32 {
+        let console = Console()
+        let environment = ProcessInfo.processInfo.environment
+        guard display.hasGUISession else {
+            console.error("cannot tell whether you are watching: there is no GUI session")
+            return Watching.Answer.unknown.status
+        }
+        var pane = TerminalPane(environment: environment)
+        if let id = command.pane {
+            guard let socket = pane?.tmuxSocket else {
+                console.error("cannot tell which tmux pane --pane means: drip is not run inside tmux")
+                return Watching.Answer.unknown.status
+            }
+            pane = TerminalPane(tmuxSocket: socket, tmuxPane: id)
+        } else if environment["TMUX_PANE"] == nil {
+            pane = nil
+        }
+        let resolver: CardResolver
+        do {
+            resolver = try makeResolver(console)
+        } catch {
+            return report(error, console)
+        }
+        var card = Card(preset: .info, title: "watching")
+        card.pane = pane
+        card.activate = command.app ?? CardActivation.sender(in: environment)
+        // The terminal that shows the pane now is the app to look at, not the one tmux started in.
+        card = display.prepare([card], console: Console(quiet: true)).first ?? card
+        let answer = Watching.answer(
+            for: card, awayAfter: resolver.awayAfter, front: display.front(of:), paneShowing: display.paneShowing)
+        if answer == .unknown {
+            console.error("cannot tell which terminal to look at: give --app, or run drip in a terminal")
+        }
+        return answer.status
+    }
+
+    /// Puts the hooks of a snippet file in the agent's settings, or prints the snippet for another
+    /// machine, or sets up the shell.
     private func setup(_ command: SetupCommand) -> Int32 {
         if let shell = command.shell {
             if command.printOnly {
@@ -321,16 +364,25 @@ struct DripCLI {
                 return ExitStatus.setupFailed
             }
         }
-        guard let agent = command.agent else {
+        guard let agent = command.agent, let source = command.snippet else {
             print(RemoteHook.script, terminator: "")
             return ExitStatus.shown
         }
-        if command.printOnly || command.remote {
-            print(AgentSetup.snippet(for: agent, remote: command.remote), terminator: "")
-            return ExitStatus.shown
-        }
         let console = Console()
-        switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(agent) {
+        let snippet: AgentSetup.Snippet
+        do {
+            snippet = try AgentSetup.Snippet(parsing: try Self.readSnippet(source), agent: agent)
+            if command.remote {
+                print(try snippet.remote().text, terminator: "")
+                return ExitStatus.shown
+            }
+        } catch let error as UsageError {
+            return report(error, console, subcommand: SetupCommand.configuration.commandName)
+        } catch {
+            console.error("\(error)")
+            return ExitStatus.usage
+        }
+        switch SetupInstaller(environment: ProcessInfo.processInfo.environment).install(snippet) {
         case let .done(lines, warnings):
             warnings.forEach(console.warn)
             lines.forEach { print($0) }
@@ -344,6 +396,24 @@ struct DripCLI {
             console.error(message)
             return ExitStatus.setupFailed
         }
+    }
+
+    /// The text of the snippet file, or of stdin for `-`. A snippet is a few lines: at most 1 MB.
+    private static func readSnippet(_ source: String) throws -> String {
+        let limit = 1024 * 1024
+        if source == "-" {
+            guard let text = StandardInput.read(limit: limit) else {
+                throw UsageError("no snippet on stdin: pipe it in, or give a file")
+            }
+            return text
+        }
+        let path = (source as NSString).expandingTildeInPath
+        guard let data = FileManager.default.contents(atPath: path), data.count <= limit,
+              let text = String(data: data, encoding: .utf8)
+        else {
+            throw UsageError("cannot read '\(source)' as a snippet: it must be a UTF-8 text file of at most 1 MB")
+        }
+        return text
     }
 
     /// Everything that can fail is checked here, before the cards are handed off. `record` is false

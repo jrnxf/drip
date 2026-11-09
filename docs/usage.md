@@ -6,7 +6,8 @@ The full reference. `drip --help` lists the same options, and `drip help <subcom
 drip [KIND] [TITLE] [options]
 drip run [options] [--] <command> [args...]
 drip hook claude|codex|gemini [options] [payload]
-drip setup claude|codex|gemini [--print | --remote]
+drip setup claude|codex|gemini <snippet-file | -> [--remote]
+drip watching [--pane ID] [--app BUNDLE-ID]
 drip setup zsh [--print]
 drip setup remote
 drip follow <ssh-target> [options]
@@ -176,7 +177,7 @@ an agent on another machine, from the agent's session there. It passes on at mos
 letters, digits and `_` up to 64 long, with a value of up to 256 characters and no control
 characters; the rest are left out. A value from another machine is data to check, never a command
 to run. History never keeps the command, and `drip history --replay` never runs it.
-[recipes.md](recipes.md) has commands for herdr, WezTerm and Ghostty.
+The [click recipes](../recipes/README.md) have commands for herdr, WezTerm and Ghostty.
 
 **Out of the way.** While the pointer is on a card you can click, a × takes its icon's place, and a
 card that brings an app forward shows an arrow where its ring was. A click on the ×, or a

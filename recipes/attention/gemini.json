@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "name": "drip",
+            "type": "command",
+            "command": "drip hook gemini"
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "hooks": [
+          {
+            "name": "drip",
+            "type": "command",
+            "command": "drip hook gemini"
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "name": "drip",
+            "type": "command",
+            "command": "drip hook gemini"
+          }
+        ]
+      }
+    ]
+  }
+}

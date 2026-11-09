@@ -18,7 +18,7 @@ struct ContractTests {
         let text = try String(contentsOf: Self.file, encoding: .utf8)
         let contract = try #require(try JSONValue(parsing: text)["agents"]?[agent.rawValue])
         let events = Set(contract["events"]?.members?.map(\.key) ?? [])
-        let hooked = Set(try JSONValue(parsing: AgentSetup.snippet(for: agent))["hooks"]?.members?.map(\.key) ?? [])
+        let hooked = Set(try Recipes.snippet("everything", agent).events.map(\.key))
         #expect(events == hooked)
         // The session's own events are among them.
         let flow = contract["flow"]?.members?.filter { $0.key != "permissionType" }.compactMap(\.value.string) ?? []

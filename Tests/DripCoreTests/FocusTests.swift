@@ -57,25 +57,63 @@ struct FocusTests {
 
     @Test func theAgentSettingsComeFromTheEnvironmentThenTheConfig() throws {
         #expect(CardResolver().awayAfter == 60)
-        #expect(CardResolver().agentCards == .all)
-        #expect(CardResolver().doneAfter == 0)
-        let config = try ConfigLoader.parse(
-            "away_after = 300\nagent_cards = \"attention\"\ndone_after = 30", path: "config.toml").config
+        let config = try ConfigLoader.parse("away_after = 300", path: "config.toml").config
         #expect(CardResolver(config: config).awayAfter == 300)
-        #expect(CardResolver(config: config).agentCards == .attention)
-        #expect(CardResolver(config: config).doneAfter == 30)
-        let environment = try EnvironmentSettings(environment: [
-            "DRIP_AWAY_AFTER": "90", "DRIP_AGENT_CARDS": "all", "DRIP_DONE_AFTER": "0",
-        ])
-        let resolver = CardResolver(config: config, environment: environment)
-        #expect(resolver.awayAfter == 90)
-        #expect(resolver.agentCards == .all)
-        #expect(resolver.doneAfter == 0)
-        #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_DONE_AFTER": "601"]) }
+        let environment = try EnvironmentSettings(environment: ["DRIP_AWAY_AFTER": "90"])
+        #expect(CardResolver(config: config, environment: environment).awayAfter == 90)
         #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_AWAY_AFTER": "soon"]) }
-        #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_AGENT_CARDS": "some"]) }
         #expect(throws: ConfigError.self) { try ConfigLoader.parse("away_after = -1", path: "config.toml") }
-        #expect(throws: ConfigError.self) { try ConfigLoader.parse("agent_cards = \"some\"", path: "config.toml") }
+    }
+
+    /// The settings that moved into the recipes' flags are not keys any more.
+    @Test func theKeysTheRecipesReplacedAreUnknown() throws {
+        for line in ["agent_cards = \"attention\"", "done_after = 30", "approve = true"] {
+            let file = try ConfigLoader.parse(line, path: "config.toml")
+            #expect(file.config == Config(), "\(line)")
+            #expect(file.warnings.count == 1 && file.warnings[0].contains("unknown key"), "\(line)")
+        }
+        // The variables are not read, so one left in a shell does nothing.
+        let ignored = try EnvironmentSettings(environment: [
+            "DRIP_AGENT_CARDS": "some", "DRIP_DONE_AFTER": "601", "DRIP_APPROVE": "maybe",
+        ])
+        #expect(ignored == EnvironmentSettings())
+    }
+
+    @Test(arguments: [
+        (WhenFocused.Front(app: true, pane: true, idle: 5), Watching.Answer.watching),
+        (.init(app: true, pane: nil, idle: 5), .watching),
+        (.init(app: true, pane: false, idle: 5), .notWatching),
+        (.init(app: false, pane: true, idle: 5), .notWatching),
+        (.init(app: true, pane: true, idle: 120), .notWatching),
+    ])
+    func watchingIsTheFrontAndYouAtTheScreen(_ case: (front: WhenFocused.Front, answer: Watching.Answer)) {
+        var card = Card(preset: .info, title: "x")
+        card.activate = "com.example.terminal"
+        #expect(Watching.answer(for: card, awayAfter: 60, front: { _ in `case`.front }, paneShowing: { _ in nil })
+            == `case`.answer)
+    }
+
+    @Test func watchingAsksTmuxOnlyWhenTheAppIsInFrontAndYouAreHere() {
+        var card = Card(preset: .info, title: "x")
+        card.activate = "com.example.terminal"
+        var asked = 0
+        func answer(_ front: WhenFocused.Front, shows: Bool?) -> Watching.Answer {
+            Watching.answer(for: card, awayAfter: 60, front: { _ in front }, paneShowing: { _ in asked += 1; return shows })
+        }
+        #expect(answer(.init(app: true, idle: 1), shows: false) == .notWatching)
+        #expect(asked == 1)
+        #expect(answer(.init(app: true, idle: 1), shows: true) == .watching)
+        #expect(answer(.init(app: false, idle: 1), shows: true) == .notWatching)
+        #expect(answer(.init(app: true, idle: 600), shows: true) == .notWatching)
+        #expect(asked == 2)
+    }
+
+    @Test func watchingCannotTellWithoutATerminalApp() {
+        let card = Card(preset: .info, title: "x")
+        #expect(Watching.answer(for: card, awayAfter: 60, front: { _ in .init(app: true) }, paneShowing: { _ in true }) == .unknown)
+        #expect(Watching.Answer.watching.status == 0)
+        #expect(Watching.Answer.notWatching.status == 1)
+        #expect(Watching.Answer.unknown.status == 2)
     }
 
     @Test func theSettingComesFromTheEnvironmentThenTheConfig() throws {
