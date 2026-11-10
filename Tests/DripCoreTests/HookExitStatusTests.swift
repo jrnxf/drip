@@ -41,7 +41,7 @@ struct HookExitStatusTests {
             ("an empty payload", Data()),
             ("a payload that is not JSON", Data("not json".utf8)),
             ("a payload that is not an object", Data("[1,2]".utf8)),
-            ("an event drip does not know", Data(#"{"hook_event_name":"Nope","session_id":"s"}"#.utf8)),
+            ("an event with no name", Data(#"{"session_id":"s"}"#.utf8)),
             // One byte past the 4 MB drip reads.
             ("a payload past 4 MB", Data(repeating: UInt8(ascii: " "), count: 4 * 1024 * 1024 + 1)),
         ]
@@ -51,6 +51,20 @@ struct HookExitStatusTests {
             #expect(outcome.status == 1, "\(agent), \(what): exit \(outcome.status), \(outcome.error)")
             #expect(!outcome.error.isEmpty, "\(agent), \(what): it says nothing")
         }
+    }
+
+    @Test(arguments: ["claude", "codex", "gemini"])
+    func anEventDripDoesNotKnowExitsZero(agent: String) throws {
+        let outcome = try hook(agent, payload: Data(#"{"hook_event_name":"Nope","session_id":"s"}"#.utf8))
+        #expect(outcome.status == 0, "\(agent): exit \(outcome.status), \(outcome.error)")
+        #expect(outcome.error.isEmpty, "\(agent): it says \(outcome.error)")
+        #expect(outcome.output.isEmpty, "\(agent): it prints \(outcome.output)")
+    }
+
+    @Test func aCodexNotifyTypeDripDoesNotKnowExitsZero() throws {
+        let outcome = try hook("codex", payload: Data(#"{"type":"approval-requested"}"#.utf8))
+        #expect(outcome.status == 0, "exit \(outcome.status), \(outcome.error)")
+        #expect(outcome.error.isEmpty)
     }
 
     /// A broken config is only a warning, so with a GUI session the permission card shows and waits

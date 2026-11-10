@@ -457,6 +457,21 @@ struct ApprovalTests {
         #expect(try #require(try ask(.claude, sessionless, local())).action == nil)
     }
 
+    /// An event drip does not know shows no card and takes none away, so a waiting card stays.
+    @Test func anUnknownEventShowsNoCardAndClearsNone() throws {
+        let surroundings = local()
+        _ = try #require(try AgentHook.card(agent: .claude, payload: Self.claude, in: surroundings))
+        let waiting = try #require(AgentState(environment: surroundings.environment).waiting(id: "claude:s1", now: now))
+        let unknown = [
+            (AgentHook.Agent.claude, #"{"session_id":"s1","hook_event_name":"Nope"}"#),
+            (AgentHook.Agent.codex, #"{"session_id":"s1","type":"approval-requested"}"#),
+        ]
+        for (agent, payload) in unknown {
+            #expect(try AgentHook.card(agent: agent, payload: payload, in: surroundings) == nil, "\(agent)")
+            #expect(AgentState(environment: surroundings.environment).waiting(id: "claude:s1", now: now)?.tool == waiting.tool, "\(agent)")
+        }
+    }
+
     @Test func aRemoteCardOnlyTells() throws {
         let event = RemoteEvent(
             time: now.timeIntervalSince1970, agent: .claude, machine: "devbox", environment: [:], payload: Self.claude)

@@ -131,6 +131,18 @@ public struct ConfigFile: Equatable {
 }
 
 public enum ConfigLoader {
+    /// The names a custom preset cannot take, since `drip <name>` would run the subcommand instead:
+    /// every real subcommand and alias, plus the few names kept for commands drip may have one day.
+    public static let reservedNames: Set<String> = {
+        let subcommands = DripCommand.configuration.subcommands.flatMap { command in
+            [command.configuration.commandName].compactMap { $0 } + command.configuration.aliases
+        }
+        // Names with no subcommand yet: `help` and `version` are the flags' words, the rest are planned.
+        let kept = ["help", "version", "config", "completion", "completions", "doctor", "test"]
+        // The internal subcommands start with underscores, which no preset name can.
+        return Set((subcommands + kept).filter { !$0.hasPrefix("_") })
+    }()
+
     /// `$XDG_CONFIG_HOME/drip/config.toml`, falling back to `~/.config/drip/config.toml`.
     public static func path(environment: [String: String]) -> String {
         let base: String
@@ -274,7 +286,7 @@ private struct ConfigReader {
                     throw wrongType(presetItem, key: key, expected: "a table")
                 }
                 if !builtInNames.contains(name) {
-                    if Self.reservedNames.contains(name) {
+                    if ConfigLoader.reservedNames.contains(name) {
                         throw ConfigError(
                             path: path, line: presetItem.line, key: key,
                             message: "'\(name)' is kept for drip's own commands; give the preset another name")
@@ -332,14 +344,6 @@ private struct ConfigReader {
             warnUnknown(key, line: item.line)
         }
     }
-
-    /// The names a custom preset cannot take: drip's subcommands, and those it may have one day,
-    /// since `drip <name>` would run the subcommand instead.
-    static let reservedNames: Set<String> = [
-        "run", "hook", "history", "show", "help", "version", "setup", "remote-hook", "config", "init", "install",
-        "uninstall", "completion", "completions", "doctor", "mute", "pause", "resume", "listen",
-        "test", "dismiss", "clear", "debug",
-    ]
 
     static func isValidPresetName(_ name: String) -> Bool {
         guard let first = name.unicodeScalars.first, ("a"..."z").contains(first) else { return false }

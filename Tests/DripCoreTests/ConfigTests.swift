@@ -150,11 +150,39 @@ struct ConfigTests {
     /// `drip <name>` runs a subcommand by that name instead, so a preset cannot take the names of
     /// drip's subcommands, or of those it may have later.
     @Test func subcommandNamesAreReserved() {
-        for name in ["run", "hook", "history", "show", "help", "version", "setup", "config", "init", "install",
-                     "uninstall", "completion", "completions", "doctor", "mute", "pause", "resume", "listen", "test", "remote-hook"] {
+        for name in ConfigLoader.reservedNames.sorted() {
             assertError("\n[preset.\(name)]", line: 2, key: "preset.\(name)", message: "'\(name)' is kept for drip's own commands")
         }
     }
+
+    /// Every subcommand and alias is reserved, so a new subcommand cannot be forgotten.
+    @Test func everySubcommandIsReserved() {
+        for command in DripCommand.configuration.subcommands {
+            for name in [command.configuration.commandName].compactMap({ $0 }) + command.configuration.aliases
+            where !name.hasPrefix("_") {
+                #expect(ConfigLoader.reservedNames.contains(name), "\(name)")
+            }
+        }
+    }
+
+    /// Names of commands drip does not have are free for a preset.
+    @Test func namesOfNoCommandAreFree() throws {
+        for name in ["init", "install", "uninstall", "listen", "setup", "mute"] {
+            _ = try ConfigLoader.parse("\n[preset.\(name)]\ntitle = \"x\"\n", path: path)
+        }
+    }
+
+    #if !os(WASI)
+    @Test func theDocsListTheReservedNames() throws {
+        let text = try String(contentsOf: DripProcess.repo.appendingPathComponent("docs/config.md"), encoding: .utf8)
+        let start = try #require(text.range(of: "name kept for them:"))
+        let end = try #require(text.range(of: "A custom preset's ring", range: start.upperBound..<text.endIndex))
+        let listed = text[start.upperBound..<end.lowerBound].split(separator: "`").enumerated()
+            .filter { $0.offset % 2 == 1 }.map { String($0.element) }
+        #expect(Set(listed) == ConfigLoader.reservedNames)
+        #expect(listed.count == ConfigLoader.reservedNames.count)
+    }
+    #endif
 
     /// The top-level sound takes a name, a path or none, as DRIP_SOUND does, or false, which mutes.
     @Test func topLevelSound() throws {

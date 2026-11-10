@@ -120,6 +120,9 @@ extension AgentHook {
         case .nothing:
             note("card", "skip", [("reason", "no_card")])
             return nil
+        case let .unknown(name):
+            note("card", "skip", [("reason", "unknown_event"), ("event", name)])
+            return nil
         case var .clear(clear):
             if let origin { clear.id = origin.qualified(clear.id) }
             // You answered in the terminal: the card that said the agent needs you would only be
