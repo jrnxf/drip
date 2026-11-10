@@ -123,6 +123,42 @@ extension Sound: ExpressibleByArgument {
     }
 }
 
+/// The options that ask a question, which only `drip show` takes: `drip run` exits with its command's
+/// code and `drip hook` with 0 or 1, so nothing could read the answer.
+public struct QuestionOptions: ParsableArguments {
+    @Option(help: ArgumentHelp(
+        "Ask a question with a yes button of this label: drip waits up to 10 minutes, then exits 0 if it was clicked and 5 if no button was.",
+        valueName: "label"))
+    var yes: String?
+
+    @Option(help: ArgumentHelp(
+        "With --yes, a no button of this label to its left: drip exits 1 if it was clicked, and 5 if neither was.",
+        valueName: "label"))
+    var no: String?
+
+    public init() {}
+
+    /// Throws when the question is not one a card can ask. `open` is the card's `--open`.
+    func validate(open: String?) throws {
+        if let yes {
+            if open != nil {
+                throw ValidationError("--yes asks a question, so it opens nothing: give --open or --yes, not both")
+            }
+            if CardText.line(yes, limit: Defaults.buttonLimit) == nil {
+                throw ValidationError("--yes needs a label")
+            }
+        }
+        if let no {
+            if yes == nil {
+                throw ValidationError("--no needs --yes, the button that answers yes")
+            }
+            if CardText.line(no, limit: Defaults.buttonLimit) == nil {
+                throw ValidationError("--no needs a label")
+            }
+        }
+    }
+}
+
 /// Options shared by every command that shows a card. ArgumentParser lists the values of an option
 /// that has a fixed set, so its help does not.
 public struct CardOptions: ParsableArguments {
@@ -131,7 +167,7 @@ public struct CardOptions: ParsableArguments {
     var detail: String?
 
     @Option(name: .shortAndLong, help: ArgumentHelp(
-        "Seconds fully visible, excluding fades: 0.5 to 60. A card that stays or a question given a time counts it down instead of waiting. (default: 4.5)",
+        "Seconds fully visible, excluding fades: 0.5 to 60. A card that waits for a click counts it down instead of waiting. (default: 4.5)",
         valueName: "n"))
     var seconds: Double?
 
@@ -156,16 +192,6 @@ public struct CardOptions: ParsableArguments {
 
     @Option(help: ArgumentHelp("The --open button's label. (default: Open)", valueName: "label"))
     var button: String?
-
-    @Option(help: ArgumentHelp(
-        "Ask a question with a yes button of this label: drip waits up to 10 minutes, then exits 0 if it was clicked and 5 if no button was.",
-        valueName: "label"))
-    var yes: String?
-
-    @Option(help: ArgumentHelp(
-        "With --yes, a no button of this label to its left: drip exits 1 if it was clicked, and 5 if neither was.",
-        valueName: "label"))
-    var no: String?
 
     @Option(help: ArgumentHelp(
         "Names what the card is about: a newer card with the same id replaces it while it waits, or takes its place on screen.",
@@ -205,30 +231,6 @@ public struct CardOptions: ParsableArguments {
                 && URL(string: open) != nil
             if !valid { throw ValidationError("--open: '\(open)' is not a valid URL") }
         }
-        if let button {
-            if open == nil {
-                throw ValidationError("--button names the --open button, so it needs --open; to ask a question, use --yes")
-            }
-            if CardText.line(button, limit: Defaults.buttonLimit) == nil {
-                throw ValidationError("--button needs a label")
-            }
-        }
-        if let yes {
-            if open != nil {
-                throw ValidationError("--yes asks a question, so it opens nothing: give --open or --yes, not both")
-            }
-            if CardText.line(yes, limit: Defaults.buttonLimit) == nil {
-                throw ValidationError("--yes needs a label")
-            }
-        }
-        if let no {
-            if yes == nil {
-                throw ValidationError("--no needs --yes, the button that answers yes")
-            }
-            if CardText.line(no, limit: Defaults.buttonLimit) == nil {
-                throw ValidationError("--no needs a label")
-            }
-        }
         if let id, id.trimmingCharacters(in: .whitespaces).isEmpty || id.count > Defaults.idLimit {
             throw ValidationError("--id needs 1 to \(Defaults.idLimit) characters")
         }
@@ -243,18 +245,10 @@ public struct CardOptions: ParsableArguments {
         }
     }
 
-    /// Throws when the options ask a question, which `drip run` and `drip hook` cannot: nothing reads
-    /// the answer, as `drip run` exits with its command's code and `drip hook` with 0 or 1.
-    func rejectQuestion(in command: String) throws {
-        for (flag, label) in [("--yes", yes), ("--no", no)] where label != nil {
-            throw ValidationError(
-                "drip \(command) takes no \(flag): nothing reads the answer to its question. Ask with drip itself, as in: drip warn \"Deploy?\" --yes Deploy")
-        }
-    }
-
-    /// The parsed values, as a plain value. A `--yes` question is a button with nothing to open, and
+    /// The parsed values, as a plain value, with the `--yes` and `--no` labels of a command that can
+    /// ask a question (nil for one that cannot). A question is a button with nothing to open, and
     /// `--no` its second button.
-    public var flags: CardFlags {
+    public func flags(yes: String?, no: String?) -> CardFlags {
         let directory = FileManager.default.currentDirectoryPath
         // `--open "$CI_URL"` with the variable empty opens nothing, so the card has no button, and
         // `drip run` still runs its command.
@@ -266,6 +260,19 @@ public struct CardOptions: ParsableArguments {
             icon: icon.map { $0.resolved(from: directory) }, color: color, stay: stay, wait: wait, quiet: quiet,
             open: target, button: label, decline: open == nil ? no : nil, id: id, activate: activate,
             onClick: onClick)
+    }
+
+    /// Throws when `--button` has no `--open` to name or no label. A command that is `asking` can ask
+    /// a question, and says how.
+    func validateButton(asking: Bool) throws {
+        guard let button else { return }
+        if open == nil {
+            throw ValidationError("--button names the --open button, so it needs --open"
+                + (asking ? "; to ask a question, use --yes" : ""))
+        }
+        if CardText.line(button, limit: Defaults.buttonLimit) == nil {
+            throw ValidationError("--button needs a label")
+        }
     }
 
     /// What drip warns about before it shows the card: options that do nothing.
@@ -416,7 +423,17 @@ public struct ShowCommand: ParsableCommand {
 
     @OptionGroup public var options: CardOptions
 
+    @OptionGroup var question: QuestionOptions
+
+    /// The card options, with the question.
+    public var flags: CardFlags { options.flags(yes: question.yes, no: question.no) }
+
     public init() {}
+
+    public func validate() throws {
+        try options.validateButton(asking: true)
+        try question.validate(open: options.open)
+    }
 }
 
 /// `drip run [options] [--] <command> [args...]`
@@ -445,12 +462,18 @@ public struct RunCommand: ParsableCommand {
 
     public init() {}
 
+    /// The card options.
+    public var flags: CardFlags { options.flags(yes: nil, no: nil) }
+
     public func validate() throws {
-        try options.rejectQuestion(in: "run")
+        try options.validateButton(asking: false)
         // drip's options end where the command starts, so these are the only ones it can see.
         switch words.first {
         case "-h", "--help": throw CleanExit.helpRequest(Self.self)
         case let first? where first != "--" && first.hasPrefix("-"):
+            if let flag = CommandLineParser.questionFlag(first) {
+                throw ValidationError(CommandLineParser.noQuestion(flag, in: "run"))
+            }
             throw ValidationError("unknown option '\(first)'")
         default: break
         }
@@ -517,8 +540,11 @@ public struct HookCommand: ParsableCommand {
 
     public init() {}
 
+    /// The card options.
+    public var flags: CardFlags { options.flags(yes: nil, no: nil) }
+
     public func validate() throws {
-        try options.rejectQuestion(in: "hook")
+        try options.validateButton(asking: false)
         if agentName == nil {
             throw ValidationError("missing the agent: drip hook claude, drip hook codex or drip hook gemini")
         }
@@ -862,6 +888,7 @@ public struct RenderCommand: ParsableCommand {
     @Argument public var kind: String?
     @Argument public var title: String?
     @OptionGroup public var options: CardOptions
+    @OptionGroup var question: QuestionOptions
 
     @Option(help: "How large the card is drawn. (default: regular)")
     public var size: CardSize?
@@ -883,13 +910,18 @@ public struct RenderCommand: ParsableCommand {
 
     /// The card options, with the size and motion.
     public var flags: CardFlags {
-        var flags = options.flags
+        var flags = options.flags(yes: question.yes, no: question.no)
         flags.size = size
         flags.motion = motion
         return flags
     }
 
     public init() {}
+
+    public func validate() throws {
+        try options.validateButton(asking: true)
+        try question.validate(open: options.open)
+    }
 }
 
 /// `drip __background`: the drip a foreground one starts, which shows the cards it reads from stdin.
@@ -940,9 +972,11 @@ public enum CommandLineParser {
         if arguments.first == "help", let problem = helpProblem(Array(arguments.dropFirst())) {
             return .exit(status: ExitStatus.usage, message: usageMessage(problem))
         }
+        // Only the commands that show a card ask a question, so only they take --yes and --no.
+        let asking = arguments.first != HookCommand.configuration.commandName
         let attached = arguments.first == RunCommand.configuration.commandName
-            ? Array(arguments.prefix(1)) + attachingTextValues(Array(arguments.dropFirst()), untilCommand: true)
-            : attachingTextValues(arguments)
+            ? Array(arguments.prefix(1)) + attachingTextValues(Array(arguments.dropFirst()), untilCommand: true, asking: false)
+            : attachingTextValues(arguments, asking: asking)
         do {
             var command = try DripCommand.parseAsRoot(attached)
             switch command {
@@ -994,6 +1028,10 @@ public enum CommandLineParser {
             // Text such as "--- FAIL: TestFoo" read as an option: say where it goes instead.
             problem = "'\(text)' starts with a dash, so it reads as an option. Put text that starts with a "
                 + "dash after --, as in: drip fail -- '\(text)'"
+        }
+        if subcommand == HookCommand.configuration.commandName, message.hasPrefix("Unknown option '"),
+           let flag = message.split(separator: "'").dropFirst().first.flatMap({ questionFlag(String($0)) }) {
+            problem = noQuestion(flag, in: "hook")
         }
         if problem.hasSuffix(".") { problem.removeLast() }
         problem = problem.prefix(1).lowercased() + problem.dropFirst()
@@ -1086,15 +1124,27 @@ struct HelpSections {
 extension CommandLineParser {
     /// The options whose values are free text, often a script's own output.
     private static let textOptions = [
-        "-d": "--detail", "--detail": "--detail", "--button": "--button", "--yes": "--yes", "--no": "--no",
-        "--id": "--id",
+        "-d": "--detail", "--detail": "--detail", "--button": "--button", "--id": "--id",
     ]
+
+    /// The text options of the commands that ask a question.
+    private static let questionTextOptions = ["--yes": "--yes", "--no": "--no"]
+
+    /// `--yes` or `--no` as typed, with or without `=text`, else nil.
+    static func questionFlag(_ argument: String) -> String? {
+        questionTextOptions[String(argument.prefix { $0 != "=" })]
+    }
+
+    /// What drip run and drip hook say of a question, which nothing reads the answer to.
+    static func noQuestion(_ flag: String, in command: String) -> String {
+        "drip \(command) takes no \(flag): nothing reads the answer to its question. Ask with drip itself, as in: drip warn \"Deploy?\" --yes Deploy"
+    }
 
     /// Every card option that takes a value, so that `drip run` can tell an option's value from the
     /// command: in `drip run -s 3 make`, 3 is the value and make the command.
     static let valueOptions: Set<String> = [
         "-d", "--detail", "-s", "--seconds", "--sound", "--icon", "--color", "--open", "--button",
-        "--yes", "--no", "--id", "--activate", "--on-click",
+        "--id", "--activate", "--on-click",
     ]
 
     /// The first argument before `--` that starts with a dash but is text, not an option: it holds
@@ -1102,7 +1152,7 @@ extension CommandLineParser {
     static func dashLeadingText(in arguments: [String]) -> String? {
         arguments.prefix { $0 != "--" }.first { argument in
             argument.hasPrefix("-") && (argument.hasPrefix("---") || argument.contains(" "))
-                && !textOptions.values.contains { argument.hasPrefix($0 + "=") }
+                && !(Array(textOptions.values) + Array(questionTextOptions.values)).contains { argument.hasPrefix($0 + "=") }
         }
     }
 
@@ -1110,7 +1160,8 @@ extension CommandLineParser {
     /// with a dash, such as `-d "$err"` when the error reads "--- FAIL: TestFoo", is the option's
     /// value instead of an unknown option. Arguments after `--` are left alone, and so, when
     /// `untilCommand`, are `drip run`'s command and its arguments.
-    static func attachingTextValues(_ arguments: [String], untilCommand: Bool = false) -> [String] {
+    static func attachingTextValues(_ arguments: [String], untilCommand: Bool = false, asking: Bool = true) -> [String] {
+        let textOptions = asking ? textOptions.merging(questionTextOptions) { $1 } : textOptions
         var result: [String] = []
         var index = arguments.startIndex
         while index < arguments.endIndex {

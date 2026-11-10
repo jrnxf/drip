@@ -216,9 +216,9 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         warnings += command.options.warnings
         do {
             let card = try resolver.resolve(
-                kind: command.kind, title: command.title, rest: command.rest, flags: command.options.flags,
+                kind: command.kind, title: command.title, rest: command.rest, flags: command.flags,
                 standardInput: { input["stdin"] as? String })
-            return cards([card], wait: command.options.flags.wait)
+            return cards([card], wait: command.flags.wait)
         } catch { return failure(error) }
     case let .invocation(.run(command)):
         warnings += command.options.warnings
@@ -228,12 +228,12 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         do {
             let card = try resolver.resolveRun(
                 command: command.command, status: Int32(run["status"] ?? 0), seconds: run["seconds"] ?? 0,
-                flags: command.options.flags)
-            return cards([card], wait: command.options.flags.wait, extra: ["status": Int32(run["status"] ?? 0)])
+                flags: command.flags)
+            return cards([card], wait: command.flags.wait, extra: ["status": Int32(run["status"] ?? 0)])
         } catch { return failure(error) }
     case let .invocation(.hook(command)):
         warnings += command.options.warnings
-        var flags = command.options.flags
+        var flags = command.flags
         do {
             guard let payload = command.payload ?? input["stdin"] as? String else {
                 throw UsageError("no hook payload: pass it as an argument or on stdin")
