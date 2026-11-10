@@ -150,11 +150,35 @@ struct ConfigTests {
     /// `drip <name>` runs a subcommand by that name instead, so a preset cannot take the names of
     /// drip's subcommands, or of those it may have later.
     @Test func subcommandNamesAreReserved() {
-        for name in ["run", "hook", "history", "show", "help", "version", "setup", "config", "init", "install",
-                     "uninstall", "completion", "completions", "doctor", "mute", "pause", "resume", "listen", "test", "remote-hook"] {
+        for name in Self.reserved {
             assertError("\n[preset.\(name)]", line: 2, key: "preset.\(name)", message: "'\(name)' is kept for drip's own commands")
         }
     }
+
+    /// The names docs/config.md lists, which are the ones drip refuses.
+    private static let reserved = [
+        "run", "hook", "history", "show", "help", "version", "remote-hook", "config", "completion",
+        "completions", "doctor", "pause", "resume", "test", "dismiss", "clear", "debug",
+    ]
+
+    /// Names of commands drip does not have are free for a preset.
+    @Test func namesOfNoCommandAreFree() throws {
+        for name in ["init", "install", "uninstall", "listen", "setup", "mute"] {
+            _ = try ConfigLoader.parse("\n[preset.\(name)]\ntitle = \"x\"\n", path: path)
+        }
+    }
+
+    #if !os(WASI)
+    @Test func theDocsListTheReservedNames() throws {
+        let text = try String(contentsOf: DripProcess.repo.appendingPathComponent("docs/config.md"), encoding: .utf8)
+        let start = try #require(text.range(of: "a name kept for them:"))
+        let end = try #require(text.range(of: "A custom preset's ring", range: start.upperBound..<text.endIndex))
+        let listed = text[start.upperBound..<end.lowerBound].split(separator: "`").enumerated()
+            .filter { $0.offset % 2 == 1 }.map { String($0.element) }
+        #expect(Set(listed) == Set(Self.reserved))
+        #expect(listed.count == Self.reserved.count)
+    }
+    #endif
 
     /// The top-level sound takes a name, a path or none, as DRIP_SOUND does, or false, which mutes.
     @Test func topLevelSound() throws {

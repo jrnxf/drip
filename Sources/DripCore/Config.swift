@@ -336,9 +336,8 @@ private struct ConfigReader {
     /// The names a custom preset cannot take: drip's subcommands, and those it may have one day,
     /// since `drip <name>` would run the subcommand instead.
     static let reservedNames: Set<String> = [
-        "run", "hook", "history", "show", "help", "version", "setup", "remote-hook", "config", "init", "install",
-        "uninstall", "completion", "completions", "doctor", "mute", "pause", "resume", "listen",
-        "test", "dismiss", "clear", "debug",
+        "run", "hook", "history", "show", "help", "version", "remote-hook", "config", "completion",
+        "completions", "doctor", "pause", "resume", "test", "dismiss", "clear", "debug",
     ]
 
     static func isValidPresetName(_ name: String) -> Bool {

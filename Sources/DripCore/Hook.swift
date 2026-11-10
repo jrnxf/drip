@@ -190,6 +190,8 @@ public enum AgentHook {
         case clear(Clear)
         /// Nothing: an event drip has nothing to say about, such as a clear without a session.
         case nothing
+        /// An event name drip does not know, which a newer agent may send: no card, and no error.
+        case unknown(String)
     }
 
     /// `DRIP_HOOK`: `off` keeps `drip hook` silent, as an orchestrator sets for its background
@@ -313,9 +315,10 @@ public enum AgentHook {
         func project() -> String {
             directory.flatMap(projectName) ?? agent.displayName
         }
-        func unknown(_ name: String?, expected: String) -> UsageError {
-            let found = name.map { "'\($0)'" } ?? "with no hook_event_name"
-            return UsageError("unknown \(agent.rawValue) hook event \(found): expected \(expected)")
+        func unknown(_ name: String?, expected: String) throws -> Outcome {
+            // A named event drip does not know is a newer agent's, so it is no failure.
+            if let name { return .unknown(name) }
+            throw UsageError("unknown \(agent.rawValue) hook event with no hook_event_name: expected \(expected)")
         }
         let id = string("session_id").map { "\(agent.rawValue):\($0)" }
         func card(
@@ -374,7 +377,7 @@ public enum AgentHook {
             case "ElicitationResult":
                 return clear()
             case let name:
-                throw unknown(
+                return try unknown(
                     name, expected: "Notification, PermissionRequest, Stop, StopFailure, PostToolUse, "
                         + "PostToolUseFailure, UserPromptSubmit or ElicitationResult")
             }
@@ -404,7 +407,7 @@ public enum AgentHook {
             case "UserPromptSubmit":
                 return clear(startsTurn: true)
             default:
-                throw unknown(name, expected: "PermissionRequest, Stop, PostToolUse or UserPromptSubmit")
+                return try unknown(name, expected: "PermissionRequest, Stop, PostToolUse or UserPromptSubmit")
             }
         case .gemini:
             switch string("hook_event_name") {
@@ -418,7 +421,7 @@ public enum AgentHook {
             case "BeforeAgent":
                 return clear(startsTurn: true)
             case let name:
-                throw unknown(name, expected: "Notification, AfterAgent, AfterTool or BeforeAgent")
+                return try unknown(name, expected: "Notification, AfterAgent, AfterTool or BeforeAgent")
             }
         }
     }

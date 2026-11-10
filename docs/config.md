@@ -40,9 +40,9 @@ with the defaults, and exits with the command's code. `drip history`, `drip debu
 invalid `DRIP_DEBUG` counts as unset. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
-name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `setup`,
-`config`, `init`, `install`, `uninstall`, `completion`, `completions`, `doctor`, `mute`, `pause`,
-`resume`, `listen`, `test`, `dismiss`, `clear` or `debug`. A custom preset's ring shows no state's mark. Unknown keys print a warning;
+name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `remote-hook`,
+`config`, `completion`, `completions`, `doctor`, `pause`, `resume`, `test`, `dismiss`, `clear` or
+`debug`. A custom preset's ring shows no state's mark. Unknown keys print a warning;
 a wrong type or an invalid value prints a warning too, and that key keeps its default, so the card still
 shows.
 
