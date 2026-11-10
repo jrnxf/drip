@@ -337,8 +337,11 @@ struct ApprovalTests {
         func shown(_ lines: [String]) -> Card? {
             AgentHook.asking(plain) { _ in ShownText(title: ["api needs you"], detail: lines) }
         }
-        // Broken into lines at its spaces, each break one space: all of it.
-        #expect(shown(["Claude wants to run", "ls -la", "/home/user/api"]) != nil)
+        // Broken into lines at its spaces, each break one space between two words: all of it.
+        #expect(shown(["Claude wants to run", "ls -la /home/user/api"]) != nil)
+        // At a space, but with a `/`, a `-` or another mark beside the break: it can read as one word.
+        #expect(shown(["Claude wants to run", "ls -la", "/home/user/api"]) == nil)
+        #expect(shown(["Claude wants to run ls", "-la /home/user/api"]) == nil)
         #expect(shown(["Claude wants to run ls -la /home/user/api"]) != nil)
         // Broken inside a word, after a `/`, or with the space kept at either side of the break: a
         // reader cannot tell what stood at the break.
@@ -363,8 +366,8 @@ struct ApprovalTests {
 
     /// The lines a card drew for `rm -rf ~/ projects/old-build`, which deletes your home folder,
     /// and for `rm -rf ~/projects/old-build`, which does not: Core Text breaks after a `/` as well
-    /// as at a space. Only the first, broken at its space, may ask, and a break then always reads
-    /// as one space.
+    /// as at a space. Neither asks: the second is broken inside a word, and the first, though
+    /// broken at its space, still reads as one path, `~/` and `projects/old-build`.
     @Test func aBreakAfterASlashGivesNoAllow() throws {
         let start = "Claude wants to run cd " + String(repeating: "d", count: 27) + " && rm -rf ~/"
         let lines = [start, "projects/old-build"]
@@ -373,14 +376,14 @@ struct ApprovalTests {
             card.detail = command
             return AgentHook.asking(card) { _ in ShownText(title: ["api needs you"], detail: lines) } != nil
         }
-        #expect(asks(start + " projects/old-build"))
+        #expect(!asks(start + " projects/old-build"))
         #expect(!asks(start + "projects/old-build"))
     }
 
 #if canImport(CoreText)
     /// The same with Core Text choosing the breaks, as a card does, in the detail's font at the
     /// width of a card with Allow and Deny: for some lengths of the `d` run, it breaks the command
-    /// without the space after `~/`, and both commands then draw the same lines.
+    /// without the space after `~/`, and both commands then draw the same lines. Neither asks.
     @Test func coreTextBreaksAfterASlashAndThatGivesNoAllow() throws {
         let font = try #require(CTFontCreateUIFontForLanguage(.system, 12, nil))
         let attributes = [NSAttributedString.Key(kCTFontAttributeName as String): font]
@@ -409,7 +412,7 @@ struct ApprovalTests {
             else { continue }
             reproduced += 1
             #expect(!AgentHook.shows(joined, whole: drawn), "\(count) d")
-            #expect(AgentHook.shows(spaced, whole: drawn), "\(count) d")
+            #expect(!AgentHook.shows(spaced, whole: drawn), "\(count) d")
         }
         #expect(reproduced > 0, "both commands drawn the same, broken after the slash, at some length")
     }
@@ -418,7 +421,11 @@ struct ApprovalTests {
     @Test func linesShowATextWholeOnlyCharacterForCharacter() {
         #expect(AgentHook.shows("rm -rf build", whole: ["rm -rf build"]))
         #expect(AgentHook.shows("rm -rf build", whole: ["rm -rf", "build"]))
-        #expect(AgentHook.shows("rm -rf ~/ build", whole: ["rm -rf ~/", "build"]))
+        #expect(AgentHook.shows("rm -rf build dir", whole: ["rm -rf build", "dir"]))
+        #expect(!AgentHook.shows("rm -rf ~/ build", whole: ["rm -rf ~/", "build"]))
+        #expect(!AgentHook.shows("cd dir && ls", whole: ["cd dir &&", "ls"]))
+        #expect(!AgentHook.shows("cd dir && ls", whole: ["cd dir", "&& ls"]))
+        #expect(!AgentHook.shows("rm -rf / build", whole: ["rm -rf", "/ build"]))
         #expect(!AgentHook.shows("rm -rf ~/build", whole: ["rm -rf ~/", "build"]))
         #expect(!AgentHook.shows("rm -rf build-dir", whole: ["rm -rf build-", "dir"]))
         #expect(!AgentHook.shows("rm -rf build.dir", whole: ["rm -rf build.", "dir"]))

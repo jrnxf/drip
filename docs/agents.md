@@ -104,7 +104,8 @@ This covers:
 
 - any other tool, such as Write, Edit, WebFetch or an MCP tool
 - a command too long for the card
-- a command the card would break other than at a space, such as after a `/` or inside a long word
+- a command the card would break other than at a space between two letters or digits, such as
+  after a `/`, inside a long word, or before a `-`
 - a command with a line break, a tab, a run of spaces, or any character outside ASCII
 - an option that can change what runs, such as `dangerouslyDisableSandbox`
 

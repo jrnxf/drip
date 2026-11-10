@@ -13,7 +13,7 @@ Off by default: a stray click allows a command, and a hook that waits is a chang
 
 A permission card shows the command, file or tool, never only the agent's description of it.
 Allow appears only for a short shell command on one line, in plain ASCII, with no extra options,
-that the card breaks only at spaces. All other requests are asked in the terminal: other tools
+that the card breaks only at spaces between letters or digits. All other requests are asked in the terminal: other tools
 such as Write or an MCP tool, long commands, and commands with line breaks, tabs or non-ASCII
 characters. The card only tells, and the hook returns at once. The buttons take a click only once
 the card has been still for 0.4 seconds.

@@ -273,12 +273,16 @@ extension AgentHook {
     /// which the break drops, and the last line ends where `text` does, with no `…` cutting it
     /// short. A break anywhere else, such as after a `/` or a `-`, or inside a word too long for a
     /// line, fails: a reader could not tell whether a space stood there, and `rm -rf ~/ projects`
-    /// would read the same as `rm -rf ~/projects`.
+    /// would read the same as `rm -rf ~/projects`. A break must also have a letter or a digit on
+    /// each side: even at a space, `rm -rf ~/` over `projects/old-build` reads as one path.
     public static func shows(_ text: String, whole lines: [String]) -> Bool {
+        func isWord(_ character: Character?) -> Bool {
+            character.map { $0.isASCII && ($0.isLetter || $0.isNumber) } ?? false
+        }
         var rest = Substring(text)
         for (index, line) in lines.enumerated() {
             if index > 0 {
-                guard rest.first == " " else { return false }
+                guard rest.first == " ", isWord(lines[index - 1].last), isWord(line.first) else { return false }
                 rest = rest.dropFirst()
             }
             guard let first = line.first, let last = line.last, first != " ", last != " ", rest.hasPrefix(line) else {
