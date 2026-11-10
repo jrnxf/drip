@@ -123,11 +123,16 @@ public enum AgentHook {
         /// Whether the event is a permission request the agent takes an answer to from its hook, so
         /// the card can ask it with Allow and Deny when `approve` is on.
         public var asksPermission: Bool
+        /// What a permission request would do, read from the tool's own input: the command it would
+        /// run, else the file or the address it would work on, else the tool. Never the agent's own
+        /// description of the call, which can say anything: a card that answers the request shows
+        /// this instead. Nil for any other event.
+        public var request: String?
 
         public init(
             kind: String, title: String, detail: String? = nil, id: String? = nil, stays: Bool = false,
             waitsOn: String? = nil, isPermissionNotice: Bool = false, directory: String? = nil,
-            asksPermission: Bool = false
+            asksPermission: Bool = false, request: String? = nil
         ) {
             self.kind = kind
             self.title = title
@@ -138,6 +143,7 @@ public enum AgentHook {
             self.isPermissionNotice = isPermissionNotice
             self.directory = directory
             self.asksPermission = asksPermission
+            self.request = request
         }
 
         /// `flags` with what the event says where the command line says nothing: the session's id
@@ -315,7 +321,8 @@ public enum AgentHook {
             .card(Event(
                 kind: kind.name, title: "\(project()) \(title)", detail: detail, id: id, stays: stays,
                 waitsOn: stays ? waitsOn : nil, isPermissionNotice: isPermissionNotice, directory: directory,
-                asksPermission: asksPermission))
+                asksPermission: asksPermission,
+                request: asksPermission ? toolUse(object, agent: agent, directory: directory) : nil))
         }
         func clear(tool: String? = nil, alsoTool: String? = nil, keyed: Bool = false, startsTurn: Bool = false) -> Outcome {
             // A clear for one tool call that names none could take the wrong card: nothing then.
@@ -462,14 +469,17 @@ public enum AgentHook {
         return String(repeating: "0", count: 16 - digits.count) + digits
     }
 
-    /// What a permission request asks: its own description, else the command it would run, else
-    /// the file or the address the tool would work on, else the tool it would use.
+    /// What a permission request asks: its own description, else what `toolUse` reads.
     static func request(_ object: JSONValue, agent: Agent, directory: String?) -> String? {
+        object["tool_input"]?["description"].flatMap(nonBlank) ?? toolUse(object, agent: agent, directory: directory)
+    }
+
+    /// What a permission request would do, from the tool's input alone, never its description: the
+    /// command it would run, else the file or the address the tool would work on, else the tool it
+    /// would use. Nil when the payload names none of them.
+    static func toolUse(_ object: JSONValue, agent: Agent, directory: String?) -> String? {
         let name = agent.displayName
         let input = object["tool_input"]
-        if let description = input?["description"].flatMap(nonBlank) {
-            return description
-        }
         // A command is one string, or its words.
         let command = input?["command"].flatMap { $0.string ?? $0.elements?.compactMap(\.string).joined(separator: " ") }
         if let command = command.flatMap({ nonBlank(.string($0)) }) {

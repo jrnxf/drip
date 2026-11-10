@@ -48,6 +48,9 @@ extension AgentHook {
         public var now: () -> Date
         /// The drip that asks, as the debug log names it.
         public var process: DebugLog.Process
+        /// The lines a card shows, which tell whether a permission card shows its whole request:
+        /// measured as the card draws them on a Mac, estimated elsewhere.
+        public var shownText: (Card) -> ShownText
 
         public init(
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
@@ -55,9 +58,11 @@ extension AgentHook {
             resurface: @escaping (Card, Double) -> Void = { _, _ in }, away: @escaping () -> Bool = { false },
             loadConfig: @escaping ([String: String]) throws -> ConfigFile = { try ConfigLoader.load(environment: $0) },
             resolver: @escaping (ConfigFile, [String: String]) throws -> CardResolver, origin: Origin? = nil,
-            showsCards: Bool = true, now: @escaping () -> Date = Date.init, process: DebugLog.Process = .hook
+            showsCards: Bool = true, now: @escaping () -> Date = Date.init, process: DebugLog.Process = .hook,
+            shownText: @escaping (Card) -> ShownText = ShownText.init(estimating:)
         ) {
             self.process = process
+            self.shownText = shownText
             self.environment = environment
             self.hasGUISession = hasGUISession
             self.isInstalled = isInstalled
@@ -128,6 +133,9 @@ extension AgentHook {
             return nil
         case var .card(found):
             if let origin { found.id = found.id.map(origin.qualified) }
+            // With --approve, a permission card says what the call would do, never only what the
+            // agent says it does: a description can say anything about the command it describes.
+            if policy.approve, found.asksPermission, origin == nil { found.detail = found.request }
             event = found
         }
         let id = event.id
@@ -227,18 +235,49 @@ extension AgentHook {
             note("approve", "skip", eventFields + [("reason", "watching_terminal")])
             return shown
         }
+        // Allow on a card that cuts the command short, or cannot show all of it, would allow what
+        // you never saw: the card only tells, and the terminal asks.
+        guard let asking = asking(shown, request: event.request, shownText: surroundings.shownText) else {
+            note("approve", "skip", eventFields + [("reason", "request_not_shown_whole")])
+            return shown
+        }
         note("approve", "ask", eventFields + [("wait_seconds", "\(Int(Defaults.approveWait))")])
-        return asking(shown)
+        return asking
     }
 
     /// `card`, a permission card, with Allow and Deny: a click on either is the agent's answer, which
     /// `drip hook` prints as `Approval.output`. Nothing clicked in `Defaults.approveWait` seconds,
-    /// or a click on the card itself, leaves the answer to the terminal.
-    public static func asking(_ card: Card) -> Card {
+    /// or a click on the card itself, leaves the answer to the terminal. Its detail is `request`,
+    /// what the call would do, whatever detail it had. Nil when the card cannot show all of the
+    /// request, as `shownText` lays the card out: without one, when the request runs past the
+    /// detail's last line, or when it holds characters the card does not draw, which could hide part
+    /// of a command from you.
+    public static func asking(
+        _ card: Card, request: String?, shownText: (Card) -> ShownText = ShownText.init(estimating:)
+    ) -> Card? {
+        guard let request, isDrawable(request), let detail = CardText.line(request) else { return nil }
         var card = card
+        card.detail = detail
         card.action = CardAction(label: "Allow", open: nil, decline: "Deny")
         card.waitLimit = Defaults.approveWait
+        // Lines break at spaces, which they drop, or inside a word too long for a line.
+        let shown = shownText(card).detail.joined().filter { !$0.isWhitespace }
+        guard shown == detail.filter({ !$0.isWhitespace }) else { return nil }
         return card
+    }
+
+    /// Whether every character of `text` shows on a card as it is: no control character but line
+    /// breaks and tabs, which show as spaces, and no format character, such as a bidi control or a
+    /// zero-width space. A card drops the controls and the bidi controls, and the terminal escape
+    /// sequences they start with all the text inside, so a command could run more than it shows.
+    static func isDrawable(_ text: String) -> Bool {
+        text.unicodeScalars.allSatisfy { scalar in
+            switch scalar.properties.generalCategory {
+            case .control: return scalar == "\n" || scalar == "\t" || scalar == "\r"
+            case .format: return false
+            default: return true
+            }
+        }
     }
 
     /// Where the terminal is for `card`, asking about its pane only when that decides it: the
