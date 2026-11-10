@@ -13,7 +13,7 @@
 drip is a command that shows a card at your Mac's notch. Call it from a script, a build or a shell
 hook to say that something finished, failed or needs an answer.
 
-No permission prompt: drip draws its own card, not a Notification Center banner. drip returns at
+No Notifications permission: drip draws its own card, not a Notification Center banner. drip returns at
 once, so it never slows the script that calls it. On a Mac without a notch, the card grows out of
 the top edge of the screen.
 
@@ -25,9 +25,9 @@ the top edge of the screen.
 - **Slow shell commands.** A zsh recipe gives a card to any command that runs 10 seconds or more.
 - **Coding agents.** Recipes for Claude Code, Codex and Gemini CLI call `drip hook` to show a card when the agent needs you.
 - **Remote machines.** A Linux box you reach over ssh can raise its cards on your Mac.
-- **Nothing lost.** Cards that come up while the screen is locked play back when you return.
+- **Cards wait while the screen is locked.** They play back when you return.
 
-Requires macOS 13 or newer.
+Requires macOS 13 or newer. Tested on macOS 15 and 26.
 
 ## Install
 

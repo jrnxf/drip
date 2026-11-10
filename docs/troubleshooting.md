@@ -7,6 +7,11 @@ privacy grant. A custom icon or sound file in a protected folder can trigger a F
 prompt. drip adds no login item, and nothing runs in the background but the drip that is showing
 queued cards. A command you give `--on-click` runs as you, and asks for what it needs itself.
 
+**Local Network prompt.** `drip follow` runs ssh to the machine you name. If that machine is on your
+local network, macOS can ask once to let drip find devices on the local network. Allow it, or
+`drip follow` cannot connect. To change the answer, go to System Settings, Privacy & Security,
+Local Network. A card, `drip run` and the other commands never ask for it.
+
 **Which screen.** A card shows on the screen the pointer is on, with or without a notch, and falls
 back to the main screen. It also shows over full-screen apps and on every Space.
 
