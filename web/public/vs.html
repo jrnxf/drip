@@ -71,7 +71,7 @@
           "name": "Why is drip not in Notification Center?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "So it needs no permission and can show at the notch, where a glance finds it. The cost is that it does not follow Focus; drip pause holds cards for a while instead."
+            "text": "So it needs no Notifications permission and can show at the notch, where a glance finds it. The cost is that it does not follow Focus; drip pause holds cards for a while instead."
           }
         },
         {
@@ -97,7 +97,7 @@
     <article class="guide">
       <div class="lbl">guide / compared</div>
       <h1>drip vs terminal-notifier vs osascript <b>vs alerter.</b></h1>
-      <p class="answer">All four show something on a Mac from the shell. terminal-notifier, osascript and alerter post to Notification Center, so they follow Focus and stay in its list; drip draws its own card from the notch, needs no permission, times commands and comes with hooks for coding agents.</p>
+      <p class="answer">All four show something on a Mac from the shell. terminal-notifier, osascript and alerter post to Notification Center, so they follow Focus and stay in its list; drip draws its own card from the notch, needs no Notifications permission, times commands and comes with hooks for coding agents.</p>
       <pre><code>drip ok "build finished"                                        # drip
 terminal-notifier -title build -message finished                # terminal-notifier
 osascript -e 'display notification "finished" with title "build"'  # osascript
@@ -129,7 +129,7 @@ alerter --title build --message finished                        # alerter</code>
       <h3>Is drip a replacement for terminal-notifier?</h3>
       <p>For alerts about builds, deploys, tests and coding agents, yes. If you want notifications to wait in Notification Center's list and follow Focus, terminal-notifier does that and drip does not.</p>
       <h3>Why is drip not in Notification Center?</h3>
-      <p>So it needs no permission and can show at the notch, where a glance finds it. The cost is that it does not follow Focus; <code>drip pause</code> holds cards for a while instead.</p>
+      <p>So it needs no Notifications permission and can show at the notch, where a glance finds it. The cost is that it does not follow Focus; <code>drip pause</code> holds cards for a while instead.</p>
       <h3>Can I use drip and terminal-notifier together?</h3>
       <p>Yes. They do not touch each other's settings, so a script can call either.</p>
     </article>

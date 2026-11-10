@@ -5,7 +5,15 @@
 **No permissions.** drip uses only public APIs that need no permission, so a card needs no macOS
 privacy grant. A custom icon or sound file in a protected folder can trigger a Files and Folders
 prompt. drip adds no login item, and nothing runs in the background but the drip that is showing
-queued cards. A command you give `--on-click` runs as you, and asks for what it needs itself.
+queued cards, and the agent from `drip follow --launchd`, if you saved one. A command you give `--on-click` runs as you, and asks for what it needs itself.
+
+**Local Network prompt.** `drip follow` runs ssh to the machine you name. If that machine is on your
+local network, macOS can ask once to allow Local Network access. Run in a terminal, ssh is a child
+of that terminal, so the prompt and System Settings, Privacy & Security, Local Network name the
+terminal app, such as Ghostty or Terminal. Only a `drip follow --launchd` agent makes drip the
+process macOS asks about. Allow it, or `drip follow` cannot connect. If no prompt shows and ssh
+fails with "No route to host", read `~/Library/Logs/co.jrnxf.drip.follow.<name>.log` and check Local
+Network in System Settings. A card, `drip run` and the other commands never ask for it.
 
 **Which screen.** A card shows on the screen the pointer is on, with or without a notch, and falls
 back to the main screen. It also shows over full-screen apps and on every Space.
