@@ -15,7 +15,7 @@ struct ActionTests {
         guard case let .invocation(.show(command)) = CommandLineParser.parse(["ok", "t"] + arguments) else {
             return nil
         }
-        return command.options.flags
+        return command.flags
     }
 
     private func options(_ arguments: [String]) -> CardOptions? {
@@ -139,7 +139,7 @@ struct ActionTests {
                 }
                 // Any failure of drip hook exits 1, as an agent reads 2 as "block".
                 #expect(status == (prefix == ["run"] ? ExitStatus.usage : ExitStatus.hookFailed), "\(arguments)")
-                #expect(message.contains("--no needs --yes") || message.contains("takes no --yes"), "\(message)")
+                #expect(message.contains("unknown option"), "\(message)")
             }
             guard case .invocation = CommandLineParser.parse(prefix + ["--stay"] + (prefix == ["run"] ? ["make"] : ["{}"]))
             else { Issue.record("\(prefix) --stay did not parse"); continue }

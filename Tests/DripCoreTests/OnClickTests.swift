@@ -76,7 +76,7 @@ struct OnClickTests {
     func everyCardCommandTakesOnClick(_ arguments: [String]) throws {
         let flags: CardFlags
         switch CommandLineParser.parse(arguments) {
-        case let .invocation(.show(command)): flags = command.options.flags
+        case let .invocation(.show(command)): flags = command.flags
         case let .invocation(.run(command)): flags = command.options.flags
         case let .invocation(.hook(command)): flags = command.options.flags
         default: Issue.record("\(arguments)"); return

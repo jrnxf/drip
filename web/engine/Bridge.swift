@@ -216,9 +216,9 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         warnings += command.options.warnings
         do {
             let card = try resolver.resolve(
-                kind: command.kind, title: command.title, rest: command.rest, flags: command.options.flags,
+                kind: command.kind, title: command.title, rest: command.rest, flags: command.flags,
                 standardInput: { input["stdin"] as? String })
-            return cards([card], wait: command.options.flags.wait)
+            return cards([card], wait: command.flags.wait)
         } catch { return failure(error) }
     case let .invocation(.run(command)):
         warnings += command.options.warnings

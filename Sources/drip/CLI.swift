@@ -129,7 +129,7 @@ struct DripCLI {
     }
 
     private func show(_ command: ShowCommand) -> Int32 {
-        let flags = command.options.flags
+        let flags = command.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         do {

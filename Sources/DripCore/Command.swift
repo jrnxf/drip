@@ -123,6 +123,42 @@ extension Sound: ExpressibleByArgument {
     }
 }
 
+/// The options that ask a question, which only `drip show` takes: `drip run` exits with its command's
+/// code and `drip hook` with 0 or 1, so nothing could read the answer.
+public struct QuestionOptions: ParsableArguments {
+    @Option(help: ArgumentHelp(
+        "Ask a question with a yes button of this label: drip waits up to 10 minutes, then exits 0 if it was clicked and 5 if no button was.",
+        valueName: "label"))
+    var yes: String?
+
+    @Option(help: ArgumentHelp(
+        "With --yes, a no button of this label to its left: drip exits 1 if it was clicked, and 5 if neither was.",
+        valueName: "label"))
+    var no: String?
+
+    public init() {}
+
+    /// Throws when the question is not one a card can ask. `open` is the card's `--open`.
+    func validate(open: String?) throws {
+        if let yes {
+            if open != nil {
+                throw ValidationError("--yes asks a question, so it opens nothing: give --open or --yes, not both")
+            }
+            if CardText.line(yes, limit: Defaults.buttonLimit) == nil {
+                throw ValidationError("--yes needs a label")
+            }
+        }
+        if let no {
+            if yes == nil {
+                throw ValidationError("--no needs --yes, the button that answers yes")
+            }
+            if CardText.line(no, limit: Defaults.buttonLimit) == nil {
+                throw ValidationError("--no needs a label")
+            }
+        }
+    }
+}
+
 /// Options shared by every command that shows a card. ArgumentParser lists the values of an option
 /// that has a fixed set, so its help does not.
 public struct CardOptions: ParsableArguments {
@@ -131,7 +167,7 @@ public struct CardOptions: ParsableArguments {
     var detail: String?
 
     @Option(name: .shortAndLong, help: ArgumentHelp(
-        "Seconds fully visible, excluding fades: 0.5 to 60. A card that stays or a question given a time counts it down instead of waiting. (default: 4.5)",
+        "Seconds fully visible, excluding fades: 0.5 to 60. A card that waits for a click counts it down instead of waiting. (default: 4.5)",
         valueName: "n"))
     var seconds: Double?
 
@@ -156,16 +192,6 @@ public struct CardOptions: ParsableArguments {
 
     @Option(help: ArgumentHelp("The --open button's label. (default: Open)", valueName: "label"))
     var button: String?
-
-    @Option(help: ArgumentHelp(
-        "Ask a question with a yes button of this label: drip waits up to 10 minutes, then exits 0 if it was clicked and 5 if no button was.",
-        valueName: "label"))
-    var yes: String?
-
-    @Option(help: ArgumentHelp(
-        "With --yes, a no button of this label to its left: drip exits 1 if it was clicked, and 5 if neither was.",
-        valueName: "label"))
-    var no: String?
 
     @Option(help: ArgumentHelp(
         "Names what the card is about: a newer card with the same id replaces it while it waits, or takes its place on screen.",
@@ -207,26 +233,10 @@ public struct CardOptions: ParsableArguments {
         }
         if let button {
             if open == nil {
-                throw ValidationError("--button names the --open button, so it needs --open; to ask a question, use --yes")
+                throw ValidationError("--button names the --open button, so it needs --open")
             }
             if CardText.line(button, limit: Defaults.buttonLimit) == nil {
                 throw ValidationError("--button needs a label")
-            }
-        }
-        if let yes {
-            if open != nil {
-                throw ValidationError("--yes asks a question, so it opens nothing: give --open or --yes, not both")
-            }
-            if CardText.line(yes, limit: Defaults.buttonLimit) == nil {
-                throw ValidationError("--yes needs a label")
-            }
-        }
-        if let no {
-            if yes == nil {
-                throw ValidationError("--no needs --yes, the button that answers yes")
-            }
-            if CardText.line(no, limit: Defaults.buttonLimit) == nil {
-                throw ValidationError("--no needs a label")
             }
         }
         if let id, id.trimmingCharacters(in: .whitespaces).isEmpty || id.count > Defaults.idLimit {
@@ -243,18 +253,12 @@ public struct CardOptions: ParsableArguments {
         }
     }
 
-    /// Throws when the options ask a question, which `drip run` and `drip hook` cannot: nothing reads
-    /// the answer, as `drip run` exits with its command's code and `drip hook` with 0 or 1.
-    func rejectQuestion(in command: String) throws {
-        for (flag, label) in [("--yes", yes), ("--no", no)] where label != nil {
-            throw ValidationError(
-                "drip \(command) takes no \(flag): nothing reads the answer to its question. Ask with drip itself, as in: drip warn \"Deploy?\" --yes Deploy")
-        }
-    }
-
     /// The parsed values, as a plain value. A `--yes` question is a button with nothing to open, and
     /// `--no` its second button.
-    public var flags: CardFlags {
+    public var flags: CardFlags { flags(yes: nil, no: nil) }
+
+    /// The parsed values for a command that can ask a question, with its `--yes` and `--no` labels.
+    public func flags(yes: String?, no: String?) -> CardFlags {
         let directory = FileManager.default.currentDirectoryPath
         // `--open "$CI_URL"` with the variable empty opens nothing, so the card has no button, and
         // `drip run` still runs its command.
@@ -416,7 +420,16 @@ public struct ShowCommand: ParsableCommand {
 
     @OptionGroup public var options: CardOptions
 
+    @OptionGroup var question: QuestionOptions
+
+    /// The card options, with the question.
+    public var flags: CardFlags { options.flags(yes: question.yes, no: question.no) }
+
     public init() {}
+
+    public func validate() throws {
+        try question.validate(open: options.open)
+    }
 }
 
 /// `drip run [options] [--] <command> [args...]`
@@ -446,12 +459,15 @@ public struct RunCommand: ParsableCommand {
     public init() {}
 
     public func validate() throws {
-        try options.rejectQuestion(in: "run")
         // drip's options end where the command starts, so these are the only ones it can see.
         switch words.first {
         case "-h", "--help": throw CleanExit.helpRequest(Self.self)
         case let first? where first != "--" && first.hasPrefix("-"):
-            throw ValidationError("unknown option '\(first)'")
+            // Help wins over an option drip run does not take, as in drip run --yes Go --help.
+            if words.prefix(while: { $0 != "--" }).contains(where: { $0 == "-h" || $0 == "--help" }) {
+                throw CleanExit.helpRequest(Self.self)
+            }
+            throw ValidationError("unknown option '\(first.split(separator: "=", maxSplits: 1)[0])'")
         default: break
         }
         if command.isEmpty {
@@ -518,7 +534,6 @@ public struct HookCommand: ParsableCommand {
     public init() {}
 
     public func validate() throws {
-        try options.rejectQuestion(in: "hook")
         if agentName == nil {
             throw ValidationError("missing the agent: drip hook claude, drip hook codex or drip hook gemini")
         }
@@ -862,6 +877,7 @@ public struct RenderCommand: ParsableCommand {
     @Argument public var kind: String?
     @Argument public var title: String?
     @OptionGroup public var options: CardOptions
+    @OptionGroup var question: QuestionOptions
 
     @Option(help: "How large the card is drawn. (default: regular)")
     public var size: CardSize?
@@ -883,7 +899,7 @@ public struct RenderCommand: ParsableCommand {
 
     /// The card options, with the size and motion.
     public var flags: CardFlags {
-        var flags = options.flags
+        var flags = options.flags(yes: question.yes, no: question.no)
         flags.size = size
         flags.motion = motion
         return flags
@@ -982,16 +998,17 @@ public enum CommandLineParser {
                 text = text.split(separator: "\n", omittingEmptySubsequences: false)
                     .filter { !$0.hasPrefix("  --version ") }.joined(separator: "\n")
             }
-            if message == DripCommand.helpMessage(for: HookCommand.self) || message == DripCommand.helpMessage(for: RunCommand.self) {
-                // They parse --yes and --no only to say that nothing reads the answer.
-                text = droppingOptions(["--yes", "--no"], from: text)
-            }
             return .exit(status: ExitStatus.shown, message: HelpSections(text).usageFirst ?? text)
         }
         let subcommand = DripCommand.configuration.subcommands
             .first { $0.configuration.shouldDisplay && $0.configuration.commandName == arguments.first }
             .flatMap { $0.configuration.commandName }
         let status = subcommand == HookCommand.configuration.commandName ? ExitStatus.hookFailed : ExitStatus.usage
+        if let subcommand, message.hasPrefix("Unknown option"),
+           arguments.prefix(while: { $0 != "--" }).contains(where: { $0 == "-h" || $0 == "--help" }) {
+            // A help request wins over an option the command does not take, as in drip run --yes Go --help.
+            return parse([subcommand, "--help"])
+        }
         var problem = message
         if problem.hasPrefix("Invalid option") || problem.hasPrefix("Unknown option"),
            let text = dashLeadingText(in: arguments) {
@@ -1002,18 +1019,6 @@ public enum CommandLineParser {
         if problem.hasSuffix(".") { problem.removeLast() }
         problem = problem.prefix(1).lowercased() + problem.dropFirst()
         return .exit(status: status, message: usageMessage(problem, subcommand: subcommand))
-    }
-
-    /// The help without the entries of the named options: each starts with two spaces and the
-    /// option, and runs through the lines indented deeper.
-    static func droppingOptions(_ names: [String], from help: String) -> String {
-        var dropping = false
-        return help.split(separator: "\n", omittingEmptySubsequences: false).filter { line in
-            if line.hasPrefix("  -") || !line.hasPrefix("   ") {
-                dropping = names.contains { line.hasPrefix("  \($0) ") }
-            }
-            return !dropping
-        }.joined(separator: "\n")
     }
 
     /// What is wrong with the words after `drip help`, if anything: it takes at most one, a

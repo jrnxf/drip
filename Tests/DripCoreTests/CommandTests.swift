@@ -523,7 +523,7 @@ struct CommandTests {
     }
 
     private func flags(_ arguments: [String]) throws -> CardFlags {
-        try show(arguments).options.flags
+        try show(arguments).flags
     }
 
     private func run(_ arguments: [String]) throws -> RunCommand {
