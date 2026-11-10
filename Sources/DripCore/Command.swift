@@ -982,6 +982,10 @@ public enum CommandLineParser {
                 text = text.split(separator: "\n", omittingEmptySubsequences: false)
                     .filter { !$0.hasPrefix("  --version ") }.joined(separator: "\n")
             }
+            if message == DripCommand.helpMessage(for: HookCommand.self) || message == DripCommand.helpMessage(for: RunCommand.self) {
+                // They parse --yes and --no only to say that nothing reads the answer.
+                text = droppingOptions(["--yes", "--no"], from: text)
+            }
             return .exit(status: ExitStatus.shown, message: HelpSections(text).usageFirst ?? text)
         }
         let subcommand = DripCommand.configuration.subcommands
@@ -998,6 +1002,18 @@ public enum CommandLineParser {
         if problem.hasSuffix(".") { problem.removeLast() }
         problem = problem.prefix(1).lowercased() + problem.dropFirst()
         return .exit(status: status, message: usageMessage(problem, subcommand: subcommand))
+    }
+
+    /// The help without the entries of the named options: each starts with two spaces and the
+    /// option, and runs through the lines indented deeper.
+    static func droppingOptions(_ names: [String], from help: String) -> String {
+        var dropping = false
+        return help.split(separator: "\n", omittingEmptySubsequences: false).filter { line in
+            if line.hasPrefix("  -") || !line.hasPrefix("   ") {
+                dropping = names.contains { line.hasPrefix("  \($0) ") }
+            }
+            return !dropping
+        }.joined(separator: "\n")
     }
 
     /// What is wrong with the words after `drip help`, if anything: it takes at most one, a
