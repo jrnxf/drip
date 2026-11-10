@@ -56,7 +56,7 @@ extension AgentHook {
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
             front: @escaping (Card) -> WhenFocused.Front, paneShowing: @escaping (Card) -> Bool? = { _ in nil },
             resurface: @escaping (Card, Double) -> Void = { _, _ in }, away: @escaping () -> Bool = { false },
-            loadConfig: @escaping ([String: String]) throws -> ConfigFile = { try ConfigLoader.load(environment: $0) },
+            loadConfig: @escaping ([String: String]) throws -> ConfigFile = { ConfigLoader.loadLeniently(environment: $0) },
             resolver: @escaping (ConfigFile, [String: String]) throws -> CardResolver, origin: Origin? = nil,
             showsCards: Bool = true, now: @escaping () -> Date = Date.init, process: DebugLog.Process = .hook,
             shownText: @escaping (Card) -> ShownText = ShownText.init(estimating:)

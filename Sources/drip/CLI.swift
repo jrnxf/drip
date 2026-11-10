@@ -229,7 +229,7 @@ struct DripCLI {
             ssh: [environment["DRIP_SSH"].flatMap { $0.isEmpty ? nil : $0 } ?? "/usr/bin/ssh"],
             positionPath: FollowPosition.path(target: target, environment: environment))
         // The config is read with each event, but its warnings are said once.
-        let config = ConfigWarnedOnce(read: { try ConfigLoader.load(environment: $0) }, warn: console.warn)
+        let config = ConfigWarnedOnce(read: { ConfigLoader.loadLeniently(environment: $0) }, warn: console.warn)
         var local = surroundings(console)
         local.loadConfig = { try config.load(environment: $0) }
         local.resolver = { try self.makeResolver(console, file: $0, environment: $1, warn: false) }
@@ -601,7 +601,7 @@ struct DripCLI {
     private func makeResolver(
         _ console: Console, environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> CardResolver {
-        try makeResolver(console, file: ConfigLoader.load(environment: environment), environment: environment)
+        try makeResolver(console, file: ConfigLoader.loadLeniently(environment: environment), environment: environment)
     }
 
     /// The settings from a config file already read and the environment, printing the file's warnings

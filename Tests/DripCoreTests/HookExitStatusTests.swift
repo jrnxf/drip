@@ -53,7 +53,10 @@ struct HookExitStatusTests {
         }
     }
 
-    @Test(arguments: ["claude", "codex", "gemini"])
+    /// A broken config is only a warning, so with a GUI session the permission card shows and waits
+    /// for a click: the check runs where there is none to show it.
+    @Test(.enabled(if: !ExitCodeTests.hasGUISession, "a broken config shows the permission card, which waits for a click"),
+          arguments: ["claude", "codex", "gemini"])
     func aBrokenConfigNeverBlocksAPermission(agent: String) throws {
         let permission = agent == "gemini" ? Self.geminiPermission : Self.permission
         let outcome = try hook(agent, payload: Data(permission.utf8), config: "broken = [")

@@ -16,6 +16,8 @@ public enum ExitStatus {
     /// A mistake on the command line, or in a `DRIP_*` variable. Nothing else exits 2.
     public static let usage: Int32 = 2
     public static let noGUISession: Int32 = 3
+    /// Kept for a command whose job is to check the config file. Every other command warns about a
+    /// bad key and goes on with its default.
     public static let invalidConfig: Int32 = 4
     /// drip asked with `--yes` and no button was clicked: the card timed out, a newer card with the
     /// same id replaced it, or it was clicked off its buttons. Only a question exits 5.
@@ -31,8 +33,8 @@ public enum ExitStatus {
     public static let hookFailed = failed
     /// `drip watching`: you are not watching the terminal.
     public static let notWatching = failed
-    /// `drip watching`: drip cannot tell, as it has no terminal app or GUI session to look at, or
-    /// cannot read its config. A script reads it as not watching, so its card shows.
+    /// `drip watching`: drip cannot tell, as it has no terminal app or GUI session to look at. A
+    /// script reads it as not watching, so its card shows.
     public static let cannotTell = failed
 
     /// What a drip that waited for its cards exits with: 5 when a question went without a click on
@@ -56,7 +58,7 @@ public enum ExitStatus {
         Row(code: failed, meaning: "A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure."),
         Row(code: usage, meaning: "Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2."),
         Row(code: noGUISession, meaning: "No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1."),
-        Row(code: invalidConfig, meaning: "The config file is invalid. `drip hook` and `drip watching` exit 1 then."),
+        Row(code: invalidConfig, meaning: "Kept for a command that checks the config file and finds it invalid. Every other command warns on stderr and goes on with the default for each bad key, or for every key when drip cannot read the file."),
         Row(code: notClicked, meaning: "drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not."),
     ]
 
@@ -557,7 +559,7 @@ public struct WatchingCommand: ParsableCommand {
             Exits 0 when you are likely watching: the terminal is in front and you used the keyboard or \
             mouse within away_after seconds, and with --pane, that tmux pane is the one showing. \
             Exits 1 when you are not, and also when drip cannot tell, such as without a pane or app to \
-            look at, without a GUI session, or with an invalid config: it then says why on stderr. \
+            look at or without a GUI session: it then says why on stderr. \
             It exits 2 only for a usage error. It is what drip's own cards ask before they show. The \
             pane and app default to the tmux pane and the app drip runs in. Use it to keep a recipe \
             quiet while you watch: drip watching || drip ok "tests passed"

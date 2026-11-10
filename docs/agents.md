@@ -171,9 +171,10 @@ DRIP_HOOK=attention claude                       # only the cards that need you
 
 Without a GUI session, as when you run the agent over ssh, there is nothing to show: drip prints
 nothing and exits 0, so the agent shows no hook error after every turn. Any failure, from a usage
-error to a payload it cannot read or an invalid config, exits 1: Claude Code and Codex read exit 2
+error to a payload it cannot read, exits 1: Claude Code and Codex read exit 2
 as "block", and Gemini CLI reads any code but 0 and 1 that way, which after a turn makes it run the
-turn again. drip reads up to 4 MB of payload, and prints nothing on success but the answer a click
+turn again. An invalid config is no failure: drip warns on stderr and shows the card with the default
+for each bad key. drip reads up to 4 MB of payload, and prints nothing on success but the answer a click
 gives on a card that approves. A hook that takes a waiting card away reads one small file when no
 card waits, so the hooks that run on every tool call cost next to nothing. drip keeps what each
 session waits on, where it runs, and when its turn started, in `$XDG_STATE_HOME/drip/agents`, or
@@ -198,7 +199,7 @@ Says by its exit status whether you are watching a terminal now. It uses the det
 | Exit | Meaning |
 | --- | --- |
 | 0 | Watching: the terminal is in front, its tmux pane shows when a pane is given, and you used the keyboard or mouse within `away_after` |
-| 1 | Not watching, or drip cannot tell: no terminal app to look at, no GUI session, or an invalid config |
+| 1 | Not watching, or drip cannot tell: no terminal app to look at or no GUI session |
 | 2 | Usage error |
 
 `--pane` defaults to `$TMUX_PANE`, and `--app` to the app drip runs in. It prints nothing on stdout.

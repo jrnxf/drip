@@ -43,9 +43,11 @@ what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip'
 name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `setup`,
 `config`, `init`, `install`, `uninstall`, `completion`, `completions`, `doctor`, `mute`, `pause`,
 `resume`, `listen`, `test`, `dismiss`, `clear` or `debug`. A custom preset's ring shows no state's mark. Unknown keys print a warning;
-wrong types exit 4.
+a wrong type or an invalid value prints a warning too, and that key keeps its default, so the card still
+shows.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
 of one or two keys such as `[preset.ok]`, and values that are single-line strings, decimal
 integers, floats or booleans. Any other TOML syntax, such as arrays, inline tables, dotted keys or
-multi-line strings, exits 4 with the line, and so does a file larger than 1 MB.
+multi-line strings, prints a warning with the line, and every key keeps its default. So does a file
+larger than 1 MB.
