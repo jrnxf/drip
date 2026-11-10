@@ -68,6 +68,82 @@ final class HistoryTests {
         #expect(lines.count == 3)
     }
 
+    @Test func clearEmptiesTheHistoryAndLeavesHeldCards() throws {
+        let directory = try scratch()
+        let history = CardHistory(path: directory + "/history.jsonl")
+        let held = HeldCards(directory: directory)
+        try history.clear()
+        #expect(!FileManager.default.fileExists(atPath: history.path))
+        try history.record([card("one"), card("two")], missed: false)
+        _ = try held.admit([card("held")], locked: true, pid: getpid())
+        try history.clear()
+        #expect(history.entries().isEmpty)
+        #expect(try held.release().map(\.title) == ["held"])
+        try history.record([card("three")], missed: false)
+        #expect(history.entries().map(\.card.title) == ["three"])
+    }
+
+    @Test func aHistoryOfZeroKeepsNothingAndHoldingStillWorks() throws {
+        let directory = try scratch()
+        let history = CardHistory(path: directory + "/history.jsonl", limit: 0)
+        try history.record([card("one")], missed: false)
+        #expect(history.entries().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: history.path))
+        let held = HeldCards(directory: directory)
+        _ = try held.admit([card("held")], locked: true, pid: getpid())
+        #expect(try held.release().map(\.title) == ["held"])
+    }
+
+    @Test func aLowerLimitTrimsOnTheNextRecordAndZeroLeavesTheFileAlone() throws {
+        let path = try scratch() + "/history.jsonl"
+        try CardHistory(path: path).record([card("a"), card("b"), card("c")], missed: false)
+        try CardHistory(path: path, limit: 2).record([card("d")], missed: false)
+        #expect(CardHistory(path: path).entries().map(\.card.title) == ["c", "d"])
+        // 0 does not record the card, and does not touch what was kept before.
+        try CardHistory(path: path, limit: 0).record([card("e")], missed: false)
+        #expect(CardHistory(path: path).entries().map(\.card.title) == ["c", "d"])
+    }
+
+    @Test func theHistorySizeComesFromTheEnvironmentThenTheConfigThenTheDefault() throws {
+        func limit(_ environment: [String: String] = [:], _ config: String = "") throws -> Int {
+            try CardResolver(
+                config: ConfigLoader.parse(config, path: "config.toml").config,
+                environment: EnvironmentSettings(environment: environment)
+            ).historyLimit
+        }
+        #expect(try limit() == 1000)
+        #expect(try limit([:], "history = 50") == 50)
+        #expect(try limit([:], "history = 0") == 0)
+        #expect(try limit(["DRIP_HISTORY": "7"], "history = 50") == 7)
+        #expect(try limit(["DRIP_HISTORY": "0"], "history = 50") == 0)
+        // A valid history survives a warning-only config: an unknown key is not an error.
+        #expect(try limit([:], "history = 0\nsurprise = 1") == 0)
+    }
+
+    @Test func theHistorySizeIsCheckedLikeStackMax() throws {
+        #expect(try EnvironmentSettings(environment: ["DRIP_HISTORY": "12"]) == EnvironmentSettings(history: 12))
+        for value in ["1001", "-1", "2.5", "lots"] {
+            #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_HISTORY": value]) }
+        }
+        #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_STACK_MAX": "7"]) }
+        #expect(throws: ConfigError.self) { try ConfigLoader.parse("history = 1001", path: "config.toml") }
+        #expect(throws: ConfigError.self) { try ConfigLoader.parse("history = -1", path: "config.toml") }
+        #expect(throws: ConfigError.self) { try ConfigLoader.parse("history = \"all\"", path: "config.toml") }
+        #expect(throws: ConfigError.self) { try ConfigLoader.parse("stack_max = 7", path: "config.toml") }
+    }
+
+    @Test func aLockedScreenRecordsWithTheLimitItCarries() throws {
+        let path = try scratch() + "/history.jsonl"
+        let cards = [card("a"), card("b"), card("c")]
+        try LockedScreen.wait(record: true, history: 2).record(cards, missed: false, in: CardHistory(path: path))
+        #expect(CardHistory(path: path).entries().map(\.card.title) == ["b", "c"])
+        try LockedScreen.pool(record: true, history: 0).record([card("d")], missed: false, in: CardHistory(path: path))
+        #expect(CardHistory(path: path).entries().map(\.card.title) == ["b", "c"])
+        var request = BackgroundRequest(cards: cards, history: 0)
+        request = try BackgroundRequest.decode(request.encoded())
+        #expect(request.locked == .pool(record: true, history: 0))
+    }
+
     @Test func theJSONListingIsFlat() throws {
         var deploy = card("deployed", kind: "deploy")
         deploy.detail = "api 1.4.2"
@@ -320,19 +396,20 @@ final class HistoryTests {
         let replay = BackgroundRequest(cards: before.map(HistoryListing.replay), record: false)
         let received = try BackgroundRequest.decode(replay.encoded())
         try received.locked.record(received.cards, missed: true, in: history)
-        try LockedScreen.wait(record: received.record).record(received.cards, missed: false, in: history)
+        try LockedScreen.wait(record: received.record, history: received.historyLimit).record(received.cards, missed: false, in: history)
         #expect(history.entries() == before)
         // A card sent as usual is recorded, by either path.
         let sent = try BackgroundRequest.decode(BackgroundRequest(cards: [card("c")]).encoded())
         try sent.locked.record(sent.cards, missed: true, in: history)
-        try LockedScreen.wait(record: sent.record).record([card("d")], missed: false, in: history)
+        try LockedScreen.wait(record: sent.record, history: sent.historyLimit).record([card("d")], missed: false, in: history)
         #expect(history.entries().map(\.card.title) == ["a", "b", "c", "d"])
     }
 
     @Test func aRequestWithoutRecordIsRecorded() throws {
         let request = try BackgroundRequest.decode(Data(#"{"cards":[]}"#.utf8))
         #expect(request.record)
-        #expect(request.locked == .pool(record: true))
+        #expect(request.locked == .pool(record: true, history: Defaults.history))
+        #expect(request.historyLimit == Defaults.history)
     }
 
     // MARK: Holding cards while the screen is locked

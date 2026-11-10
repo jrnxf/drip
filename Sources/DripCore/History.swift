@@ -115,8 +115,6 @@ public struct HistoryEntry: Equatable, Sendable, Codable {
 /// Every card drip showed or held, newest last, as one JSON object per line. The oldest entries go
 /// once there are more than `limit`.
 public struct CardHistory {
-    /// The most entries kept.
-    public static let limit = 1000
     /// The most characters of a title or a detail an entry keeps. A hook card's detail is the
     /// agent's whole last message, and every card rewrites the file.
     public static let textLimit = 16 * 1024
@@ -124,7 +122,7 @@ public struct CardHistory {
     public var path: String
     public var limit: Int
 
-    public init(path: String, limit: Int = CardHistory.limit) {
+    public init(path: String, limit: Int = Defaults.history) {
         self.path = path
         self.limit = limit
     }
@@ -134,14 +132,24 @@ public struct CardHistory {
         self.init(path: (StateDirectory.path(environment: environment) as NSString).appendingPathComponent("history.jsonl"))
     }
 
-    /// Adds the cards, dropping the oldest entries beyond `limit`. Safe to call from many drips at once.
+    /// Empties the history. Held cards are a separate file and stay.
+    public func clear() throws {
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        try StateFiles.locked(path) {
+            guard FileManager.default.fileExists(atPath: path) else { return }
+            try StateFiles.write("", toPath: path)
+        }
+    }
+
+    /// Adds the cards, dropping the oldest entries beyond `limit`. A `limit` of 0 records nothing and
+    /// leaves the file as it is. Safe to call from many drips at once.
     ///
     /// - Parameter shown: The lines a card shows, measured with the card's own fonts and width;
     ///   without one, or when it answers nil, the entry keeps none and the listing estimates them.
     public func record(
         _ cards: [Card], missed: Bool, at time: Date = Date(), shown: (Card) -> ShownText? = { _ in nil }
     ) throws {
-        guard !cards.isEmpty else { return }
+        guard !cards.isEmpty, limit > 0 else { return }
         let added = try cards.map { card in
             var kept = card
             kept.title = CardText.truncate(card.title, limit: Self.textLimit)

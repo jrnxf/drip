@@ -9,7 +9,7 @@ drip hook claude|codex|gemini [options] [payload]
 drip watching [--pane ID] [--app BUNDLE-ID]
 drip remote-hook
 drip follow <ssh-target> [options]
-drip history [--missed] [-n N | --all] [--json | --replay]
+drip history [--missed] [-n N | --all] [--json | --replay] [--clear]
 drip debug [--clear]
 drip dismiss [--id ID]
 drip pause [DURATION]
@@ -201,7 +201,9 @@ screen is locked, keeps waiting until the unlock and then shows its card on its 
 
 Every card is also kept in `$XDG_STATE_HOME/drip/history.jsonl`, or
 `~/.local/state/drip/history.jsonl`, one JSON object per line, readable only by you. drip keeps
-the last 1000 cards.
+the last 1000 cards. Set `history` in the config, or `DRIP_HISTORY`, to a number from 0 to 1000 to
+keep fewer. With 0, drip stops recording cards, but cards kept before stay: run `drip history --clear` to
+delete them. A lower number trims the file when the next card is recorded. Cards held for a locked screen or a pause still play back.
 
 ```sh
 drip history                  # the last 20 cards, newest first, as they showed
@@ -210,6 +212,7 @@ drip history --all            # every kept card
 drip history --missed         # only those that came up while the screen was locked or drip was paused
 drip history --json           # every card, oldest first, one JSON object per line, for scripts
 drip history --missed --replay   # show the missed cards again
+drip history --clear          # delete every kept card
 ```
 
 The listing shows each card as it showed on screen, newest first: how long ago it came up, then a

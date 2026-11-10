@@ -25,6 +25,9 @@ public struct CardResolver {
         self.environment = environment
     }
 
+    /// How many cards the history keeps: `DRIP_HISTORY`, then the config's `history`, then the default.
+    public var historyLimit: Int { environment.history ?? config.history ?? Defaults.history }
+
     /// Resolves `drip [KIND] [TITLE] [options]` into a card.
     ///
     /// The first positional is the kind when it names a preset; otherwise it is the title and the

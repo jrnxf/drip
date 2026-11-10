@@ -34,7 +34,11 @@ the folder it runs in, each forgotten after 10 minutes, and where `drip follow` 
 machine's queue.
 The history, `~/.local/state/drip/history.jsonl`, is readable only by you and keeps the last 1000
 cards. It holds each card's title and detail, up to 16,384 characters of each, so a card from a
-coding agent keeps the agent's last message. Delete the file to clear it.
+coding agent keeps the agent's last message. Run `drip history --clear` to delete every card in it.
+To keep fewer cards, or none, set `history` in the config or `DRIP_HISTORY` to a number from 0 to 1000.
+With 0, drip stops recording cards, but cards kept before stay: run `drip history --clear` to delete
+them. A lower number trims the file when the next card is recorded.
+Cards held for a locked screen or a pause still play back with 0.
 
 ## Debug log
 
