@@ -615,7 +615,7 @@ final class StackPresenter: CardPresenting {
             if hovering { IslandLayers.pause(layers.ringProgress, paused: true) }
         }
         for left in changes.left {
-            if left.entry.own, left.entry.card.action != nil, !left.clicked { CardActions.missed = true }
+            if left.entry.own, left.entry.card.goesUnanswered(clicked: left.clicked) { CardActions.missed = true }
             drawings[left.entry.id]?.layers.showPointer(nil)
             drawings[left.entry.id]?.layers.fade(left.cues, into: false, at: started + left.time)
         }
@@ -800,7 +800,7 @@ final class StackPresenter: CardPresenting {
     /// Notes this drip's own card that went before it ever showed: a button on it was never clicked,
     /// and a question on it goes unanswered.
     private func neverShown(_ card: Card?) {
-        if card?.action != nil { CardActions.missed = true }
+        if card?.goesUnanswered(clicked: false) == true { CardActions.missed = true }
     }
 
     /// When a pause starts while a background drip shows cards, as for a screen share, takes them

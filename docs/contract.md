@@ -1,8 +1,8 @@
 # What scripts can rely on
 
-This page lists what drip keeps stable for scripts and other tools. A change that breaks one of
-these comes only in a new major version, and the release notes say so. Everything else can change in
-any release.
+This page lists what drip keeps stable for scripts and other tools. Before 1.0, a break comes only
+in a new minor version, and the release notes say so. From 1.0, a break comes only in a new major
+version. Everything else can change in any release.
 
 ## Public
 
@@ -13,15 +13,17 @@ any release.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | The card was shown, or handed off to be shown without `--wait`; a question was answered yes. |
-| 1 | A question was answered no; `drip hook` could not make a card; or `drip pause`, `drip resume`, `drip dismiss` or `drip follow` could not do its work. |
-| 2 | Usage error. `drip hook` never exits 2. |
-| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then. |
-| 4 | The config file is invalid. |
-| 5 | drip asked with `--yes` and waited, but no button was clicked. |
+| 0 | The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching. |
+| 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
+| 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2. |
+| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. |
+| 4 | The config file is invalid. `drip hook` and `drip watching` exit 1 then. |
+| 5 | drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not. |
 
-`drip run` exits with the wrapped command's exit code, 127 when it is not found. [Exit
-codes](usage.md#exit-codes) has every case.
+`drip run` exits with the wrapped command's exit code instead, 127 when it is not found.
+
+[Exit codes](usage.md#exit-codes) shows the same table, and says when `drip run` and `--wait`
+exit.
 
 **`drip history --json`.** One JSON object per line, oldest first: `time` (ISO 8601), `missed`
 (true or false) and `card`. `card` writes each setting the way its flag takes it, and leaves out

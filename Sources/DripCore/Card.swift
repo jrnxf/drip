@@ -304,6 +304,12 @@ public struct Card: Equatable, Sendable, Codable {
         action != nil && action?.open == nil
     }
 
+    /// Whether the card went unanswered, so that drip exits 5: it asked a question, and its button was
+    /// not clicked. A card with an `--open` button asks nothing, so it never goes unanswered.
+    public func goesUnanswered(clicked: Bool) -> Bool {
+        asksQuestion && !clicked
+    }
+
     /// Whether the card waits for an answer to its question: it never gives way to another card,
     /// and stays until it is answered, replaced or its wait limit runs out.
     public var waitsForAnswer: Bool {

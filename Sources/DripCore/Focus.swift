@@ -126,7 +126,7 @@ public enum Watching {
         /// drip has no terminal app to look at.
         case unknown
 
-        /// 0 for watching, 1 for not, 2 for cannot tell.
+        /// 0 for watching, 1 for not or cannot tell, which a script takes for not, so its card shows.
         public var status: Int32 {
             switch self {
             case .watching: return ExitStatus.shown

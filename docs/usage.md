@@ -277,7 +277,8 @@ script's log, and `drip hook`, print nothing about it, and `--quiet` keeps it qu
 moved; moving away gives it another 1.5 seconds. The
 button stands where the countdown ring would be. A click on the button opens the target and takes the card
 away; a click anywhere else on the card brings the sending app forward (see [Clicks](#clicks)) and
-takes the card away. Clicking the button never takes focus from the app you are in.
+takes the card away. Clicking the button never takes focus from the app you are in. A link button
+asks nothing: with `--wait`, drip exits 0 once the card has gone, clicked or not.
 
 `--yes` asks a question instead: the card has a button with that label and opens nothing, and drip
 waits, then exits 0 if the button was clicked. `--no` adds a quieter button to its left that
@@ -376,17 +377,19 @@ runs at once, and the cards still in the stack play out without it.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | The card was shown; a question was answered yes, the moment it was clicked. |
-| 1 | A question was answered no, the moment it was clicked; `drip hook` could not make a card, for any reason but no GUI session; `drip pause` or `drip resume` could not write the pause; `drip dismiss` could not write its request; or `drip follow` could not start, as when it cannot write its state directory. |
-| 2 | Usage error. |
-| 3 | No GUI session, for example over ssh; `drip hook` exits 0 then. |
-| 4 | The config file is invalid; the message names the key and line. |
-| 5 | drip asked with `--yes` and waited, but no button was clicked. |
+| 0 | The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching. |
+| 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
+| 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2. |
+| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. |
+| 4 | The config file is invalid. `drip hook` and `drip watching` exit 1 then. |
+| 5 | drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not. |
 
-Without `--wait`, 0 means the card was handed off to be shown. `drip run` exits with the wrapped
-command's exit code (127 when it is not found) as soon as the command ends, once its card has
-gone with `--wait`, or once a `--yes` question is answered or goes unanswered. When Ctrl-C ends the command, drip ends with the same
-signal, so the script that ran it stops too. A usage error exits 2 before the command runs.
+`drip run` exits with the wrapped command's exit code instead, 127 when it is not found.
+
+Without `--wait`, 0 means the card was handed off to be shown. `drip run` exits as soon as the
+command ends, once its card has gone with `--wait`, or once a `--yes` question is answered or goes
+unanswered. When Ctrl-C ends the command, drip ends with the same signal, so the script that ran it
+stops too. A usage error exits 2 before the command runs.
 
 ## Alert when a command finishes
 

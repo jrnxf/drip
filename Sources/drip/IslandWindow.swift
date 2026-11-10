@@ -1378,7 +1378,7 @@ final class IslandPresenter: CardPresenting {
         self.departure = nil
         pending?.cancel()
         holdLimit?.cancel()
-        if card.action != nil, !clicked { CardActions.missed = true }
+        if card.goesUnanswered(clicked: clicked) { CardActions.missed = true }
         layers?.showPointer(nil)
         stopWatchingPointer()
         departure()

@@ -4,7 +4,7 @@ import DripCore
 
 /// What a click on a card does.
 enum CardActions {
-    /// Set when a card with a button went away without the button being clicked.
+    /// Set when a question went away without a click on its buttons: see `Card.goesUnanswered`.
     static var missed = false
     /// Set when a question was answered no.
     static var declined = false
