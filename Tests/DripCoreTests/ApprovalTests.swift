@@ -461,14 +461,14 @@ struct ApprovalTests {
     @Test func anUnknownEventShowsNoCardAndClearsNone() throws {
         let surroundings = local()
         _ = try #require(try AgentHook.card(agent: .claude, payload: Self.claude, in: surroundings))
-        let waiting = try #require(surroundings.state.waiting(id: "claude:s1", now: now))
+        let waiting = try #require(AgentState(environment: surroundings.environment).waiting(id: "claude:s1", now: now))
         let unknown = [
             (AgentHook.Agent.claude, #"{"session_id":"s1","hook_event_name":"Nope"}"#),
             (AgentHook.Agent.codex, #"{"session_id":"s1","type":"approval-requested"}"#),
         ]
         for (agent, payload) in unknown {
             #expect(try AgentHook.card(agent: agent, payload: payload, in: surroundings) == nil, "\(agent)")
-            #expect(surroundings.state.waiting(id: "claude:s1", now: now)?.tool == waiting.tool, "\(agent)")
+            #expect(AgentState(environment: surroundings.environment).waiting(id: "claude:s1", now: now)?.tool == waiting.tool, "\(agent)")
         }
     }
 
