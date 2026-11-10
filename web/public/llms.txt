@@ -1,6 +1,6 @@
 # drip
 
-> Free, open-source macOS CLI (MIT). drip shows a native card from your Mac's notch, or the top of a screen without one, when a command or coding agent finishes or needs you. It is not Notification Center, so it needs no permissions. macOS 13+. Install: `brew install jrnxf/tap/drip`.
+> Free, open-source macOS CLI (MIT). drip shows a native card from your Mac's notch, or the top of a screen without one, when a command or coding agent finishes or needs you. It is not Notification Center, so it needs no Notifications permission. macOS 13+. Install: `brew install jrnxf/tap/drip`.
 
 ## Docs
 
