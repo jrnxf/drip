@@ -13,9 +13,6 @@ struct HUDDisplay: CardDisplay {
             return ExitStatus.noGUISession
         }
         CardQueue.waitForTurn(cards: cards)
-        // Only a question goes unanswered: a card with an --open button that goes without a click
-        // asks nothing, so it exits 0.
-        let asks = cards.contains(where: \.asksQuestion)
         // Cards a stack at the notch adopted are on screen already: they only go in the history.
         let adopted = cards.indices.filter(CardQueue.isAdopted)
         if !adopted.isEmpty { record(adopted.map { cards[$0] }, missed: false, locked: locked, console: console) }
@@ -78,7 +75,7 @@ struct HUDDisplay: CardDisplay {
         app.run()
         CardActions.waitForActivations()
         if failed { return ExitStatus.noGUISession }
-        return ExitStatus.answered(missed: asks && (CardActions.missed || unanswered), declined: CardActions.declined)
+        return ExitStatus.answered(missed: CardActions.missed || unanswered, declined: CardActions.declined)
     }
 
     var pressed: CardAnswer? { CardActions.pressed }
