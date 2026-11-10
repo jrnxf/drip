@@ -139,7 +139,7 @@ struct ActionTests {
                 }
                 // Any failure of drip hook exits 1, as an agent reads 2 as "block".
                 #expect(status == (prefix == ["run"] ? ExitStatus.usage : ExitStatus.hookFailed), "\(arguments)")
-                #expect(message.contains("unknown option"), "\(message)")
+                #expect(message.contains("takes no --"), "\(message)")
             }
             guard case .invocation = CommandLineParser.parse(prefix + ["--stay"] + (prefix == ["run"] ? ["make"] : ["{}"]))
             else { Issue.record("\(prefix) --stay did not parse"); continue }
@@ -163,7 +163,7 @@ struct ActionTests {
             ["run", "--open", "https://ci.example.com", "--", "make"])
         else { Issue.record("did not parse"); return }
         let card = try CardResolver().resolveRun(
-            command: command.command, status: 0, seconds: 1, flags: command.options.flags)
+            command: command.command, status: 0, seconds: 1, flags: command.flags)
         #expect(card.action?.open == "https://ci.example.com")
     }
 }

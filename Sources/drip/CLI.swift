@@ -148,7 +148,7 @@ struct DripCLI {
     /// nothing to show, which is no failure: drip exits 0 and prints nothing, so an agent used over
     /// ssh shows no hook error after every turn.
     private func hook(_ command: HookCommand) -> Int32 {
-        let flags = command.options.flags
+        let flags = command.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         let status: Int32
@@ -440,7 +440,7 @@ struct DripCLI {
     /// Runs the command first, whatever happens to the card after, and exits with its code. A bad
     /// environment still gets reported, and the card falls back to the defaults.
     private func run(_ command: RunCommand) -> Int32 {
-        let flags = command.options.flags
+        let flags = command.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         let resolver: CardResolver

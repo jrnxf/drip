@@ -66,15 +66,51 @@ struct HelpTests {
         }
         let options = listed(try #require(help(["show", "--help"])))
         #expect(options.contains("--yes") && options.contains("--no"))
-        guard case let .exit(status, message) = CommandLineParser.parse(["run", "--yes", "Go", "true"]) else {
-            Issue.record("drip run --yes parsed")
+        // They say what to do instead, and exit as other usage errors do.
+        for (arguments, status) in [
+            (["run", "--yes", "Go", "true"], ExitStatus.usage), (["run", "--no", "true"], ExitStatus.usage),
+            (["hook", "claude", "--yes", "Go", "{}"], ExitStatus.hookFailed),
+            (["hook", "claude", "--no=Stop", "{}"], ExitStatus.hookFailed),
+        ] {
+            guard case let .exit(code, message) = CommandLineParser.parse(arguments) else {
+                Issue.record("\(arguments) parsed")
+                continue
+            }
+            #expect(code == status, "\(arguments)")
+            #expect(message.contains("takes no --") && message.contains("drip warn \"Deploy?\" --yes Deploy"), "\(message)")
+        }
+    }
+
+    /// Help does not win over a mistake: --help after the command is the command's own.
+    @Test func runIsNotHelpedByAnUnknownOption() {
+        guard case let .exit(status, message) = CommandLineParser.parse(["run", "--bogus", "make", "--help"]) else {
+            Issue.record("drip run --bogus parsed")
             return
         }
         #expect(status == ExitStatus.usage)
-        #expect(message.contains("unknown option '--yes'"), "\(message)")
-        // Help wins over an option the command does not take.
-        for arguments in [["run", "--yes", "Go", "--help"], ["hook", "claude", "--yes", "Go", "--help"]] {
-            #expect(help(arguments) != nil, "\(arguments)")
+        #expect(message.contains("unknown option '--bogus'"), "\(message)")
+    }
+
+    /// The renderer asks the same questions show does.
+    @Test func renderChecksTheQuestion() {
+        for question in [["--no", "Stop"], ["--yes", "A", "--open", "https://example.com"]] {
+            guard case let .exit(status, _) = CommandLineParser.parse(["__render", "--out", "card.png"] + question) else {
+                Issue.record("\(question) parsed")
+                continue
+            }
+            #expect(status == ExitStatus.usage, "\(question)")
+        }
+    }
+
+    /// Only show says to ask a question for a --button without --open.
+    @Test func buttonHintNamesYesOnlyForShow() {
+        for (arguments, hint) in [(["ok", "t", "--button", "x"], true), (["run", "--button", "x", "true"], false),
+                                  (["hook", "claude", "--button", "x", "{}"], false)] {
+            guard case let .exit(_, message) = CommandLineParser.parse(arguments) else {
+                Issue.record("\(arguments) parsed")
+                continue
+            }
+            #expect(message.contains("use --yes") == hint, "\(arguments): \(message)")
         }
     }
 

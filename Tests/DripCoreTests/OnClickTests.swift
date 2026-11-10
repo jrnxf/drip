@@ -77,8 +77,8 @@ struct OnClickTests {
         let flags: CardFlags
         switch CommandLineParser.parse(arguments) {
         case let .invocation(.show(command)): flags = command.flags
-        case let .invocation(.run(command)): flags = command.options.flags
-        case let .invocation(.hook(command)): flags = command.options.flags
+        case let .invocation(.run(command)): flags = command.flags
+        case let .invocation(.hook(command)): flags = command.flags
         default: Issue.record("\(arguments)"); return
         }
         #expect(flags.onClick == "my-focus")

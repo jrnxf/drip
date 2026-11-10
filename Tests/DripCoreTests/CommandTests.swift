@@ -169,7 +169,7 @@ struct CommandTests {
         let command = try show(["--seconds", "2", "-d", "there", "warn", "hi"])
         #expect(command.kind == "warn")
         #expect(command.title == "hi")
-        #expect(command.options.flags == CardFlags(detail: "there", seconds: 2))
+        #expect(command.flags == CardFlags(detail: "there", seconds: 2))
     }
 
     @Test func unknownOptionsAreUsageErrors() {
@@ -221,15 +221,15 @@ struct CommandTests {
         #expect(try run(["make", "test"]).command == ["make", "test"])
         let withOptions = try run(["-s", "3", "--detail", "x", "--quiet", "--sound", "Ping", "ls", "--color", "-la"])
         #expect(withOptions.command == ["ls", "--color", "-la"])
-        #expect(withOptions.options.flags == CardFlags(detail: "x", seconds: 3, sound: .named("Ping"), quiet: true))
+        #expect(withOptions.flags == CardFlags(detail: "x", seconds: 3, sound: .named("Ping"), quiet: true))
         // An option's value is never the command, and the command's own options are never drip's,
         // nor joined to a value.
         let wrapped = try run(["-d", "--- x", "--id", "build", "grep", "-d", "skip", "--id", "y", "--", "z"])
         #expect(wrapped.command == ["grep", "-d", "skip", "--id", "y", "--", "z"])
-        #expect(wrapped.options.flags.detail == "--- x")
-        #expect(wrapped.options.flags.id == "build")
+        #expect(wrapped.flags.detail == "--- x")
+        #expect(wrapped.flags.id == "build")
         #expect(try run(["--open", "https://example.com", "./deploy.sh"]).command == ["./deploy.sh"])
-        #expect(try run(["--wait", "true"]).options.flags.wait)
+        #expect(try run(["--wait", "true"]).flags.wait)
     }
 
     /// The option names `drip run` knows take a value are exactly those that do.
@@ -253,16 +253,16 @@ struct CommandTests {
     @Test func runTakesTheCommandAfterTheTerminator() throws {
         let command = try run(["--", "make", "test"])
         #expect(command.command == ["make", "test"])
-        #expect(command.options.flags == CardFlags())
+        #expect(command.flags == CardFlags())
 
         let withOptions = try run(["-s", "3", "--detail", "x", "--quiet", "--", "ls", "--color", "-la"])
         #expect(withOptions.command == ["ls", "--color", "-la"])
-        #expect(withOptions.options.flags == CardFlags(detail: "x", seconds: 3, quiet: true))
+        #expect(withOptions.flags == CardFlags(detail: "x", seconds: 3, quiet: true))
 
         // The command's own arguments are never joined to a value.
         let wrapped = try run(["-d", "--- x", "--", "grep", "-d", "skip", "--id", "y"])
         #expect(wrapped.command == ["grep", "-d", "skip", "--id", "y"])
-        #expect(wrapped.options.flags.detail == "--- x")
+        #expect(wrapped.flags.detail == "--- x")
     }
 
     @Test func runWithoutACommandIsAUsageError() {
@@ -296,7 +296,7 @@ struct CommandTests {
         else { Issue.record(); return }
         #expect(claude.agent == .claude)
         #expect(claude.payload == nil)
-        #expect(claude.options.flags == CardFlags(seconds: 3))
+        #expect(claude.flags == CardFlags(seconds: 3))
         guard case let .invocation(.hook(codex)) = CommandLineParser.parse(["hook", "codex", #"{"type":"x"}"#])
         else { Issue.record(); return }
         #expect(codex.agent == .codex)
