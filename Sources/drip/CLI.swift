@@ -297,7 +297,7 @@ struct DripCLI {
                 return ExitStatus.shown
             } catch {
                 Console().error("cannot empty the debug log: \(error)")
-                return ExitStatus.usage
+                return ExitStatus.debugFailed
             }
         }
         let text = DebugLog.contents(environment: environment)
@@ -321,7 +321,8 @@ struct DripCLI {
         }
     }
 
-    /// Whether you are watching a terminal, by exit status: 0 yes, 1 no, 2 cannot tell.
+    /// Whether you are watching a terminal, by exit status: 0 yes, 1 no or cannot tell, saying why it
+    /// cannot on stderr. Only a usage error, in its arguments or a `DRIP_*` variable, exits 2.
     private func watching(_ command: WatchingCommand) -> Int32 {
         let console = Console()
         let environment = ProcessInfo.processInfo.environment
@@ -343,7 +344,8 @@ struct DripCLI {
         do {
             resolver = try makeResolver(console)
         } catch {
-            return report(error, console)
+            let status = report(error, console, subcommand: WatchingCommand.configuration.commandName)
+            return status == ExitStatus.usage ? status : Watching.Answer.unknown.status
         }
         var card = Card(preset: .info, title: "watching")
         card.pane = pane
@@ -599,7 +601,8 @@ struct DripCLI {
         return CardResolver(config: file.config, environment: settings)
     }
 
-    /// Prints an error and returns its exit status. A usage mistake also says where the help is.
+    /// Prints an error and returns its exit status: 4 for an invalid config, 2 for a usage mistake,
+    /// which also says where the help is, and 1 for anything else.
     private func report(_ error: Error, _ console: Console, subcommand: String? = nil) -> Int32 {
         if let error = error as? ConfigError {
             console.error("invalid config: \(error)")
@@ -611,7 +614,7 @@ struct DripCLI {
             return ExitStatus.usage
         }
         console.error("\(error)")
-        return ExitStatus.usage
+        return ExitStatus.failed
     }
 }
 

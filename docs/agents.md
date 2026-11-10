@@ -172,10 +172,11 @@ Says by its exit status whether you are watching a terminal now. It uses the det
 | Exit | Meaning |
 | --- | --- |
 | 0 | Watching: the terminal is in front, its tmux pane shows when a pane is given, and you used the keyboard or mouse within `away_after` |
-| 1 | Not watching |
-| 2 | drip cannot tell: no terminal app to look at, or no GUI session |
+| 1 | Not watching, or drip cannot tell: no terminal app to look at, no GUI session, or an invalid config |
+| 2 | Usage error |
 
-`--pane` defaults to `$TMUX_PANE`, and `--app` to the app drip runs in. It prints nothing.
+`--pane` defaults to `$TMUX_PANE`, and `--app` to the app drip runs in. It prints nothing on stdout.
+When drip cannot tell, it says why on stderr.
 
 ```sh
 drip watching || drip ok "tests passed"   # a card only when you are away

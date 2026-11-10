@@ -6,14 +6,19 @@ import WASILibc
 import Foundation
 #endif
 
-/// Process exit codes. `drip run` exits with the wrapped command's code instead.
+/// Process exit codes. `drip run` exits with the wrapped command's code instead. `table` is what
+/// scripts can rely on: a new code, or a new meaning for one, goes there too.
 public enum ExitStatus {
     public static let shown: Int32 = 0
+    /// drip could not do what it was asked, for a reason other than how it was called: a state file
+    /// it cannot write, say. The message on stderr says what went wrong.
+    public static let failed: Int32 = 1
+    /// A mistake on the command line, or in a `DRIP_*` variable. Nothing else exits 2.
     public static let usage: Int32 = 2
     public static let noGUISession: Int32 = 3
     public static let invalidConfig: Int32 = 4
     /// drip asked with `--yes` and no button was clicked: the card timed out, a newer card with the
-    /// same id replaced it, or it was clicked off its buttons.
+    /// same id replaced it, or it was clicked off its buttons. Only a question exits 5.
     public static let notClicked: Int32 = 5
     /// drip asked with `--yes` and `--no`, and no was clicked. 0 and 1 read as yes and no, as for
     /// `test`, so `drip warn … --yes Merge --no Later && merge` runs the merge on yes only.
@@ -23,20 +28,61 @@ public enum ExitStatus {
     /// a turn makes it try the turn again.
     public static let hookFailed: Int32 = 1
     /// `drip pause` or `drip resume` could not write the pause to the state directory.
-    public static let pauseFailed: Int32 = 1
+    public static let pauseFailed = failed
     /// `drip dismiss` could not write its request to the state directory.
-    public static let dismissFailed: Int32 = 1
+    public static let dismissFailed = failed
+    /// `drip debug --clear` could not empty the debug log.
+    public static let debugFailed = failed
     /// `drip watching`: you are not watching the terminal.
     public static let notWatching: Int32 = 1
-    /// `drip watching`: drip cannot tell, as it has no terminal app to look at.
-    public static let cannotTell: Int32 = 2
+    /// `drip watching`: drip cannot tell, as it has no terminal app or GUI session to look at, or
+    /// cannot read its settings. A script reads it as not watching, so its card shows.
+    public static let cannotTell: Int32 = 1
     /// `drip follow` could not start: the state directory cannot be written.
-    public static let followFailed: Int32 = 1
+    public static let followFailed = failed
 
-    /// What a drip that waited for its cards exits with: 5 when a card with a button went without a
-    /// click on one, else 1 when a question was answered no, else 0.
+    /// What a drip that waited for its cards exits with: 5 when a question went without a click on
+    /// its buttons, else 1 when one was answered no, else 0. A card with only an `--open` button
+    /// asks nothing, so it exits 0 whether it was clicked or not.
     public static func answered(missed: Bool, declined: Bool) -> Int32 {
         missed ? notClicked : declined ? Self.declined : shown
+    }
+
+    /// One row of the exit code table.
+    public struct Row: Equatable, Sendable {
+        public let code: Int32
+        /// Markdown: text in backticks is code. The help prints it without the backticks.
+        public let meaning: String
+    }
+
+    /// The exit codes scripts can rely on, as `drip --help`, docs/contract.md and docs/usage.md
+    /// list them, word for word. A test holds the docs to it.
+    public static let table: [Row] = [
+        Row(code: shown, meaning: "The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching."),
+        Row(code: failed, meaning: "A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure."),
+        Row(code: usage, meaning: "Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2."),
+        Row(code: noGUISession, meaning: "No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1."),
+        Row(code: invalidConfig, meaning: "The config file is invalid. `drip hook` and `drip watching` exit 1 then."),
+        Row(code: notClicked, meaning: "drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not."),
+    ]
+
+    /// What follows the table.
+    public static let tableNote = "`drip run` exits with the wrapped command's exit code instead, 127 when it is not found."
+
+    /// The table as the docs show it.
+    public static var markdownTable: String {
+        (["| Code | Meaning |", "| --- | --- |"] + table.map { "| \($0.code) | \($0.meaning) |" })
+            .joined(separator: "\n")
+    }
+
+    /// The table as `drip --help` ends with it.
+    static var helpTable: String {
+        (["EXIT CODES:"] + table.map { "  \($0.code)  \(plain($0.meaning))" } + ["  " + plain(tableNote)])
+            .joined(separator: "\n")
+    }
+
+    private static func plain(_ markdown: String) -> String {
+        markdown.replacingOccurrences(of: "`", with: "")
     }
 }
 
@@ -326,16 +372,7 @@ public struct DripCommand: ParsableCommand {
         """
 
     /// What `drip --help` ends with.
-    static let exitCodes = """
-        EXIT CODES:
-          0  The card was shown, or handed off to be shown; a question was answered yes.
-          1  A question was answered no, drip hook could not make a card, or drip watching says you are not watching.
-          2  Usage error; for drip watching, that it cannot tell.
-          3  No GUI session, such as over ssh (drip hook exits 0 instead).
-          4  The config file is invalid.
-          5  drip asked with --yes and no button was clicked.
-          drip run exits with its command's exit code instead.
-        """
+    static var exitCodes: String { ExitStatus.helpTable }
 
     public init() {}
 }
@@ -508,8 +545,9 @@ public struct WatchingCommand: ParsableCommand {
         discussion: """
             Exits 0 when you are likely watching: the terminal is in front and you used the keyboard or \
             mouse within away_after seconds, and with --pane, that tmux pane is the one showing. \
-            Exits 1 when you are not, and 2 when drip cannot tell, such as without a pane or app to \
-            look at, or without a GUI session. It is what drip's own cards ask before they show. The \
+            Exits 1 when you are not, and also when drip cannot tell, such as without a pane or app to \
+            look at, without a GUI session, or with an invalid config: it then says why on stderr. \
+            It exits 2 only for a usage error. It is what drip's own cards ask before they show. The \
             pane and app default to the tmux pane and the app drip runs in. Use it to keep a recipe \
             quiet while you watch: drip watching || drip ok "tests passed"
             """
