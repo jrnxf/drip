@@ -5,10 +5,10 @@ import Foundation
 /// debug log and the card's settings agree. Each event makes its own, so an edit between two
 /// events is seen by the second.
 final class ConfigSnapshot {
-    private let load: () throws -> ConfigFile
-    private(set) lazy var file: Result<ConfigFile, Error> = Result(catching: load)
+    private let load: () -> ConfigFile
+    private(set) lazy var file: ConfigFile = load()
 
-    init(load: @escaping () throws -> ConfigFile) {
+    init(load: @escaping () -> ConfigFile) {
         self.load = load
     }
 }
@@ -37,7 +37,7 @@ extension AgentHook {
         public var away: () -> Bool
         /// Reads the config file `environment` points at. An event calls it at most once, whether for
         /// the debug log or for the card's settings.
-        public var loadConfig: ([String: String]) throws -> ConfigFile
+        public var loadConfig: ([String: String]) -> ConfigFile
         /// The settings from the config file `loadConfig` read and `environment`.
         public var resolver: (ConfigFile, [String: String]) throws -> CardResolver
         /// The machine the event came from, for an agent `drip follow` hears from; nil for one on this Mac.
@@ -56,7 +56,7 @@ extension AgentHook {
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
             front: @escaping (Card) -> WhenFocused.Front, paneShowing: @escaping (Card) -> Bool? = { _ in nil },
             resurface: @escaping (Card, Double) -> Void = { _, _ in }, away: @escaping () -> Bool = { false },
-            loadConfig: @escaping ([String: String]) throws -> ConfigFile = { try ConfigLoader.load(environment: $0) },
+            loadConfig: @escaping ([String: String]) -> ConfigFile = { ConfigLoader.loadLeniently(environment: $0) },
             resolver: @escaping (ConfigFile, [String: String]) throws -> CardResolver, origin: Origin? = nil,
             showsCards: Bool = true, now: @escaping () -> Date = Date.init, process: DebugLog.Process = .hook,
             shownText: @escaping (Card) -> ShownText = ShownText.init(estimating:)
@@ -84,17 +84,17 @@ extension AgentHook {
     /// What a hook payload makes drip do, by the same rules wherever the agent runs: takes away the
     /// card the session waits on, and returns the card to show, or nil for none. Notes what the
     /// session waits on and when its turn started. Throws a `UsageError` for a payload it cannot
-    /// read or a `DRIP_HOOK` it does not know, and a `ConfigError` for an invalid config.
+    /// read or a `DRIP_HOOK` it does not know. A bad config is only a warning.
     public static func card(
         agent: Agent, payload: String, flags: CardFlags = CardFlags(), policy: Policy = Policy(),
         in surroundings: Surroundings
     ) throws -> Card? {
         let environment = surroundings.environment
         // The config file is read once for the event, and only when something asks for it.
-        let config = ConfigSnapshot { try surroundings.loadConfig(environment) }
+        let config = ConfigSnapshot { surroundings.loadConfig(environment) }
         let log = DebugLog(
             path: DebugLog.path(environment: environment), process: surroundings.process,
-            enabled: DebugLog.isEnabled(environment: environment) { try config.file.get() })
+            enabled: DebugLog.isEnabled(environment: environment) { config.file })
         func note(_ event: String, _ decision: String, _ fields: [(String, String?)] = []) {
             // A card decision that stopped before drip asked which app is in front says so.
             let unasked: [(String, String?)] = event == "card" && !fields.contains { $0.0 == "frontmost" }
@@ -184,7 +184,7 @@ extension AgentHook {
         if title.hasPrefix(name + " ") {
             title = project + (origin.map { " on \($0.machine)" } ?? "") + title.dropFirst(name.count)
         }
-        var resolver = try surroundings.resolver(try config.file.get(), environment)
+        var resolver = try surroundings.resolver(config.file, environment)
         if let origin {
             resolver.environment.sender = origin.activate
             resolver.environment.pane = nil
@@ -310,10 +310,10 @@ extension AgentHook {
         _ card: Card, agent: Agent, noted: Double, in surroundings: Surroundings
     ) throws -> Card? {
         let environment = surroundings.environment
-        let config = ConfigSnapshot { try surroundings.loadConfig(environment) }
+        let config = ConfigSnapshot { surroundings.loadConfig(environment) }
         let log = DebugLog(
             path: DebugLog.path(environment: environment), process: surroundings.process,
-            enabled: DebugLog.isEnabled(environment: environment) { try config.file.get() })
+            enabled: DebugLog.isEnabled(environment: environment) { config.file })
         func note(_ event: String, _ decision: String, _ fields: [(String, String?)] = []) {
             log.record(event, decision, [("agent", agent.rawValue), ("machine", surroundings.origin?.machine)] + fields)
         }
@@ -322,7 +322,7 @@ extension AgentHook {
             note("resurface", "skip", fields + [("reason", "no_longer_waiting")])
             return nil
         }
-        let resolver = try surroundings.resolver(try config.file.get(), environment)
+        let resolver = try surroundings.resolver(config.file, environment)
         return decideFocus(
             card, surroundings: surroundings, resolver: resolver, log: log, fields: fields, resurfacing: true, note: note).card
     }

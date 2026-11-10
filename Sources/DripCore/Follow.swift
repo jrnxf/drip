@@ -284,18 +284,18 @@ public final class RemoteFollower {
 /// The config file `drip follow` reads: again with each event, so an edit applies to the next,
 /// with each of its warnings said once.
 public final class ConfigWarnedOnce {
-    private let read: ([String: String]) throws -> ConfigFile
+    private let read: ([String: String]) -> ConfigFile
     private let warn: (String) -> Void
     private var said: Set<String> = []
 
-    public init(read: @escaping ([String: String]) throws -> ConfigFile, warn: @escaping (String) -> Void) {
+    public init(read: @escaping ([String: String]) -> ConfigFile, warn: @escaping (String) -> Void) {
         self.read = read
         self.warn = warn
     }
 
     /// The file as it is now, saying only the warnings not said before.
-    public func load(environment: [String: String]) throws -> ConfigFile {
-        let loaded = try read(environment)
+    public func load(environment: [String: String]) -> ConfigFile {
+        let loaded = read(environment)
         for warning in loaded.warnings where said.insert(warning).inserted { warn(warning) }
         return loaded
     }

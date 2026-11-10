@@ -229,9 +229,9 @@ struct DripCLI {
             ssh: [environment["DRIP_SSH"].flatMap { $0.isEmpty ? nil : $0 } ?? "/usr/bin/ssh"],
             positionPath: FollowPosition.path(target: target, environment: environment))
         // The config is read with each event, but its warnings are said once.
-        let config = ConfigWarnedOnce(read: { try ConfigLoader.load(environment: $0) }, warn: console.warn)
+        let config = ConfigWarnedOnce(read: { ConfigLoader.loadLeniently(environment: $0) }, warn: console.warn)
         var local = surroundings(console)
-        local.loadConfig = { try config.load(environment: $0) }
+        local.loadConfig = { config.load(environment: $0) }
         local.resolver = { try self.makeResolver(console, file: $0, environment: $1, warn: false) }
         let follower = RemoteFollower(settings: settings, handle: { event, stale in
             var surroundings = event.surroundings(
@@ -438,7 +438,7 @@ struct DripCLI {
     #endif
 
     /// Runs the command first, whatever happens to the card after, and exits with its code. A bad
-    /// config or environment still gets reported, and the card falls back to the defaults.
+    /// environment still gets reported, and the card falls back to the defaults.
     private func run(_ command: RunCommand) -> Int32 {
         let flags = command.options.flags
         let console = Console(quiet: flags.quiet)
@@ -601,7 +601,7 @@ struct DripCLI {
     private func makeResolver(
         _ console: Console, environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> CardResolver {
-        try makeResolver(console, file: ConfigLoader.load(environment: environment), environment: environment)
+        try makeResolver(console, file: ConfigLoader.loadLeniently(environment: environment), environment: environment)
     }
 
     /// The settings from a config file already read and the environment, printing the file's warnings
@@ -614,13 +614,9 @@ struct DripCLI {
         return CardResolver(config: file.config, environment: settings)
     }
 
-    /// Prints an error and returns its exit status: 4 for an invalid config, 2 for a usage mistake,
-    /// which also says where the help is, and 1 for anything else.
+    /// Prints an error and returns its exit status: 2 for a usage mistake, which also says where the
+    /// help is, and 1 for anything else. A bad config is only a warning, said where it is read.
     private func report(_ error: Error, _ console: Console, subcommand: String? = nil) -> Int32 {
-        if let error = error as? ConfigError {
-            console.error("invalid config: \(error)")
-            return ExitStatus.invalidConfig
-        }
         if let error = error as? UsageError {
             FileHandle.standardError.write(Data((CardText.printable(
                 CommandLineParser.usageMessage(error.message, subcommand: subcommand)) + "\n").utf8))

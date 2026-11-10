@@ -208,6 +208,49 @@ struct ConfigTests {
         #expect(ConfigError(path: path, line: nil, key: nil, message: "cannot read the file").description == "\(path): cannot read the file")
     }
 
+    /// A card command reads the config leniently: each bad key keeps its default, with a warning,
+    /// and the good keys around it still apply.
+    @Test func aLenientParseLeavesOutOnlyTheBadKeys() {
+        let file = ConfigLoader.parseLeniently("""
+            seconds = "five"
+            size = "large"
+            nope = 1
+            [preset.ok]
+            color = "plaid"
+            sound = "none"
+            [preset.run]
+            icon = "star"
+            [preset.mine]
+            color = "red"
+            """, path: path)
+        #expect(file.config == Config(size: .large, presets: [
+            "ok": PresetOverride(sound: Sound.none),
+            "mine": PresetOverride(color: CardColor(parsing: "red")),
+        ]))
+        #expect(file.problems.map(\.key) == ["seconds", "preset.ok.color", "preset.run"])
+        #expect(file.problems.map(\.line) == [1, 5, 7])
+        #expect(file.warnings.count == 4)
+        #expect(file.warnings[0] == "invalid config: \(path):1: seconds: expected a number, got a string (drip ignores this key)")
+        #expect(file.warnings[1] == "\(path):3: unknown key 'nope'")
+        #expect(file.warnings[2].hasPrefix("invalid config: \(path):5: preset.ok.color: expected #rrggbb"))
+        #expect(file.warnings[3].hasSuffix("(drip ignores this key)"))
+        // A strict parse, for a command that checks the file, throws the first of them.
+        let error = #expect(throws: ConfigError.self) { try ConfigLoader.parse("seconds = \"five\"\nsize = 3", path: path) }
+        #expect(error?.key == "seconds")
+    }
+
+    /// A file that is not TOML drip reads leaves every key at its default.
+    @Test func aLenientParseOfABrokenFileKeepsEveryDefault() {
+        let file = ConfigLoader.parseLeniently("size = \"large\"\nbroken = [", path: path)
+        #expect(file.config == Config())
+        #expect(file.problems.count == 1)
+        #expect(file.problems.first?.key == nil)
+        #expect(file.warnings.count == 1)
+        #expect(file.warnings.first?.hasPrefix("invalid config: \(path):") == true)
+        #expect(file.warnings.first?.hasSuffix("(drip ignores the file)") == true)
+        #expect(ConfigLoader.parseLeniently("", path: path) == ConfigFile(config: Config(), warnings: []))
+    }
+
     private func assertError(
         _ text: String, line: Int, key: String?, message: String, sourceLocation: SourceLocation = #_sourceLocation
     ) {

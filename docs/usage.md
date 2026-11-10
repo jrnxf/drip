@@ -381,7 +381,7 @@ runs at once, and the cards still in the stack play out without it.
 | 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
 | 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2. |
 | 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. |
-| 4 | The config file is invalid. `drip hook` and `drip watching` exit 1 then. |
+| 4 | Reserved for a command that checks the config file. No command exits 4 today: a bad config warns on stderr and drip uses the defaults for the bad keys. |
 | 5 | drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not. |
 
 `drip run` exits with the wrapped command's exit code instead, 127 when it is not found.

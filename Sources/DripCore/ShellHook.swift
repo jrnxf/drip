@@ -26,7 +26,7 @@ extension ShellHook {
         guard surroundings.hasGUISession,
               try AgentHook.setting(environment: environment) != .off
         else { return nil }
-        let resolver = try surroundings.resolver(try surroundings.loadConfig(environment), environment)
+        let resolver = try surroundings.resolver(surroundings.loadConfig(environment), environment)
         let card = try resolver.resolveRun(command: [command], status: status, seconds: seconds, flags: flags)
         guard resolver.whenFocused != .show else { return card }
         var front = surroundings.front(card)

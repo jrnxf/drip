@@ -80,7 +80,8 @@ public struct Config: Equatable {
     }
 }
 
-/// An invalid config file. drip exits 4 with this message.
+/// A config file, or one key in it, that drip cannot use. A card command warns with it and goes on
+/// without what it spoils: the key, or with a nil `key` the whole file.
 public struct ConfigError: Error, Equatable, CustomStringConvertible {
     public var path: String
     public var line: Int?
@@ -98,16 +99,34 @@ public struct ConfigError: Error, Equatable, CustomStringConvertible {
         let location = line.map { "\(path):\($0)" } ?? path
         return "\(location): \(key.map { "\($0): " } ?? "")\(message)"
     }
+
+    /// `error` as a problem with the file: itself when it is one, else at `line` and `key`, or at
+    /// the TOML error's own line.
+    static func wrapping(_ error: Error, path: String, line: Int? = nil, key: String? = nil) -> ConfigError {
+        if let problem = error as? ConfigError { return problem }
+        if let toml = error as? TOMLError { return ConfigError(path: path, line: toml.line, key: key, message: toml.message) }
+        return ConfigError(path: path, line: line, key: key, message: "\(error)")
+    }
 }
 
 /// A loaded config and the warnings it produced, such as unknown keys.
 public struct ConfigFile: Equatable {
     public var config: Config
+    /// What to say on stderr, in file order: unknown keys, and from a lenient load each problem too.
     public var warnings: [String]
+    /// What a lenient load left out of `config`: each of these keys keeps its default. A strict load
+    /// throws the first instead.
+    public var problems: [ConfigError]
 
-    public init(config: Config, warnings: [String]) {
+    public init(config: Config, warnings: [String], problems: [ConfigError] = []) {
         self.config = config
         self.warnings = warnings
+        self.problems = problems
+    }
+
+    /// A file drip cannot use at all: every key keeps its default.
+    init(unusable problem: ConfigError) {
+        self.init(config: Config(), warnings: [ConfigLoader.warning(problem)], problems: [problem])
     }
 }
 
@@ -127,12 +146,29 @@ public enum ConfigLoader {
     /// The largest config file drip reads. A real one is a few hundred bytes.
     public static let sizeLimit = 1024 * 1024
 
-    /// Loads the config file; a missing file is an empty config.
+    /// Loads the config file; a missing file is an empty config. Throws the first problem it finds,
+    /// for a command that checks the file.
     public static func load(environment: [String: String]) throws -> ConfigFile {
         let path = path(environment: environment)
-        guard FileManager.default.fileExists(atPath: path) else {
-            return ConfigFile(config: Config(), warnings: [])
+        guard let text = try text(at: path) else { return ConfigFile(config: Config(), warnings: []) }
+        return try parse(text, path: path)
+    }
+
+    /// Loads the config file as a card command reads it: a key drip cannot use keeps its default, and
+    /// a file it cannot use at all leaves every key at its default. Each problem is also a warning.
+    public static func loadLeniently(environment: [String: String]) -> ConfigFile {
+        let path = path(environment: environment)
+        do {
+            guard let text = try text(at: path) else { return ConfigFile(config: Config(), warnings: []) }
+            return parseLeniently(text, path: path)
+        } catch {
+            return ConfigFile(unusable: .wrapping(error, path: path))
         }
+    }
+
+    /// The file's text; nil when there is no file.
+    private static func text(at path: String) throws -> String? {
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
         if let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int, size > sizeLimit {
             throw ConfigError(path: path, line: nil, key: nil, message: "the file is larger than 1 MB")
         }
@@ -146,52 +182,82 @@ public enum ConfigLoader {
         guard let text = String(data: data, encoding: .utf8) else {
             throw ConfigError(path: path, line: nil, key: nil, message: "the file is not UTF-8")
         }
-        return try parse(text, path: path)
+        return text
     }
 
     /// Parses config.toml. Unknown keys are warnings; wrong types and invalid values are
-    /// errors.
+    /// errors, and the first is thrown.
     public static func parse(_ text: String, path: String) throws -> ConfigFile {
+        let file = parseLeniently(text, path: path)
+        if let problem = file.problems.first { throw problem }
+        return file
+    }
+
+    /// Parses config.toml, leaving out each key with a wrong type or an invalid value, and the whole
+    /// file when it is not TOML that drip reads. Each problem is also a warning.
+    public static func parseLeniently(_ text: String, path: String) -> ConfigFile {
         var reader = ConfigReader(path: path)
         let table: TOMLTable
         do {
             table = try TOML.parse(text)
-        } catch let error as TOMLError {
-            throw ConfigError(path: path, line: error.line, key: nil, message: error.message)
+        } catch {
+            return ConfigFile(unusable: .wrapping(error, path: path))
         }
-        let config = try reader.read(table)
-        return ConfigFile(config: config, warnings: reader.warnings)
+        let config = reader.read(table)
+        return ConfigFile(config: config, warnings: reader.warnings, problems: reader.problems)
+    }
+
+    /// The warning for a problem that a card command goes on without.
+    static func warning(_ problem: ConfigError) -> String {
+        "invalid config: \(problem) (drip ignores \(problem.key == nil ? "the file" : "this key"))"
     }
 }
 
 private struct ConfigReader {
     let path: String
     var warnings: [String] = []
+    /// The keys left out, in file order.
+    var problems: [ConfigError] = []
 
     init(path: String) {
         self.path = path
     }
 
-    mutating func read(_ table: TOMLTable) throws -> Config {
+    mutating func read(_ table: TOMLTable) -> Config {
         var config = Config()
         for key in table.keys {
             guard let item = table[key] else { continue }
-            switch key {
-            case "seconds": config.seconds = try seconds(item, key: key)
-            case "size": config.size = try choice(item, key: key, CardSize.self)
-            case "sound": config.sound = try sound(item, key: key)
-            case "motion": config.motion = try choice(item, key: key, Motion.self)
-            case "stack": config.stack = try choice(item, key: key, StackSettings.Choice.self)
-            case "stack_max": config.stackMax = try integer(item, key: key, in: Defaults.stackMaxRange)
-            case "when_focused": config.whenFocused = try choice(item, key: key, WhenFocused.self)
-            case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
-            case "debug": config.debug = try boolean(item, key: key)
-            case "history": config.history = try integer(item, key: key, in: Defaults.historyRange)
-            case "preset": config.presets = try presets(item)
-            default: warnUnknown(key, line: item.line)
+            do {
+                try read(item, key: key, into: &config)
+            } catch {
+                leaveOut(error, item: item, key: key)
             }
         }
         return config
+    }
+
+    private mutating func read(_ item: TOMLItem, key: String, into config: inout Config) throws {
+        switch key {
+        case "seconds": config.seconds = try seconds(item, key: key)
+        case "size": config.size = try choice(item, key: key, CardSize.self)
+        case "sound": config.sound = try sound(item, key: key)
+        case "motion": config.motion = try choice(item, key: key, Motion.self)
+        case "stack": config.stack = try choice(item, key: key, StackSettings.Choice.self)
+        case "stack_max": config.stackMax = try integer(item, key: key, in: Defaults.stackMaxRange)
+        case "when_focused": config.whenFocused = try choice(item, key: key, WhenFocused.self)
+        case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
+        case "debug": config.debug = try boolean(item, key: key)
+        case "history": config.history = try integer(item, key: key, in: Defaults.historyRange)
+        case "preset": config.presets = try presets(item)
+        default: warnUnknown(key, line: item.line)
+        }
+    }
+
+    /// Notes a key that is left out, and why: it keeps its default.
+    private mutating func leaveOut(_ error: Error, item: TOMLItem, key: String) {
+        let problem = ConfigError.wrapping(error, path: path, line: item.line, key: key)
+        problems.append(problem)
+        warnings.append(ConfigLoader.warning(problem))
     }
 
     private mutating func presets(_ item: TOMLItem) throws -> [String: PresetOverride] {
@@ -203,56 +269,68 @@ private struct ConfigReader {
         for name in table.keys {
             guard let presetItem = table[name] else { continue }
             let key = "preset.\(name)"
-            guard case let .table(fields) = presetItem.value else {
-                throw wrongType(presetItem, key: key, expected: "a table")
-            }
-            if !builtInNames.contains(name) {
-                if Self.reservedNames.contains(name) {
-                    throw ConfigError(
-                        path: path, line: presetItem.line, key: key,
-                        message: "'\(name)' is kept for drip's own commands; give the preset another name")
+            do {
+                guard case let .table(fields) = presetItem.value else {
+                    throw wrongType(presetItem, key: key, expected: "a table")
                 }
-                if !Self.isValidPresetName(name) {
-                    throw ConfigError(
-                        path: path, line: presetItem.line, key: key,
-                        message: "a custom preset name must match [a-z][a-z0-9-]*")
+                if !builtInNames.contains(name) {
+                    if Self.reservedNames.contains(name) {
+                        throw ConfigError(
+                            path: path, line: presetItem.line, key: key,
+                            message: "'\(name)' is kept for drip's own commands; give the preset another name")
+                    }
+                    if !Self.isValidPresetName(name) {
+                        throw ConfigError(
+                            path: path, line: presetItem.line, key: key,
+                            message: "a custom preset name must match [a-z][a-z0-9-]*")
+                    }
                 }
+                presets[name] = preset(fields, key: key)
+            } catch {
+                leaveOut(error, item: presetItem, key: key)
             }
-            presets[name] = try preset(fields, key: key)
         }
         return presets
     }
 
-    private mutating func preset(_ table: TOMLTable, key presetKey: String) throws -> PresetOverride {
+    private mutating func preset(_ table: TOMLTable, key presetKey: String) -> PresetOverride {
         var preset = PresetOverride()
         for field in table.keys {
             guard let item = table[field] else { continue }
             let key = "\(presetKey).\(field)"
-            switch field {
-            case "icon":
-                let icon = Icon(parsing: try string(item, key: key))
-                if let problem = icon.problem {
-                    throw ConfigError(path: path, line: item.line, key: key, message: problem)
-                }
-                // A relative image path is taken from the config file's own directory.
-                preset.icon = icon.resolved(from: (path as NSString).deletingLastPathComponent)
-            case "color":
-                let text = try string(item, key: key)
-                guard let color = CardColor(parsing: text) else {
-                    throw ConfigError(
-                        path: path, line: item.line, key: key,
-                        message: "expected #rrggbb or one of \(Self.list(SystemColor.allCases.map(\.rawValue))), got '\(text)'")
-                }
-                preset.color = color
-            case "sound":
-                preset.sound = try sound(item, key: key)
-            case "seconds":
-                preset.seconds = try seconds(item, key: key)
-            default:
-                warnUnknown(key, line: item.line)
+            do {
+                try read(item, field: field, key: key, into: &preset)
+            } catch {
+                leaveOut(error, item: item, key: key)
             }
         }
         return preset
+    }
+
+    private mutating func read(_ item: TOMLItem, field: String, key: String, into preset: inout PresetOverride) throws {
+        switch field {
+        case "icon":
+            let icon = Icon(parsing: try string(item, key: key))
+            if let problem = icon.problem {
+                throw ConfigError(path: path, line: item.line, key: key, message: problem)
+            }
+            // A relative image path is taken from the config file's own directory.
+            preset.icon = icon.resolved(from: (path as NSString).deletingLastPathComponent)
+        case "color":
+            let text = try string(item, key: key)
+            guard let color = CardColor(parsing: text) else {
+                throw ConfigError(
+                    path: path, line: item.line, key: key,
+                    message: "expected #rrggbb or one of \(Self.list(SystemColor.allCases.map(\.rawValue))), got '\(text)'")
+            }
+            preset.color = color
+        case "sound":
+            preset.sound = try sound(item, key: key)
+        case "seconds":
+            preset.seconds = try seconds(item, key: key)
+        default:
+            warnUnknown(key, line: item.line)
+        }
     }
 
     /// The names a custom preset cannot take: drip's subcommands, and those it may have one day,

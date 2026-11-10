@@ -26,12 +26,12 @@ public struct StackSettings: Equatable, Sendable, Codable {
     }
 
     /// The settings from `DRIP_STACK` and `DRIP_STACK_MAX`, then the config's `stack` and
-    /// `stack_max`, then the defaults. Nil when stacking is off. A config or an environment that
-    /// cannot be read is left out: the drip that queued the cards already reported it.
+    /// `stack_max`, then the defaults. Nil when stacking is off. A variable or a config key that cannot
+    /// be read is left out: the drip that queued the cards already reported it.
     public static func current(environment: [String: String], config: Config? = nil) -> StackSettings? {
         let settings = (try? EnvironmentSettings(environment: environment)) ?? EnvironmentSettings()
-        let config = config ?? (try? ConfigLoader.load(environment: environment))?.config
-        guard let mode = (settings.stack ?? config?.stack ?? .chain).mode else { return nil }
-        return StackSettings(mode: mode, max: settings.stackMax ?? config?.stackMax ?? Defaults.stackMax)
+        let config = config ?? ConfigLoader.loadLeniently(environment: environment).config
+        guard let mode = (settings.stack ?? config.stack ?? .chain).mode else { return nil }
+        return StackSettings(mode: mode, max: settings.stackMax ?? config.stackMax ?? Defaults.stackMax)
     }
 }

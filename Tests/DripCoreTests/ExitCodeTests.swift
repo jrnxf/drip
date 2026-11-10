@@ -59,7 +59,8 @@ struct ExitCodeTests {
              input: "not json"),
         Case(code: 1, what: "drip watching has no terminal app to look at", arguments: ["watching"]),
         Case(code: 1, what: "drip watching --pane outside tmux", arguments: ["watching", "--pane", "%3"]),
-        Case(code: 1, what: "drip watching with an invalid config", arguments: ["watching", "--app", "com.apple.Terminal"],
+        // An invalid config is a warning: drip still answers, here that it cannot tell.
+        Case(code: 1, what: "drip watching --pane outside tmux, with an invalid config", arguments: ["watching", "--pane", "%3"],
              config: broken),
 
         Case(code: 2, what: "an unknown option", arguments: ["--nope"]),
@@ -77,8 +78,6 @@ struct ExitCodeTests {
         Case(code: 2, what: "drip watching --pane with a DRIP_* variable drip cannot read",
              arguments: ["watching", "--pane", "%3"], environment: ["DRIP_SECONDS": "soon"]),
         Case(code: 2, what: "drip debug --clear with an extra argument", arguments: ["debug", "--clear", "extra"]),
-
-        Case(code: 4, what: "an invalid config", arguments: ["ok", "t"], config: broken),
     ]
 
     /// Rows only the macOS drip gives: elsewhere the background drip has no cards to show.
@@ -92,6 +91,8 @@ struct ExitCodeTests {
     static let withoutGUI: [Case] = [
         Case(code: 3, what: "a card without a GUI session", arguments: ["ok", "t"]),
         Case(code: 3, what: "a question without a GUI session", arguments: ["warn", "t", "--yes", "Go"]),
+        Case(code: 3, what: "a card with an invalid config, without a GUI session", arguments: ["ok", "t"],
+             config: broken),
         Case(code: 0, what: "drip hook without a GUI session", arguments: ["hook", "claude"],
              input: #"{"hook_event_name":"Stop","session_id":"s1","cwd":"/home/user/api"}"#),
         Case(code: 1, what: "drip watching without a GUI session", arguments: ["watching", "--app", "com.apple.Terminal"]),
@@ -104,6 +105,11 @@ struct ExitCodeTests {
         Case(code: 0, what: "an --open card with --wait that nobody clicks",
              arguments: ["info", "exit code check", "--open", "https://example.com", "--wait", "--seconds", "0.5",
                          "--sound", "none"]),
+        Case(code: 0, what: "a card with an invalid config",
+             arguments: ["info", "exit code check", "--seconds", "0.5", "--sound", "none"], config: broken),
+        Case(code: 0, what: "drip hook with an invalid config", arguments: ["hook", "claude"],
+             input: #"{"hook_event_name":"Stop","session_id":"s1","cwd":"/home/user/api"}"#, config: broken,
+             environment: ["DRIP_SECONDS": "0.5", "DRIP_SOUND": "none"]),
     ]
 
     /// Why a list of rows does not run on this host, and which rows those are, for the test output.
@@ -149,12 +155,13 @@ struct ExitCodeTests {
         try Self.expect(run)
     }
 
-    /// The lists above name a case for each code in the table. Which of them run depends on the host:
-    /// the tests above say which they skip.
+    /// The lists above name a case for each code in the table, but 4, which is kept for a command that
+    /// checks the config file. Which of them run depends on the host: the tests above say which they skip.
     @Test func everyCodeHasACaseListed() {
         let table = Set(ExitStatus.table.map(\.code))
         #expect(ExitStatus.table.map(\.code) == Array(0...5))
-        #expect(Set((Self.anywhere + Self.macOnly + Self.withoutGUI + Self.onScreen).map(\.code)) == table)
+        #expect(Set((Self.anywhere + Self.macOnly + Self.withoutGUI + Self.onScreen).map(\.code))
+            == table.subtracting([ExitStatus.invalidConfig]))
     }
 
     // MARK: - Exit 5, without a screen

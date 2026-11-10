@@ -44,7 +44,7 @@ struct DebugLogTests {
         var counted = surroundings(extra)
         counted.loadConfig = { environment in
             loads.count += 1
-            return try ConfigLoader.load(environment: environment)
+            return ConfigLoader.loadLeniently(environment: environment)
         }
         counted.resolver = { file, environment in
             CardResolver(config: file.config, environment: try EnvironmentSettings(environment: environment))
@@ -89,20 +89,18 @@ struct DebugLogTests {
         #expect(loads.count == 0)
     }
 
-    @Test func aMalformedConfigFailsOnlyTheEventsThatResolveACard() throws {
-        try writeConfig("debug = \"yes\"\n")
+    @Test func aMalformedConfigKeepsTheLogOffAndTheCardShowing() throws {
+        try writeConfig("debug = \"yes\"\nwhen_focused = \"show\"\n")
         let loads = Loads()
         for (payload, extra) in [(Self.clear, [:]), (Self.stop, ["DRIP_HOOK": "off"]), (Self.stop, ["DRIP_HOOK": "attention"])] as [(String, [String: String])] {
             #expect(try AgentHook.card(agent: .claude, payload: payload, in: counting(extra, loads: loads)) == nil)
         }
+        // The bad `debug` key keeps its default, off, and the good key still shows the card.
+        #expect(try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(loads: loads)) != nil)
         #expect(!FileManager.default.fileExists(atPath: logPath))
-        #expect(throws: ConfigError.self) {
-            try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(loads: loads))
-        }
-        // A card that resolves fails the same with the log forced on, and the log still says nothing of the config.
-        #expect(throws: ConfigError.self) {
-            try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(["DRIP_DEBUG": "1"], loads: loads))
-        }
+        // With the log forced on, the card resolves the same.
+        #expect(try AgentHook.card(agent: .claude, payload: Self.stop, in: counting(["DRIP_DEBUG": "1"], loads: loads)) != nil)
+        #expect(lines().count == 1)
     }
 
     @Test func anInvalidSettingFailsOnlyTheEventsThatResolveACard() throws {
