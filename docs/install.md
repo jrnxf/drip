@@ -12,6 +12,11 @@ releases up to 0.1.0-pre.21 were signed ad hoc, so moving from one of them asks 
 build the latest `main` from source instead, run `brew install --HEAD jrnxf/tap/drip`; that build
 is signed ad hoc, so macOS asks again after each one.
 
+Homebrew installs the zsh, bash and fish completions, once your shell loads them
+([how](https://docs.brew.sh/Shell-Completion)). For a source build, run
+`drip --generate-completion-script zsh` (or `bash`, `fish`) and save the output where your shell
+loads completions.
+
 Without Homebrew, build it from source with the Swift in the Command Line Tools and put the binary
 on your `PATH`:
 
