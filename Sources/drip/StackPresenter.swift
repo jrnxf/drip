@@ -25,6 +25,9 @@ final class StackPresenter: CardPresenting {
         /// The card this one replaced in place, fading out on top of it until `retiringUntil`.
         var retiring: IslandLayers?
         var retiringUntil = -Double.infinity
+        /// When the card's buttons take a press, on the `CACurrentMediaTime` clock that clicks come
+        /// on, not the stack's, whose start can move between a press and its release.
+        var pressGate = PressGate()
 
         init(layers: IslandLayers) {
             self.layers = layers
@@ -325,6 +328,18 @@ final class StackPresenter: CardPresenting {
         }
         overflowLayers?.play(overflowFrames, duration: end - start, begin: begin)
         CATransaction.commit()
+        settlePressGates()
+    }
+
+    /// Holds each card's presses back until its buttons are still: once its springs have settled,
+    /// as it drops in or slides to a new place, and once the card it replaced in place has faded
+    /// off it. Each time is put on the clicks' clock as the motion is planned, so a later move of
+    /// the stack's start changes none of them.
+    private func settlePressGates() {
+        for entry in stack.entries {
+            guard let drawing = drawings[entry.id] else { continue }
+            drawing.pressGate.moves(until: started + max(entry.animator.end, drawing.retiringUntil))
+        }
     }
 
     /// The notch and every card at `time`, each card melted into what it grows out of while it is
@@ -501,6 +516,7 @@ final class StackPresenter: CardPresenting {
         replan(from: decided)
         let lingers = layers.takeOver(from: old, motion: motion, at: started + time)
         drawing.retiringUntil = time + lingers
+        settlePressGates()
         if entry.isWaiting {
             layers.hold(pinging: true, at: started + time)
         } else {
@@ -765,17 +781,11 @@ final class StackPresenter: CardPresenting {
         }
         if let answer = button(of: entry, at: up) {
             // A press that began before the card's buttons were still for a moment does nothing at all.
-            if pressGate(of: entry).takes(pressAt: click.downTime - started) { press(answer, on: entry) }
+            if drawings[entry.id]?.pressGate.admits(pressAt: click.downTime) == true { press(answer, on: entry) }
             return
         }
         if entry.card.opensOnClick { CardActions.click(entry.card, console: console) }
         entry.dismissed = entry.dismissed ?? false
-    }
-
-    /// When `entry`'s buttons take a press, on the stack's clock: once its springs have settled, as it
-    /// drops in or slides to a new place, and once the card it replaced in place has faded off it.
-    private func pressGate(of entry: CardStack.Entry) -> PressGate {
-        PressGate(settled: max(entry.animator.end, drawings[entry.id]?.retiringUntil ?? -.infinity))
     }
 
     /// Takes `entry` away without bringing anything forward: a click on its ×, a secondary click,
@@ -857,7 +867,8 @@ final class StackPresenter: CardPresenting {
                     actions.append(NSAccessibilityCustomAction(name: "\(label): \(title)") {
                         [weak self, weak entry] () -> Bool in
                         guard let self, let entry, !entry.isLeaving,
-                              self.pressGate(of: entry).takes(pressAt: self.now) else { return false }
+                              self.drawings[entry.id]?.pressGate.admits(pressAt: CACurrentMediaTime()) == true
+                        else { return false }
                         self.press(answer, on: entry)
                         return true
                     })

@@ -977,8 +977,9 @@ struct IslandClick {
     /// Where the button went down, and where it came up.
     var down: CGPoint
     var up: CGPoint
-    /// When the button went down, on the `CACurrentMediaTime` clock.
-    var downTime: CFTimeInterval
+    /// When the button went down, as the mouse-down event's timestamp, on the `CACurrentMediaTime`
+    /// clock. Nil when the view never saw it go down: such a click presses no button.
+    var downTime: CFTimeInterval?
     /// A right-click, a two-finger tap, or a click with Control or Option held: it only ever takes
     /// the card away, and brings nothing forward.
     var secondary: Bool
@@ -1011,15 +1012,15 @@ final class IslandView: NSView {
     /// No context menu: a secondary click takes the card away.
     override func menu(for event: NSEvent) -> NSMenu? { nil }
 
+    /// When the event happened, not when it was handled, which a busy main thread can put off.
     private func press(_ event: NSEvent) {
-        down = (convert(event.locationInWindow, from: nil), CACurrentMediaTime())
+        down = (convert(event.locationInWindow, from: nil), event.timestamp)
     }
 
     private func click(_ event: NSEvent, secondary: Bool) {
         let up = convert(event.locationInWindow, from: nil)
-        let down = self.down ?? (up, CACurrentMediaTime())
-        onClick?(IslandClick(down: down.point, up: up, downTime: down.time, secondary: secondary))
-        self.down = nil
+        onClick?(IslandClick(down: down?.point ?? up, up: up, downTime: down?.time, secondary: secondary))
+        down = nil
     }
 }
 
@@ -1500,7 +1501,7 @@ final class IslandPresenter: CardPresenting {
         }
         if let answer = button(at: click.up) {
             // A press that began before the buttons were still for a moment does nothing at all.
-            if pressGate.takes(pressAt: click.downTime) { press(answer) }
+            if pressGate.admits(pressAt: click.downTime) { press(answer) }
             return
         }
         if card.opensOnClick { CardActions.click(card, console: console) }
@@ -1541,7 +1542,7 @@ final class IslandPresenter: CardPresenting {
             for (label, answer) in CardAccessibility.answers(to: action) {
                 actions.append(NSAccessibilityCustomAction(name: label) { [weak self] () -> Bool in
                     guard let self, self.departure != nil,
-                          self.pressGate.takes(pressAt: CACurrentMediaTime()) else { return false }
+                          self.pressGate.admits(pressAt: CACurrentMediaTime()) else { return false }
                     self.press(answer)
                     return true
                 })

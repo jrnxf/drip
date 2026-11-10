@@ -5,7 +5,8 @@ public struct PressGate: Equatable, Sendable {
     /// How long a card's buttons stay still before a press on them counts.
     public static let delay = 0.4
 
-    /// When the buttons last stopped moving or changing, in seconds on the presenter's clock.
+    /// When the buttons last stopped moving or changing, or a press last did not count, in seconds
+    /// on the clock of `CACurrentMediaTime` and of an event's timestamp.
     public private(set) var settled: Double
 
     public init(settled: Double = -.infinity) {
@@ -18,9 +19,14 @@ public struct PressGate: Equatable, Sendable {
         settled = max(settled, time)
     }
 
-    /// Whether a press that began at `time`, on the same clock, counts: a press that began on
-    /// buttons still moving or just still was meant for something else.
-    public func takes(pressAt time: Double) -> Bool {
-        time >= settled + Self.delay
+    /// Whether a press that began at `time` counts: a press that began on buttons still moving or
+    /// just still was meant for something else. One that does not count holds the next back for
+    /// `delay` from it too, so the second click of a double-click that starts too early does not
+    /// count either. Nil, a press whose start went unseen, never counts.
+    public mutating func admits(pressAt time: Double?) -> Bool {
+        guard let time else { return false }
+        if time >= settled + Self.delay { return true }
+        settled = max(settled, time)
+        return false
     }
 }

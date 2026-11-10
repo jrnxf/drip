@@ -9,18 +9,63 @@ struct PressGateTests {
         notchWidth: 185, notchHeight: 32, textWidth: 500, textHeight: 2 * 17 + 3 + 3 * 15, titleLines: 2,
         detailLines: 3)
 
+    /// Whether `gate` takes a press at `time`, with the gate left as it was.
+    private func admits(_ gate: PressGate, _ time: Double?) -> Bool {
+        var gate = gate
+        return gate.admits(pressAt: time)
+    }
+
+    /// Whether `gate` takes each press of `times` in turn, with what each does to the gate kept.
+    private func presses(_ gate: inout PressGate, _ times: [Double?]) -> [Bool] {
+        times.map { gate.admits(pressAt: $0) }
+    }
+
     @Test func aPressCountsOnlyOnceTheButtonsHaveBeenStill() {
         #expect(PressGate.delay == 0.4)
         // Nothing has moved yet: nothing holds a press back.
-        #expect(PressGate().takes(pressAt: 0))
+        #expect(admits(PressGate(), 0))
 
         var gate = PressGate()
         gate.moves(until: 1)
-        #expect(!gate.takes(pressAt: 0.5), "a press while the buttons move")
-        #expect(!gate.takes(pressAt: 1), "a press as they stop")
-        #expect(!gate.takes(pressAt: 1.39), "a press just after they stop")
-        #expect(gate.takes(pressAt: 1.4))
-        #expect(gate.takes(pressAt: 3))
+        #expect(!admits(gate, 0.5), "a press while the buttons move")
+        #expect(!admits(gate, 1), "a press as they stop")
+        #expect(!admits(gate, 1.39), "a press just after they stop")
+        #expect(admits(gate, 1.4))
+        #expect(admits(gate, 3))
+        // A press that counts holds nothing back.
+        let counted = presses(&gate, [1.4, 1.5])
+        #expect(counted == [true, true])
+        #expect(gate.settled == 1)
+    }
+
+    /// A press whose mouse-down went unseen, such as one that began before the card came: never.
+    @Test func aPressWithNoStartNeverCounts() {
+        var gate = PressGate()
+        let unseen = presses(&gate, [nil])
+        #expect(unseen == [false])
+        #expect(gate.settled == -.infinity)
+        gate.moves(until: 1)
+        let late = presses(&gate, [nil])
+        #expect(late == [false])
+        #expect(gate.settled == 1)
+    }
+
+    /// The second click of a double-click that starts before the buttons settle lands after they
+    /// do: it waits a full delay from the first, so it does not count either.
+    @Test func aPressThatDoesNotCountHoldsTheNextBack() {
+        var gate = PressGate()
+        gate.moves(until: 1)
+        #expect(admits(gate, 1.45), "with no press before it")
+
+        let first = presses(&gate, [1.3])
+        #expect(first == [false])
+        #expect(gate.settled == 1.3)
+        #expect(!admits(gate, 1.45), "the second click of the double-click")
+        #expect(admits(gate, 1.75))
+
+        // A run of early clicks pushes the gate on with each one.
+        let run = presses(&gate, [1.45, 1.8, 2.25])
+        #expect(run == [false, false, true])
     }
 
     @Test func aLaterMoveHoldsPressesBackAgainAndAnEarlierOneDoesNot() {
@@ -28,11 +73,11 @@ struct PressGateTests {
         gate.moves(until: 1)
         gate.moves(until: 0.5)
         #expect(gate.settled == 1)
-        #expect(gate.takes(pressAt: 1.4))
+        #expect(admits(gate, 1.4))
         // A card replaced in place, long after the first settled.
         gate.moves(until: 5)
-        #expect(!gate.takes(pressAt: 5.2))
-        #expect(gate.takes(pressAt: 5.4))
+        #expect(!admits(gate, 5.2))
+        #expect(admits(gate, 5.4))
     }
 
     /// The gate a card's presenter keeps: from the end of its entrance's springs, and again from the
@@ -44,17 +89,17 @@ struct PressGateTests {
         #expect(entered > 0)
         var gate = PressGate()
         gate.moves(until: entered)
-        #expect(!gate.takes(pressAt: 0.1), "a click as the card drops in")
-        #expect(!gate.takes(pressAt: entered + 0.2))
-        #expect(gate.takes(pressAt: entered + PressGate.delay))
+        #expect(!admits(gate, 0.1), "a click as the card drops in")
+        #expect(!admits(gate, entered + 0.2))
+        #expect(admits(gate, entered + PressGate.delay))
 
         // Another card takes its place: it springs to a new size, and the clicks wait again.
         let replaced = entered + 2
         animator.resize(to: wide, at: replaced)
         #expect(animator.end > replaced)
         gate.moves(until: animator.end)
-        #expect(!gate.takes(pressAt: replaced + 0.05), "a click meant for the card that was there")
-        #expect(!gate.takes(pressAt: animator.end + 0.2))
-        #expect(gate.takes(pressAt: animator.end + PressGate.delay))
+        #expect(!admits(gate, replaced + 0.05), "a click meant for the card that was there")
+        #expect(!admits(gate, animator.end + 0.2))
+        #expect(admits(gate, animator.end + PressGate.delay))
     }
 }
