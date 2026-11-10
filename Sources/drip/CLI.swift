@@ -566,7 +566,7 @@ struct DripCLI {
     private func surroundings(
         _ console: Console, resurfacing agent: AgentHook.Agent? = nil, history: ResolvedHistory = ResolvedHistory()
     ) -> AgentHook.Surroundings {
-        AgentHook.Surroundings(
+        var surroundings = AgentHook.Surroundings(
             environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
             isInstalled: display.isInstalled, front: display.front(of:), paneShowing: display.paneShowing,
             resurface: { card, noted in
@@ -590,6 +590,11 @@ struct DripCLI {
                 history.limit = resolver.historyLimit
                 return resolver
             })
+        #if canImport(AppKit)
+        // Whether a permission card shows its whole command goes by the lines the island draws.
+        surroundings.shownText = IslandLayers.shownText(for:)
+        #endif
+        return surroundings
     }
 
     /// Reads the config file and environment, printing the config file's warnings.

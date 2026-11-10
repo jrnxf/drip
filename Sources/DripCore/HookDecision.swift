@@ -48,6 +48,9 @@ extension AgentHook {
         public var now: () -> Date
         /// The drip that asks, as the debug log names it.
         public var process: DebugLog.Process
+        /// The lines a card shows, which tell whether a permission card shows its whole request:
+        /// measured as the card draws them on a Mac, estimated elsewhere.
+        public var shownText: (Card) -> ShownText
 
         public init(
             environment: [String: String], hasGUISession: Bool, isInstalled: @escaping (String) -> Bool,
@@ -55,9 +58,11 @@ extension AgentHook {
             resurface: @escaping (Card, Double) -> Void = { _, _ in }, away: @escaping () -> Bool = { false },
             loadConfig: @escaping ([String: String]) throws -> ConfigFile = { try ConfigLoader.load(environment: $0) },
             resolver: @escaping (ConfigFile, [String: String]) throws -> CardResolver, origin: Origin? = nil,
-            showsCards: Bool = true, now: @escaping () -> Date = Date.init, process: DebugLog.Process = .hook
+            showsCards: Bool = true, now: @escaping () -> Date = Date.init, process: DebugLog.Process = .hook,
+            shownText: @escaping (Card) -> ShownText = ShownText.init(estimating:)
         ) {
             self.process = process
+            self.shownText = shownText
             self.environment = environment
             self.hasGUISession = hasGUISession
             self.isInstalled = isInstalled
@@ -154,6 +159,10 @@ extension AgentHook {
             return nil
         }
         var flags = event.filling(flags)
+        // With --approve, a permission card says what the call would do, whether it asks or only
+        // tells, never only what the agent says it does: a description can say anything about the
+        // call it describes, and so can --detail. The one place a permission card's detail is set.
+        if policy.approve, event.asksPermission { flags.detail = event.toolUse ?? flags.detail }
         flags.icon = flags.icon ?? agent.icon(installed: surroundings.isInstalled)
         // The title starts with the project, or the agent's name when the payload names no folder.
         let name = event.directory.flatMap(projectName) ?? agent.displayName
@@ -227,18 +236,61 @@ extension AgentHook {
             note("approve", "skip", eventFields + [("reason", "watching_terminal")])
             return shown
         }
+        // Allow only for a plain shell command, shown whole as it is: on any other request, or on
+        // one the card cuts short, Allow would allow what you never saw. The card only tells, and
+        // the terminal asks.
+        guard let request = event.request, shown.detail == request else {
+            note("approve", "skip", eventFields + [("reason", "not_a_plain_command")])
+            return shown
+        }
+        guard let asking = asking(shown, shownText: surroundings.shownText) else {
+            note("approve", "skip", eventFields + [("reason", "request_not_shown_whole")])
+            return shown
+        }
         note("approve", "ask", eventFields + [("wait_seconds", "\(Int(Defaults.approveWait))")])
-        return asking(shown)
+        return asking
     }
 
     /// `card`, a permission card, with Allow and Deny: a click on either is the agent's answer, which
     /// `drip hook` prints as `Approval.output`. Nothing clicked in `Defaults.approveWait` seconds,
-    /// or a click on the card itself, leaves the answer to the terminal.
-    public static func asking(_ card: Card) -> Card {
+    /// or a click on the card itself, leaves the answer to the terminal. Nil when the card does not
+    /// show its detail, the command the call would run, whole and as it is, as `shownText` lays
+    /// the card out.
+    public static func asking(
+        _ card: Card, shownText: (Card) -> ShownText = ShownText.init(estimating:)
+    ) -> Card? {
+        // A card draws its detail normalized: a detail that would change does not show as it is.
+        guard let detail = card.detail, CardText.line(detail) == detail else { return nil }
         var card = card
         card.action = CardAction(label: "Allow", open: nil, decline: "Deny")
         card.waitLimit = Defaults.approveWait
+        guard shows(detail, whole: shownText(card).detail) else { return nil }
         return card
+    }
+
+    /// Whether `lines`, a detail as a card wraps it, are `text` character for character, with each
+    /// line break standing for exactly one space. Every break falls at a single space of `text`,
+    /// which the break drops, and the last line ends where `text` does, with no `…` cutting it
+    /// short. A break anywhere else, such as after a `/` or a `-`, or inside a word too long for a
+    /// line, fails: a reader could not tell whether a space stood there, and `rm -rf ~/ projects`
+    /// would read the same as `rm -rf ~/projects`. A break must also have a letter or a digit on
+    /// each side: even at a space, `rm -rf ~/` over `projects/old-build` reads as one path.
+    public static func shows(_ text: String, whole lines: [String]) -> Bool {
+        func isWord(_ character: Character?) -> Bool {
+            character.map { $0.isASCII && ($0.isLetter || $0.isNumber) } ?? false
+        }
+        var rest = Substring(text)
+        for (index, line) in lines.enumerated() {
+            if index > 0 {
+                guard rest.first == " ", isWord(lines[index - 1].last), isWord(line.first) else { return false }
+                rest = rest.dropFirst()
+            }
+            guard let first = line.first, let last = line.last, first != " ", last != " ", rest.hasPrefix(line) else {
+                return false
+            }
+            rest = rest.dropFirst(line.count)
+        }
+        return !lines.isEmpty && rest.isEmpty
     }
 
     /// Where the terminal is for `card`, asking about its pane only when that decides it: the
