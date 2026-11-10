@@ -11,6 +11,11 @@ click is the agent's answer. Nothing clicked in 9 minutes prints nothing, and th
 it would without drip. So does a click on the card itself, and the ×.
 Off by default: a stray click allows a command, and a hook that waits is a change to choose.
 
+The card shows the command, or the file or address the tool works on, never only the agent's
+description of it. A command that does not fit the card whole, or that holds characters the card
+does not draw, gets no Allow: the hook returns at once and the terminal asks. The buttons take a
+click only once the card has been still for 0.4 seconds.
+
 | Agent | When the card asks | Answered in the terminal instead |
 | --- | --- | --- |
 | Claude Code | Always: Claude asks in its terminal at the same time, and the first answer counts | A deny takes the card away at once. An allow, once the tool ends |

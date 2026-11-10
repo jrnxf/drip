@@ -73,7 +73,7 @@ agent's Markdown out of the card.
 
 | Flag | What it does |
 | --- | --- |
-| `--approve` | The permission card has Allow and Deny, and a click is the agent's answer. Claude Code and Codex only, and local only |
+| `--approve` | The permission card shows the command, has Allow and Deny, and a click is the agent's answer. A command too long for the card is asked in the terminal. Claude Code and Codex only, and local only |
 | `--min-turn SECONDS` | No done card for a turn shorter than this, counted from the prompt you sent. 0 to 600. Cards that need you always show |
 | `--only needs-you` | Only the cards that need you: a permission, a question, an error. No done card |
 | `--on-click CMD` | A command to run on a click. See [recipes](../recipes/README.md) |
@@ -88,6 +88,13 @@ and the tool runs, or does not, without the terminal. Nothing clicked in 9 minut
 the 10 both agents give a hook, prints nothing, and the terminal asks as it would without drip. So
 does a click on the card itself, which brings the terminal forward, and the ×. It is a flag you add
 by choice: a stray click allows a command.
+
+The card shows what the tool would do, read from its own input: the command, else the file or the
+address. It never shows only the agent's description of the call, which can say anything, and
+`--detail` cannot replace it. When the command does not fit the card whole, or holds characters a
+card does not draw, such as terminal escapes or zero-width spaces, the card has no Allow: it only
+tells, the hook returns at once, and the terminal asks. The buttons take a click only once the card
+has been still for 0.4 seconds, so a click meant for what was there before never answers it.
 
 | Agent | When the card asks | Answered in the terminal instead |
 | --- | --- | --- |
