@@ -161,7 +161,7 @@ step() {
 [ "$dry_run" -eq 0 ] || echo "tour: dry run - no cards. 'drip' is the binary the tour would use."
 
 step "four kinds" \
-    "ok, warn, fail and info, sent together to show as one stack. Each card names its kind." \
+    "ok, warn, fail and info, sent together to show as one stack." \
     'drip ok "ok" -d "green check, Glass sound" --seconds 3
 drip warn "warn" -d "orange, Purr sound" --seconds 3
 drip fail "fail" -d "red, Basso sound" --seconds 3
