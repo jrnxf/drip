@@ -182,21 +182,11 @@ private struct ConfigReader {
             case "sound": config.sound = try sound(item, key: key)
             case "motion": config.motion = try choice(item, key: key, Motion.self)
             case "stack": config.stack = try choice(item, key: key, StackSettings.Choice.self)
-            case "stack_max":
-                guard case let .integer(value) = item.value else { throw wrongType(item, key: key, expected: "a whole number") }
-                guard Defaults.stackMaxRange.contains(Int(clamping: value)) else {
-                    throw ConfigError(path: path, line: item.line, key: key, message: "must be between 1 and 6")
-                }
-                config.stackMax = Int(value)
+            case "stack_max": config.stackMax = try integer(item, key: key, in: Defaults.stackMaxRange)
             case "when_focused": config.whenFocused = try choice(item, key: key, WhenFocused.self)
             case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
             case "debug": config.debug = try boolean(item, key: key)
-            case "history":
-                guard case let .integer(value) = item.value else { throw wrongType(item, key: key, expected: "a whole number") }
-                guard Defaults.historyRange.contains(Int(clamping: value)) else {
-                    throw ConfigError(path: path, line: item.line, key: key, message: "must be between 0 and 1000")
-                }
-                config.history = Int(value)
+            case "history": config.history = try integer(item, key: key, in: Defaults.historyRange)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
             }
@@ -322,6 +312,16 @@ private struct ConfigReader {
         return text
     }
 
+    /// A whole number within `range`.
+    private func integer(_ item: TOMLItem, key: String, in range: ClosedRange<Int>) throws -> Int {
+        guard case let .integer(value) = item.value else { throw wrongType(item, key: key, expected: "a whole number") }
+        guard range.contains(Int(clamping: value)) else {
+            throw ConfigError(
+                path: path, line: item.line, key: key, message: "must be between \(range.lowerBound) and \(range.upperBound)")
+        }
+        return Int(value)
+    }
+
     private func boolean(_ item: TOMLItem, key: String) throws -> Bool {
         guard case let .boolean(value) = item.value else { throw wrongType(item, key: key, expected: "true or false") }
         return value
@@ -429,15 +429,18 @@ public struct EnvironmentSettings: Equatable {
             return seconds
         }
         awayAfter = try seconds("DRIP_AWAY_AFTER", in: Defaults.awayAfterRange)
-        if let text = value("DRIP_STACK_MAX") {
-            guard let max = Int(text), Defaults.stackMaxRange.contains(max) else {
-                throw UsageError("DRIP_STACK_MAX must be a whole number from 1 to 6, not '\(text)'")
+        func integer(_ name: String, in range: ClosedRange<Int>) throws -> Int? {
+            guard let text = value(name) else { return nil }
+            guard let number = Int(text), range.contains(number) else {
+                throw UsageError(
+                    "\(name) must be a whole number from \(range.lowerBound) to \(range.upperBound), not '\(text)'")
             }
-            stackMax = max
+            return number
         }
+        stackMax = try integer("DRIP_STACK_MAX", in: Defaults.stackMaxRange)
+        history = try integer("DRIP_HISTORY", in: Defaults.historyRange)
         sound = value("DRIP_SOUND").map(Sound.init(parsing:))
         debug = try Self.debug(environment: environment)
-        history = try Self.history(environment: environment)
         sender = CardActivation.sender(in: environment)
         pane = TerminalPane(environment: environment)
         forwarded = ForwardedEnvironment.read(environment)
@@ -445,16 +448,6 @@ public struct EnvironmentSettings: Equatable {
 }
 
 extension EnvironmentSettings {
-    /// `DRIP_HISTORY`: a whole number from 0 to 1000; nil when unset or empty. Throws a `UsageError`
-    /// for anything else.
-    public static func history(environment: [String: String]) throws -> Int? {
-        guard let text = environment["DRIP_HISTORY"].flatMap({ $0.isEmpty ? nil : $0 }) else { return nil }
-        guard let count = Int(text), Defaults.historyRange.contains(count) else {
-            throw UsageError("DRIP_HISTORY must be a whole number from 0 to 1000, not '\(text)'")
-        }
-        return count
-    }
-
     /// `DRIP_DEBUG`: `1`, `true`, `on` or `yes`, or `0`, `false`, `off` or `no`; nil when unset or
     /// empty. Throws a `UsageError` for anything else.
     public static func debug(environment: [String: String]) throws -> Bool? {

@@ -36,6 +36,7 @@ The history, `~/.local/state/drip/history.jsonl`, is readable only by you and ke
 cards. It holds each card's title and detail, up to 16,384 characters of each, so a card from a
 coding agent keeps the agent's last message. Run `drip history --clear` to delete every card in it.
 To keep fewer cards, or none, set `history` in the config or `DRIP_HISTORY` to a number from 0 to 1000.
+The file shrinks the next time a card is made: run `drip history --clear` to empty it now.
 With 0, drip keeps no cards from then on, and held cards still play back.
 
 ## Debug log

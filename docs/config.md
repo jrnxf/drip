@@ -35,7 +35,7 @@ Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `D
 `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
 environment exits 2 when drip makes a card from it (1 for `drip hook`); a command that makes none,
 such as `drip history`, `drip debug` or `drip dismiss`, or a hook that shows nothing or only takes a
-card away, never reads it. An invalid `DRIP_DEBUG` or `DRIP_HISTORY` counts as unset. A preset's own `seconds` and `sound` beat the top-level ones, except
+card away, never reads it. An invalid `DRIP_DEBUG` counts as unset. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
 name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `setup`,

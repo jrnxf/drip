@@ -31,6 +31,9 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
     public var cards: [Card]
     /// False for cards shown again from the history, which keeps them already.
     public var record: Bool
+    /// How many cards the history keeps, as the drip that made the cards resolved it; nil keeps
+    /// the default.
+    public var history: Int?
     /// Set when the cards are already on screen in a stack that hands them on, to show where they
     /// are instead of dropping them in again.
     public var handOff: StackHandOff?
@@ -54,15 +57,17 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
         }
     }
 
-    public init(cards: [Card], record: Bool = true) {
+    public init(cards: [Card], record: Bool = true, history: Int? = nil) {
         self.cards = cards
         self.record = record
+        self.history = history
     }
 
     /// A request to look again at `cards`, the waiting card a hook skipped, after a delay.
-    public init(cards: [Card], resurface: Resurface) {
+    public init(cards: [Card], resurface: Resurface, history: Int? = nil) {
         self.cards = cards
         record = true
+        self.history = history
         self.resurface = resurface
     }
 
@@ -74,7 +79,7 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case cards, record, handOff, resurface
+        case cards, record, history, handOff, resurface
     }
 
     /// A request from a drip that predates `record` is recorded, and one that predates `handOff`
@@ -83,12 +88,13 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         cards = try container.decode([Card].self, forKey: .cards)
         record = try container.decodeIfPresent(Bool.self, forKey: .record) ?? true
+        history = try container.decodeIfPresent(Int.self, forKey: .history)
         handOff = try container.decodeIfPresent(StackHandOff.self, forKey: .handOff)
         resurface = try container.decodeIfPresent(Resurface.self, forKey: .resurface)
     }
 
     /// What the background drip does with the cards while the screen is locked.
-    public var locked: LockedScreen { .pool(record: record) }
+    public var locked: LockedScreen { .pool(record: record, history: history ?? Defaults.history) }
 
     public func encoded() throws -> Data {
         try JSONEncoder().encode(self)
@@ -183,17 +189,22 @@ public struct HandedCard: Equatable, Sendable, Codable {
 /// cards go into the history when `record` is true.
 public enum LockedScreen: Equatable, Sendable {
     /// Hold them with every other background drip's, to show together once the screen unlocks.
-    case pool(record: Bool)
+    case pool(record: Bool, history: Int = Defaults.history)
     /// Wait here until the screen unlocks, then show them: the caller is waiting for the outcome.
-    case wait(record: Bool)
+    case wait(record: Bool, history: Int = Defaults.history)
 
     /// Adds the cards to `history`, unless they are kept out of it.
     public func record(
         _ cards: [Card], missed: Bool, in history: CardHistory, shown: (Card) -> ShownText? = { _ in nil }
     ) throws {
+        let (record, limit): (Bool, Int)
         switch self {
-        case let .pool(record), let .wait(record):
-            if record { try history.record(cards, missed: missed, shown: shown) }
+        case let .pool(keep, size), let .wait(keep, size): (record, limit) = (keep, size)
+        }
+        if record {
+            var history = history
+            history.limit = limit
+            try history.record(cards, missed: missed, shown: shown)
         }
     }
 }

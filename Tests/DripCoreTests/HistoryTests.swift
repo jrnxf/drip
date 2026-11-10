@@ -93,23 +93,53 @@ final class HistoryTests {
         #expect(try held.release().map(\.title) == ["held"])
     }
 
-    @Test func theHistorySizeComesFromTheEnvironmentThenTheConfig() throws {
-        let environment = ["HOME": "/h"]
-        func limit(_ environment: [String: String], _ config: String = "") throws -> Int {
-            try CardHistory(environment: environment) { try ConfigLoader.parse(config, path: "config.toml") }.limit
+    @Test func aLowerLimitTrimsTheFileOnTheNextRecordAndZeroEmptiesIt() throws {
+        let path = try scratch() + "/history.jsonl"
+        try CardHistory(path: path).record([card("a"), card("b"), card("c")], missed: false)
+        try CardHistory(path: path, limit: 2).record([card("d")], missed: false)
+        #expect(CardHistory(path: path).entries().map(\.card.title) == ["c", "d"])
+        try CardHistory(path: path, limit: 0).record([card("e")], missed: false)
+        #expect(CardHistory(path: path).entries().isEmpty)
+    }
+
+    @Test func theHistorySizeComesFromTheEnvironmentThenTheConfigThenTheDefault() throws {
+        func limit(_ environment: [String: String] = [:], _ config: String = "") throws -> Int {
+            try CardResolver(
+                config: ConfigLoader.parse(config, path: "config.toml").config,
+                environment: EnvironmentSettings(environment: environment)
+            ).historyLimit
         }
-        #expect(try limit(environment) == 1000)
-        #expect(try limit(environment, "history = 50") == 50)
-        #expect(try limit(environment, "history = 0") == 0)
-        #expect(try limit(environment.merging(["DRIP_HISTORY": "7"]) { $1 }, "history = 50") == 7)
-        #expect(try limit(environment.merging(["DRIP_HISTORY": "0"]) { $1 }, "history = 50") == 0)
-        // An invalid environment value counts as unset.
-        #expect(try limit(environment.merging(["DRIP_HISTORY": "lots"]) { $1 }, "history = 50") == 50)
+        #expect(try limit() == 1000)
+        #expect(try limit([:], "history = 50") == 50)
+        #expect(try limit([:], "history = 0") == 0)
+        #expect(try limit(["DRIP_HISTORY": "7"], "history = 50") == 7)
+        #expect(try limit(["DRIP_HISTORY": "0"], "history = 50") == 0)
+        // A valid history survives a warning-only config: an unknown key is not an error.
+        #expect(try limit([:], "history = 0\nsurprise = 1") == 0)
+    }
+
+    @Test func theHistorySizeIsCheckedLikeStackMax() throws {
         #expect(try EnvironmentSettings(environment: ["DRIP_HISTORY": "12"]) == EnvironmentSettings(history: 12))
-        #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_HISTORY": "1001"]) }
-        #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_HISTORY": "-1"]) }
+        for value in ["1001", "-1", "2.5", "lots"] {
+            #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_HISTORY": value]) }
+        }
+        #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_STACK_MAX": "7"]) }
         #expect(throws: ConfigError.self) { try ConfigLoader.parse("history = 1001", path: "config.toml") }
+        #expect(throws: ConfigError.self) { try ConfigLoader.parse("history = -1", path: "config.toml") }
         #expect(throws: ConfigError.self) { try ConfigLoader.parse("history = \"all\"", path: "config.toml") }
+        #expect(throws: ConfigError.self) { try ConfigLoader.parse("stack_max = 7", path: "config.toml") }
+    }
+
+    @Test func aLockedScreenRecordsWithTheLimitItCarries() throws {
+        let path = try scratch() + "/history.jsonl"
+        let cards = [card("a"), card("b"), card("c")]
+        try LockedScreen.wait(record: true, history: 2).record(cards, missed: false, in: CardHistory(path: path))
+        #expect(CardHistory(path: path).entries().map(\.card.title) == ["b", "c"])
+        try LockedScreen.pool(record: true, history: 0).record(cards, missed: false, in: CardHistory(path: path))
+        #expect(CardHistory(path: path).entries().isEmpty)
+        var request = BackgroundRequest(cards: cards, history: 0)
+        request = try BackgroundRequest.decode(request.encoded())
+        #expect(request.locked == .pool(record: true, history: 0))
     }
 
     @Test func theJSONListingIsFlat() throws {

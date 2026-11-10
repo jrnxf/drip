@@ -381,7 +381,9 @@ struct CommandTests {
         #expect(try history([]).number == nil && !history([]).all)
         #expect(try history(["-n", "3"]).number == 3)
         #expect(try history(["--all"]).all)
-        assertUsageError(["history", "--clear", "--all"])
+        for option in [["--missed"], ["-n", "3"], ["--all"], ["--json"], ["--replay"]] {
+            assertUsageError(["history", "--clear"] + option)
+        }
         assertUsageError(["history", "-n", "0"])
         assertUsageError(["history", "-n", "3", "--all"])
         assertUsageError(["history", "extra"])

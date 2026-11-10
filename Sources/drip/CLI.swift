@@ -354,11 +354,13 @@ struct DripCLI {
         _ cards: [Card], wait: Bool, record: Bool = true, remind: Bool = true, console: Console
     ) -> Int32 {
         let cards = display.prepare(cards, console: console)
+        let history = CardResolver.historyLimit(environment: ProcessInfo.processInfo.environment)
         switch Delivery.choose(for: cards, wait: wait) {
         case .background:
             if remind { remindIfPaused(console) }
-            return display.showInBackground(BackgroundRequest(cards: cards, record: record), console: console)
-        case .wait: return display.show(cards, locked: .wait(record: record), console: console)
+            return display.showInBackground(
+                BackgroundRequest(cards: cards, record: record, history: history), console: console)
+        case .wait: return display.show(cards, locked: .wait(record: record, history: history), console: console)
         }
     }
 
@@ -398,7 +400,7 @@ struct DripCLI {
             guard let shown = try AgentHook.resurfaced(
                 card, agent: agent, noted: resurface.noted, in: surroundings(console))
             else { return ExitStatus.shown }
-            return display.show(display.prepare([shown], console: console), locked: .wait(record: true), console: console)
+            return display.show(display.prepare([shown], console: console), locked: .wait(record: true, history: request.history ?? Defaults.history), console: console)
         } catch {
             return report(error, console)
         }
@@ -450,7 +452,8 @@ struct DripCLI {
                 return ExitStatus.shown
             } catch {
                 console.error("cannot clear the history: \(error)")
-                return ExitStatus.usage
+                // Not a usage mistake: the file could not be changed, so 1 and not ExitStatus.usage.
+                return 1
             }
         }
         // The listing is the last cards; JSON and replay are all of them, unless -n limits them.
@@ -539,7 +542,8 @@ struct DripCLI {
                 guard let agent else { return }
                 // A background drip waits for the card; this hook returns at once.
                 _ = BackgroundDrip.start(BackgroundRequest(
-                    cards: [card], resurface: .init(agent: agent.rawValue, noted: noted)))
+                    cards: [card], resurface: .init(agent: agent.rawValue, noted: noted),
+                    history: CardResolver.historyLimit(environment: ProcessInfo.processInfo.environment)))
                 #endif
             },
             away: {
@@ -594,7 +598,7 @@ struct UnavailableDisplay: CardDisplay {
     }
 
     func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32 {
-        show(request.cards, locked: .wait(record: request.record), console: console)
+        show(request.cards, locked: .wait(record: request.record, history: request.history ?? Defaults.history), console: console)
     }
 
     func prepare(_ cards: [Card], console: Console) -> [Card] {

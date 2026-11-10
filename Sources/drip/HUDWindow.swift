@@ -101,13 +101,13 @@ struct HUDDisplay: CardDisplay {
         }
         if BackgroundDrip.start(request) { return ExitStatus.shown }
         console.warn("cannot start a background drip; showing the card here instead")
-        return show(request.cards, locked: .wait(record: request.record), console: console)
+        return show(request.cards, locked: .wait(record: request.record, history: request.history ?? Defaults.history), console: console)
     }
 
     private func record(_ cards: [Card], missed: Bool, locked: LockedScreen, console: Console) {
         do {
             try locked.record(
-                cards, missed: missed, in: CardHistory(settingsFrom: ProcessInfo.processInfo.environment),
+                cards, missed: missed, in: CardHistory(environment: ProcessInfo.processInfo.environment),
                 shown: IslandLayers.shownText)
         } catch {
             console.warn("cannot record the card in the history: \(error)")

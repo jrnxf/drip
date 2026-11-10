@@ -202,7 +202,8 @@ screen is locked, keeps waiting until the unlock and then shows its card on its 
 Every card is also kept in `$XDG_STATE_HOME/drip/history.jsonl`, or
 `~/.local/state/drip/history.jsonl`, one JSON object per line, readable only by you. drip keeps
 the last 1000 cards. Set `history` in the config, or `DRIP_HISTORY`, to a number from 0 to 1000 to
-keep fewer. With 0, drip keeps no cards. Cards held for a locked screen or a pause still play back.
+keep fewer. A lower number trims the file the next time a card is made, and 0 empties it then.
+Run `drip history --clear` to delete the cards now. With 0, drip keeps no cards. Cards held for a locked screen or a pause still play back.
 
 ```sh
 drip history                  # the last 20 cards, newest first, as they showed

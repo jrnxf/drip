@@ -116,7 +116,7 @@ public struct HistoryEntry: Equatable, Sendable, Codable {
 /// once there are more than `limit`.
 public struct CardHistory {
     /// The most entries kept.
-    public static let limit = 1000
+    public static let limit = Defaults.history
     /// The most characters of a title or a detail an entry keeps. A hook card's detail is the
     /// agent's whole last message, and every card rewrites the file.
     public static let textLimit = 16 * 1024
@@ -134,19 +134,6 @@ public struct CardHistory {
         self.init(path: (StateDirectory.path(environment: environment) as NSString).appendingPathComponent("history.jsonl"))
     }
 
-    /// `history.jsonl` in the state directory, keeping as many cards as `DRIP_HISTORY` or the
-    /// config's `history` says, else the default. An invalid setting counts as unset.
-    public init(environment: [String: String], loadConfig: () throws -> ConfigFile) {
-        self.init(environment: environment)
-        limit = ((try? EnvironmentSettings.history(environment: environment)) ?? nil)
-            ?? (try? loadConfig())?.config.history ?? Self.limit
-    }
-
-    /// As above, reading the config file from its usual place.
-    public init(settingsFrom environment: [String: String]) {
-        self.init(environment: environment) { try ConfigLoader.load(environment: environment) }
-    }
-
     /// Empties the history. Held cards are a separate file and stay.
     public func clear() throws {
         try StateFiles.locked(path) {
@@ -162,7 +149,7 @@ public struct CardHistory {
     public func record(
         _ cards: [Card], missed: Bool, at time: Date = Date(), shown: (Card) -> ShownText? = { _ in nil }
     ) throws {
-        guard !cards.isEmpty, limit > 0 else { return }
+        guard !cards.isEmpty else { return }
         let added = try cards.map { card in
             var kept = card
             kept.title = CardText.truncate(card.title, limit: Self.textLimit)
@@ -173,7 +160,10 @@ public struct CardHistory {
         }
         try StateFiles.locked(path) {
             let lines = StateFiles.lines(atPath: path) + added
-            try StateFiles.write(lines.suffix(limit).map { $0 + "\n" }.joined(), toPath: path)
+            // A limit lower than the file trims it here, and 0 empties it.
+            let kept = lines.suffix(max(limit, 0))
+            if kept.isEmpty, !FileManager.default.fileExists(atPath: path) { return }
+            try StateFiles.write(kept.map { $0 + "\n" }.joined(), toPath: path)
         }
     }
 
