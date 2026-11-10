@@ -11,10 +11,11 @@ click is the agent's answer. Nothing clicked in 9 minutes prints nothing, and th
 it would without drip. So does a click on the card itself, and the ×.
 Off by default: a stray click allows a command, and a hook that waits is a change to choose.
 
-The card shows the command, or the file or address the tool works on, never only the agent's
-description of it. A command that does not fit the card whole, or that holds characters the card
-does not draw, gets no Allow: the hook returns at once and the terminal asks. The buttons take a
-click only once the card has been still for 0.4 seconds.
+Allow appears only for a short shell command on one line, in plain ASCII, with no extra options.
+The card then shows the command itself, never the agent's description of it. All other requests
+are asked in the terminal: other tools such as Write or an MCP tool, long commands, and commands
+with line breaks, tabs or non-ASCII characters. The card only tells, and the hook returns at once.
+The buttons take a click only once the card has been still for 0.4 seconds.
 
 | Agent | When the card asks | Answered in the terminal instead |
 | --- | --- | --- |

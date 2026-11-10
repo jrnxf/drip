@@ -73,7 +73,7 @@ agent's Markdown out of the card.
 
 | Flag | What it does |
 | --- | --- |
-| `--approve` | The permission card shows the command, has Allow and Deny, and a click is the agent's answer. A command too long for the card is asked in the terminal. Claude Code and Codex only, and local only |
+| `--approve` | The permission card for a short, single-line ASCII shell command shows the command, has Allow and Deny, and a click is the agent's answer. All other requests are asked in the terminal. Claude Code and Codex only, and local only |
 | `--min-turn SECONDS` | No done card for a turn shorter than this, counted from the prompt you sent. 0 to 600. Cards that need you always show |
 | `--only needs-you` | Only the cards that need you: a permission, a question, an error. No done card |
 | `--on-click CMD` | A command to run on a click. See [recipes](../recipes/README.md) |
@@ -89,12 +89,24 @@ the 10 both agents give a hook, prints nothing, and the terminal asks as it woul
 does a click on the card itself, which brings the terminal forward, and the ×. It is a flag you add
 by choice: a stray click allows a command.
 
-The card shows what the tool would do, read from its own input: the command, else the file or the
-address. It never shows only the agent's description of the call, which can say anything, and
-`--detail` cannot replace it. When the command does not fit the card whole, or holds characters a
-card does not draw, such as terminal escapes or zero-width spaces, the card has no Allow: it only
-tells, the hook returns at once, and the terminal asks. The buttons take a click only once the card
-has been still for 0.4 seconds, so a click meant for what was there before never answers it.
+Allow appears only for a shell command (Bash) that is short, on one line, in plain ASCII, and has
+no extra options. The card then shows the command itself, character for character, never the
+agent's description of it, which can say anything. `--detail` cannot replace it. A command given
+as words shows shell-quoted, so `["rm","-rf","build /"]` shows as `rm -rf 'build /'`.
+
+Every other request is asked in the terminal: the card only tells, as without `--approve`, and the
+hook returns at once. This covers:
+
+- any other tool, such as Write, Edit, WebFetch or an MCP tool
+- a command too long for the card
+- a command with a line break, a tab, a run of spaces, or any character outside ASCII
+- an option that can change what runs, such as `dangerouslyDisableSandbox`
+
+Claude Code's `timeout` and `run_in_background` change nothing about what runs, so they still ask.
+
+The buttons take a click only once the card has been still for 0.4 seconds. A click before that
+does not count, and it holds the next click back for 0.4 seconds too. So a click, or a
+double-click, meant for what was there before never answers the card.
 
 | Agent | When the card asks | Answered in the terminal instead |
 | --- | --- | --- |
