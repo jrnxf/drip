@@ -655,8 +655,8 @@ public struct HistoryCommand: ParsableCommand {
             fewer, --all every one. Color is for a terminal, and off when NO_COLOR is set and not empty. --json and \
             --replay take every card, oldest first, in full, unless -n limits them. The history is \
             $XDG_STATE_HOME/drip/history.jsonl, or ~/.local/state/drip/history.jsonl, and keeps up to \
-            \(CardHistory.limit) cards by default. history in the config, or DRIP_HISTORY, sets how many, \
-            and 0 keeps none. --clear deletes every card in it.
+            \(Defaults.history) cards by default. history in the config, or DRIP_HISTORY, sets how many, \
+            and 0 stops recording. --clear deletes every card in it.
             """
     )
 

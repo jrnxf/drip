@@ -101,7 +101,7 @@ struct HUDDisplay: CardDisplay {
         }
         if BackgroundDrip.start(request) { return ExitStatus.shown }
         console.warn("cannot start a background drip; showing the card here instead")
-        return show(request.cards, locked: .wait(record: request.record, history: request.history ?? Defaults.history), console: console)
+        return show(request.cards, locked: .wait(record: request.record, history: request.historyLimit), console: console)
     }
 
     private func record(_ cards: [Card], missed: Bool, locked: LockedScreen, console: Console) {

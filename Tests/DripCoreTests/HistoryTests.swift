@@ -73,6 +73,7 @@ final class HistoryTests {
         let history = CardHistory(path: directory + "/history.jsonl")
         let held = HeldCards(directory: directory)
         try history.clear()
+        #expect(!FileManager.default.fileExists(atPath: history.path))
         try history.record([card("one"), card("two")], missed: false)
         _ = try held.admit([card("held")], locked: true, pid: getpid())
         try history.clear()
@@ -93,13 +94,14 @@ final class HistoryTests {
         #expect(try held.release().map(\.title) == ["held"])
     }
 
-    @Test func aLowerLimitTrimsTheFileOnTheNextRecordAndZeroEmptiesIt() throws {
+    @Test func aLowerLimitTrimsOnTheNextRecordAndZeroLeavesTheFileAlone() throws {
         let path = try scratch() + "/history.jsonl"
         try CardHistory(path: path).record([card("a"), card("b"), card("c")], missed: false)
         try CardHistory(path: path, limit: 2).record([card("d")], missed: false)
         #expect(CardHistory(path: path).entries().map(\.card.title) == ["c", "d"])
+        // 0 does not record the card, and does not touch what was kept before.
         try CardHistory(path: path, limit: 0).record([card("e")], missed: false)
-        #expect(CardHistory(path: path).entries().isEmpty)
+        #expect(CardHistory(path: path).entries().map(\.card.title) == ["c", "d"])
     }
 
     @Test func theHistorySizeComesFromTheEnvironmentThenTheConfigThenTheDefault() throws {
@@ -135,8 +137,8 @@ final class HistoryTests {
         let cards = [card("a"), card("b"), card("c")]
         try LockedScreen.wait(record: true, history: 2).record(cards, missed: false, in: CardHistory(path: path))
         #expect(CardHistory(path: path).entries().map(\.card.title) == ["b", "c"])
-        try LockedScreen.pool(record: true, history: 0).record(cards, missed: false, in: CardHistory(path: path))
-        #expect(CardHistory(path: path).entries().isEmpty)
+        try LockedScreen.pool(record: true, history: 0).record([card("d")], missed: false, in: CardHistory(path: path))
+        #expect(CardHistory(path: path).entries().map(\.card.title) == ["b", "c"])
         var request = BackgroundRequest(cards: cards, history: 0)
         request = try BackgroundRequest.decode(request.encoded())
         #expect(request.locked == .pool(record: true, history: 0))
@@ -394,19 +396,20 @@ final class HistoryTests {
         let replay = BackgroundRequest(cards: before.map(HistoryListing.replay), record: false)
         let received = try BackgroundRequest.decode(replay.encoded())
         try received.locked.record(received.cards, missed: true, in: history)
-        try LockedScreen.wait(record: received.record).record(received.cards, missed: false, in: history)
+        try LockedScreen.wait(record: received.record, history: received.historyLimit).record(received.cards, missed: false, in: history)
         #expect(history.entries() == before)
         // A card sent as usual is recorded, by either path.
         let sent = try BackgroundRequest.decode(BackgroundRequest(cards: [card("c")]).encoded())
         try sent.locked.record(sent.cards, missed: true, in: history)
-        try LockedScreen.wait(record: sent.record).record([card("d")], missed: false, in: history)
+        try LockedScreen.wait(record: sent.record, history: sent.historyLimit).record([card("d")], missed: false, in: history)
         #expect(history.entries().map(\.card.title) == ["a", "b", "c", "d"])
     }
 
     @Test func aRequestWithoutRecordIsRecorded() throws {
         let request = try BackgroundRequest.decode(Data(#"{"cards":[]}"#.utf8))
         #expect(request.record)
-        #expect(request.locked == .pool(record: true))
+        #expect(request.locked == .pool(record: true, history: Defaults.history))
+        #expect(request.historyLimit == Defaults.history)
     }
 
     // MARK: Holding cards while the screen is locked

@@ -12,7 +12,7 @@ stack     = "chain"           # chain | push | off: how cards stack
 stack_max = 3                 # most cards on screen at once, 1 to 6
 when_focused = "quiet"        # quiet | show | skip: an agent's card while you watch its terminal
 away_after = 60               # seconds without keyboard or mouse before you count as away; 0: always away
-history = 1000                # most cards the history keeps, 0 to 1000; 0 keeps none (see drip history)
+history = 1000                # most cards the history keeps, 0 to 1000; 0 stops recording (see drip history)
 debug = false                 # true: keep the debug log, a diagnostic aid (see Debug log)
 
 [preset.ok]                  # override a built-in preset, any subset of keys

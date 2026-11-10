@@ -94,7 +94,10 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
     }
 
     /// What the background drip does with the cards while the screen is locked.
-    public var locked: LockedScreen { .pool(record: record, history: history ?? Defaults.history) }
+    public var locked: LockedScreen { .pool(record: record, history: historyLimit) }
+
+    /// How many cards the history keeps, as the request says or by default.
+    public var historyLimit: Int { history ?? Defaults.history }
 
     public func encoded() throws -> Data {
         try JSONEncoder().encode(self)
@@ -189,9 +192,9 @@ public struct HandedCard: Equatable, Sendable, Codable {
 /// cards go into the history when `record` is true.
 public enum LockedScreen: Equatable, Sendable {
     /// Hold them with every other background drip's, to show together once the screen unlocks.
-    case pool(record: Bool, history: Int = Defaults.history)
+    case pool(record: Bool, history: Int)
     /// Wait here until the screen unlocks, then show them: the caller is waiting for the outcome.
-    case wait(record: Bool, history: Int = Defaults.history)
+    case wait(record: Bool, history: Int)
 
     /// Adds the cards to `history`, unless they are kept out of it.
     public func record(

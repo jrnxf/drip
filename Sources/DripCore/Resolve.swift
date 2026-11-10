@@ -28,14 +28,6 @@ public struct CardResolver {
     /// How many cards the history keeps: `DRIP_HISTORY`, then the config's `history`, then the default.
     public var historyLimit: Int { environment.history ?? config.history ?? Defaults.history }
 
-    /// `historyLimit` for a drip that has no resolver at hand. The drip that made the cards already
-    /// reported an environment or config that cannot be read, so each is left out here.
-    public static func historyLimit(environment: [String: String]) -> Int {
-        let settings = (try? EnvironmentSettings(environment: environment)) ?? EnvironmentSettings()
-        let config = (try? ConfigLoader.load(environment: environment))?.config ?? Config()
-        return CardResolver(config: config, environment: settings).historyLimit
-    }
-
     /// Resolves `drip [KIND] [TITLE] [options]` into a card.
     ///
     /// The first positional is the kind when it names a preset; otherwise it is the title and the
