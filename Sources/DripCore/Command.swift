@@ -16,8 +16,8 @@ public enum ExitStatus {
     /// A mistake on the command line, or in a `DRIP_*` variable. Nothing else exits 2.
     public static let usage: Int32 = 2
     public static let noGUISession: Int32 = 3
-    /// Kept for a command whose job is to check the config file. Every other command warns about a
-    /// bad key and goes on with its default.
+    /// Reserved for a command whose job is to check the config file. No command exits 4 today:
+    /// every one warns about a bad key and goes on with its default.
     public static let invalidConfig: Int32 = 4
     /// drip asked with `--yes` and no button was clicked: the card timed out, a newer card with the
     /// same id replaced it, or it was clicked off its buttons. Only a question exits 5.
@@ -58,7 +58,7 @@ public enum ExitStatus {
         Row(code: failed, meaning: "A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure."),
         Row(code: usage, meaning: "Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2."),
         Row(code: noGUISession, meaning: "No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1."),
-        Row(code: invalidConfig, meaning: "Kept for a command that checks the config file and finds it invalid. Every other command warns on stderr and goes on with the default for each bad key, or for every key when drip cannot read the file."),
+        Row(code: invalidConfig, meaning: "Reserved for a command that checks the config file. No command exits 4 today: a bad config warns on stderr and drip uses the defaults for the bad keys."),
         Row(code: notClicked, meaning: "drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not."),
     ]
 

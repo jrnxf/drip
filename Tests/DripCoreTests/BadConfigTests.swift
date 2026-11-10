@@ -63,6 +63,30 @@ struct BadConfigTests {
         #expect(warnings.allSatisfy { $0.hasPrefix("invalid config: ") && $0.hasSuffix("(drip ignores this key)") })
     }
 
+    /// A permission card still asks with a bad config, read as the hook reads it, and it is the card
+    /// drip makes with no config at all. In-process, so it runs with a GUI session too.
+    @Test func aPermissionWithABadConfigStillMakesTheDefaultCard() throws {
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let surroundings = AgentHook.Surroundings(
+            environment: environment.merging(["__CFBundleIdentifier": "com.apple.Terminal"]) { $1 },
+            hasGUISession: true, isInstalled: { _ in false },
+            front: { _ in WhenFocused.Front(app: false, pane: false, idle: 0) },
+            resolver: { file, environment in
+                CardResolver(config: file.config, environment: try EnvironmentSettings(environment: environment))
+            },
+            now: { now })
+        let permission = #"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"ls"}}"#
+        let card = { try AgentHook.card(agent: .claude, payload: permission, policy: AgentHook.Policy(approve: true), in: surroundings) }
+        let defaults = try card()
+        #expect(defaults != nil)
+
+        for text in ["seconds = \"five\"\nsize = \"huge\"\n", "broken = [\n"] {
+            try writeConfig(Data(text.utf8))
+            #expect(try card() == defaults, "\(text)")
+        }
+    }
+
     /// The built drip warns about each bad key and answers as it would without them.
     @Test func dripWarnsAndGoesOn() throws {
         let outcome = try DripProcess.run(["watching", "--pane", "%3"], config: "seconds = \"five\"\nbroken = [\n")

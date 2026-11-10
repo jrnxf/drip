@@ -153,13 +153,10 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
     var warnings: [String] = []
     var resolver = CardResolver()
     if let text = input["config"] as? String, !text.isEmpty {
-        do {
-            let file = try ConfigLoader.parse(text, path: "~/.config/drip/config.toml")
-            warnings += file.warnings
-            resolver = CardResolver(config: file.config)
-        } catch {
-            return send(["exit": ExitStatus.invalidConfig, "message": "drip: \(error)"])
-        }
+        // As drip reads it: a bad key is a warning and keeps its default.
+        let file = ConfigLoader.parseLeniently(text, path: "~/.config/drip/config.toml")
+        warnings += file.warnings
+        resolver = CardResolver(config: file.config)
     }
 
     // The page draws symbols and drip's bundled marks only: as the app does with an icon that cannot

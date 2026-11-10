@@ -394,7 +394,7 @@ struct RemoteFollowTests {
         ])
         #expect(try events.map { try AgentHook.event(agent: $0.agent, payload: $0.payload).id }
             == ["claude:s1", "claude:s1", "codex:t1", "claude:s1", "claude:s1"])
-        #expect(!(try queueLines().joined()).contains("approve"))
+        #expect(!queueLines().joined().contains("approve"))
     }
 
     @Test func theMachinesNameStartsWithALetterOrDigit() throws {
@@ -1126,29 +1126,30 @@ struct ConfigWarnedOnceTests {
             },
             warn: { warnings.append($0) })
         var files: [ConfigFile] = []
-        for _ in 1...5 { files.append(try config.load(environment: [:])) }
+        for _ in 1...5 { files.append(config.load(environment: [:])) }
         #expect(reads == 5)
         // An edit applies to the next event.
         #expect(files.map(\.warnings.count) == [1, 1, 2, 2, 2])
         #expect(warnings == ["config.toml:2: unknown key 'colour'", "config.toml:3: unknown key 'tone'"])
     }
 
-    @Test func aConfigThatFailsIsReadAgainWithTheNextEvent() throws {
+    @Test func aFileThatCannotBeUsedIsReadAgainWithTheNextEvent() {
         var reads = 0
         var warnings: [String] = []
         let config = ConfigWarnedOnce(
             read: { _ in
                 reads += 1
-                if reads == 1 { throw ConfigError(path: "config.toml", line: 1, key: nil, message: "not TOML") }
-                return ConfigFile(config: Config(), warnings: ["config.toml:2: unknown key 'colour'"])
+                if reads == 1 { return ConfigFile(config: Config(), warnings: ["invalid config: config.toml:1: not TOML (drip ignores the file)"]) }
+                return ConfigFile(config: Config(size: .large), warnings: ["config.toml:2: unknown key 'colour'"])
             },
             warn: { warnings.append($0) })
-        #expect(throws: ConfigError.self) { try config.load(environment: [:]) }
-        #expect(warnings.isEmpty)
-        _ = try config.load(environment: [:])
-        _ = try config.load(environment: [:])
-        #expect(reads == 3)
+        #expect(config.load(environment: [:]).config == Config())
         #expect(warnings.count == 1)
+        // A fixed file applies to the next event.
+        #expect(config.load(environment: [:]).config == Config(size: .large))
+        _ = config.load(environment: [:])
+        #expect(reads == 3)
+        #expect(warnings.count == 2)
     }
 }
 

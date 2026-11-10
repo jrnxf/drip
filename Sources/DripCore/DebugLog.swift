@@ -55,17 +55,17 @@ public struct DebugLog {
         (StateDirectory.path(environment: environment) as NSString).appendingPathComponent("debug.log")
     }
 
-    /// `DRIP_DEBUG`, then the config's `debug`, then off. A setting that cannot be read counts as off:
-    /// the log is not worth failing over.
+    /// `DRIP_DEBUG`, then the config's `debug`, then off. A `DRIP_DEBUG` that cannot be read counts as
+    /// unset, and a bad `debug` key as off: the log is not worth failing over.
     public static func isEnabled(environment: [String: String]) -> Bool {
         isEnabled(environment: environment) { ConfigLoader.loadLeniently(environment: environment) }
     }
 
     /// As above, with the config file read by `loadConfig`, which is called only when `DRIP_DEBUG`
     /// does not decide.
-    public static func isEnabled(environment: [String: String], loadConfig: () throws -> ConfigFile) -> Bool {
+    public static func isEnabled(environment: [String: String], loadConfig: () -> ConfigFile) -> Bool {
         if let setting = (try? EnvironmentSettings.debug(environment: environment)) ?? nil { return setting }
-        return (try? loadConfig())?.config.debug ?? false
+        return loadConfig().config.debug ?? false
     }
 
     /// Adds a line, when the log is on. A field with no value is left out.

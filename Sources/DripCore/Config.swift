@@ -99,6 +99,14 @@ public struct ConfigError: Error, Equatable, CustomStringConvertible {
         let location = line.map { "\(path):\($0)" } ?? path
         return "\(location): \(key.map { "\($0): " } ?? "")\(message)"
     }
+
+    /// `error` as a problem with the file: itself when it is one, else at `line` and `key`, or at
+    /// the TOML error's own line.
+    static func wrapping(_ error: Error, path: String, line: Int? = nil, key: String? = nil) -> ConfigError {
+        if let problem = error as? ConfigError { return problem }
+        if let toml = error as? TOMLError { return ConfigError(path: path, line: toml.line, key: key, message: toml.message) }
+        return ConfigError(path: path, line: line, key: key, message: "\(error)")
+    }
 }
 
 /// A loaded config and the warnings it produced, such as unknown keys.
@@ -154,8 +162,7 @@ public enum ConfigLoader {
             guard let text = try text(at: path) else { return ConfigFile(config: Config(), warnings: []) }
             return parseLeniently(text, path: path)
         } catch {
-            return ConfigFile(unusable: error as? ConfigError
-                ?? ConfigError(path: path, line: nil, key: nil, message: "\(error)"))
+            return ConfigFile(unusable: .wrapping(error, path: path))
         }
     }
 
@@ -194,9 +201,7 @@ public enum ConfigLoader {
         do {
             table = try TOML.parse(text)
         } catch {
-            let line = (error as? TOMLError)?.line
-            let message = (error as? TOMLError)?.message ?? "\(error)"
-            return ConfigFile(unusable: ConfigError(path: path, line: line, key: nil, message: message))
+            return ConfigFile(unusable: .wrapping(error, path: path))
         }
         let config = reader.read(table)
         return ConfigFile(config: config, warnings: reader.warnings, problems: reader.problems)
@@ -250,7 +255,7 @@ private struct ConfigReader {
 
     /// Notes a key that is left out, and why: it keeps its default.
     private mutating func leaveOut(_ error: Error, item: TOMLItem, key: String) {
-        let problem = error as? ConfigError ?? ConfigError(path: path, line: item.line, key: key, message: "\(error)")
+        let problem = ConfigError.wrapping(error, path: path, line: item.line, key: key)
         problems.append(problem)
         warnings.append(ConfigLoader.warning(problem))
     }
