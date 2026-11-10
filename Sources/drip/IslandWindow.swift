@@ -977,6 +977,8 @@ struct IslandClick {
     /// Where the button went down, and where it came up.
     var down: CGPoint
     var up: CGPoint
+    /// When the button went down, on the `CACurrentMediaTime` clock.
+    var downTime: CFTimeInterval
     /// A right-click, a two-finger tap, or a click with Control or Option held: it only ever takes
     /// the card away, and brings nothing forward.
     var secondary: Bool
@@ -986,8 +988,8 @@ struct IslandClick {
 final class IslandView: NSView {
     var onMove: ((CGPoint) -> Void)?
     var onClick: ((IslandClick) -> Void)?
-    /// Where the last button went down.
-    private var down: CGPoint?
+    /// Where and when the last button went down.
+    private var down: (point: CGPoint, time: CFTimeInterval)?
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -1000,8 +1002,8 @@ final class IslandView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseMoved(with event: NSEvent) { onMove?(convert(event.locationInWindow, from: nil)) }
     override func mouseExited(with event: NSEvent) { onMove?(CGPoint(x: -1, y: -1)) }
-    override func mouseDown(with event: NSEvent) { down = convert(event.locationInWindow, from: nil) }
-    override func rightMouseDown(with event: NSEvent) { down = convert(event.locationInWindow, from: nil) }
+    override func mouseDown(with event: NSEvent) { press(event) }
+    override func rightMouseDown(with event: NSEvent) { press(event) }
     override func mouseUp(with event: NSEvent) {
         click(event, secondary: !event.modifierFlags.intersection([.control, .option]).isEmpty)
     }
@@ -1009,10 +1011,15 @@ final class IslandView: NSView {
     /// No context menu: a secondary click takes the card away.
     override func menu(for event: NSEvent) -> NSMenu? { nil }
 
+    private func press(_ event: NSEvent) {
+        down = (convert(event.locationInWindow, from: nil), CACurrentMediaTime())
+    }
+
     private func click(_ event: NSEvent, secondary: Bool) {
         let up = convert(event.locationInWindow, from: nil)
-        onClick?(IslandClick(down: down ?? up, up: up, secondary: secondary))
-        down = nil
+        let down = self.down ?? (up, CACurrentMediaTime())
+        onClick?(IslandClick(down: down.point, up: up, downTime: down.time, secondary: secondary))
+        self.down = nil
     }
 }
 
@@ -1109,6 +1116,9 @@ final class IslandPresenter: CardPresenting {
     private var openAt = CFTimeInterval.infinity
     /// Whether the card still waits for you rather than counting down.
     private var waiting = false
+    /// Holds the buttons' presses back until the card has been still for a moment, on the
+    /// `CACurrentMediaTime` clock: from its entrance, and again from each card that replaces it.
+    private var pressGate = PressGate()
     /// A background drip waiting, while a question shows, to take its card's exit on once it is
     /// answered.
     private var standby: BackgroundDrip.Spawned?
@@ -1179,6 +1189,7 @@ final class IslandPresenter: CardPresenting {
             fadePanel(to: 1, duration: motion == .none ? 0 : 0.15)
             departure = fadingDeparture(motion)
             openAt = CACurrentMediaTime() + 0.15
+            pressGate.moves(until: openAt)
             schedule(after: 0.15 + card.duration)
             return
         }
@@ -1202,6 +1213,8 @@ final class IslandPresenter: CardPresenting {
         }
         departure = springingDeparture()
         openAt = started + visible
+        // The buttons settle with the last of the entrance's springs.
+        pressGate.moves(until: max(started + animator.end, openAt))
         schedule(after: visible + card.duration)
     }
 
@@ -1274,6 +1287,9 @@ final class IslandPresenter: CardPresenting {
         let lingers = layers.takeOver(from: old, motion: motion, at: CACurrentMediaTime())
         CATransaction.commit()
         retire(old, after: lingers)
+        // New buttons, or old ones that moved, settle once the island has sprung to its new size
+        // and the old card has faded off it.
+        pressGate.moves(until: max(animator.map { started + $0.end } ?? -.infinity, CACurrentMediaTime() + lingers))
 
         gate?.update()
         view.setAccessibilityLabel(CardText.spoken(title: card.title, detail: card.detail))
@@ -1483,7 +1499,8 @@ final class IslandPresenter: CardPresenting {
             return dismiss()
         }
         if let answer = button(at: click.up) {
-            press(answer)
+            // A press that began before the buttons were still for a moment does nothing at all.
+            if pressGate.takes(pressAt: click.downTime) { press(answer) }
             return
         }
         if card.opensOnClick { CardActions.click(card, console: console) }
@@ -1523,7 +1540,8 @@ final class IslandPresenter: CardPresenting {
         if let action = card.action {
             for (label, answer) in CardAccessibility.answers(to: action) {
                 actions.append(NSAccessibilityCustomAction(name: label) { [weak self] () -> Bool in
-                    guard let self, self.departure != nil else { return false }
+                    guard let self, self.departure != nil,
+                          self.pressGate.takes(pressAt: CACurrentMediaTime()) else { return false }
                     self.press(answer)
                     return true
                 })

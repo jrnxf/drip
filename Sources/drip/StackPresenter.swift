@@ -764,11 +764,18 @@ final class StackPresenter: CardPresenting {
             return dismiss(entry)
         }
         if let answer = button(of: entry, at: up) {
-            press(answer, on: entry)
+            // A press that began before the card's buttons were still for a moment does nothing at all.
+            if pressGate(of: entry).takes(pressAt: click.downTime - started) { press(answer, on: entry) }
             return
         }
         if entry.card.opensOnClick { CardActions.click(entry.card, console: console) }
         entry.dismissed = entry.dismissed ?? false
+    }
+
+    /// When `entry`'s buttons take a press, on the stack's clock: once its springs have settled, as it
+    /// drops in or slides to a new place, and once the card it replaced in place has faded off it.
+    private func pressGate(of entry: CardStack.Entry) -> PressGate {
+        PressGate(settled: max(entry.animator.end, drawings[entry.id]?.retiringUntil ?? -.infinity))
     }
 
     /// Takes `entry` away without bringing anything forward: a click on its ×, a secondary click,
@@ -849,7 +856,8 @@ final class StackPresenter: CardPresenting {
                 for (label, answer) in CardAccessibility.answers(to: action) {
                     actions.append(NSAccessibilityCustomAction(name: "\(label): \(title)") {
                         [weak self, weak entry] () -> Bool in
-                        guard let self, let entry, !entry.isLeaving else { return false }
+                        guard let self, let entry, !entry.isLeaving,
+                              self.pressGate(of: entry).takes(pressAt: self.now) else { return false }
                         self.press(answer, on: entry)
                         return true
                     })
