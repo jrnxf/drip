@@ -1,4 +1,4 @@
-@testable import DripCore
+import DripCore
 #if os(WASI)
 import FoundationEssentials
 import WASILibc
