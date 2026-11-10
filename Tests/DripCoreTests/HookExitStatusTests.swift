@@ -57,6 +57,14 @@ struct HookExitStatusTests {
     func anEventDripDoesNotKnowExitsZero(agent: String) throws {
         let outcome = try hook(agent, payload: Data(#"{"hook_event_name":"Nope","session_id":"s"}"#.utf8))
         #expect(outcome.status == 0, "\(agent): exit \(outcome.status), \(outcome.error)")
+        #expect(outcome.error.isEmpty, "\(agent): it says \(outcome.error)")
+        #expect(outcome.output.isEmpty, "\(agent): it prints \(outcome.output)")
+    }
+
+    @Test func aCodexNotifyTypeDripDoesNotKnowExitsZero() throws {
+        let outcome = try hook("codex", payload: Data(#"{"type":"approval-requested"}"#.utf8))
+        #expect(outcome.status == 0, "exit \(outcome.status), \(outcome.error)")
+        #expect(outcome.error.isEmpty)
     }
 
     /// A broken config is only a warning, so with a GUI session the permission card shows and waits

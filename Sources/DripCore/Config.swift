@@ -333,12 +333,17 @@ private struct ConfigReader {
         }
     }
 
-    /// The names a custom preset cannot take: drip's subcommands, and those it may have one day,
-    /// since `drip <name>` would run the subcommand instead.
-    static let reservedNames: Set<String> = [
-        "run", "hook", "history", "show", "help", "version", "remote-hook", "config", "completion",
-        "completions", "doctor", "pause", "resume", "test", "dismiss", "clear", "debug",
-    ]
+    /// The names a custom preset cannot take, since `drip <name>` would run the subcommand instead:
+    /// every real subcommand and alias, plus the few names kept for commands drip may have one day.
+    static let reservedNames: Set<String> = {
+        let subcommands = DripCommand.configuration.subcommands.flatMap { command in
+            [command.configuration.commandName].compactMap { $0 } + command.configuration.aliases
+        }
+        // Names with no subcommand yet: `help` and `version` are the flags' words, the rest are planned.
+        let kept = ["help", "version", "config", "completion", "completions", "doctor", "test"]
+        // The internal subcommands start with underscores, which no preset name can.
+        return Set((subcommands + kept).filter { !$0.hasPrefix("_") })
+    }()
 
     static func isValidPresetName(_ name: String) -> Bool {
         guard let first = name.unicodeScalars.first, ("a"..."z").contains(first) else { return false }

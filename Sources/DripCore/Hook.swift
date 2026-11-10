@@ -282,8 +282,8 @@ public enum AgentHook {
         return environment["CLAUDE_CODE_ENTRYPOINT"]?.hasPrefix("sdk") ?? false
     }
 
-    /// Reads a payload that shows a card. Throws a `UsageError` as `outcome` does, and for an event
-    /// that shows none.
+    /// Reads a payload that shows a card. Throws a `UsageError` for a payload `outcome` rejects, and
+    /// for any event that shows no card, an unknown one included.
     public static func event(agent: Agent, payload: String) throws -> Event {
         guard case let .card(event) = try outcome(agent: agent, payload: payload) else {
             throw UsageError("the \(agent.rawValue) hook payload shows no card")
@@ -300,8 +300,8 @@ public enum AgentHook {
         return event.id.map { .clear(Clear(id: $0)) } ?? .nothing
     }
 
-    /// Reads a payload. Throws a `UsageError` when it is not a JSON object or not an event this agent
-    /// sends: a Claude `Notification`, `PermissionRequest`, `Stop` or `StopFailure`; a Codex
+    /// Reads a payload. Throws a `UsageError` when it is not a JSON object or names no event. An event
+    /// name this agent does not send gives `.unknown`. The events it sends are: a Claude `Notification`, `PermissionRequest`, `Stop` or `StopFailure`; a Codex
     /// `PermissionRequest` or `Stop`, or notify's `agent-turn-complete`; a Gemini `Notification` or
     /// `AfterAgent`; or one of `clearEvents(for:)`.
     public static func outcome(agent: Agent, payload: String) throws -> Outcome {
@@ -315,10 +315,8 @@ public enum AgentHook {
         func project() -> String {
             directory.flatMap(projectName) ?? agent.displayName
         }
-        func unknown(_ name: String?, expected: String) throws -> Outcome {
-            // A named event drip does not know is a newer agent's, so it is no failure.
-            if let name { return .unknown(name) }
-            throw UsageError("unknown \(agent.rawValue) hook event with no hook_event_name: expected \(expected)")
+        func missing(_ expected: String) -> UsageError {
+            UsageError("unknown \(agent.rawValue) hook event with no hook_event_name: expected \(expected)")
         }
         let id = string("session_id").map { "\(agent.rawValue):\($0)" }
         func card(
@@ -376,9 +374,12 @@ public enum AgentHook {
                 return clear(startsTurn: true)
             case "ElicitationResult":
                 return clear()
-            case let name:
-                return try unknown(
-                    name, expected: "Notification, PermissionRequest, Stop, StopFailure, PostToolUse, "
+            case let name?:
+                // A named event drip does not know is a newer agent's, so it is no failure.
+                return .unknown(name)
+            case nil:
+                throw missing(
+                    "Notification, PermissionRequest, Stop, StopFailure, PostToolUse, "
                         + "PostToolUseFailure, UserPromptSubmit or ElicitationResult")
             }
         case .codex:
@@ -390,11 +391,12 @@ public enum AgentHook {
                         kind: Preset.ok.name, title: "\(project()) is done",
                         detail: string("last-assistant-message").map(plainText),
                         id: string("thread-id").map { "codex:\($0)" }, directory: directory))
-                case let type:
-                    let found = type.map { "'\($0)'" } ?? "with no hook_event_name or type"
+                case let type?:
+                    return .unknown(type)
+                case nil:
                     throw UsageError(
-                        "unknown codex payload \(found): expected a PermissionRequest or Stop hook, "
-                            + "or notify's agent-turn-complete")
+                        "unknown codex payload with no hook_event_name or type: expected a PermissionRequest or "
+                            + "Stop hook, or notify's agent-turn-complete")
                 }
             }
             switch name {
@@ -407,7 +409,7 @@ public enum AgentHook {
             case "UserPromptSubmit":
                 return clear(startsTurn: true)
             default:
-                return try unknown(name, expected: "PermissionRequest, Stop, PostToolUse or UserPromptSubmit")
+                return .unknown(name)
             }
         case .gemini:
             switch string("hook_event_name") {
@@ -420,8 +422,10 @@ public enum AgentHook {
                 return clear()
             case "BeforeAgent":
                 return clear(startsTurn: true)
-            case let name:
-                return try unknown(name, expected: "Notification, AfterAgent, AfterTool or BeforeAgent")
+            case let name?:
+                return .unknown(name)
+            case nil:
+                throw missing("Notification, AfterAgent, AfterTool or BeforeAgent")
             }
         }
     }

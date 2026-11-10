@@ -170,7 +170,7 @@ DRIP_HOOK=attention claude                       # only the cards that need you
 ### Other behaviour
 
 Without a GUI session, as when you run the agent over ssh, there is nothing to show: drip prints
-nothing and exits 0, so the agent shows no hook error after every turn. Any failure, from a usage
+nothing and exits 0, so the agent shows no hook error after every turn. An event drip does not know exits 0 with no card, and with `DRIP_DEBUG` on, the debug log says `reason=unknown_event`. Any failure, from a usage
 error to a payload it cannot read, exits 1: Claude Code and Codex read exit 2
 as "block", and Gemini CLI reads any code but 0 and 1 that way, which after a turn makes it run the
 turn again. An invalid config is no failure: drip warns on stderr and shows the card with the default

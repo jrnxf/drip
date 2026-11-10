@@ -1,4 +1,4 @@
-import DripCore
+@testable import DripCore
 #if os(WASI)
 import FoundationEssentials
 import WASILibc
@@ -150,16 +150,20 @@ struct ConfigTests {
     /// `drip <name>` runs a subcommand by that name instead, so a preset cannot take the names of
     /// drip's subcommands, or of those it may have later.
     @Test func subcommandNamesAreReserved() {
-        for name in Self.reserved {
+        for name in ConfigLoader.reservedNames.sorted() {
             assertError("\n[preset.\(name)]", line: 2, key: "preset.\(name)", message: "'\(name)' is kept for drip's own commands")
         }
     }
 
-    /// The names docs/config.md lists, which are the ones drip refuses.
-    private static let reserved = [
-        "run", "hook", "history", "show", "help", "version", "remote-hook", "config", "completion",
-        "completions", "doctor", "pause", "resume", "test", "dismiss", "clear", "debug",
-    ]
+    /// Every subcommand and alias is reserved, so a new subcommand cannot be forgotten.
+    @Test func everySubcommandIsReserved() {
+        for command in DripCommand.configuration.subcommands {
+            for name in [command.configuration.commandName].compactMap({ $0 }) + command.configuration.aliases
+            where !name.hasPrefix("_") {
+                #expect(ConfigLoader.reservedNames.contains(name), "\(name)")
+            }
+        }
+    }
 
     /// Names of commands drip does not have are free for a preset.
     @Test func namesOfNoCommandAreFree() throws {
@@ -175,8 +179,8 @@ struct ConfigTests {
         let end = try #require(text.range(of: "A custom preset's ring", range: start.upperBound..<text.endIndex))
         let listed = text[start.upperBound..<end.lowerBound].split(separator: "`").enumerated()
             .filter { $0.offset % 2 == 1 }.map { String($0.element) }
-        #expect(Set(listed) == Set(Self.reserved))
-        #expect(listed.count == Self.reserved.count)
+        #expect(Set(listed) == ConfigLoader.reservedNames)
+        #expect(listed.count == ConfigLoader.reservedNames.count)
     }
     #endif
 
