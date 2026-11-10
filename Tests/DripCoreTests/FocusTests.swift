@@ -113,7 +113,7 @@ struct FocusTests {
         #expect(Watching.answer(for: card, awayAfter: 60, front: { _ in .init(app: true) }, paneShowing: { _ in true }) == .unknown)
         #expect(Watching.Answer.watching.status == 0)
         #expect(Watching.Answer.notWatching.status == 1)
-        #expect(Watching.Answer.unknown.status == 2)
+        #expect(Watching.Answer.unknown.status == 1)
     }
 
     @Test func theSettingComesFromTheEnvironmentThenTheConfig() throws {

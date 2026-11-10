@@ -78,7 +78,7 @@ public enum ExitStatus {
     }
 
     private static func plain(_ markdown: String) -> String {
-        markdown.replacingOccurrences(of: "`", with: "")
+        String(markdown.filter { $0 != "`" })
     }
 
     /// `text` in lines shorter than `width`, the first after `first` and the rest after `rest`. A
