@@ -273,7 +273,7 @@ struct DripCLI {
             try follower.run()
         } catch {
             console.error("\(error)")
-            return ExitStatus.followFailed
+            return ExitStatus.failed
         }
         return ExitStatus.shown
     }
@@ -297,7 +297,7 @@ struct DripCLI {
                 return ExitStatus.shown
             } catch {
                 Console().error("cannot empty the debug log: \(error)")
-                return ExitStatus.debugFailed
+                return ExitStatus.failed
             }
         }
         let text = DebugLog.contents(environment: environment)
@@ -317,7 +317,7 @@ struct DripCLI {
             return ExitStatus.shown
         } catch {
             Console().error("cannot dismiss: \(error)")
-            return ExitStatus.dismissFailed
+            return ExitStatus.failed
         }
     }
 
@@ -326,6 +326,14 @@ struct DripCLI {
     private func watching(_ command: WatchingCommand) -> Int32 {
         let console = Console()
         let environment = ProcessInfo.processInfo.environment
+        // The settings first, so that a bad DRIP_* variable is a usage error on every host.
+        let resolver: CardResolver
+        do {
+            resolver = try makeResolver(console)
+        } catch {
+            let status = report(error, console, subcommand: WatchingCommand.configuration.commandName)
+            return status == ExitStatus.usage ? status : Watching.Answer.unknown.status
+        }
         guard display.hasGUISession else {
             console.error("cannot tell whether you are watching: there is no GUI session")
             return Watching.Answer.unknown.status
@@ -339,13 +347,6 @@ struct DripCLI {
             pane = TerminalPane(tmuxSocket: socket, tmuxPane: id)
         } else if environment["TMUX_PANE"] == nil {
             pane = nil
-        }
-        let resolver: CardResolver
-        do {
-            resolver = try makeResolver(console)
-        } catch {
-            let status = report(error, console, subcommand: WatchingCommand.configuration.commandName)
-            return status == ExitStatus.usage ? status : Watching.Answer.unknown.status
         }
         var card = Card(preset: .info, title: "watching")
         card.pane = pane
@@ -394,9 +395,15 @@ struct DripCLI {
         // what the hook hands on then must still show: until the request comes, only the pipe
         // closing ends it.
         signal(SIGTERM, SIG_IGN)
-        guard let request = BackgroundDrip.readRequest() else { return ExitStatus.usage }
+        let request = BackgroundDrip.readRequest()
         signal(SIGTERM, SIG_DFL)
         let console = Console(quiet: true, background: true)
+        // Only another drip runs this one, so a request it cannot read is drip's own failure, not a
+        // usage error.
+        guard let request else {
+            console.error("__background: no request it can read on stdin")
+            return ExitStatus.failed
+        }
         if let resurface = request.resurface {
             return resurfaceSkipped(request, resurface, console: console)
         }
@@ -414,7 +421,8 @@ struct DripCLI {
         _ request: BackgroundRequest, _ resurface: BackgroundRequest.Resurface, console: Console
     ) -> Int32 {
         guard let card = request.cards.first, let agent = AgentHook.Agent(rawValue: resurface.agent) else {
-            return ExitStatus.usage
+            console.error("__background: the request to show a card again has no card, or no agent drip knows")
+            return ExitStatus.failed
         }
         Thread.sleep(forTimeInterval: resurface.delay)
         do {
@@ -517,7 +525,7 @@ struct DripCLI {
             return ExitStatus.shown
         } catch {
             Console().error("\(error)")
-            return ExitStatus.pauseFailed
+            return ExitStatus.failed
         }
     }
 
@@ -529,7 +537,7 @@ struct DripCLI {
             return ExitStatus.shown
         } catch {
             Console().error("\(error)")
-            return ExitStatus.pauseFailed
+            return ExitStatus.failed
         }
     }
 

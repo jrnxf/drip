@@ -20,26 +20,20 @@ public enum ExitStatus {
     /// drip asked with `--yes` and no button was clicked: the card timed out, a newer card with the
     /// same id replaced it, or it was clicked off its buttons. Only a question exits 5.
     public static let notClicked: Int32 = 5
+    // Every other 1 is `failed` under a name that says what it means where it is used.
+
     /// drip asked with `--yes` and `--no`, and no was clicked. 0 and 1 read as yes and no, as for
     /// `test`, so `drip warn … --yes Merge --no Later && merge` runs the merge on yes only.
-    public static let declined: Int32 = 1
+    public static let declined = failed
     /// `drip hook` could not make a card, for any reason. Never 2 or more: Claude Code and Codex read
     /// exit 2 from a hook as "block", and Gemini CLI reads any code but 0 and 1 as "deny", which after
     /// a turn makes it try the turn again.
-    public static let hookFailed: Int32 = 1
-    /// `drip pause` or `drip resume` could not write the pause to the state directory.
-    public static let pauseFailed = failed
-    /// `drip dismiss` could not write its request to the state directory.
-    public static let dismissFailed = failed
-    /// `drip debug --clear` could not empty the debug log.
-    public static let debugFailed = failed
+    public static let hookFailed = failed
     /// `drip watching`: you are not watching the terminal.
-    public static let notWatching: Int32 = 1
+    public static let notWatching = failed
     /// `drip watching`: drip cannot tell, as it has no terminal app or GUI session to look at, or
-    /// cannot read its settings. A script reads it as not watching, so its card shows.
-    public static let cannotTell: Int32 = 1
-    /// `drip follow` could not start: the state directory cannot be written.
-    public static let followFailed = failed
+    /// cannot read its config. A script reads it as not watching, so its card shows.
+    public static let cannotTell = failed
 
     /// What a drip that waited for its cards exits with: 5 when a question went without a click on
     /// its buttons, else 1 when one was answered no, else 0. A card with only an `--open` button
@@ -75,14 +69,34 @@ public enum ExitStatus {
             .joined(separator: "\n")
     }
 
-    /// The table as `drip --help` ends with it.
-    static var helpTable: String {
-        (["EXIT CODES:"] + table.map { "  \($0.code)  \(plain($0.meaning))" } + ["  " + plain(tableNote)])
+    /// The table as `drip --help` ends with it, wrapped to `width` columns as ArgumentParser wraps the
+    /// sections above it: each meaning hangs under its first line.
+    static func helpTable(width: Int) -> String {
+        let rows = table.map { wrap(plain($0.meaning), first: "  \($0.code)  ", rest: "     ", width: width) }
+        return (["EXIT CODES:"] + rows + [wrap(plain(tableNote), first: "  ", rest: "  ", width: width)])
             .joined(separator: "\n")
     }
 
     private static func plain(_ markdown: String) -> String {
         markdown.replacingOccurrences(of: "`", with: "")
+    }
+
+    /// `text` in lines shorter than `width`, the first after `first` and the rest after `rest`. A
+    /// word longer than a line gets a line of its own.
+    static func wrap(_ text: String, first: String, rest: String, width: Int) -> String {
+        var lines: [String] = []
+        var line = first
+        var empty = true
+        for word in text.split(separator: " ") {
+            if !empty, line.count + 1 + word.count >= width {
+                lines.append(line)
+                line = rest
+                empty = true
+            }
+            line += (empty ? "" : " ") + word
+            empty = false
+        }
+        return (lines + [line]).joined(separator: "\n")
     }
 }
 
@@ -370,9 +384,6 @@ public struct DripCommand: ParsableCommand {
           drip dismiss
           drip pause 30m
         """
-
-    /// What `drip --help` ends with.
-    static var exitCodes: String { ExitStatus.helpTable }
 
     public init() {}
 }
@@ -924,6 +935,9 @@ public enum CommandLineParser {
         if arguments == ["version"] {
             return parse(["--version"])
         }
+        if arguments.first == "help", let problem = helpProblem(Array(arguments.dropFirst())) {
+            return .exit(status: ExitStatus.usage, message: usageMessage(problem))
+        }
         let attached = arguments.first == RunCommand.configuration.commandName
             ? Array(arguments.prefix(1)) + attachingTextValues(Array(arguments.dropFirst()), untilCommand: true)
             : attachingTextValues(arguments)
@@ -984,6 +998,18 @@ public enum CommandLineParser {
         return .exit(status: status, message: usageMessage(problem, subcommand: subcommand))
     }
 
+    /// What is wrong with the words after `drip help`, if anything: it takes at most one, a
+    /// subcommand. ArgumentParser shows drip's own help for any other word, and exits 0.
+    private static func helpProblem(_ words: [String]) -> String? {
+        let words = words.filter { !$0.hasPrefix("-") }
+        let names = Set(DripCommand.configuration.subcommands.flatMap { command in
+            [command.configuration.commandName].compactMap { $0 } + command.configuration.aliases
+        })
+        guard let word = words.first else { return nil }
+        if !names.contains(word) { return "unknown subcommand '\(word)'" }
+        return words.dropFirst().first.map { "help takes one subcommand, not also '\($0)'" }
+    }
+
     /// A usage mistake as drip prints it: `drip: <message>`, then where the help is, for the
     /// subcommand if one is named.
     public static func usageMessage(_ problem: String, subcommand: String? = nil) -> String {
@@ -994,12 +1020,26 @@ public enum CommandLineParser {
     /// `drip --help`: the usage, examples, the card options and the subcommands, then the exit
     /// codes. ArgumentParser's own help for drip would list only the subcommands.
     static var rootHelp: String {
-        let root = HelpSections(DripCommand.helpMessage())
-        let show = HelpSections(DripCommand.helpMessage(for: ShowCommand.self))
+        let width = helpWidth
+        let root = HelpSections(DripCommand.helpMessage(columns: width))
+        let show = HelpSections(DripCommand.helpMessage(for: ShowCommand.self, columns: width))
         return [
             root["OVERVIEW"], root["USAGE"], DripCommand.examples, show["ARGUMENTS"], show["OPTIONS"],
-            root["SUBCOMMANDS"], DripCommand.exitCodes,
+            root["SUBCOMMANDS"], ExitStatus.helpTable(width: width),
         ].compactMap { $0 }.joined(separator: "\n\n") + "\n"
+    }
+
+    /// The width ArgumentParser wraps help to, found the way it finds it: `COLUMNS`, else the
+    /// terminal's width, else 80.
+    static var helpWidth: Int {
+        if let columns = ProcessInfo.processInfo.environment["COLUMNS"].flatMap(Int.init), columns > 0 {
+            return columns
+        }
+        #if !os(WASI)
+        var size = winsize()
+        if ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &size) == 0, size.ws_col > 0 { return Int(size.ws_col) }
+        #endif
+        return 80
     }
 }
 
