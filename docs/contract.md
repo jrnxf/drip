@@ -22,7 +22,8 @@ version. Everything else can change in any release.
 
 `drip run` exits with the wrapped command's exit code instead, 127 when it is not found.
 
-[Exit codes](usage.md#exit-codes) has every case.
+[Exit codes](usage.md#exit-codes) shows the same table, and says when `drip run` and `--wait`
+exit.
 
 **`drip history --json`.** One JSON object per line, oldest first: `time` (ISO 8601), `missed`
 (true or false) and `card`. `card` writes each setting the way its flag takes it, and leaves out

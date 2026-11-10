@@ -387,8 +387,9 @@ runs at once, and the cards still in the stack play out without it.
 `drip run` exits with the wrapped command's exit code instead, 127 when it is not found.
 
 Without `--wait`, 0 means the card was handed off to be shown. `drip run` exits as soon as the
-command ends, or once its card has gone with `--wait`. When Ctrl-C ends the command, drip ends with
-the same signal, so the script that ran it stops too. A usage error exits 2 before the command runs.
+command ends, once its card has gone with `--wait`, or once a `--yes` question is answered or goes
+unanswered. When Ctrl-C ends the command, drip ends with the same signal, so the script that ran it
+stops too. A usage error exits 2 before the command runs.
 
 ## Alert when a command finishes
 
