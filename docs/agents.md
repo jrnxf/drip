@@ -89,16 +89,22 @@ the 10 both agents give a hook, prints nothing, and the terminal asks as it woul
 does a click on the card itself, which brings the terminal forward, and the ×. It is a flag you add
 by choice: a stray click allows a command.
 
-Allow appears only for a shell command (Bash) that is short, on one line, in plain ASCII, and has
-no extra options. The card then shows the command itself, character for character, never the
-agent's description of it, which can say anything. `--detail` cannot replace it. A command given
-as words shows shell-quoted, so `["rm","-rf","build /"]` shows as `rm -rf 'build /'`.
+With `--approve`, a permission card shows what the call would do, read from the tool's own input:
+the command, else the file or the address, else the tool. It never shows only the agent's
+description of the call, which can say anything, and `--detail` cannot replace it. This holds for
+a card that only tells, too.
 
-Every other request is asked in the terminal: the card only tells, as without `--approve`, and the
-hook returns at once. This covers:
+Allow appears only for a shell command (Bash) that is short, on one line, in plain ASCII, and has
+no extra options. The card then shows the command character for character. Each line break on it
+stands for exactly one space. A command given as words shows shell-quoted, so
+`["rm","-rf","build /"]` shows as `rm -rf 'build /'`.
+
+Every other request is asked in the terminal: the card only tells, and the hook returns at once.
+This covers:
 
 - any other tool, such as Write, Edit, WebFetch or an MCP tool
 - a command too long for the card
+- a command the card would break other than at a space, such as after a `/` or inside a long word
 - a command with a line break, a tab, a run of spaces, or any character outside ASCII
 - an option that can change what runs, such as `dangerouslyDisableSandbox`
 
