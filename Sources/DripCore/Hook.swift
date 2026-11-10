@@ -123,10 +123,10 @@ public enum AgentHook {
         /// Whether the event is a permission request the agent takes an answer to from its hook, so
         /// the card can ask it with Allow and Deny when `approve` is on.
         public var asksPermission: Bool
-        /// What a permission request would do, read from the tool's own input: the command it would
-        /// run, else the file or the address it would work on, else the tool. Never the agent's own
-        /// description of the call, which can say anything: a card that answers the request shows
-        /// this instead. Nil for any other event.
+        /// What a permission card that asks shows instead of the detail: the shell command the
+        /// request would run, as `approvableCommand` reads it, never the agent's own description of
+        /// it, which can say anything. Nil for any other request, which the terminal asks, and for
+        /// any other event.
         public var request: String?
 
         public init(
@@ -316,13 +316,20 @@ public enum AgentHook {
         let id = string("session_id").map { "\(agent.rawValue):\($0)" }
         func card(
             _ kind: Preset, _ title: String, _ detail: String?, stays: Bool = false, waitsOn: String? = nil,
-            isPermissionNotice: Bool = false, asksPermission: Bool = false
+            isPermissionNotice: Bool = false, asksPermission: Bool = false, request: String? = nil
         ) -> Outcome {
             .card(Event(
                 kind: kind.name, title: "\(project()) \(title)", detail: detail, id: id, stays: stays,
                 waitsOn: stays ? waitsOn : nil, isPermissionNotice: isPermissionNotice, directory: directory,
-                asksPermission: asksPermission,
-                request: asksPermission ? toolUse(object, agent: agent, directory: directory) : nil))
+                asksPermission: asksPermission, request: request))
+        }
+        /// A permission request's card: it tells what the agent says the call does, and asks, with
+        /// `--approve`, only for a plain shell command, which it then shows instead.
+        func permission(waitsOn: String?) -> Outcome {
+            card(
+                .info, "needs you", request(object, agent: agent, directory: directory), stays: true, waitsOn: waitsOn,
+                asksPermission: true,
+                request: approvableCommand(object, agent: agent).map { "\(agent.displayName) wants to run \($0)" })
         }
         func clear(tool: String? = nil, alsoTool: String? = nil, keyed: Bool = false, startsTurn: Bool = false) -> Outcome {
             // A clear for one tool call that names none could take the wrong card: nothing then.
@@ -340,9 +347,7 @@ public enum AgentHook {
                     .info, "needs you", string("message"), stays: decides,
                     isPermissionNotice: type == "permission_prompt")
             case "PermissionRequest":
-                return card(
-                    .info, "needs you", request(object, agent: agent, directory: directory), stays: true,
-                    waitsOn: string("tool_use_id") ?? toolCall(object, scope: "prompt_id"), asksPermission: true)
+                return permission(waitsOn: string("tool_use_id") ?? toolCall(object, scope: "prompt_id"))
             case "Stop":
                 return card(.ok, "is done", string("last_assistant_message").map(plainText))
             case "StopFailure":
@@ -384,9 +389,7 @@ public enum AgentHook {
             }
             switch name {
             case "PermissionRequest":
-                return card(
-                    .info, "needs you", request(object, agent: agent, directory: directory), stays: true,
-                    waitsOn: toolCall(object, scope: "turn_id"), asksPermission: true)
+                return permission(waitsOn: toolCall(object, scope: "turn_id"))
             case "Stop":
                 return card(.ok, "is done", string("last_assistant_message").map(plainText))
             case "PostToolUse":
@@ -469,17 +472,15 @@ public enum AgentHook {
         return String(repeating: "0", count: 16 - digits.count) + digits
     }
 
-    /// What a permission request asks: its own description, else what `toolUse` reads.
+    /// What a permission request asks, as a card that only tells shows it: its own description,
+    /// else the command it would run, else the file or the address the tool would work on, else the
+    /// tool it would use. Nil when the payload names none of them, so the card has no detail.
     static func request(_ object: JSONValue, agent: Agent, directory: String?) -> String? {
-        object["tool_input"]?["description"].flatMap(nonBlank) ?? toolUse(object, agent: agent, directory: directory)
-    }
-
-    /// What a permission request would do, from the tool's input alone, never its description: the
-    /// command it would run, else the file or the address the tool would work on, else the tool it
-    /// would use. Nil when the payload names none of them.
-    static func toolUse(_ object: JSONValue, agent: Agent, directory: String?) -> String? {
         let name = agent.displayName
         let input = object["tool_input"]
+        if let description = input?["description"].flatMap(nonBlank) {
+            return description
+        }
         // A command is one string, or its words.
         let command = input?["command"].flatMap { $0.string ?? $0.elements?.compactMap(\.string).joined(separator: " ") }
         if let command = command.flatMap({ nonBlank(.string($0)) }) {
@@ -489,6 +490,89 @@ public enum AgentHook {
         let target = (input?["file_path"] ?? input?["notebook_path"] ?? input?["path"]).flatMap(nonBlank)
             .map { relative($0, to: directory) } ?? input?["url"].flatMap(nonBlank)
         return target.map { "\(name) wants to use \(tool) on \($0)" } ?? "\(name) wants to use \(tool)"
+    }
+
+    /// The keys of a shell command's `tool_input` that change nothing about what it runs, with the
+    /// JSON types each may have. Claude's Bash takes a timeout and can run in the background; Codex's
+    /// takes only the command and its description, the question it asks.
+    static func harmlessKeys(for agent: Agent) -> [String: (JSONValue) -> Bool] {
+        func text(_ value: JSONValue) -> Bool {
+            switch value {
+            case .string, .null: true
+            default: false
+            }
+        }
+        func number(_ value: JSONValue) -> Bool {
+            switch value {
+            case .number, .null: true
+            default: false
+            }
+        }
+        func flag(_ value: JSONValue) -> Bool {
+            switch value {
+            case .bool, .null: true
+            default: false
+            }
+        }
+        return agent == .claude
+            ? ["description": text, "timeout": number, "run_in_background": flag] : ["description": text]
+    }
+
+    /// The command a permission request would run, when a card may ask it: a call of the agent's
+    /// shell tool, Bash for Claude Code and for Codex, whose input is a command and nothing else
+    /// that changes what runs, and a command `isPlainCommand` passes. A command given as its words
+    /// is shell-quoted, so where each word starts and ends shows. Nil for any other request: another
+    /// tool, an input key drip does not know, such as `dangerouslyDisableSandbox`, or a command that
+    /// is not a string or words.
+    public static func approvableCommand(_ object: JSONValue, agent: Agent) -> String? {
+        guard agent == .claude || agent == .codex, object["tool_name"]?.string == "Bash",
+              let members = object["tool_input"]?.members
+        else { return nil }
+        let harmless = harmlessKeys(for: agent)
+        var command: String?
+        for member in members {
+            if member.key == "command", command == nil {
+                switch member.value {
+                case let .string(string): command = string
+                case let .array(words) where !words.isEmpty:
+                    let strings = words.compactMap(\.string)
+                    guard strings.count == words.count else { return nil }
+                    command = shellQuoted(strings)
+                default: return nil
+                }
+            } else if let allows = harmless[member.key], allows(member.value) {
+                continue
+            } else {
+                return nil
+            }
+        }
+        guard let command, isPlainCommand(command) else { return nil }
+        return command
+    }
+
+    /// Whether a card shows `command` as it is, each character in its place: printable ASCII only,
+    /// U+0020 to U+007E, on one line, with no space at either end and no run of spaces, which a
+    /// card collapses. Anything else, such as a tab, a line break, a no-break space, a combining
+    /// mark, a right-to-left letter or a blank that is not a space, could hide what runs.
+    public static func isPlainCommand(_ command: String) -> Bool {
+        let scalars = command.unicodeScalars
+        guard let first = scalars.first, let last = scalars.last, first != " ", last != " " else { return false }
+        var previous: Unicode.Scalar?
+        for scalar in scalars {
+            guard (0x20...0x7E).contains(scalar.value), !(scalar == " " && previous == " ") else { return false }
+            previous = scalar
+        }
+        return true
+    }
+
+    /// `words` as a POSIX shell reads them back: a word of only safe characters as it is, any other
+    /// in single quotes, with each single quote in it closed, escaped and reopened.
+    public static func shellQuoted(_ words: [String]) -> String {
+        let safe = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@%+=:,./_-".unicodeScalars)
+        return words.map { word in
+            if !word.isEmpty, word.unicodeScalars.allSatisfy(safe.contains) { return word }
+            return "'" + word.replacing("'", with: #"'\''"#) + "'"
+        }.joined(separator: " ")
     }
 
     /// `path` from inside `directory` without it, as the session sees it; other paths as they are.

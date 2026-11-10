@@ -133,9 +133,6 @@ extension AgentHook {
             return nil
         case var .card(found):
             if let origin { found.id = found.id.map(origin.qualified) }
-            // With --approve, a permission card says what the call would do, never only what the
-            // agent says it does: a description can say anything about the command it describes.
-            if policy.approve, found.asksPermission, origin == nil { found.detail = found.request }
             event = found
         }
         let id = event.id
@@ -235,9 +232,14 @@ extension AgentHook {
             note("approve", "skip", eventFields + [("reason", "watching_terminal")])
             return shown
         }
-        // Allow on a card that cuts the command short, or cannot show all of it, would allow what
-        // you never saw: the card only tells, and the terminal asks.
-        guard let asking = asking(shown, request: event.request, shownText: surroundings.shownText) else {
+        // Allow only for a plain shell command, shown whole as it is: on any other request, or on
+        // one the card cuts short, Allow would allow what you never saw. The card only tells, and
+        // the terminal asks.
+        guard let request = event.request else {
+            note("approve", "skip", eventFields + [("reason", "not_a_plain_command")])
+            return shown
+        }
+        guard let asking = asking(shown, request: request, shownText: surroundings.shownText) else {
             note("approve", "skip", eventFields + [("reason", "request_not_shown_whole")])
             return shown
         }
@@ -248,36 +250,32 @@ extension AgentHook {
     /// `card`, a permission card, with Allow and Deny: a click on either is the agent's answer, which
     /// `drip hook` prints as `Approval.output`. Nothing clicked in `Defaults.approveWait` seconds,
     /// or a click on the card itself, leaves the answer to the terminal. Its detail is `request`,
-    /// what the call would do, whatever detail it had. Nil when the card cannot show all of the
-    /// request, as `shownText` lays the card out: without one, when the request runs past the
-    /// detail's last line, or when it holds characters the card does not draw, which could hide part
-    /// of a command from you.
+    /// the command the call would run, whatever detail it had. Nil when the card does not show
+    /// `request` whole and as it is, as `shownText` lays the card out.
     public static func asking(
-        _ card: Card, request: String?, shownText: (Card) -> ShownText = ShownText.init(estimating:)
+        _ card: Card, request: String, shownText: (Card) -> ShownText = ShownText.init(estimating:)
     ) -> Card? {
-        guard let request, isDrawable(request), let detail = CardText.line(request) else { return nil }
+        // A card draws its detail normalized: a request that would change does not show as it is.
+        guard CardText.line(request) == request else { return nil }
         var card = card
-        card.detail = detail
+        card.detail = request
         card.action = CardAction(label: "Allow", open: nil, decline: "Deny")
         card.waitLimit = Defaults.approveWait
-        // Lines break at spaces, which they drop, or inside a word too long for a line.
-        let shown = shownText(card).detail.joined().filter { !$0.isWhitespace }
-        guard shown == detail.filter({ !$0.isWhitespace }) else { return nil }
+        guard shows(request, whole: shownText(card).detail) else { return nil }
         return card
     }
 
-    /// Whether every character of `text` shows on a card as it is: no control character but line
-    /// breaks and tabs, which show as spaces, and no format character, such as a bidi control or a
-    /// zero-width space. A card drops the controls and the bidi controls, and the terminal escape
-    /// sequences they start with all the text inside, so a command could run more than it shows.
-    static func isDrawable(_ text: String) -> Bool {
-        text.unicodeScalars.allSatisfy { scalar in
-            switch scalar.properties.generalCategory {
-            case .control: return scalar == "\n" || scalar == "\t" || scalar == "\r"
-            case .format: return false
-            default: return true
-            }
+    /// Whether `lines`, a detail as a card wraps it, are `text` character for character: each line
+    /// takes up where the one before it ended, past at most the one space the line broke at, and
+    /// the last ends where `text` does, with no `…` cutting it short.
+    public static func shows(_ text: String, whole lines: [String]) -> Bool {
+        var rest = Substring(text)
+        for (index, line) in lines.enumerated() {
+            if index > 0, rest.first == " ", line.first != " " { rest = rest.dropFirst() }
+            guard !line.isEmpty, rest.hasPrefix(line) else { return false }
+            rest = rest.dropFirst(line.count)
         }
+        return !lines.isEmpty && rest.isEmpty
     }
 
     /// Where the terminal is for `card`, asking about its pane only when that decides it: the
