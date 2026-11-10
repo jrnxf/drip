@@ -260,7 +260,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
     case .invocation(.watching):
         return send(["exit": ExitStatus.cannotTell, "message": "drip: watching looks at your Mac's screen, not this page"])
     case .invocation(.follow):
-        return send(["exit": ExitStatus.followFailed, "message": "drip: drip follow reads another machine over ssh from your Mac, not from this page"])
+        return send(["exit": ExitStatus.failed, "message": "drip: drip follow reads another machine over ssh from your Mac, not from this page"])
     case let .invocation(.dismiss(command)):
         // The page takes its own cards away, those with the id when one is given.
         return send(["dismiss": command.id.map { ["id": $0] } ?? [String: Any]()])
