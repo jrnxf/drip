@@ -444,6 +444,15 @@ struct DripCLI {
     private func history(_ command: HistoryCommand) -> Int32 {
         let console = Console()
         let environment = ProcessInfo.processInfo.environment
+        if command.clear {
+            do {
+                try CardHistory(environment: environment).clear()
+                return ExitStatus.shown
+            } catch {
+                console.error("cannot clear the history: \(error)")
+                return ExitStatus.usage
+            }
+        }
         // The listing is the last cards; JSON and replay are all of them, unless -n limits them.
         let count = command.all ? nil : command.number ?? (command.json || command.replay ? nil : HistoryListing.defaultCount)
         let entries = HistoryListing.newest(

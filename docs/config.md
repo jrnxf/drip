@@ -12,6 +12,7 @@ stack     = "chain"           # chain | push | off: how cards stack
 stack_max = 3                 # most cards on screen at once, 1 to 6
 when_focused = "quiet"        # quiet | show | skip: an agent's card while you watch its terminal
 away_after = 60               # seconds without keyboard or mouse before you count as away; 0: always away
+history = 1000                # most cards the history keeps, 0 to 1000; 0 keeps none (see drip history)
 debug = false                 # true: keep the debug log, a diagnostic aid (see Debug log)
 
 [preset.ok]                  # override a built-in preset, any subset of keys
@@ -29,12 +30,12 @@ icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this fi
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
 `DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`, `DRIP_AWAY_AFTER`,
-`DRIP_DEBUG`, and for the
+`DRIP_HISTORY`, `DRIP_DEBUG`, and for the
 [zsh block](usage.md#without-typing-drip-run) `DRIP_SLOW_AFTER` and `DRIP_SLOW_IGNORE`;
 `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
 environment exits 2 when drip makes a card from it (1 for `drip hook`); a command that makes none,
 such as `drip history`, `drip debug` or `drip dismiss`, or a hook that shows nothing or only takes a
-card away, never reads it. An invalid `DRIP_DEBUG` counts as unset. A preset's own `seconds` and `sound` beat the top-level ones, except
+card away, never reads it. An invalid `DRIP_DEBUG` or `DRIP_HISTORY` counts as unset. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
 name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `setup`,

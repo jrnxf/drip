@@ -134,6 +134,27 @@ public struct CardHistory {
         self.init(path: (StateDirectory.path(environment: environment) as NSString).appendingPathComponent("history.jsonl"))
     }
 
+    /// `history.jsonl` in the state directory, keeping as many cards as `DRIP_HISTORY` or the
+    /// config's `history` says, else the default. An invalid setting counts as unset.
+    public init(environment: [String: String], loadConfig: () throws -> ConfigFile) {
+        self.init(environment: environment)
+        limit = ((try? EnvironmentSettings.history(environment: environment)) ?? nil)
+            ?? (try? loadConfig())?.config.history ?? Self.limit
+    }
+
+    /// As above, reading the config file from its usual place.
+    public init(settingsFrom environment: [String: String]) {
+        self.init(environment: environment) { try ConfigLoader.load(environment: environment) }
+    }
+
+    /// Empties the history. Held cards are a separate file and stay.
+    public func clear() throws {
+        try StateFiles.locked(path) {
+            guard FileManager.default.fileExists(atPath: path) else { return }
+            try StateFiles.write("", toPath: path)
+        }
+    }
+
     /// Adds the cards, dropping the oldest entries beyond `limit`. Safe to call from many drips at once.
     ///
     /// - Parameter shown: The lines a card shows, measured with the card's own fonts and width;
@@ -141,7 +162,7 @@ public struct CardHistory {
     public func record(
         _ cards: [Card], missed: Bool, at time: Date = Date(), shown: (Card) -> ShownText? = { _ in nil }
     ) throws {
-        guard !cards.isEmpty else { return }
+        guard !cards.isEmpty, limit > 0 else { return }
         let added = try cards.map { card in
             var kept = card
             kept.title = CardText.truncate(card.title, limit: Self.textLimit)

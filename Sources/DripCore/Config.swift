@@ -37,15 +37,19 @@ public struct Config: Equatable {
     public var awayAfter: Double?
     /// Whether drip keeps its debug log, `DebugLog`.
     public var debug: Bool?
+    /// The most cards the history keeps; 0 keeps none.
+    public var history: Int?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
 
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
-        awayAfter: Double? = nil, debug: Bool? = nil, presets: [String: PresetOverride] = [:]
+        awayAfter: Double? = nil, debug: Bool? = nil, history: Int? = nil,
+        presets: [String: PresetOverride] = [:]
     ) {
         self.debug = debug
+        self.history = history
         self.awayAfter = awayAfter
         self.seconds = seconds
         self.size = size
@@ -187,6 +191,12 @@ private struct ConfigReader {
             case "when_focused": config.whenFocused = try choice(item, key: key, WhenFocused.self)
             case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
             case "debug": config.debug = try boolean(item, key: key)
+            case "history":
+                guard case let .integer(value) = item.value else { throw wrongType(item, key: key, expected: "a whole number") }
+                guard Defaults.historyRange.contains(Int(clamping: value)) else {
+                    throw ConfigError(path: path, line: item.line, key: key, message: "must be between 0 and 1000")
+                }
+                config.history = Int(value)
             case "preset": config.presets = try presets(item)
             default: warnUnknown(key, line: item.line)
             }
@@ -361,13 +371,17 @@ public struct EnvironmentSettings: Equatable {
     public var forwarded: [String: String] = [:]
     /// Whether the debug log is on, from `DRIP_DEBUG`.
     public var debug: Bool?
+    /// The most cards the history keeps, from `DRIP_HISTORY`; 0 keeps none.
+    public var history: Int?
 
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
-        awayAfter: Double? = nil, sender: String? = nil, debug: Bool? = nil
+        awayAfter: Double? = nil, sender: String? = nil, debug: Bool? = nil,
+        history: Int? = nil
     ) {
         self.debug = debug
+        self.history = history
         self.awayAfter = awayAfter
         self.sender = sender
         self.whenFocused = whenFocused
@@ -380,7 +394,7 @@ public struct EnvironmentSettings: Equatable {
     }
 
     /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK, DRIP_STACK_MAX,
-    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER and DRIP_DEBUG. Empty
+    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_HISTORY and DRIP_DEBUG. Empty
     /// values are ignored; invalid ones are usage errors. Also notes the app drip was run from, from
     /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
@@ -423,6 +437,7 @@ public struct EnvironmentSettings: Equatable {
         }
         sound = value("DRIP_SOUND").map(Sound.init(parsing:))
         debug = try Self.debug(environment: environment)
+        history = try Self.history(environment: environment)
         sender = CardActivation.sender(in: environment)
         pane = TerminalPane(environment: environment)
         forwarded = ForwardedEnvironment.read(environment)
@@ -430,6 +445,16 @@ public struct EnvironmentSettings: Equatable {
 }
 
 extension EnvironmentSettings {
+    /// `DRIP_HISTORY`: a whole number from 0 to 1000; nil when unset or empty. Throws a `UsageError`
+    /// for anything else.
+    public static func history(environment: [String: String]) throws -> Int? {
+        guard let text = environment["DRIP_HISTORY"].flatMap({ $0.isEmpty ? nil : $0 }) else { return nil }
+        guard let count = Int(text), Defaults.historyRange.contains(count) else {
+            throw UsageError("DRIP_HISTORY must be a whole number from 0 to 1000, not '\(text)'")
+        }
+        return count
+    }
+
     /// `DRIP_DEBUG`: `1`, `true`, `on` or `yes`, or `0`, `false`, `off` or `no`; nil when unset or
     /// empty. Throws a `UsageError` for anything else.
     public static func debug(environment: [String: String]) throws -> Bool? {

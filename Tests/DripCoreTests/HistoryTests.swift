@@ -68,6 +68,50 @@ final class HistoryTests {
         #expect(lines.count == 3)
     }
 
+    @Test func clearEmptiesTheHistoryAndLeavesHeldCards() throws {
+        let directory = try scratch()
+        let history = CardHistory(path: directory + "/history.jsonl")
+        let held = HeldCards(directory: directory)
+        try history.clear()
+        try history.record([card("one"), card("two")], missed: false)
+        _ = try held.admit([card("held")], locked: true, pid: getpid())
+        try history.clear()
+        #expect(history.entries().isEmpty)
+        #expect(try held.release().map(\.title) == ["held"])
+        try history.record([card("three")], missed: false)
+        #expect(history.entries().map(\.card.title) == ["three"])
+    }
+
+    @Test func aHistoryOfZeroKeepsNothingAndHoldingStillWorks() throws {
+        let directory = try scratch()
+        let history = CardHistory(path: directory + "/history.jsonl", limit: 0)
+        try history.record([card("one")], missed: false)
+        #expect(history.entries().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: history.path))
+        let held = HeldCards(directory: directory)
+        _ = try held.admit([card("held")], locked: true, pid: getpid())
+        #expect(try held.release().map(\.title) == ["held"])
+    }
+
+    @Test func theHistorySizeComesFromTheEnvironmentThenTheConfig() throws {
+        let environment = ["HOME": "/h"]
+        func limit(_ environment: [String: String], _ config: String = "") throws -> Int {
+            try CardHistory(environment: environment) { try ConfigLoader.parse(config, path: "config.toml") }.limit
+        }
+        #expect(try limit(environment) == 1000)
+        #expect(try limit(environment, "history = 50") == 50)
+        #expect(try limit(environment, "history = 0") == 0)
+        #expect(try limit(environment.merging(["DRIP_HISTORY": "7"]) { $1 }, "history = 50") == 7)
+        #expect(try limit(environment.merging(["DRIP_HISTORY": "0"]) { $1 }, "history = 50") == 0)
+        // An invalid environment value counts as unset.
+        #expect(try limit(environment.merging(["DRIP_HISTORY": "lots"]) { $1 }, "history = 50") == 50)
+        #expect(try EnvironmentSettings(environment: ["DRIP_HISTORY": "12"]) == EnvironmentSettings(history: 12))
+        #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_HISTORY": "1001"]) }
+        #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_HISTORY": "-1"]) }
+        #expect(throws: ConfigError.self) { try ConfigLoader.parse("history = 1001", path: "config.toml") }
+        #expect(throws: ConfigError.self) { try ConfigLoader.parse("history = \"all\"", path: "config.toml") }
+    }
+
     @Test func theJSONListingIsFlat() throws {
         var deploy = card("deployed", kind: "deploy")
         deploy.detail = "api 1.4.2"

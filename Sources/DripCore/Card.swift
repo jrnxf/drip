@@ -194,6 +194,8 @@ public enum Defaults {
     /// The most cards on screen at once.
     public static let stackMax = 3
     public static let stackMaxRange: ClosedRange<Int> = 1...6
+    /// `history`: how many cards the history keeps; 0 keeps none.
+    public static let historyRange: ClosedRange<Int> = 0...1000
     /// `away_after`, in seconds: 0 never takes you to be at the screen.
     public static let awayAfterRange: ClosedRange<Double> = 0...3600
     /// A number as a setting's message says it: 60, not 60.0.

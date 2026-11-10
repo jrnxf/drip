@@ -107,7 +107,7 @@ struct HUDDisplay: CardDisplay {
     private func record(_ cards: [Card], missed: Bool, locked: LockedScreen, console: Console) {
         do {
             try locked.record(
-                cards, missed: missed, in: CardHistory(environment: ProcessInfo.processInfo.environment),
+                cards, missed: missed, in: CardHistory(settingsFrom: ProcessInfo.processInfo.environment),
                 shown: IslandLayers.shownText)
         } catch {
             console.warn("cannot record the card in the history: \(error)")

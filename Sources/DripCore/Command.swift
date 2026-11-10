@@ -290,7 +290,7 @@ public struct DripCommand: ParsableCommand {
             drip remote-hook
             drip watching [--pane ID] [--app BUNDLE-ID]
             drip follow <ssh-target> [options]
-            drip history [--missed] [-n N | --all] [--json | --replay]
+            drip history [--missed] [-n N | --all] [--json | --replay] [--clear]
             drip debug [--clear]
             drip dismiss [--id ID]
             drip pause [DURATION]
@@ -642,12 +642,12 @@ public struct FollowCommand: ParsableCommand {
     }
 }
 
-/// `drip history [--missed] [-n N | --all] [--json | --replay]`: lists or shows again the cards in the history.
+/// `drip history [--missed] [-n N | --all] [--json | --replay] [--clear]`: lists or shows again the cards in the history.
 public struct HistoryCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "history",
         abstract: "List the cards in the history, or show them again.",
-        usage: "drip history [--missed] [-n N | --all] [--json | --replay]",
+        usage: "drip history [--missed] [-n N | --all] [--json | --replay] [--clear]",
         discussion: """
             Lists the last \(HistoryListing.defaultCount) cards in the history, newest first, as the card showed \
             them: when it came up, its title and the lines of detail on screen, with "missed" after the \
@@ -655,9 +655,13 @@ public struct HistoryCommand: ParsableCommand {
             fewer, --all every one. Color is for a terminal, and off when NO_COLOR is set and not empty. --json and \
             --replay take every card, oldest first, in full, unless -n limits them. The history is \
             $XDG_STATE_HOME/drip/history.jsonl, or ~/.local/state/drip/history.jsonl, and keeps the last \
-            \(CardHistory.limit) cards.
+            \(CardHistory.limit) cards. --clear deletes every card in it. history = 0 in the config, or \
+            DRIP_HISTORY=0, keeps no cards from then on.
             """
     )
+
+    @Flag(help: "Delete every card in the history.")
+    public var clear = false
 
     @Flag(help: "Only cards that came up while the screen was locked or drip was paused.")
     public var missed = false
@@ -677,6 +681,9 @@ public struct HistoryCommand: ParsableCommand {
     public init() {}
 
     public func validate() throws {
+        if clear, missed || number != nil || all || json || replay {
+            throw ValidationError("--clear cannot be used with other options")
+        }
         if json, replay { throw ValidationError("--json and --replay cannot be used together") }
         if let number, number < 1 { throw ValidationError("-n takes a number of cards, 1 or more") }
         if number != nil, all { throw ValidationError("-n and --all cannot be used together") }
