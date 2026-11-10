@@ -126,7 +126,7 @@ struct HookTests {
         #expect(event == AgentHook.Event(
             kind: "info", title: "web needs you", detail: "Codex wants to run npm install", id: "codex:019a",
             stays: true, waitsOn: event.waitsOn, directory: "/src/web", asksPermission: true,
-            request: "Codex wants to run npm install"))
+            toolUse: "Codex wants to run npm install", request: "Codex wants to run npm install"))
         func detail(_ input: String) throws -> String? {
             try AgentHook.event(agent: .codex, payload: """
                 {"hook_event_name":"PermissionRequest","tool_name":"apply_patch","tool_input":\(input)}
@@ -327,7 +327,7 @@ struct HookTests {
         #expect(event == AgentHook.Event(
             kind: "info", title: "api needs you", detail: "Claude wants to run npm install", id: "claude:s1",
             stays: true, waitsOn: event.waitsOn, directory: "/work/api", asksPermission: true,
-            request: "Claude wants to run npm install"))
+            toolUse: "Claude wants to run npm install", request: "Claude wants to run npm install"))
         #expect(event.waitsOn?.hasPrefix("p1 Bash ") == true)
         func detail(_ tool: String, _ input: String) throws -> String? {
             try AgentHook.event(agent: .claude, payload: """

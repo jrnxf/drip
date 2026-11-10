@@ -123,16 +123,19 @@ public enum AgentHook {
         /// Whether the event is a permission request the agent takes an answer to from its hook, so
         /// the card can ask it with Allow and Deny when `approve` is on.
         public var asksPermission: Bool
-        /// What a permission card that asks shows instead of the detail: the shell command the
-        /// request would run, as `approvableCommand` reads it, never the agent's own description of
-        /// it, which can say anything. Nil for any other request, which the terminal asks, and for
-        /// any other event.
+        /// What a permission card shows with `--approve` instead of the detail, whether it asks or
+        /// only tells: what the call would do, as `toolUse` reads it, never the agent's own
+        /// description of it alone, which can say anything. Nil for any other event.
+        public var toolUse: String?
+        /// The shell command a permission card may ask with `--approve`, as `approvableCommand`
+        /// reads it, worded as `toolUse` words it. Nil for any other request, which the terminal
+        /// asks, and for any other event.
         public var request: String?
 
         public init(
             kind: String, title: String, detail: String? = nil, id: String? = nil, stays: Bool = false,
             waitsOn: String? = nil, isPermissionNotice: Bool = false, directory: String? = nil,
-            asksPermission: Bool = false, request: String? = nil
+            asksPermission: Bool = false, toolUse: String? = nil, request: String? = nil
         ) {
             self.kind = kind
             self.title = title
@@ -143,6 +146,7 @@ public enum AgentHook {
             self.isPermissionNotice = isPermissionNotice
             self.directory = directory
             self.asksPermission = asksPermission
+            self.toolUse = toolUse
             self.request = request
         }
 
@@ -316,19 +320,22 @@ public enum AgentHook {
         let id = string("session_id").map { "\(agent.rawValue):\($0)" }
         func card(
             _ kind: Preset, _ title: String, _ detail: String?, stays: Bool = false, waitsOn: String? = nil,
-            isPermissionNotice: Bool = false, asksPermission: Bool = false, request: String? = nil
+            isPermissionNotice: Bool = false, asksPermission: Bool = false, toolUse: String? = nil,
+            request: String? = nil
         ) -> Outcome {
             .card(Event(
                 kind: kind.name, title: "\(project()) \(title)", detail: detail, id: id, stays: stays,
                 waitsOn: stays ? waitsOn : nil, isPermissionNotice: isPermissionNotice, directory: directory,
-                asksPermission: asksPermission, request: request))
+                asksPermission: asksPermission, toolUse: toolUse, request: request))
         }
-        /// A permission request's card: it tells what the agent says the call does, and asks, with
-        /// `--approve`, only for a plain shell command, which it then shows instead.
+        /// A permission request's card: it tells what the agent says the call does. With `--approve`
+        /// it tells what the call would do instead, and asks only for a plain shell command.
         func permission(waitsOn: String?) -> Outcome {
-            card(
-                .info, "needs you", request(object, agent: agent, directory: directory), stays: true, waitsOn: waitsOn,
-                asksPermission: true,
+            let toolUse = AgentHook.toolUse(object, agent: agent, directory: directory)
+            let description = object["tool_input"]?["description"].flatMap(nonBlank)
+            return card(
+                .info, "needs you", description ?? toolUse, stays: true, waitsOn: waitsOn, asksPermission: true,
+                toolUse: toolUse,
                 request: approvableCommand(object, agent: agent).map { "\(agent.displayName) wants to run \($0)" })
         }
         func clear(tool: String? = nil, alsoTool: String? = nil, keyed: Bool = false, startsTurn: Bool = false) -> Outcome {
@@ -472,21 +479,19 @@ public enum AgentHook {
         return String(repeating: "0", count: 16 - digits.count) + digits
     }
 
-    /// What a permission request asks, as a card that only tells shows it: its own description,
-    /// else the command it would run, else the file or the address the tool would work on, else the
-    /// tool it would use. Nil when the payload names none of them, so the card has no detail.
-    static func request(_ object: JSONValue, agent: Agent, directory: String?) -> String? {
+    /// What a permission request would do, read from the tool's own input: the command it would
+    /// run, else the file or the address the tool would work on, else the tool it would use. Only a
+    /// payload that names no tool and no command falls back to the agent's own description. Nil
+    /// when the payload names none of them, so the card has no detail.
+    static func toolUse(_ object: JSONValue, agent: Agent, directory: String?) -> String? {
         let name = agent.displayName
         let input = object["tool_input"]
-        if let description = input?["description"].flatMap(nonBlank) {
-            return description
-        }
-        // A command is one string, or its words.
-        let command = input?["command"].flatMap { $0.string ?? $0.elements?.compactMap(\.string).joined(separator: " ") }
+        // A command is one string, or its words, shell-quoted as `approvableCommand` quotes them.
+        let command = input?["command"].flatMap { $0.string ?? $0.elements.map { shellQuoted($0.compactMap(\.string)) } }
         if let command = command.flatMap({ nonBlank(.string($0)) }) {
             return "\(name) wants to run \(command)"
         }
-        guard let tool = object["tool_name"].flatMap(nonBlank) else { return nil }
+        guard let tool = object["tool_name"].flatMap(nonBlank) else { return input?["description"].flatMap(nonBlank) }
         let target = (input?["file_path"] ?? input?["notebook_path"] ?? input?["path"]).flatMap(nonBlank)
             .map { relative($0, to: directory) } ?? input?["url"].flatMap(nonBlank)
         return target.map { "\(name) wants to use \(tool) on \($0)" } ?? "\(name) wants to use \(tool)"

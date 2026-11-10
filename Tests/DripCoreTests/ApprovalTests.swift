@@ -2,6 +2,9 @@
 import DripCore
 import Foundation
 import Testing
+#if canImport(CoreText)
+import CoreText
+#endif
 
 /// A permission card with Allow and Deny, with `approve` on: a click is the agent's answer, and
 /// anything else leaves the answer to the terminal.
@@ -82,7 +85,7 @@ struct ApprovalTests {
     /// was pressed, and the terminal asks.
     @Test func aPermissionCardDroppedBeforeItShowsGivesNoAnswer() throws {
         let plain = try #require(try ask(.claude, Self.claude, local(), approve: false))
-        let asking = try #require(AgentHook.asking(plain, request: "Claude wants to run ls"))
+        let asking = try #require(AgentHook.asking(plain))
         let settings = StackSettings(mode: .chain, max: 3)
 
         let replaced = CardStack(settings: settings, cards: [asking])
@@ -146,22 +149,37 @@ struct ApprovalTests {
         return payload(agent, input: JSONValue.object(input).formatted())
     }
 
-    /// The agent's description of a command can say anything: a card that asks shows the command
-    /// itself. One that only tells keeps the agent's words, which read better.
+    /// The agent's description of a command can say anything: with `--approve`, a permission card
+    /// shows the command itself, whether it asks or only tells. Without, the agent's words, which
+    /// read better, as before.
     @Test(arguments: [AgentHook.Agent.claude, .codex])
-    func aCardThatAsksShowsTheCommandNotItsDescription(_ agent: AgentHook.Agent) throws {
+    func aPermissionCardShowsTheCommandNotItsDescription(_ agent: AgentHook.Agent) throws {
         let payload = Self.request(agent, command: "rm -rf /home/user/api/data", description: "List the files")
+        let command = "\(agent.displayName) wants to run rm -rf /home/user/api/data"
         let card = try #require(try ask(agent, payload, local()))
         #expect(card.action != nil)
-        #expect(card.detail == "\(agent.displayName) wants to run rm -rf /home/user/api/data")
+        #expect(card.detail == command)
 
-        // Off, or on but not asking, as while you are away: the description, as before.
         let plain = try #require(try ask(agent, payload, local(), approve: false))
         #expect(plain.action == nil)
         #expect(plain.detail == "List the files")
+
+        // On but only telling: while you are away, while you watch Codex's terminal, for a command
+        // that is not plain, and for one too long for the card.
         let away = try #require(try ask(agent, payload, local(away: true)))
         #expect(away.action == nil)
-        #expect(away.detail == "List the files")
+        #expect(away.detail == command)
+        let watching = try #require(try ask(agent, payload, local(front: WhenFocused.Front(app: true, pane: true, idle: 0))))
+        #expect(watching.action == (agent == .codex ? nil : card.action))
+        #expect(watching.detail == command)
+        let tabbed = Self.request(agent, command: "ls\t-la", description: "List the files")
+        let tabbedCard = try #require(try ask(agent, tabbed, local()))
+        #expect(tabbedCard.action == nil)
+        #expect(CardText.line(tabbedCard.detail) == "\(agent.displayName) wants to run ls -la")
+        let long = "rm -rf " + Array(repeating: "/home/user/api/build", count: 30).joined(separator: " ")
+        let longCard = try #require(try ask(agent, Self.request(agent, command: long, description: "List the files"), local()))
+        #expect(longCard.action == nil)
+        #expect(longCard.detail == "\(agent.displayName) wants to run \(long)")
 
         // A detail from the command line cannot stand in for the command either.
         let flagged = try #require(try AgentHook.card(
@@ -239,16 +257,24 @@ struct ApprovalTests {
             #expect(card.waitLimit == Defaults.waitLimit)
             #expect(card.detail != "")
         }
-        // What the card tells, as without --approve.
-        let write = Self.payload(.claude, tool: "Write", input: #"{"file_path":"/home/user/api/.git/hooks/pre-commit"}"#)
+        // What the card tells: the tool and its target, never the agent's description alone.
+        let write = Self.payload(
+            .claude, tool: "Write", input: #"{"file_path":"/home/user/api/.git/hooks/pre-commit","description":"Format the code"}"#)
         #expect(try ask(.claude, write, local())?.detail == "Claude wants to use Write on .git/hooks/pre-commit")
+        #expect(try ask(.claude, write, local(), approve: false)?.detail == "Format the code")
         let mcp = Self.payload(.claude, tool: "mcp__shell__exec", input: #"{"cmd":"rm -rf ~","description":"Tidy up"}"#)
-        #expect(try ask(.claude, mcp, local())?.detail == "Tidy up")
-        // With no tool named, the description still shows; with nothing at all, no detail.
+        #expect(try ask(.claude, mcp, local())?.detail == "Claude wants to use mcp__shell__exec")
+        #expect(try ask(.claude, mcp, local(), approve: false)?.detail == "Tidy up")
+        let words = Self.payload(.codex, input: #"{"command":["ls",5,"a b"]}"#)
+        #expect(try ask(.codex, words, local())?.detail == "Codex wants to run ls 'a b'")
+        // With no tool and no command named, the description is all there is; with nothing at
+        // all, no detail, never an empty one.
         let untold = Self.payload(.claude, tool: nil, input: #"{"description":"Run the build"}"#)
         #expect(try ask(.claude, untold, local())?.detail == "Run the build")
         let empty = Self.payload(.claude, tool: nil, input: "{}")
         #expect(try ask(.claude, empty, local())?.detail == nil)
+        let blank = Self.payload(.claude, tool: " ", input: #"{"command":" ","description":" "}"#)
+        #expect(try ask(.claude, blank, local())?.detail == nil)
     }
 
     /// A command a card could show other than as it runs is asked in the terminal: a card drops
@@ -300,22 +326,26 @@ struct ApprovalTests {
     }
 
     @Test func aCardAsksOnlyWhenItShowsTheCommandExactly() throws {
-        let plain = try #require(try ask(.claude, Self.claude, local(), approve: false))
+        var plain = try #require(try ask(.claude, Self.claude, local(), approve: false))
         let request = "Claude wants to run ls -la /home/user/api"
-        let asking = try #require(AgentHook.asking(plain, request: request))
+        plain.detail = request
+        let asking = try #require(AgentHook.asking(plain))
         #expect(asking.detail == request)
         #expect(asking.action == CardAction(label: "Allow", open: nil, decline: "Deny"))
         #expect(asking.waitLimit == Defaults.approveWait)
 
         func shown(_ lines: [String]) -> Card? {
-            AgentHook.asking(plain, request: request) { _ in ShownText(title: ["api needs you"], detail: lines) }
+            AgentHook.asking(plain) { _ in ShownText(title: ["api needs you"], detail: lines) }
         }
-        // Broken into lines at its spaces, or with the space kept at the end of a line: all of it.
+        // Broken into lines at its spaces, each break one space: all of it.
         #expect(shown(["Claude wants to run", "ls -la", "/home/user/api"]) != nil)
-        #expect(shown(["Claude wants to run ", "ls -la /home/user/api"]) != nil)
-        // Broken inside a word too long for a line, or with the space at the start of the next.
-        #expect(shown(["Claude wants to run ls -la /home/us", "er/api"]) != nil)
-        #expect(shown(["Claude wants to run ls -la", " /home/user/api"]) != nil)
+        #expect(shown(["Claude wants to run ls -la /home/user/api"]) != nil)
+        // Broken inside a word, after a `/`, or with the space kept at either side of the break: a
+        // reader cannot tell what stood at the break.
+        #expect(shown(["Claude wants to run ls -la /home/us", "er/api"]) == nil)
+        #expect(shown(["Claude wants to run ls -la /home/", "user/api"]) == nil)
+        #expect(shown(["Claude wants to run ", "ls -la /home/user/api"]) == nil)
+        #expect(shown(["Claude wants to run ls -la", " /home/user/api"]) == nil)
         // Cut short, a line left out, a space lost inside a line, or one more at a break: no Allow.
         #expect(shown(["Claude wants to run ls -la /home/u…"]) == nil)
         #expect(shown(["Claude wants to run ls -la"]) == nil)
@@ -324,14 +354,77 @@ struct ApprovalTests {
         #expect(shown(["Claude wants to run ls", "", "-la /home/user/api"]) == nil)
         #expect(shown(["Claude wants to run ls -la ", " /home/user/api"]) == nil)
         #expect(shown([]) == nil)
-        // A request the card would draw otherwise never asks.
-        #expect(AgentHook.asking(plain, request: "Claude wants to run ls  -la") == nil)
+        // A detail the card would draw otherwise, or none, never asks.
+        plain.detail = "Claude wants to run ls  -la"
+        #expect(AgentHook.asking(plain) == nil)
+        plain.detail = nil
+        #expect(AgentHook.asking(plain) == nil)
     }
+
+    /// The lines a card drew for `rm -rf ~/ projects/old-build`, which deletes your home folder,
+    /// and for `rm -rf ~/projects/old-build`, which does not: Core Text breaks after a `/` as well
+    /// as at a space. Only the first, broken at its space, may ask, and a break then always reads
+    /// as one space.
+    @Test func aBreakAfterASlashGivesNoAllow() throws {
+        let start = "Claude wants to run cd " + String(repeating: "d", count: 27) + " && rm -rf ~/"
+        let lines = [start, "projects/old-build"]
+        var card = try #require(try ask(.claude, Self.claude, local(), approve: false))
+        func asks(_ command: String) -> Bool {
+            card.detail = command
+            return AgentHook.asking(card) { _ in ShownText(title: ["api needs you"], detail: lines) } != nil
+        }
+        #expect(asks(start + " projects/old-build"))
+        #expect(!asks(start + "projects/old-build"))
+    }
+
+#if canImport(CoreText)
+    /// The same with Core Text choosing the breaks, as a card does, in the detail's font at the
+    /// width of a card with Allow and Deny: for some lengths of the `d` run, it breaks the command
+    /// without the space after `~/`, and both commands then draw the same lines.
+    @Test func coreTextBreaksAfterASlashAndThatGivesNoAllow() throws {
+        let font = try #require(CTFontCreateUIFontForLanguage(.system, 12, nil))
+        let attributes = [NSAttributedString.Key(kCTFontAttributeName as String): font]
+        func typeset(_ text: String) -> NSAttributedString { NSAttributedString(string: text, attributes: attributes) }
+        func width(_ text: String) -> Double {
+            ceil(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(typeset(text) as CFAttributedString), nil, nil, nil))
+        }
+        let column = IslandMetrics(
+            notchWidth: 0, notchHeight: 0, textWidth: 0, textHeight: 0,
+            actionWidth: IslandMetrics.buttonsWidth(yes: 5 * 7.5 + 24, no: 4 * 7.5 + 24, scale: 1),
+            declineWidth: 4 * 7.5 + 24
+        ).textColumn
+        func lines(_ text: String) -> [String] {
+            CardText.wrap(text, width: column, maxLines: Defaults.detailLines, measure: width) { rest in
+                let typesetter = CTTypesetterCreateWithAttributedString(typeset(rest) as CFAttributedString)
+                return CardText.characterCount(rest, utf16Length: CTTypesetterSuggestLineBreak(typesetter, 0, column))
+            }
+        }
+        var reproduced = 0
+        for count in 1...60 {
+            let start = "Claude wants to run cd " + String(repeating: "d", count: count) + " && rm -rf ~/"
+            let joined = start + "projects/old-build", spaced = start + " projects/old-build"
+            let drawn = lines(joined)
+            guard let slash = drawn.firstIndex(where: { $0.hasSuffix("~/") }), drawn.indices.contains(slash + 1),
+                  drawn[slash + 1].hasPrefix("projects/"), lines(spaced) == drawn
+            else { continue }
+            reproduced += 1
+            #expect(!AgentHook.shows(joined, whole: drawn), "\(count) d")
+            #expect(AgentHook.shows(spaced, whole: drawn), "\(count) d")
+        }
+        #expect(reproduced > 0, "both commands drawn the same, broken after the slash, at some length")
+    }
+#endif
 
     @Test func linesShowATextWholeOnlyCharacterForCharacter() {
         #expect(AgentHook.shows("rm -rf build", whole: ["rm -rf build"]))
         #expect(AgentHook.shows("rm -rf build", whole: ["rm -rf", "build"]))
-        #expect(AgentHook.shows("rm -rf build", whole: ["rm -rf ", "build"]))
+        #expect(AgentHook.shows("rm -rf ~/ build", whole: ["rm -rf ~/", "build"]))
+        #expect(!AgentHook.shows("rm -rf ~/build", whole: ["rm -rf ~/", "build"]))
+        #expect(!AgentHook.shows("rm -rf build-dir", whole: ["rm -rf build-", "dir"]))
+        #expect(!AgentHook.shows("rm -rf build.dir", whole: ["rm -rf build.", "dir"]))
+        #expect(!AgentHook.shows("rm -rf build", whole: ["rm -rf bu", "ild"]))
+        #expect(!AgentHook.shows("rm -rf build", whole: ["rm -rf ", "build"]))
+        #expect(!AgentHook.shows("rm -rf build", whole: ["rm -rf", " build"]))
         #expect(!AgentHook.shows("rm -rf build", whole: ["rm -rfbuild"]))
         #expect(!AgentHook.shows("rm -rf build", whole: ["rm -rf  build"]))
         #expect(!AgentHook.shows("rm -rf build", whole: ["rm -rf", "", "build"]))

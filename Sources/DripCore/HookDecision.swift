@@ -159,6 +159,10 @@ extension AgentHook {
             return nil
         }
         var flags = event.filling(flags)
+        // With --approve, a permission card says what the call would do, whether it asks or only
+        // tells, never only what the agent says it does: a description can say anything about the
+        // call it describes, and so can --detail. The one place a permission card's detail is set.
+        if policy.approve, event.asksPermission { flags.detail = event.toolUse ?? flags.detail }
         flags.icon = flags.icon ?? agent.icon(installed: surroundings.isInstalled)
         // The title starts with the project, or the agent's name when the payload names no folder.
         let name = event.directory.flatMap(projectName) ?? agent.displayName
@@ -235,11 +239,11 @@ extension AgentHook {
         // Allow only for a plain shell command, shown whole as it is: on any other request, or on
         // one the card cuts short, Allow would allow what you never saw. The card only tells, and
         // the terminal asks.
-        guard let request = event.request else {
+        guard let request = event.request, shown.detail == request else {
             note("approve", "skip", eventFields + [("reason", "not_a_plain_command")])
             return shown
         }
-        guard let asking = asking(shown, request: request, shownText: surroundings.shownText) else {
+        guard let asking = asking(shown, shownText: surroundings.shownText) else {
             note("approve", "skip", eventFields + [("reason", "request_not_shown_whole")])
             return shown
         }
@@ -249,30 +253,37 @@ extension AgentHook {
 
     /// `card`, a permission card, with Allow and Deny: a click on either is the agent's answer, which
     /// `drip hook` prints as `Approval.output`. Nothing clicked in `Defaults.approveWait` seconds,
-    /// or a click on the card itself, leaves the answer to the terminal. Its detail is `request`,
-    /// the command the call would run, whatever detail it had. Nil when the card does not show
-    /// `request` whole and as it is, as `shownText` lays the card out.
+    /// or a click on the card itself, leaves the answer to the terminal. Nil when the card does not
+    /// show its detail, the command the call would run, whole and as it is, as `shownText` lays
+    /// the card out.
     public static func asking(
-        _ card: Card, request: String, shownText: (Card) -> ShownText = ShownText.init(estimating:)
+        _ card: Card, shownText: (Card) -> ShownText = ShownText.init(estimating:)
     ) -> Card? {
-        // A card draws its detail normalized: a request that would change does not show as it is.
-        guard CardText.line(request) == request else { return nil }
+        // A card draws its detail normalized: a detail that would change does not show as it is.
+        guard let detail = card.detail, CardText.line(detail) == detail else { return nil }
         var card = card
-        card.detail = request
         card.action = CardAction(label: "Allow", open: nil, decline: "Deny")
         card.waitLimit = Defaults.approveWait
-        guard shows(request, whole: shownText(card).detail) else { return nil }
+        guard shows(detail, whole: shownText(card).detail) else { return nil }
         return card
     }
 
-    /// Whether `lines`, a detail as a card wraps it, are `text` character for character: each line
-    /// takes up where the one before it ended, past at most the one space the line broke at, and
-    /// the last ends where `text` does, with no `…` cutting it short.
+    /// Whether `lines`, a detail as a card wraps it, are `text` character for character, with each
+    /// line break standing for exactly one space. Every break falls at a single space of `text`,
+    /// which the break drops, and the last line ends where `text` does, with no `…` cutting it
+    /// short. A break anywhere else, such as after a `/` or a `-`, or inside a word too long for a
+    /// line, fails: a reader could not tell whether a space stood there, and `rm -rf ~/ projects`
+    /// would read the same as `rm -rf ~/projects`.
     public static func shows(_ text: String, whole lines: [String]) -> Bool {
         var rest = Substring(text)
         for (index, line) in lines.enumerated() {
-            if index > 0, rest.first == " ", line.first != " " { rest = rest.dropFirst() }
-            guard !line.isEmpty, rest.hasPrefix(line) else { return false }
+            if index > 0 {
+                guard rest.first == " " else { return false }
+                rest = rest.dropFirst()
+            }
+            guard let first = line.first, let last = line.last, first != " ", last != " ", rest.hasPrefix(line) else {
+                return false
+            }
             rest = rest.dropFirst(line.count)
         }
         return !lines.isEmpty && rest.isEmpty
