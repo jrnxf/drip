@@ -175,7 +175,7 @@ struct ConfigTests {
     #if !os(WASI)
     @Test func theDocsListTheReservedNames() throws {
         let text = try String(contentsOf: DripProcess.repo.appendingPathComponent("docs/config.md"), encoding: .utf8)
-        let start = try #require(text.range(of: "a name kept for them:"))
+        let start = try #require(text.range(of: "name kept for them:"))
         let end = try #require(text.range(of: "A custom preset's ring", range: start.upperBound..<text.endIndex))
         let listed = text[start.upperBound..<end.lowerBound].split(separator: "`").enumerated()
             .filter { $0.offset % 2 == 1 }.map { String($0.element) }
