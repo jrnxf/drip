@@ -102,6 +102,28 @@ public enum ExitStatus {
     }
 }
 
+/// How a card ended, the word `drip --result` prints on stdout once it has gone. Scripts read these
+/// words, so a new one, or a new meaning for one, is a change of the contract.
+public enum CardResult: String, CaseIterable, Sendable {
+    /// A click on the card, away from its ×, or on its `--open` button.
+    case activate
+    /// Its × or a secondary click, VoiceOver's Dismiss, or `drip dismiss`, on screen or before it showed.
+    case dismiss
+    /// Its time, or the time a card that waits for you waits, ran out.
+    case timeout
+    /// A newer card with the same `--id` took its place, on screen or before it showed.
+    case replaced
+
+    /// What a press of one of the card's buttons ends it as: only a press that opens something is
+    /// a click on the card.
+    public init(pressing answer: CardAnswer) {
+        self = answer == .yes ? .activate : .dismiss
+    }
+
+    /// The line drip prints.
+    public var line: String { rawValue + "\n" }
+}
+
 extension CardSize: ExpressibleByArgument {}
 extension Motion: ExpressibleByArgument {}
 
@@ -426,14 +448,26 @@ public struct ShowCommand: ParsableCommand {
 
     @OptionGroup var question: QuestionOptions
 
-    /// The card options, with the question.
-    public var flags: CardFlags { options.flags(yes: question.yes, no: question.no) }
+    @Flag(help: "Wait until the card has gone, as --wait does, then print how it ended on stdout: activate, dismiss, timeout or replaced.")
+    public var result = false
+
+    /// The card options, with the question. `--result` waits for the card, since only its end says
+    /// how it ended.
+    public var flags: CardFlags {
+        var flags = options.flags(yes: question.yes, no: question.no)
+        if result { flags.wait = true }
+        return flags
+    }
 
     public init() {}
 
     public func validate() throws {
         try options.validateButton(asking: true)
         try question.validate(open: options.open)
+        if result, question.yes != nil {
+            throw ValidationError(
+                "--result prints how a card ended, but a --yes question answers with drip's exit status: give --yes or --result, not both")
+        }
     }
 }
 
@@ -472,9 +506,7 @@ public struct RunCommand: ParsableCommand {
         switch words.first {
         case "-h", "--help": throw CleanExit.helpRequest(Self.self)
         case let first? where first != "--" && first.hasPrefix("-"):
-            if let flag = CommandLineParser.questionFlag(first) {
-                throw ValidationError(CommandLineParser.noQuestion(flag, in: "run"))
-            }
+            if let problem = CommandLineParser.showOnly(first, in: "run") { throw ValidationError(problem) }
             throw ValidationError("unknown option '\(first)'")
         default: break
         }
@@ -1054,8 +1086,9 @@ public enum CommandLineParser {
                 + "dash after --, as in: drip fail -- '\(text)'"
         }
         if subcommand == HookCommand.configuration.commandName, message.hasPrefix("Unknown option '"),
-           let flag = message.split(separator: "'").dropFirst().first.flatMap({ questionFlag(String($0)) }) {
-            problem = noQuestion(flag, in: "hook")
+           let option = message.split(separator: "'").dropFirst().first,
+           let showOnly = showOnly(String(option), in: "hook") {
+            problem = showOnly
         }
         if problem.hasSuffix(".") { problem.removeLast() }
         problem = problem.prefix(1).lowercased() + problem.dropFirst()
@@ -1162,6 +1195,20 @@ extension CommandLineParser {
     /// What drip run and drip hook say of a question, which nothing reads the answer to.
     static func noQuestion(_ flag: String, in command: String) -> String {
         "drip \(command) takes no \(flag): nothing reads the answer to its question. Ask with drip itself, as in: drip warn \"Deploy?\" --yes Deploy"
+    }
+
+    /// What drip run and drip hook say of `--result`: run prints only its command's output, and an
+    /// agent's hook must print nothing it does not read.
+    static func noResult(in command: String) -> String {
+        "drip \(command) takes no --result: only drip itself prints how its card ended, as in: drip ok \"Built\" --result"
+    }
+
+    /// What drip run and drip hook say of `argument`, as typed, with or without `=text`, when it is
+    /// an option only drip itself takes; else nil.
+    static func showOnly(_ argument: String, in command: String) -> String? {
+        if let flag = questionFlag(argument) { return noQuestion(flag, in: command) }
+        if argument.prefix(while: { $0 != "=" }) == "--result" { return noResult(in: command) }
+        return nil
     }
 
     /// Every card option that takes a value, so that `drip run` can tell an option's value from the

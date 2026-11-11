@@ -25,17 +25,18 @@ public struct QueueDirectory {
     /// Queues the cards of the process `pid` and returns its ticket's name. A foreground drip
     /// queues its background drip itself, before returning, so the order is the order drips were
     /// run in; one that hands its stack on queues it right `after` its own ticket. Only a
-    /// background drip's cards are `adoptable`. `stamp` is when it was queued, in nanoseconds
-    /// since 1970.
+    /// background drip's cards are `adoptable`, and only the ticket of a drip that prints how its
+    /// card ended `reportsResult`. `stamp` is when it was queued, in nanoseconds since 1970.
     @discardableResult
     public func enqueue(
-        pid: Int32, cards: [Card], adoptable: Bool = false, after parent: String? = nil,
+        pid: Int32, cards: [Card], adoptable: Bool = false, reportsResult: Bool = false, after parent: String? = nil,
         stamp: UInt64 = UInt64(Date().timeIntervalSince1970 * 1_000_000_000)
     ) -> String {
         try? FileManager.default.createDirectory(
             atPath: path, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let start = processStart(pid)
-        let contents = (try? JSONEncoder().encode(TicketContents(cards: cards, adoptable: adoptable))) ?? Data()
+        let contents = (try? JSONEncoder().encode(
+            TicketContents(cards: cards, adoptable: adoptable, reportsResult: reportsResult))) ?? Data()
         let name = parent.flatMap { QueueTicket.name(after: $0, pid: pid, start: start) }
             ?? QueueTicket.name(stamp: stamp, pid: pid, start: start)
         write(contents, to: name, writer: pid)
@@ -76,6 +77,7 @@ public struct QueueDirectory {
             {
                 ticket.cards = contents.cards
                 ticket.adoptable = contents.adoptable
+                ticket.reportsResult = contents.reportsResult
             }
             ticket.claimed = claims(of: ticket.name)
             return ticket
@@ -87,11 +89,28 @@ public struct QueueDirectory {
         return Set((try? JSONDecoder().decode([String].self, from: data)) ?? [])
     }
 
-    /// Marks the card with `id` in `ticket` as taken over, so its own drip skips it.
+    /// Marks the card with `id` in `ticket` as taken over, so its own drip skips it. Two drips can
+    /// claim in one ticket at once, so each holds the ticket file's lock while it reads the claims,
+    /// adds its own and writes them back: neither loses the other's. A ticket already gone has no
+    /// drip left to skip anything, so it gets no claims.
     public func claim(_ id: String, in ticket: String) {
+        let lock = open(file(ticket), O_RDONLY | O_CLOEXEC)
+        guard lock >= 0 else { return }
+        defer { close(lock) }
+        flock(lock, LOCK_EX)
+        defer { flock(lock, LOCK_UN) }
         var claimed = claims(of: ticket)
         claimed.insert(id)
         write((try? JSONEncoder().encode(claimed.sorted())) ?? Data(), to: QueueTicket.claimName(for: ticket), writer: getpid())
+    }
+
+    /// Marks every older live card with `id` as replaced by the card from `newer` that a showing
+    /// drip took over, so each stays replaced once `newer`'s drip has exited. See
+    /// `CardReplacement.superseded`.
+    public func supersede(_ id: String, by newer: String) {
+        for ticket in CardReplacement.superseded(id: id, by: newer, queue: load(), isAlive: isAlive) {
+            claim(id, in: ticket)
+        }
     }
 
     public func remove(_ ticket: String) {

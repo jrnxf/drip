@@ -11,6 +11,14 @@ enum CardActions {
     /// The button a question was answered with, set only by a press of it: a card that went any
     /// other way, or never showed, leaves it nil.
     static var pressed: CardAnswer?
+    /// How this drip's own card ended, for `drip --result`: nil until it has.
+    private(set) static var result: CardResult?
+
+    /// Notes how this drip's own card ended. Only the first end counts: a card replaced on screen
+    /// stays replaced, however the card that took its place goes.
+    static func end(_ result: CardResult) {
+        if self.result == nil { self.result = result }
+    }
 
     /// Notes how a click went in the debug log: what drip tried to bring forward, and whether macOS
     /// refused. Never a window's title, or what a command printed.

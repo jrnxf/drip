@@ -192,6 +192,10 @@ enum CardQueue {
     }
     /// The cards this process queues, kept for when it queues again after giving up its turn.
     private static var cards: [Card] = []
+    /// Whether this process prints how its card ended, as `drip --result` does, so no other drip
+    /// takes the card over: see `QueueTicket.reportsResult`. Set with the cards, so a ticket never
+    /// goes out without it.
+    private static var reportsResult = false
     private static var leavesAtExit = false
 
     /// Queues the cards of the process `pid`, as `QueueDirectory.enqueue` describes.
@@ -200,13 +204,14 @@ enum CardQueue {
     }
 
     /// Waits until every drip queued earlier has shown its cards, or until a showing drip has
-    /// adopted all of this one's, queuing `cards`, or the cards it queued before when nil. Past
+    /// adopted all of this one's, queuing `cards`, or the cards it queued before when nil, and
+    /// whether this process `reportsResult` with them. Past
     /// `patience`, it waits on only while an earlier drip's question waits for its answer, which
     /// never gives way, and never longer than a question waits. The ticket goes when this process
     /// exits.
-    static func waitForTurn(cards: [Card]? = nil) {
+    static func waitForTurn(cards: [Card]? = nil, reportsResult: Bool = false) {
         let me = getpid()
-        join(cards: cards)
+        join(cards: cards, reportsResult: reportsResult)
         let start = Date()
         var deadline = start.addingTimeInterval(patience)
         let longest = deadline.addingTimeInterval(Defaults.waitLimit)
@@ -221,13 +226,16 @@ enum CardQueue {
         }
     }
 
-    /// Takes this process's ticket, queuing `cards`, or the cards it queued before when nil, unless
-    /// it has one already, as a background drip a stack was handed on to does. The ticket goes when
-    /// this process exits.
-    static func join(cards: [Card]? = nil) {
+    /// Takes this process's ticket, queuing `cards`, or the cards it queued before when nil, and
+    /// whether it `reportsResult` with them, unless it has one already, as a background drip a stack
+    /// was handed on to does. The ticket goes when this process exits.
+    static func join(cards: [Card]? = nil, reportsResult: Bool = false) {
         let me = getpid()
-        if let cards { self.cards = cards }
-        if queue.ticket(of: me) == nil { queue.enqueue(pid: me, cards: self.cards) }
+        if let cards {
+            self.cards = cards
+            self.reportsResult = reportsResult
+        }
+        if queue.ticket(of: me) == nil { queue.enqueue(pid: me, cards: self.cards, reportsResult: self.reportsResult) }
         mine = queue.ticket(of: me)
         if !leavesAtExit {
             leavesAtExit = true
@@ -273,16 +281,32 @@ enum CardQueue {
         return CardReplacement.replacement(for: showing, after: source, queue: queue.load(), isAlive: isAlive)
     }
 
-    /// The cards of newer drips still waiting for their turn, leaving out those with an id in
-    /// `except`, which take the place of a card on screen instead; and whether a stack could adopt each.
-    static func waiting(except ids: Set<String>) -> [(card: Card, adoptable: Bool)] {
-        guard let mine else { return [] }
-        return CardTurns.waiting(after: mine.name, queue: queue.load(), isAlive: isAlive, except: ids)
+    /// For each of this drip's cards on screen, the newest card queued after this drip's own ticket
+    /// that should take its place, and its ticket, from one read of the queue.
+    static func replacements(for showing: [Card]) -> [(ticket: String, card: Card)?] {
+        guard let mine, showing.contains(where: { $0.id != nil }) else { return showing.map { _ in nil } }
+        let tickets = queue.load()
+        return showing.map { CardReplacement.replacement(for: $0, after: mine.name, queue: tickets, isAlive: isAlive) }
+    }
+
+    /// Whether this drip's cards that wait for you give way: a newer drip waits for its turn with a
+    /// card this drip does not take in. Cards with an id in `except` take the place of a card on
+    /// screen instead. A drip that `adopts` takes in every adoptable card itself.
+    static func othersWait(except ids: Set<String>, adopts: Bool) -> Bool {
+        guard let mine else { return false }
+        return CardTurns.othersWait(after: mine.name, queue: queue.load(), isAlive: isAlive, except: ids, adopts: adopts)
     }
 
     /// Marks the card with `id` in `ticket` as taken over, so its own drip skips it.
     static func claim(_ id: String, in ticket: String) {
         queue.claim(id, in: ticket)
+    }
+
+    /// Marks every older card with the id of `card`, which this drip took over from `ticket`, as
+    /// replaced for good: `ticket`'s drip exits once it has nothing left to show.
+    static func supersede(with card: Card, from ticket: String) {
+        guard let id = card.id else { return }
+        queue.supersede(id, by: ticket)
     }
 
     /// Whether the drip that queued `ticket` still runs: its pid is alive and, when the ticket says

@@ -11,7 +11,9 @@ import Foundation
 /// process started, so a later process given the same pid is not taken for it. It holds the
 /// cards, so a newer drip's card can replace them and a showing drip can adopt them into its stack.
 /// When a showing drip takes over a newer ticket's card on screen, it marks that card as claimed,
-/// by its id or by its place in the ticket, and the newer drip then skips it.
+/// by its id or by its place in the ticket, and the newer drip then skips it. It claims the id in
+/// every older ticket that holds a card with it too, so those cards stay replaced once the newer
+/// drip has gone.
 public struct QueueTicket: Equatable, Sendable {
     public var name: String
     public var pid: Int32
@@ -24,11 +26,17 @@ public struct QueueTicket: Equatable, Sendable {
     /// Whether a showing drip may adopt this ticket's cards: true for a background drip, which has
     /// nothing to report once its cards are on screen.
     public var adoptable: Bool
+    /// Whether its drip prints how its card ended, as `drip --result` does: no other drip may take
+    /// the card over, so the card shows in this drip's own turn, as a question does.
+    public var reportsResult: Bool
 
     /// Parses a ticket file name: a 20-digit timestamp, a hyphen and a pid, then a hyphen and the
     /// process's start time when it was known. Nil for anything else, such as a claim file or a
     /// ticket still being written.
-    public init?(name: String, cards: [Card] = [], claimed: Set<String> = [], adoptable: Bool = false) {
+    public init?(
+        name: String, cards: [Card] = [], claimed: Set<String> = [], adoptable: Bool = false,
+        reportsResult: Bool = false
+    ) {
         let parts = name.split(separator: "-", omittingEmptySubsequences: false)
         let digits = { (part: Substring) in !part.isEmpty && part.allSatisfy { $0.isASCII && $0.isNumber } }
         guard (2...3).contains(parts.count), parts[0].count == 20, parts.allSatisfy(digits),
@@ -42,6 +50,7 @@ public struct QueueTicket: Equatable, Sendable {
         self.cards = cards
         self.claimed = claimed
         self.adoptable = adoptable
+        self.reportsResult = reportsResult
     }
 
     /// The file name for a ticket queued at `stamp` nanoseconds since 1970. Names sort in the
@@ -82,10 +91,25 @@ public struct QueueTicket: Equatable, Sendable {
 public struct TicketContents: Equatable, Sendable, Codable {
     public var cards: [Card]
     public var adoptable: Bool
+    /// See `QueueTicket.reportsResult`.
+    public var reportsResult: Bool
 
-    public init(cards: [Card], adoptable: Bool) {
+    public init(cards: [Card], adoptable: Bool, reportsResult: Bool = false) {
         self.cards = cards
         self.adoptable = adoptable
+        self.reportsResult = reportsResult
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case cards, adoptable, reportsResult
+    }
+
+    /// A ticket an older drip wrote has no `reportsResult`: its drip reports nothing.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        cards = try container.decode([Card].self, forKey: .cards)
+        adoptable = try container.decode(Bool.self, forKey: .adoptable)
+        reportsResult = try container.decodeIfPresent(Bool.self, forKey: .reportsResult) ?? false
     }
 
     /// Reads a ticket file; one written by an older drip is a bare list of cards that is never
@@ -104,13 +128,14 @@ public enum CardAdoption {
     }
 
     /// The cards a stack showing for the ticket `source` can adopt, oldest first: cards from newer,
-    /// live, adoptable tickets that nobody claimed and no newer card with the same id replaced.
+    /// live, adoptable tickets that nobody claimed and no newer card with the same id replaced. A
+    /// card whose drip prints how it ended is never one: only its own drip sees how it ends.
     public static func candidates(
         after source: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool
     ) -> [(ticket: String, index: Int, card: Card)] {
         var found: [(ticket: String, index: Int, card: Card)] = []
         for ticket in queue.sorted(by: { $0.name < $1.name })
-        where ticket.name > source && ticket.adoptable && isAlive(ticket) {
+        where ticket.name > source && ticket.adoptable && !ticket.reportsResult && isAlive(ticket) {
             for (index, card) in ticket.cards.enumerated()
             where !card.asksQuestion && !ticket.claimed.contains(claimKey(index: index))
                 && !CardReplacement.isReplaced(card, in: ticket, queue: queue, isAlive: isAlive)
@@ -127,7 +152,9 @@ public enum CardAdoption {
 public enum CardTurns {
     /// The cards of live drips queued after `source` that still wait for their turn: not adopted,
     /// claimed or replaced, and without an id in `except`, as such a card takes the place of a card
-    /// on screen instead. `adoptable` says whether a stack at the notch could take the card in.
+    /// on screen instead. A question, or a card whose drip prints how it ended, never takes another's
+    /// place, so it waits whatever its id. `adoptable` says whether a stack at the notch could take
+    /// the card in.
     public static func waiting(
         after source: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool, except ids: Set<String> = []
     ) -> [(card: Card, adoptable: Bool)] {
@@ -135,13 +162,24 @@ public enum CardTurns {
         for ticket in queue.sorted(by: { $0.name < $1.name }) where ticket.name > source && isAlive(ticket) {
             for (index, card) in ticket.cards.enumerated()
             where !ticket.claimed.contains(CardAdoption.claimKey(index: index))
-                && !(card.id.map(ids.contains) ?? false)
+                && (ticket.reportsResult || card.asksQuestion || !(card.id.map(ids.contains) ?? false))
                 && !CardReplacement.isReplaced(card, in: ticket, queue: queue, isAlive: isAlive)
             {
                 found.append((card, ticket.adoptable && !card.asksQuestion))
             }
         }
         return found
+    }
+
+    /// Whether the cards that wait for you on screen give way: a newer drip's card waits for its turn
+    /// that the drip showing them does not take in. A stack that `adopts` takes in every adoptable
+    /// card itself, so only the others count. For any other drip every card waiting counts. Cards
+    /// with an id in `except` take the place of a card on screen instead, as for `waiting`.
+    public static func othersWait(
+        after source: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool, except ids: Set<String> = [],
+        adopts: Bool
+    ) -> Bool {
+        waiting(after: source, queue: queue, isAlive: isAlive, except: ids).contains { !adopts || !$0.adoptable }
     }
 
     /// Whether a live drip queued before `source` shows, or will show, a question that waits for its
@@ -172,7 +210,8 @@ public enum CardReplacement {
 
     /// The newest card from a ticket queued after `source` that should take the place of `showing`
     /// on screen, and the ticket it came from. Nil when there is none, or when the newest card with
-    /// the same id cannot swap in place and has to wait for its own turn instead.
+    /// the same id cannot swap in place and has to wait for its own turn instead: a question, or a
+    /// card whose drip prints how it ended.
     public static func replacement(
         for showing: Card, after source: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool
     ) -> (ticket: String, card: Card)? {
@@ -181,9 +220,22 @@ public enum CardReplacement {
             guard !ticket.claimed.contains(id), let card = ticket.cards.last(where: { $0.id == id }),
                   isAlive(ticket)
             else { continue }
-            return canSwap(showing, for: card) ? (ticket.name, card) : nil
+            return canSwap(showing, for: card) && !ticket.reportsResult ? (ticket.name, card) : nil
         }
         return nil
+    }
+
+    /// The live tickets queued before `newer` that hold a card with `id` not yet claimed. Once a
+    /// showing drip takes over `newer`'s card with that id, those cards are replaced for good. The
+    /// newer drip exits soon after, as it has nothing left to show, and its ticket goes with it. So
+    /// each of these tickets needs the id claimed to stay replaced.
+    public static func superseded(
+        id: String, by newer: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool
+    ) -> [String] {
+        queue.filter { ticket in
+            ticket.name < newer && !ticket.claimed.contains(id) && ticket.cards.contains { $0.id == id }
+                && isAlive(ticket)
+        }.map(\.name).sorted()
     }
 
     /// The cards in order, keeping only the newest card for each id; cards without an id all stay.

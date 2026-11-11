@@ -159,6 +159,16 @@ struct QueueTests {
         #expect(CardAdoption.candidates(after: mine.name, queue: queue, isAlive: { $0.pid != 60 }).isEmpty)
     }
 
+    /// A card whose drip prints how it ended shows only in that drip's own stack, which alone sees
+    /// how it ends: no other stack adopts it, even from a ticket marked adoptable.
+    @Test func aStackNeverAdoptsACardThatReportsItsResult() {
+        let mine = ticket(1, pid: 10, card(nil))
+        let reporting = QueueTicket(
+            name: QueueTicket.name(stamp: 2, pid: 20), cards: [card(nil, title: "result")], adoptable: true,
+            reportsResult: true)!
+        #expect(CardAdoption.candidates(after: mine.name, queue: [mine, reporting], isAlive: { _ in true }).isEmpty)
+    }
+
     @Test func aStackSkipsACardThatANewerOneWithTheSameIDReplaces() {
         let mine = ticket(1, pid: 10, card(nil))
         let queue = [mine, adoptable(2, pid: 20, card("x", title: "old")), adoptable(3, pid: 30, card("x", title: "new"))]
@@ -189,6 +199,162 @@ struct QueueTests {
         let queue = [mine, adoptable(2, pid: 20, card("claude:s1", title: "done"))]
         #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }, except: ["claude:s1"]).isEmpty)
         #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }).count == 1)
+    }
+
+    /// A card whose drip prints how it ended never takes the place of one on screen, so it waits its
+    /// turn even with the same id, and the card on screen gives way to it.
+    @Test func aCardThatReportsItsResultWaitsItsTurnWhateverItsID() {
+        let mine = ticket(1, pid: 10, card("a"))
+        let reporting = QueueTicket(
+            name: QueueTicket.name(stamp: 2, pid: 20), cards: [card("a", title: "result")], reportsResult: true)!
+        let waiting = CardTurns.waiting(after: mine.name, queue: [mine, reporting], isAlive: { _ in true }, except: ["a"])
+        #expect(waiting.map(\.card.title) == ["result"])
+        #expect(waiting.map(\.adoptable) == [false])
+    }
+
+    /// A newer plain card with the same id still replaces it while it waits: it no longer waits its
+    /// turn, and the newer card swaps into the card on screen instead.
+    @Test func aCardThatReportsItsResultIsReplacedWhileItWaits() throws {
+        let mine = ticket(1, pid: 10, card("a"))
+        var reporting = QueueTicket(
+            name: QueueTicket.name(stamp: 2, pid: 20), cards: [card("a", title: "result")], reportsResult: true)!
+        var plain = ticket(3, pid: 30, card("a", title: "plain"))
+        var queue = [mine, reporting, plain]
+        #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }, except: ["a"]).isEmpty)
+        #expect(CardReplacement.isReplaced(reporting.cards[0], in: reporting, queue: queue, isAlive: { _ in true }))
+        let found = try #require(
+            CardReplacement.replacement(for: card("a"), after: mine.name, queue: queue, isAlive: { _ in true }))
+        #expect(found.card.title == "plain")
+        // The showing drip swaps the plain card in: it claims it, and the id in every older ticket.
+        plain.claimed.insert("a")
+        let superseded = CardReplacement.superseded(id: "a", by: found.ticket, queue: queue, isAlive: { _ in true })
+        #expect(superseded == [mine.name, reporting.name])
+        reporting.claimed.insert("a")
+        // The plain card's drip has nothing left to show, so it exits and its ticket goes.
+        queue = [mine, reporting]
+        let alive = { (ticket: QueueTicket) in ticket.pid != 30 }
+        #expect(CardReplacement.isReplaced(reporting.cards[0], in: reporting, queue: queue, isAlive: alive))
+        #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: alive).isEmpty)
+    }
+
+    /// The real case a newer card's drip leaves behind: an older drip waits its turn with a card of
+    /// the same id, the showing drip takes the newer card over, and the newer drip exits. Without the
+    /// id claimed in the older ticket, the older card would show once its turn came, out of date.
+    @Test func aCardTakenOverReplacesOlderCardsWithItsIDForGood() {
+        let mine = ticket(1, pid: 10, card("a"))
+        var waiting = ticket(2, pid: 20, card("a", title: "older"), card("b", title: "b"))
+        let newer = adoptable(3, pid: 30, card("a", title: "newer"))
+        let alive = { (ticket: QueueTicket) in ticket.pid != 30 }
+        // While the newer drip runs, its card replaces the older one.
+        #expect(CardReplacement.isReplaced(
+            waiting.cards[0], in: waiting, queue: [mine, waiting, newer], isAlive: { _ in true }))
+        // Once it has exited, nothing would, until the id is claimed.
+        #expect(!CardReplacement.isReplaced(waiting.cards[0], in: waiting, queue: [mine, waiting], isAlive: alive))
+        let superseded = CardReplacement.superseded(
+            id: "a", by: newer.name, queue: [mine, waiting, newer], isAlive: { _ in true })
+        #expect(superseded == [mine.name, waiting.name])
+        waiting.claimed.insert("a")
+        #expect(CardReplacement.isReplaced(waiting.cards[0], in: waiting, queue: [mine, waiting], isAlive: alive))
+        // Its other cards still show.
+        #expect(!CardReplacement.isReplaced(waiting.cards[1], in: waiting, queue: [mine, waiting], isAlive: alive))
+        #expect(CardTurns.waiting(after: mine.name, queue: [mine, waiting], isAlive: alive).map(\.card.title) == ["b"])
+    }
+
+    /// A stack that swapped a newer card in looks again from its own ticket on: the card it took and
+    /// the older ones it replaced have the id claimed, so only a card queued since takes the place.
+    @Test func onceACardIsSwappedInOnlyACardQueuedSinceTakesItsPlace() {
+        let mine = ticket(1, pid: 10, card("a"))
+        var older = ticket(2, pid: 20, card("a", title: "older"))
+        var taken = ticket(3, pid: 30, card("a", title: "taken"))
+        let alive = { (_: QueueTicket) in true }
+        let found = CardReplacement.replacement(for: card("a"), after: mine.name, queue: [mine, older, taken], isAlive: alive)
+        #expect(found?.ticket == taken.name)
+        taken.claimed.insert("a")
+        for name in CardReplacement.superseded(id: "a", by: taken.name, queue: [mine, older, taken], isAlive: alive) {
+            if name == older.name { older.claimed.insert("a") }
+        }
+        let shown = card("a", title: "taken")
+        #expect(CardReplacement.replacement(for: shown, after: mine.name, queue: [mine, older, taken], isAlive: alive)
+            == nil)
+        let since = ticket(4, pid: 40, card("a", title: "since"))
+        let next = CardReplacement.replacement(
+            for: shown, after: mine.name, queue: [mine, older, taken, since], isAlive: alive)
+        #expect(next?.card.title == "since")
+    }
+
+    /// Only older, live tickets that hold the id and have not claimed it yet need it claimed.
+    @Test func aCardTakenOverSupersedesOnlyOlderLiveUnclaimedCardsWithItsID() {
+        let dead = ticket(1, pid: 10, card("a"))
+        let claimed = QueueTicket(name: QueueTicket.name(stamp: 2, pid: 20), cards: [card("a")], claimed: ["a"])!
+        let other = ticket(3, pid: 30, card("b"))
+        let older = ticket(4, pid: 40, card("a"))
+        let newer = ticket(5, pid: 50, card("a"))
+        let newest = ticket(6, pid: 60, card("a"))
+        let queue = [newest, older, claimed, dead, other, newer]
+        let found = CardReplacement.superseded(id: "a", by: newer.name, queue: queue, isAlive: { $0.pid != 10 })
+        #expect(found == [older.name])
+    }
+
+    /// A drip that takes no cards in gives way to every newer drip waiting its turn; one that takes
+    /// cards in gives way only to those it cannot take. Neither gives way to a card that takes the
+    /// place of one on screen.
+    @Test func cardsThatWaitGiveWayToCardsTheirDripDoesNotTakeIn() {
+        let mine = ticket(1, pid: 10, card("a"))
+        let background = adoptable(2, pid: 20, card("b"))
+        let alive = { (_: QueueTicket) in true }
+        let queue = [mine, background]
+        #expect(CardTurns.othersWait(after: mine.name, queue: queue, isAlive: alive, adopts: false))
+        #expect(!CardTurns.othersWait(after: mine.name, queue: queue, isAlive: alive, adopts: true))
+        let foreground = ticket(3, pid: 30, card("c"))
+        #expect(CardTurns.othersWait(after: mine.name, queue: queue + [foreground], isAlive: alive, adopts: true))
+        let swapping = ticket(3, pid: 30, card("a", title: "newer"))
+        #expect(!CardTurns.othersWait(
+            after: mine.name, queue: [mine, swapping], isAlive: alive, except: ["a"], adopts: false))
+    }
+
+    /// A question never takes the place of a card on screen, so it waits its turn whatever its id,
+    /// and a card that waits for you gives way to it.
+    @Test func aQuestionWithTheIDOfTheCardOnScreenWaitsItsTurn() {
+        let mine = ticket(1, pid: 10, card("a"))
+        var question = card("a", title: "question")
+        question.action = CardAction(label: "Merge", open: nil)
+        let asking = ticket(2, pid: 20, question)
+        let queue = [mine, asking]
+        let waiting = CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }, except: ["a"])
+        #expect(waiting.map(\.card.title) == ["question"])
+        #expect(CardTurns.othersWait(after: mine.name, queue: queue, isAlive: { _ in true }, except: ["a"], adopts: false))
+    }
+
+    /// Queued after a plain card with the same id, it replaces that card, as a newer question does,
+    /// so neither swaps in: the plain card never shows, and it waits its turn.
+    @Test func aCardThatReportsItsResultReplacesAnOlderPlainCardWithItsID() {
+        let mine = ticket(1, pid: 10, card("a"))
+        let plain = ticket(2, pid: 20, card("a", title: "plain"))
+        let reporting = QueueTicket(
+            name: QueueTicket.name(stamp: 3, pid: 30), cards: [card("a", title: "result")], reportsResult: true)!
+        let queue = [mine, plain, reporting]
+        #expect(CardReplacement.replacement(for: card("a"), after: mine.name, queue: queue, isAlive: { _ in true })
+            == nil)
+        #expect(CardReplacement.isReplaced(plain.cards[0], in: plain, queue: queue, isAlive: { _ in true }))
+        let waiting = CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }, except: ["a"])
+        #expect(waiting.map(\.card.title) == ["result"])
+    }
+
+    /// It never swaps into an older drip's card on screen, which would leave its drip with no end to
+    /// print, but it still takes the place of an older card queued with the same id.
+    @Test func aCardThatReportsItsResultNeverSwapsIn() {
+        let reporting = QueueTicket(
+            name: QueueTicket.name(stamp: 2, pid: 20), cards: [card("a", title: "result")], reportsResult: true)!
+        let mine = ticket(1, pid: 10, card("a"))
+        let queue = [mine, reporting]
+        #expect(CardReplacement.replacement(for: card("a"), after: mine.name, queue: queue, isAlive: { _ in true })
+            == nil)
+        #expect(CardReplacement.isReplaced(card("a"), in: mine, queue: queue, isAlive: { _ in true }))
+        // A plain card queued after it still swaps in.
+        let plain = ticket(3, pid: 30, card("a", title: "plain"))
+        let found = CardReplacement.replacement(
+            for: card("a"), after: mine.name, queue: queue + [plain], isAlive: { _ in true })
+        #expect(found?.card.title == "plain")
     }
 
     /// A drip queued behind a question waits for its answer, past its usual patience.
@@ -226,6 +392,17 @@ struct QueueTests {
         let older = try JSONEncoder().encode(cards)
         #expect(TicketContents.decode(older) == TicketContents(cards: cards, adoptable: false))
         #expect(TicketContents.decode(Data("nope".utf8)) == nil)
+        // A ticket an older drip wrote has no reportsResult: its drip reports nothing.
+        let reporting = try JSONEncoder().encode(TicketContents(cards: cards, adoptable: false, reportsResult: true))
+        #expect(TicketContents.decode(reporting)?.reportsResult == true)
+        let withoutResult = try JSONEncoder().encode(Older(cards: cards, adoptable: true))
+        #expect(TicketContents.decode(withoutResult) == TicketContents(cards: cards, adoptable: true))
+    }
+
+    /// A ticket as drips before --result wrote it.
+    private struct Older: Encodable {
+        var cards: [Card]
+        var adoptable: Bool
     }
 
     private func adoptable(_ stamp: UInt64, pid: Int32, _ cards: Card...) -> QueueTicket {

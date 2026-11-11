@@ -79,6 +79,62 @@ final class QueueDirectoryTests {
         #expect(queue.isFirst(100))
     }
 
+    /// A drip that prints how its card ended says so in its ticket, for the drips that read it.
+    @Test func aTicketKeepsWhetherItsDripReportsTheResult() throws {
+        running[100] = 1
+        running[200] = 1
+        queue.enqueue(pid: 100, cards: [Card(preset: .info, title: "plain")], stamp: 1)
+        queue.enqueue(pid: 200, cards: [Card(preset: .info, title: "result")], reportsResult: true, stamp: 2)
+        #expect(queue.load().map(\.reportsResult) == [false, true])
+    }
+
+    /// A showing drip takes over a newer drip's card, and that drip exits: an older drip's card with
+    /// the same id, still waiting its turn, stays replaced on disk.
+    @Test func aCardTakenOverKeepsOlderCardsWithItsIDReplacedAfterItsDripExits() throws {
+        let card = { (title: String, id: String?) in
+            var card = Card(preset: .info, title: title)
+            card.id = id
+            return card
+        }
+        running[100] = 1
+        running[200] = 1
+        running[300] = 1
+        let showing = queue.enqueue(pid: 100, cards: [card("showing", "build")], stamp: 1)
+        let waiting = queue.enqueue(pid: 200, cards: [card("older", "build"), card("other", nil)], stamp: 2)
+        let newer = queue.enqueue(pid: 300, cards: [card("newer", "build")], adoptable: true, stamp: 3)
+        queue.claim(CardAdoption.claimKey(index: 0), in: newer)
+        queue.supersede("build", by: newer)
+        // The newer drip has nothing left to show, so it exits and its ticket goes.
+        queue.leave(300)
+        running[300] = nil
+        let tickets = queue.load()
+        #expect(tickets.map(\.name) == [showing, waiting])
+        let older = try #require(tickets.last)
+        #expect(older.claimed == ["build"])
+        #expect(CardReplacement.isReplaced(older.cards[0], in: older, queue: tickets, isAlive: queue.isAlive))
+        #expect(!CardReplacement.isReplaced(older.cards[1], in: older, queue: tickets, isAlive: queue.isAlive))
+    }
+
+    /// Drips that claim in one ticket at the same time all keep their claims: none overwrites
+    /// another's with what it read before that one wrote.
+    @Test func claimsMadeAtTheSameTimeAreAllKept() throws {
+        let name = run(100, stamp: 1)
+        let queue = queue
+        let ids = (0..<64).map { "id\($0)" }
+        DispatchQueue.concurrentPerform(iterations: ids.count) { queue.claim(ids[$0], in: name) }
+        #expect(queue.claims(of: name) == Set(ids))
+    }
+
+    /// A ticket whose drip has left has no one to skip a claimed card, so a claim leaves no file.
+    @Test func aTicketAlreadyGoneGetsNoClaims() throws {
+        let name = run(100, stamp: 1)
+        queue.leave(100)
+        queue.claim("build", in: name)
+        #expect(queue.claims(of: name).isEmpty)
+        let files = try FileManager.default.contentsOfDirectory(atPath: root).filter { !$0.hasPrefix(".") }
+        #expect(files.isEmpty, "\(files)")
+    }
+
     /// A stack that took over some of a ticket's cards leaves the rest to the drip that queued it.
     @Test func aTicketIsFullyAdoptedOnlyOnceEveryCardIsClaimed() throws {
         let name = run(100, stamp: 1, cards: ["a", "b"])

@@ -6,13 +6,15 @@ import QuartzCore
 /// Shows cards in borderless, non-activating panels.
 struct HUDDisplay: CardDisplay {
     /// Shows the cards one after another and returns once the last has gone.
-    func show(_ cards: [Card], locked: LockedScreen, stack settings: StackSettings?, console: Console) -> Int32 {
+    func show(
+        _ cards: [Card], locked: LockedScreen, stack settings: StackSettings?, reportsResult: Bool, console: Console
+    ) -> Int32 {
         // Without a GUI session, touching NSApplication can abort or hang, so check first.
         guard CGSessionCopyCurrentDictionary() != nil else {
             console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")
             return ExitStatus.noGUISession
         }
-        CardQueue.waitForTurn(cards: cards)
+        CardQueue.waitForTurn(cards: cards, reportsResult: reportsResult)
         // Cards a stack at the notch adopted are on screen already: they only go in the history.
         let adopted = cards.indices.filter(CardQueue.isAdopted)
         if !adopted.isEmpty { record(adopted.map { cards[$0] }, missed: false, locked: locked, console: console) }
@@ -39,6 +41,7 @@ struct HUDDisplay: CardDisplay {
             guard var card = remaining.popFirst() else { return stopApplication() }
             if CardQueue.isReplaced(card) {
                 unanswered = unanswered || card.asksQuestion
+                CardActions.end(.replaced)
                 return next()
             }
             // Dismissed before its turn came, by `drip dismiss` or because the agent moved on.
@@ -46,6 +49,7 @@ struct HUDDisplay: CardDisplay {
                 .dismisses(id: card.id, since: queuedAt)
             {
                 unanswered = unanswered || card.asksQuestion
+                CardActions.end(.dismiss)
                 return next()
             }
             if let stack = StackPresenter.make(
@@ -79,6 +83,8 @@ struct HUDDisplay: CardDisplay {
     }
 
     var pressed: CardAnswer? { CardActions.pressed }
+
+    var result: CardResult? { CardActions.result }
 
     /// Shows on the cards another drip's stack handed on, in that drip's place in the queue, as a
     /// background drip, and returns once they have gone.
@@ -347,6 +353,8 @@ final class ReplacementWatch {
         {
             // Claimed first, so the newer drip never shows the card too.
             CardQueue.claim(id, in: found.ticket)
+            CardQueue.supersede(with: found.card, from: found.ticket)
+            CardActions.end(.replaced)
             presenter.replace(with: found.card)
             current = found.card
             source = found.ticket
@@ -356,7 +364,7 @@ final class ReplacementWatch {
         // A card that waits for you gives way to a newer drip waiting for its turn; a question never
         // does, and the newer drip waits for its answer.
         if current.waits, !current.waitsForAnswer,
-           !CardQueue.waiting(except: Set([current.id].compactMap { $0 })).isEmpty
+           CardQueue.othersWait(except: Set([current.id].compactMap { $0 }), adopts: false)
         {
             presenter.stopWaiting()
         }

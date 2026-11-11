@@ -1477,6 +1477,87 @@ if canClick {
     skip(12, "clicks beside a card: \(ungranted)")
 }
 
+// 13. drip --result prints one word on stdout for how its card ended, once it has.
+/// A `drip --result` started in the background, as a script runs it: what it printed, and how it
+/// exited, are in files once it has ended.
+struct ResultRun {
+    let out: String
+    var status: Int32? {
+        (try? String(contentsOfFile: out + ".status", encoding: .utf8))
+            .flatMap { Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    }
+    var printed: String { (try? String(contentsOfFile: out, encoding: .utf8)) ?? "" }
+    var said: String { (try? String(contentsOfFile: out + ".err", encoding: .utf8)) ?? "" }
+
+    init(_ arguments: [String], extra: [String: String] = [:]) {
+        out = path(scratch, fresh("result") + ".out")
+        let quote = { (word: String) in "'" + word.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let command = ([drip] + arguments + ["--result"]).map(quote).joined(separator: " ")
+        run(["/bin/sh", "-c", "{ \(command) >\(quote(out)) 2>\(quote(out + ".err")) </dev/null; "
+            + "echo $? >\(quote(out + ".status")); } >/dev/null 2>&1 &"],
+            environment: environment.merging(extra) { $1 }, in: project)
+    }
+
+    /// Expects drip to end within `limit` seconds, exit 0 and print `word` alone on its line.
+    func expect(_ word: String, within limit: Double, _ expect: inout Expectations) {
+        expect.within(limit, wait(limit) { status != nil }, "drip --result ends")
+        expect.expect(status == 0, "it exits 0 (exits \(status.map(String.init) ?? "not yet"), \(said))")
+        expect.expect(printed == word + "\n", "it prints \(word) on stdout (prints \(printed.debugDescription))")
+    }
+}
+
+check(13, "--result when a card runs out of time") { expect in
+    let result = ResultRun(["info", "e2e result", "-d", "runs out of time", "-s", "1", "--id", fresh("timeout")])
+    expect.within(3, wait(3) { showing }, "the card shows")
+    result.expect("timeout", within: 6, &expect)
+}
+check(13, "--result when drip dismiss takes a card away") { expect in
+    let id = fresh("dismiss")
+    let result = ResultRun(["info", "e2e result", "-d", "drip dismiss takes it away", "--stay", "--id", id])
+    expect.within(3, wait(3) { showing }, "the card shows")
+    pause(1.2)
+    expect.expect(result.status == nil, "drip waits while the card shows")
+    dripRun(["dismiss", "--id", id])
+    result.expect("dismiss", within: 3, &expect)
+}
+check(13, "--result when a newer card with the same id takes its place") { expect in
+    // A drip that shows one card at a time swaps the newer card into its own on screen.
+    let single = ["DRIP_STACK": "off"]
+    let id = fresh("replaced")
+    let result = ResultRun(["info", "e2e result", "-d", "a newer card takes its place", "-s", "30", "--id", id],
+                           extra: single)
+    expect.within(3, wait(3) { showing }, "the card shows")
+    pause(1.2)
+    dripRun(["ok", "e2e result newer", "-d", "took its place", "-s", "1", "--id", id], extra: single)
+    result.expect("replaced", within: 8, &expect)
+}
+check(13, "--result when a newer card with the same id takes its place in a stack") { expect in
+    // The default stack takes no other drip's cards in while it waits, but it still swaps a newer
+    // card with the same id into its own on screen.
+    let id = fresh("replaced-stack")
+    let result = ResultRun(["info", "e2e result", "-d", "a newer card takes its place", "-s", "30", "--id", id])
+    expect.within(3, wait(3) { showing }, "the card shows")
+    pause(1.2)
+    dripRun(["ok", "e2e result newer", "-d", "took its place", "-s", "1", "--id", id])
+    result.expect("replaced", within: 8, &expect)
+}
+if canClick {
+    check(13, "--result when a click takes a card away") { expect in
+        bringForward(elsewhere)
+        let result = ResultRun(["info", "e2e result", "-d", "a click takes it away", "--stay", "--id", fresh("click")])
+        expect.within(3, wait(3) { showing }, "the card shows")
+        pause(1.2)
+        guard let card = cardsOnScreen().first else {
+            expect.expect(false, "the card is on screen")
+            return
+        }
+        expect.expect(click(CGPoint(x: card.midX, y: card.midY)), "the helper clicks")
+        result.expect("activate", within: 3, &expect)
+    }
+} else if options.only?.contains(13) ?? true {
+    skip(13, "--result after a click: \(ungranted)")
+}
+
 // MARK: - Done
 
 clearScreen()

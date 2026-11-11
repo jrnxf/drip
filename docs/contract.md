@@ -25,6 +25,12 @@ version. Everything else can change in any release.
 [Exit codes](usage.md#exit-codes) shows the same table, and says when `drip run` and `--wait`
 exit.
 
+**`--result` output.** Once the card has gone, drip prints one line on stdout, one of four words:
+`activate`, `dismiss`, `timeout` or `replaced`. [How a card ended](usage.md#how-a-card-ended) says
+what each means. drip prints the word only when it exits 0, and prints nothing else on stdout:
+errors and warnings stay on stderr. The exit codes stay as the table above gives them. A new word
+comes only with a break.
+
 **`drip history --json`.** One JSON object per line, oldest first: `time` (ISO 8601), `missed`
 (true or false) and `card`. `card` writes each setting the way its flag takes it, and leaves out
 `detail`, `button`, `open`, `id` and `activate` when the card had none. New keys can come in any
