@@ -203,7 +203,7 @@ final class StackPresenter: CardPresenting {
         liquid.fillColor = NSColor.black.cgColor
         liquid.contentsScale = scale
         container.addSublayer(liquid)
-        // In the liquid, so it shares its flipped geometry and the notch's mask.
+        // In the liquid, so it shares its flipped geometry; its own notch mask comes with the first card.
         let edge = ContrastEdge(frame: liquid.bounds, notchMask: nil, scale: scale)
         liquid.addSublayer(edge.layer)
         self.edge = edge
@@ -254,18 +254,17 @@ final class StackPresenter: CardPresenting {
         let sinking = entries.map(\.sinks)
         let centerX = size.width / 2
         var paths = [CGPath?](repeating: nil, count: count)
-        var edges = [CGPath?](repeating: nil, count: count)
         var frames = [[IslandLayers.Frame?]](repeating: [IslandLayers.Frame?](repeating: nil, count: count), count: cards.count)
         paths.withUnsafeMutableBufferPointer { paths in
-            edges.withUnsafeMutableBufferPointer { edges in
-                DispatchQueue.concurrentPerform(iterations: count) { index in
-                    let time = start + (end - start) * Double(index) / Double(count - 1)
-                    let cards = Self.cardsPath(at: time, outline: outline, centerX: centerX, without: sinking)
-                    paths[index] = Self.path(cards: cards, outline: outline, centerX: centerX)
-                    // One edge around the cards where they melt together, not one around each.
-                    if outlined { edges[index] = cards.normalized() }
-                }
+            DispatchQueue.concurrentPerform(iterations: count) { index in
+                let time = start + (end - start) * Double(index) / Double(count - 1)
+                paths[index] = Self.path(at: time, outline: outline, centerX: centerX, without: sinking)
             }
+        }
+        // One setting for the whole stack, a sinking card's own shape too.
+        for drawing in drawings {
+            drawing.layers.outlined = outlined
+            drawing.retiring?.outlined = outlined
         }
         for (card, layer) in zip(cards.indices, layers) where moving[card] {
             frames[card].withUnsafeMutableBufferPointer { samples in
@@ -277,7 +276,6 @@ final class StackPresenter: CardPresenting {
                         let path = CGMutablePath()
                         IslandPath.addCapsule(shape, metrics: cards[card].metrics, to: path, centerX: layer.centerX)
                         frame.path = path
-                        frame.drop = path
                     }
                     samples[index] = frame
                 }
@@ -329,7 +327,8 @@ final class StackPresenter: CardPresenting {
         animation.beginTime = begin
         liquid.add(animation, forKey: "stack")
         edge?.isShown = outlined
-        if outlined { edge?.play(edges.compactMap { $0 }, duration: end - start, begin: begin) }
+        // One edge around the cards where they melt together, not one around each.
+        edge?.play(paths.compactMap { $0 }, duration: end - start, begin: begin)
         for (card, layer) in zip(cards.indices, layers) {
             if moving[card] {
                 layer.play(frames[card].compactMap { $0 }, duration: end - start, begin: begin)
@@ -364,20 +363,13 @@ final class StackPresenter: CardPresenting {
         }
     }
 
-    /// The notch and `cards`, as `cardsPath` gives them.
-    private static func path(cards: CGPath, outline: StackOutline, centerX: CGFloat) -> CGPath {
+    /// The notch and every card at `time`, each card melted into what it grows out of while it is
+    /// close enough. Leaves out each card `without` says, which draws its own shape.
+    private static func path(at time: Double, outline: StackOutline, centerX: CGFloat, without: [Bool] = []) -> CGPath {
         let path = CGMutablePath()
         if let metrics = outline.notch {
             IslandPath.addNotch(to: path, metrics: metrics, centerX: centerX)
         }
-        path.addPath(cards)
-        return path
-    }
-
-    /// Every card at `time`, and the overflow drop, each melted into what it grows out of while it
-    /// is close enough. Leaves out each card `without` says, which draws its own shape.
-    private static func cardsPath(at time: Double, outline: StackOutline, centerX: CGFloat, without: [Bool] = []) -> CGPath {
-        let path = CGMutablePath()
         let cards = outline.pieces(at: time).enumerated().filter { !without.indices.contains($0.offset) || !without[$0.offset] }
         for piece in cards.map(\.element) + outline.overflowPieces(at: time) {
             switch piece {
@@ -398,7 +390,6 @@ final class StackPresenter: CardPresenting {
 
     /// Takes the outline on or off at once, as Increase Contrast was turned on or off.
     private func contrastChanged() {
-        for drawing in drawings.values { drawing.layers.outlined = CardPresenters.outlined(drawing.layers.card) }
         replan(from: now)
     }
 
@@ -410,6 +401,8 @@ final class StackPresenter: CardPresenting {
         layers.shape.isHidden = true
         if liquid.mask == nil {
             liquid.mask = IslandPath.notchMask(size: size, metrics: layers.metrics, centerX: size.width / 2, scale: scale)
+            edge?.layer.mask = IslandPath.notchMask(
+                size: size, metrics: layers.metrics, centerX: size.width / 2, scale: scale, below: ContrastEdge.width)
         }
         layers.root.frame = CGRect(
             x: (size.width - layers.size.width) / 2, y: size.height - layers.size.height,

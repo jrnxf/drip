@@ -160,7 +160,8 @@ final class IslandLayers {
         textEdge = CGFloat(IslandUpdate.textEdge) * sizeScale
         edge = ContrastEdge(
             frame: CGRect(origin: .zero, size: size),
-            notchMask: IslandPath.notchMask(size: size, metrics: metrics, centerX: size.width / 2, scale: scale),
+            notchMask: IslandPath.notchMask(
+                size: size, metrics: metrics, centerX: size.width / 2, scale: scale, below: ContrastEdge.width),
             scale: scale)
         edge.isShown = card.contrast == true
 
@@ -543,8 +544,6 @@ final class IslandLayers {
     struct Frame {
         /// Nil leaves the shape alone, for a card whose outline a stack draws.
         var path: CGPath?
-        /// The drop without the notch, for the contrast edge; nil with `path`.
-        var drop: CGPath?
         var iconPosition: CGPoint
         var iconScale: CGFloat
         var ringPosition: CGPoint
@@ -561,9 +560,8 @@ final class IslandLayers {
         let clip = CGRect(
             x: centerX - islandShape.pillWidth / 2, y: islandShape.pillTop, width: islandShape.pillWidth,
             height: islandShape.pillHeight)
-        let drop = withPath ? IslandPath.drop(islandShape, metrics: metrics, centerX: centerX) : nil
         return Frame(
-            path: drop.map { IslandPath.island(drop: $0, metrics: metrics, centerX: centerX) }, drop: drop,
+            path: withPath ? IslandPath.make(islandShape, metrics: metrics, centerX: centerX) : nil,
             iconPosition: CGPoint(x: centerX + layout.iconCenter.x, y: layout.iconCenter.y),
             iconScale: CGFloat(layout.iconSize) / iconSide,
             ringPosition: CGPoint(x: centerX + layout.ringCenter.x, y: layout.ringCenter.y),
@@ -589,8 +587,10 @@ final class IslandLayers {
     func apply(_ frame: Frame) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if let path = frame.path { shape.path = path }
-        if let drop = frame.drop { edge.path = drop }
+        if let path = frame.path {
+            shape.path = path
+            edge.path = path
+        }
         icon.position = frame.iconPosition
         icon.transform = CATransform3DMakeScale(frame.iconScale, frame.iconScale, 1)
         ring.position = frame.ringPosition
@@ -659,9 +659,10 @@ extension IslandLayers {
         // A traced droplet changes its number of points from frame to frame, so its frames can't be
         // blended; at 240 a second, every display frame still gets its own.
         let paths = frames.compactMap(\.path)
-        if paths.count == frames.count { shape.add(keyframes("path", paths, discrete: true), forKey: "island") }
-        let drops = frames.compactMap(\.drop)
-        if drops.count == frames.count { edge.play(drops, duration: duration, begin: begin) }
+        if paths.count == frames.count {
+            shape.add(keyframes("path", paths, discrete: true), forKey: "island")
+            edge.play(paths, duration: duration, begin: begin)
+        }
         content.add(keyframes("bounds", frames.map { NSValue(rect: $0.clip) }), forKey: "island")
         content.add(
             keyframes("position", frames.map { NSValue(point: CGPoint(x: $0.clip.midX, y: $0.clip.midY)) }),
@@ -930,12 +931,8 @@ extension IslandLayers {
 /// Every part winds the same way, so overlaps fill as a union.
 enum IslandPath {
     static func make(_ shape: IslandShape, metrics: IslandMetrics, centerX: CGFloat) -> CGPath {
-        island(drop: drop(shape, metrics: metrics, centerX: centerX), metrics: metrics, centerX: centerX)
-    }
-
-    /// The drop alone, without the notch: what the contrast edge follows.
-    static func drop(_ shape: IslandShape, metrics: IslandMetrics, centerX: CGFloat) -> CGPath {
         let path = CGMutablePath()
+        addNotch(to: path, metrics: metrics, centerX: centerX)
         let field = DropletField(metrics: metrics, shape: shape)
         if field.touchesNotch {
             addTraced(field, to: path, centerX: centerX)
@@ -945,22 +942,17 @@ enum IslandPath {
         return path
     }
 
-    /// The notch and `drop` together.
-    static func island(drop: CGPath, metrics: IslandMetrics, centerX: CGFloat) -> CGPath {
-        let path = CGMutablePath()
-        addNotch(to: path, metrics: metrics, centerX: centerX)
-        path.addPath(drop)
-        return path
-    }
-
     /// Everything but the notch, to mask the live island with: on screen the hardware notch covers
     /// that part anyway, and a screen recording, which sees what is drawn under the notch, then shows
-    /// only the drop. Nil on a screen without a notch.
-    static func notchMask(size: CGSize, metrics: IslandMetrics, centerX: CGFloat, scale: CGFloat) -> CAShapeLayer? {
+    /// only the drop. Nil on a screen without a notch. `below` takes that much more off under the
+    /// notch.
+    static func notchMask(
+        size: CGSize, metrics: IslandMetrics, centerX: CGFloat, scale: CGFloat, below: CGFloat = 0
+    ) -> CAShapeLayer? {
         guard metrics.notchHeight > 0 else { return nil }
         let path = CGMutablePath()
         path.addRect(CGRect(origin: .zero, size: size))
-        addNotch(to: path, metrics: metrics, centerX: centerX)
+        addNotch(to: path, metrics: metrics, centerX: centerX, below: below)
         let mask = CAShapeLayer()
         mask.frame = CGRect(origin: .zero, size: size)
         mask.path = path
@@ -969,11 +961,11 @@ enum IslandPath {
         return mask
     }
 
-    /// The notch: down the left side, across the bottom, up the right side.
-    static func addNotch(to path: CGMutablePath, metrics: IslandMetrics, centerX: CGFloat) {
+    /// The notch, `below` deeper: down the left side, across the bottom, up the right side.
+    static func addNotch(to path: CGMutablePath, metrics: IslandMetrics, centerX: CGFloat, below: CGFloat = 0) {
         let x = { (value: Double) in centerX + CGFloat(value) }
         let left = x(-metrics.notchWidth / 2), right = x(metrics.notchWidth / 2)
-        let height = CGFloat(metrics.notchHeight)
+        let height = CGFloat(metrics.notchHeight) + below
         let radius = CGFloat(min(metrics.notchRadius, metrics.notchHeight / 2, metrics.notchWidth / 2))
         path.move(to: CGPoint(x: left, y: 0))
         path.addArc(
@@ -1018,16 +1010,24 @@ enum IslandPath {
 /// A line just inside a shape's edge, so the black island stands out from a dark menu bar or
 /// window: white at 70 %, 1.5 points wide. Its layer goes inside the shape it outlines, so it
 /// shares that shape's geometry and fades and hides with it. Hidden until `isShown`.
+///
+/// It follows the whole shape, notch included, merged into one outline: so no line runs where two
+/// parts overlap, or where a drop hangs from the notch. Its mask takes the line off the notch, where
+/// the hardware covers it anyway and a screen recording would show it, and off a band of its own
+/// width under the notch, where a drop's neck flares out thinner than the line and would otherwise
+/// show as a grey line along the notch's edge.
 final class ContrastEdge {
     static let width: CGFloat = 1.5
     static let color = NSColor(white: 1, alpha: 0.7).cgColor
 
-    /// Holds the line, left out of the notch, where the hardware covers it anyway and a screen
-    /// recording would show a line drawn under it.
     let layer = CALayer()
     private let line = CAShapeLayer()
     /// The shape itself, so only the line's inner half shows.
     private let clip = CAShapeLayer()
+    /// The shape last given, as given: drawn once the edge shows.
+    private var shape: CGPath?
+    /// The last shape merged, and the outline it gave, as a resting card gives the same shape again.
+    private var merged: (shape: CGPath, outline: CGPath)?
 
     init(frame: CGRect, notchMask: CAShapeLayer?, scale: CGFloat) {
         layer.frame = frame
@@ -1048,36 +1048,83 @@ final class ContrastEdge {
     var isShown: Bool {
         get { !layer.isHidden }
         set {
+            guard newValue != isShown else { return }
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             layer.isHidden = !newValue
+            if newValue { draw(shape) }
             CATransaction.commit()
         }
     }
 
-    /// The outlined shape's path, set without implicit animations.
+    /// The outlined shape, set without implicit animations.
     var path: CGPath? {
-        get { line.path }
+        get { shape }
         set {
+            shape = newValue
+            guard isShown else { return }
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            line.path = newValue
-            clip.path = newValue
+            draw(newValue)
             CATransaction.commit()
         }
     }
 
     /// Plays `paths` one after another, sampled evenly over `duration` from `begin`, and leaves the
-    /// last. Without blending: a traced shape's paths differ in their number of points.
+    /// last. Without blending: a traced shape's paths differ in their number of points. Keeps the
+    /// shape it has when `paths` is empty.
     func play(_ paths: [CGPath], duration: Double, begin: CFTimeInterval? = nil) {
+        guard !paths.isEmpty else { return }
+        guard isShown else {
+            shape = paths.last
+            return
+        }
+        let outlines = outlines(paths)
+        // The last shape is merged by now, so this draws it at once.
         path = paths.last
         let animation = CAKeyframeAnimation(keyPath: "path")
-        animation.values = paths
+        animation.values = outlines
         animation.duration = duration
         animation.calculationMode = .discrete
         if let begin { animation.beginTime = begin }
         line.add(animation, forKey: "outline")
         clip.add(animation, forKey: "outline")
+    }
+
+    private func draw(_ shape: CGPath?) {
+        let outline = shape.map(outline)
+        line.path = outline
+        clip.path = outline
+    }
+
+    /// `shape`'s parts merged into one outline.
+    private func outline(_ shape: CGPath) -> CGPath {
+        if let merged, merged.shape == shape { return merged.outline }
+        let outline = shape.normalized()
+        merged = (shape, outline)
+        return outline
+    }
+
+    /// Each of `shapes` merged, on every core at once: about 0.05 ms a shape, so a second of
+    /// keyframes would hold the main thread for a frame or two. A card at rest gives the same shape
+    /// frame after frame, and each run of them is merged once.
+    private func outlines(_ shapes: [CGPath]) -> [CGPath] {
+        var firsts: [Int] = []
+        var run = [Int](repeating: 0, count: shapes.count)
+        for index in shapes.indices {
+            if index > 0, shapes[index] == shapes[index - 1] {
+                run[index] = run[index - 1]
+            } else {
+                run[index] = firsts.count
+                firsts.append(index)
+            }
+        }
+        var outlines = [CGPath?](repeating: nil, count: firsts.count)
+        outlines.withUnsafeMutableBufferPointer { outlines in
+            DispatchQueue.concurrentPerform(iterations: firsts.count) { outlines[$0] = shapes[firsts[$0]].normalized() }
+        }
+        if let shape = shapes.last, let outline = outlines.last ?? nil { merged = (shape, outline) }
+        return run.map { outlines[$0]! }
     }
 }
 
@@ -1252,8 +1299,11 @@ final class IslandPresenter: CardPresenting {
         layers.outlined = CardPresenters.outlined(card)
         self.layers = layers
         contrastWatch = ContrastWatch { [weak self] in
-            guard let self, let layers = self.layers else { return }
-            layers.outlined = CardPresenters.outlined(self.card)
+            guard let self else { return }
+            // The card fading out under a newer one too.
+            for layers in [self.layers, self.retiring].compactMap({ $0 }) {
+                layers.outlined = CardPresenters.outlined(layers.card)
+            }
         }
         let frame = self.frame(holding: [layers])
         let panel = IslandPanel(
