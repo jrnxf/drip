@@ -179,7 +179,7 @@ private struct LineParser {
                 table.set(key, .table(child))
                 table = child
             case let .table(child)?:
-                if child.origin == .inline {
+                if child.origin == .inline && !isLast {
                     throw error("'\(path[0...offset].joined(separator: "."))' is an inline table, so [\(path.joined(separator: "."))] cannot add to it")
                 }
                 if isLast {

@@ -220,7 +220,7 @@ struct ConfigTests {
         assertError("[preset.ok]\nsound = \"Hero\"\n[[preset]]", line: 3, key: nil,
                     message: "arrays of tables are not supported")
         assertError("seconds = 3\nt = { a = 1", line: 2, key: nil, message: "unterminated inline table")
-        assertError("[preset]\nci.sound = \"Hero\"\n[preset.ci]", line: 3, key: nil, message: "already defined")
+        assertError("[preset]\nci.sound = \"Hero\"\n[preset.ci]", line: 3, key: nil, message: "table 'preset.ci' is already defined")
     }
 
     @Test func configPath() {

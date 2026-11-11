@@ -174,11 +174,9 @@ struct TOMLTests {
 
     @Test func dottedKeysAndHeadersMix() throws {
         // TOML 1.0: a header may add a new sub-table below a dotted key's table.
-        let table = try TOML.parse("[fruit]\napple.color = \"red\"\n[fruit.apple.texture]\nsmooth = true")
-        guard case let .table(fruit)? = table["fruit"]?.value,
-              case let .table(apple)? = fruit["apple"]?.value
-        else { Issue.record("\(table)"); return }
-        #expect(apple.keys == ["color", "texture"])
+        let table = try TOML.parse("b.c = \"red\"\n[b.d]\nsmooth = true")
+        guard case let .table(b)? = table["b"]?.value else { Issue.record("\(table)"); return }
+        #expect(b.keys == ["c", "d"])
         // A parent table may be defined after its child, and dotted keys may follow a header.
         _ = try TOML.parse("[a.b]\nx = 1\n[a]\nc.d = 1")
     }
@@ -191,7 +189,7 @@ struct TOMLTests {
         assertError("[a]\nb.c = 1\n[a.b]", line: 3, contains: "already defined")
         assertError("[a.b]\n[a]\nb.c = 1", line: 3, contains: "already defined as a table")
         assertError("[a]\nb = { c = 1 }\nb.d = 2", line: 3, contains: "already defined as a table")
-        assertError("a = { b = 1 }\n[a]", line: 2, contains: "an inline table")
+        assertError("a = { b = 1 }\n[a]", line: 2, contains: "already defined")
         assertError("a = { b = 1 }\n[a.c]", line: 2, contains: "'a' is an inline table, so [a.c] cannot add to it")
         assertError("[a]\nb = {}\n[a.b]", line: 3, contains: "already defined")
         assertError("[a]\nb = { c = 1 }\n[a.b]", line: 3, contains: "already defined")
