@@ -115,12 +115,12 @@ final class StackPresenter: CardPresenting {
     private static let maximumLead = 0.5
 
     /// A stack for `card` and the cards that follow it in `rest`, which it takes; nil when stacking
-    /// is off or motion is reduced. `settings` given replace those of `stack` and `DRIP_STACK`.
+    /// is off, as a nil `settings` says, or motion is reduced.
     static func make(
         for card: Card, rest: inout ArraySlice<Card>, adopting: Bool, settings: StackSettings?,
         console: Console
     ) -> StackPresenter? {
-        guard let settings = settings ?? StackSettings.current(environment: ProcessInfo.processInfo.environment),
+        guard let settings,
               CardPresenters.motion(for: card) == .full,
               let screen = CardPresenters.targetScreen()
         else { return nil }
@@ -838,7 +838,9 @@ final class StackPresenter: CardPresenting {
         // Newer drips' cards are held by their own drips while paused; this stack is done.
         others = []
         foundAdoptable = false
-        if !cards.isEmpty { _ = BackgroundDrip.start(BackgroundRequest(cards: cards, record: false)) }
+        if !cards.isEmpty {
+            _ = BackgroundDrip.start(BackgroundRequest(cards: cards, record: false, stack: stack.settings))
+        }
     }
 
     /// Answers `entry` with one of its buttons, from a click or from VoiceOver.

@@ -62,7 +62,7 @@ struct HUDDisplay: CardDisplay {
                 failed = true
                 return next()
             }
-            let watch = ReplacementWatch(presenter: presenter, card: card, background: adopting)
+            let watch = ReplacementWatch(presenter: presenter, card: card, background: adopting, stack: settings)
             // The presenter keeps itself alive through the timers and animations it schedules.
             presenter.start { ok in
                 watch.stop()
@@ -101,7 +101,9 @@ struct HUDDisplay: CardDisplay {
         }
         if BackgroundDrip.start(request) { return ExitStatus.shown }
         console.warn("cannot start a background drip; showing the card here instead")
-        return show(request.cards, locked: .wait(record: request.record, history: request.historyLimit), console: console)
+        return show(
+            request.cards, locked: .wait(record: request.record, history: request.historyLimit), stack: request.stack,
+            console: console)
     }
 
     private func record(_ cards: [Card], missed: Bool, locked: LockedScreen, console: Console) {
@@ -302,14 +304,17 @@ final class ReplacementWatch {
     private var since: Double
     /// Whether this is a background drip, whose card a pause puts away.
     private let background: Bool
+    /// How the drip's cards stack, for the drip that shows the card again once a pause ends.
+    private let stack: StackSettings?
     private var timer: Timer?
 
-    init(presenter: CardPresenting, card: Card, background: Bool) {
+    init(presenter: CardPresenting, card: Card, background: Bool, stack: StackSettings?) {
         self.presenter = presenter
         current = card
         source = CardQueue.mine?.name ?? ""
         since = CardQueue.queuedAt
         self.background = background
+        self.stack = stack
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.look() }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
@@ -331,7 +336,7 @@ final class ReplacementWatch {
             // Paused for a screen share or a meeting: the card goes, and shows once the pause ends.
             stop()
             presenter.dismiss()
-            _ = BackgroundDrip.start(BackgroundRequest(cards: [current], record: false))
+            _ = BackgroundDrip.start(BackgroundRequest(cards: [current], record: false, stack: stack))
             return
         }
         guard CardQueue.mine != nil, current.id != nil || current.waits else { return }

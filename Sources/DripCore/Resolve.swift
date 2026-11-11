@@ -45,6 +45,10 @@ public struct CardResolver {
         environment.sound == nil && config.sound != Sound.none && config.presets[preset.name]?.sound != nil
     }
 
+    /// How the cards stack at the notch: `DRIP_STACK` and `DRIP_STACK_MAX`, then the config's `stack`
+    /// and `stack_max`, then the defaults. Nil when stacking is off.
+    public var stack: StackSettings? { StackSettings.resolved(environment, config: config) }
+
     /// `DRIP_SIZE`, then the config's `size`, then the default.
     public var size: CardSize { environment.size ?? config.size ?? Defaults.size }
 

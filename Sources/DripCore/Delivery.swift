@@ -34,6 +34,9 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
     /// How many cards the history keeps, as the drip that made the cards resolved it; nil keeps
     /// the default.
     public var history: Int?
+    /// How the cards stack at the notch, as the drip that made them resolved it; nil when stacking is
+    /// off. The background drip never reads the config again for it.
+    public var stack: StackSettings?
     /// Set when the cards are already on screen in a stack that hands them on, to show where they
     /// are instead of dropping them in again.
     public var handOff: StackHandOff?
@@ -57,40 +60,56 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
         }
     }
 
-    public init(cards: [Card], record: Bool = true, history: Int? = nil) {
+    public init(cards: [Card], record: Bool = true, history: Int? = nil, stack: StackSettings?) {
         self.cards = cards
         self.record = record
         self.history = history
+        self.stack = stack
     }
 
     /// A request to look again at `cards`, the waiting card a hook skipped, after a delay.
-    public init(cards: [Card], resurface: Resurface, history: Int? = nil) {
+    public init(cards: [Card], resurface: Resurface, history: Int? = nil, stack: StackSettings?) {
         self.cards = cards
         record = true
         self.history = history
+        self.stack = stack
         self.resurface = resurface
     }
 
-    /// A request for the cards `handOff` hands on, which are recorded already.
+    /// A request for the cards `handOff` hands on, which are recorded already and stack as it says.
     public init(handOff: StackHandOff) {
         cards = handOff.cards.map(\.card)
         record = false
+        stack = handOff.settings
         self.handOff = handOff
     }
 
     private enum CodingKeys: String, CodingKey {
-        case cards, record, history, handOff, resurface
+        case cards, record, history, stack, handOff, resurface
     }
 
-    /// A request from a drip that predates `record` is recorded, and one that predates `handOff`
-    /// hands nothing on.
+    /// A request from a drip that predates `record` is recorded, one that predates `stack` stacks
+    /// as by default, and one that predates `handOff` hands nothing on.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         cards = try container.decode([Card].self, forKey: .cards)
         record = try container.decodeIfPresent(Bool.self, forKey: .record) ?? true
         history = try container.decodeIfPresent(Int.self, forKey: .history)
+        stack = container.contains(.stack)
+            ? try container.decode(StackSettings?.self, forKey: .stack) : StackSettings.standard
         handOff = try container.decodeIfPresent(StackHandOff.self, forKey: .handOff)
         resurface = try container.decodeIfPresent(Resurface.self, forKey: .resurface)
+    }
+
+    /// Writes `stack` as null when stacking is off, which tells it from a request that predates it.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(cards, forKey: .cards)
+        try container.encode(record, forKey: .record)
+        try container.encodeIfPresent(history, forKey: .history)
+        try container.encode(stack, forKey: .stack)
+        try container.encodeIfPresent(handOff, forKey: .handOff)
+        try container.encodeIfPresent(resurface, forKey: .resurface)
     }
 
     /// What the background drip does with the cards while the screen is locked.

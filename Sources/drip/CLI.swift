@@ -5,7 +5,8 @@ import Foundation
 protocol CardDisplay {
     /// Shows the cards one after another, after any other drip's, and returns once the last has
     /// gone, or as soon as a question is answered, with the exit status to report. `locked` says what happens while the screen is locked;
-    /// a `stack` given stacks cards that way instead of as `stack` or `DRIP_STACK` says.
+    /// `stack` is how the cards stack at the notch, as the resolver gave it, and nil shows them one at
+    /// a time.
     func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32
 
     /// Hands the cards to a background drip and returns at once, or shows them here when it cannot.
@@ -38,17 +39,11 @@ protocol CardDisplay {
     ) -> Int32
 }
 
-extension CardDisplay {
-    /// Shows the cards, stacking them as `stack` or `DRIP_STACK` says.
-    func show(_ cards: [Card], locked: LockedScreen, console: Console) -> Int32 {
-        show(cards, locked: locked, stack: nil, console: console)
-    }
-}
-
-/// The history size the resolver of one command gave, noted where the card is made and read where
-/// it is delivered; nil until a resolver has run.
-final class ResolvedHistory {
-    var limit: Int?
+/// The resolver of one command, noted where the card is made and read where it is delivered, so
+/// the settings that deliver the card come from the one config read that made it. The defaults
+/// until a resolver has run.
+final class ResolvedSettings {
+    var resolver = CardResolver()
 }
 
 /// Writes messages to stderr.
@@ -139,7 +134,7 @@ struct DripCLI {
             let card = try resolver.resolve(
                 kind: command.kind, title: command.title, rest: command.rest, flags: flags,
                 standardInput: StandardInput.read)
-            return deliver([card], wait: flags.wait, history: resolver.historyLimit, console: console)
+            return deliver([card], wait: flags.wait, resolver: resolver, console: console)
         } catch {
             return report(error, console)
         }
@@ -154,7 +149,7 @@ struct DripCLI {
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
         let status: Int32
-        let resolved = ResolvedHistory()
+        let resolved = ResolvedSettings()
         do {
             // One byte past the limit tells a payload that was cut from one that fits.
             guard let payload = command.payload ?? StandardInput.read(limit: AgentHook.payloadLimit + 1) else {
@@ -162,14 +157,14 @@ struct DripCLI {
             }
             guard let card = try AgentHook.card(
                 agent: command.agent, payload: payload, flags: flags, policy: command.policy,
-                in: surroundings(console, resurfacing: command.agent, history: resolved))
+                in: surroundings(console, resurfacing: command.agent, resolved: resolved))
             else {
                 return ExitStatus.shown
             }
             // An agent's hook keeps its output clean, terminal or not.
             status = card.asksQuestion
-                ? ask(card, agent: command.agent, history: resolved.limit, console: console)
-                : deliver([card], wait: flags.wait, history: resolved.limit, remind: false, console: console)
+                ? ask(card, agent: command.agent, resolver: resolved.resolver, console: console)
+                : deliver([card], wait: flags.wait, resolver: resolved.resolver, remind: false, console: console)
         } catch {
             status = report(error, console, subcommand: HookCommand.configuration.commandName)
         }
@@ -178,13 +173,13 @@ struct DripCLI {
 
     /// Shows a permission card with Allow and Deny and waits for it, printing the agent's answer on a
     /// click. A card that goes unclicked prints nothing, which leaves the answer to the terminal.
-    private func ask(_ card: Card, agent: AgentHook.Agent, history: Int?, console: Console) -> Int32 {
+    private func ask(_ card: Card, agent: AgentHook.Agent, resolver: CardResolver, console: Console) -> Int32 {
         #if canImport(AppKit)
         let watch = ApprovalWatch(card: card, agent: agent, display: display)
         watch.start()
         defer { withExtendedLifetime(watch) {} }
         #endif
-        let status = deliver([card], wait: true, history: history, remind: false, console: console)
+        let status = deliver([card], wait: true, resolver: resolver, remind: false, console: console)
         guard let approval = AgentHook.Approval(pressed: display.pressed, status: status) else {
             return status == ExitStatus.notClicked ? ExitStatus.shown : status
         }
@@ -196,13 +191,13 @@ struct DripCLI {
     /// there is none, and without a GUI session, since the shell hook runs it unseen.
     private func finished(_ command: FinishedCommand) -> Int32 {
         let console = Console(quiet: command.quiet)
-        let resolved = ResolvedHistory()
+        let resolved = ResolvedSettings()
         do {
             guard let card = try ShellHook.card(
                 command: command.command, status: command.status, seconds: command.seconds,
-                in: surroundings(console, history: resolved))
+                in: surroundings(console, resolved: resolved))
             else { return ExitStatus.shown }
-            let status = deliver([card], wait: false, history: resolved.limit, remind: false, console: console)
+            let status = deliver([card], wait: false, resolver: resolved.resolver, remind: false, console: console)
             return status == ExitStatus.noGUISession ? ExitStatus.shown : status
         } catch {
             return report(error, console, subcommand: FinishedCommand.configuration.commandName)
@@ -238,12 +233,12 @@ struct DripCLI {
         let follower = RemoteFollower(settings: settings, handle: { event, stale in
             var surroundings = event.surroundings(
                 local, activate: activate, onClick: command.onClick, stale: stale)
-            // Each event notes the size its own resolver gave.
-            let resolved = ResolvedHistory()
+            // Each event notes its own resolver.
+            let resolved = ResolvedSettings()
             let resolve = surroundings.resolver
             surroundings.resolver = { file, environment in
                 let resolver = try resolve(file, environment)
-                resolved.limit = resolver.historyLimit
+                resolved.resolver = resolver
                 return resolver
             }
             let looked = surroundings
@@ -253,7 +248,8 @@ struct DripCLI {
                     do {
                         guard let shown = try AgentHook.resurfaced(card, agent: event.agent, noted: noted, in: looked)
                         else { return }
-                        _ = self.deliver([shown], wait: false, history: resolved.limit, remind: false, console: console)
+                        _ = self.deliver(
+                            [shown], wait: false, resolver: resolved.resolver, remind: false, console: console)
                     } catch {
                         console.error("\(target): a \(event.agent.rawValue) event from \(event.machine): \(error)")
                     }
@@ -265,7 +261,7 @@ struct DripCLI {
                 else {
                     return
                 }
-                _ = self.deliver([card], wait: false, history: resolved.limit, remind: false, console: console)
+                _ = self.deliver([card], wait: false, resolver: resolved.resolver, remind: false, console: console)
             } catch {
                 console.error("\(target): a \(event.agent.rawValue) event from \(event.machine): \(error)")
             }
@@ -369,22 +365,26 @@ struct DripCLI {
         return ExitStatus.shown
     }
 
-    /// Everything that can fail is checked here, before the cards are handed off. `history` is how
-    /// many cards the history keeps, as the caller's resolver says, and nil for cards shown again
-    /// from the history, which are not recorded. `remind` says whether to print that drip is paused:
-    /// a drip that waits for its card says so as it starts to wait instead.
+    /// Everything that can fail is checked here, before the cards are handed off. `resolver` is the
+    /// caller's, which says how many cards the history keeps and how the cards stack, so the drip
+    /// that shows them never reads the config again. `record` is false for cards shown again from
+    /// the history, which keeps them already. `remind` says whether to print that drip is paused: a
+    /// drip that waits for its card says so as it starts to wait instead.
     private func deliver(
-        _ cards: [Card], wait: Bool, history: Int?, remind: Bool = true, console: Console
+        _ cards: [Card], wait: Bool, resolver: CardResolver, record: Bool = true, remind: Bool = true,
+        console: Console
     ) -> Int32 {
         let cards = display.prepare(cards, console: console)
-        let record = history != nil
-        let history = history ?? Defaults.history
+        let history = resolver.historyLimit
         switch Delivery.choose(for: cards, wait: wait) {
         case .background:
             if remind { remindIfPaused(console) }
             return display.showInBackground(
-                BackgroundRequest(cards: cards, record: record, history: history), console: console)
-        case .wait: return display.show(cards, locked: .wait(record: record, history: history), console: console)
+                BackgroundRequest(cards: cards, record: record, history: history, stack: resolver.stack),
+                console: console)
+        case .wait:
+            return display.show(
+                cards, locked: .wait(record: record, history: history), stack: resolver.stack, console: console)
         }
     }
 
@@ -410,7 +410,7 @@ struct DripCLI {
             return resurfaceSkipped(request, resurface, console: console)
         }
         if let handOff = request.handOff { return HUDDisplay().resume(handOff, console: console) }
-        return display.show(request.cards, locked: request.locked, console: console)
+        return display.show(request.cards, locked: request.locked, stack: request.stack, console: console)
         #else
         return ExitStatus.noGUISession
         #endif
@@ -432,7 +432,8 @@ struct DripCLI {
                 card, agent: agent, noted: resurface.noted, in: surroundings(console))
             else { return ExitStatus.shown }
             let locked = LockedScreen.wait(record: true, history: request.historyLimit)
-            return display.show(display.prepare([shown], console: console), locked: locked, console: console)
+            return display.show(
+                display.prepare([shown], console: console), locked: locked, stack: request.stack, console: console)
         } catch {
             return report(error, console)
         }
@@ -464,7 +465,7 @@ struct DripCLI {
         do {
             let card = try resolver.resolveRun(
                 command: command.command, status: outcome.status, seconds: seconds, flags: flags)
-            _ = deliver([card], wait: flags.wait, history: resolver.historyLimit, console: console)
+            _ = deliver([card], wait: flags.wait, resolver: resolver, console: console)
         } catch {
             _ = report(error, console)
         }
@@ -494,7 +495,16 @@ struct DripCLI {
             HistoryListing.select(CardHistory(environment: environment).entries(), missed: command.missed), count: count)
         if command.replay {
             guard !entries.isEmpty else { return ExitStatus.shown }
-            return deliver(entries.map(HistoryListing.replay), wait: false, history: nil, console: console)
+            // The cards show again as the config says now; a bad environment falls back to the defaults.
+            let resolver: CardResolver
+            do {
+                resolver = try makeResolver(console)
+            } catch {
+                _ = report(error, console)
+                resolver = CardResolver()
+            }
+            return deliver(
+                entries.map(HistoryListing.replay), wait: false, resolver: resolver, record: false, console: console)
         }
         do {
             if command.json {
@@ -587,7 +597,7 @@ struct DripCLI {
 
     /// What an agent's hook reads around its event on this Mac.
     private func surroundings(
-        _ console: Console, resurfacing agent: AgentHook.Agent? = nil, history: ResolvedHistory = ResolvedHistory()
+        _ console: Console, resurfacing agent: AgentHook.Agent? = nil, resolved: ResolvedSettings = ResolvedSettings()
     ) -> AgentHook.Surroundings {
         var surroundings = AgentHook.Surroundings(
             environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
@@ -598,7 +608,7 @@ struct DripCLI {
                 // A background drip waits for the card; this hook returns at once.
                 _ = BackgroundDrip.start(BackgroundRequest(
                     cards: [card], resurface: .init(agent: agent.rawValue, noted: noted),
-                    history: history.limit))
+                    history: resolved.resolver.historyLimit, stack: resolved.resolver.stack))
                 #endif
             },
             away: {
@@ -610,7 +620,7 @@ struct DripCLI {
             },
             resolver: {
                 let resolver = try makeResolver(console, file: $0, environment: $1)
-                history.limit = resolver.historyLimit
+                resolved.resolver = resolver
                 return resolver
             })
         #if canImport(AppKit)
@@ -659,7 +669,9 @@ struct UnavailableDisplay: CardDisplay {
     }
 
     func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32 {
-        show(request.cards, locked: .wait(record: request.record, history: request.historyLimit), console: console)
+        show(
+            request.cards, locked: .wait(record: request.record, history: request.historyLimit), stack: request.stack,
+            console: console)
     }
 
     func prepare(_ cards: [Card], console: Console) -> [Card] {

@@ -273,7 +273,7 @@ struct DoctorTests {
         #expect(report.settings.size == card.size)
         #expect(report.settings.motion == card.motion)
         #expect(report.settings.sound == card.sound)
-        #expect(StackSettings.current(environment: environment) == nil)
+        #expect(resolver.stack == nil)
         #expect(report.settings.stack == .off)
         #expect(report.settings.stackMax == 2)
     }
