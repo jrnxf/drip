@@ -132,7 +132,7 @@ struct HelpTests {
     }
 
     /// The part of a completion script for one subcommand.
-    private static func section(of script: String, for name: String, shell: String) -> String {
+    static func section(of script: String, for name: String, shell: String) -> String {
         let lines = script.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         if shell == "fish" {
             return lines.filter { $0.contains("\"drip \(name)\"") }.joined(separator: "\n")

@@ -42,6 +42,7 @@ exits 2, or 1 for `drip hook`.
 | `--on-click CMD` | A click on the card also runs `CMD`, with `/bin/sh -c`, and the card as one line of JSON on stdin; see [Clicks](#clicks). | none |
 | `--stay` | Keeps the card on screen until it is clicked, a newer card with the same `--id` replaces it, or 10 minutes pass, without holding the script: drip still returns at once. Works with any look; see Cards that wait below. | off |
 | `--wait` | Wait until the card has gone before exiting. | off |
+| `--result` | Waits as `--wait` does, then prints how the card ended on stdout: `activate`, `dismiss`, `timeout` or `replaced`. Not with `--yes`, and not for `drip run` or `drip hook`. See [How a card ended](#how-a-card-ended). | off |
 | `--quiet` | Never print warnings. | off |
 
 The size and the motion are settings rather than flags: `size` (`compact`, `regular` or `large`,
@@ -134,7 +135,35 @@ old one as its icon pops in, its sound plays, and its time starts again. When th
 state and the icon stays, such as an agent's, the icon stays still and the state pops in the ring. With reduced motion the
 size changes at once and only the crossfade remains; with motion `none` it all changes at once. A card that asks a question (`--yes`)
 never changes in place; the newer card then waits its turn. A question replaced before it showed
-exits 5.
+exits 5. A `--result` card never takes an older card's place either: it waits its turn, so that
+its drip can say how its own card ended.
+
+## How a card ended
+
+`--result` waits until the card has gone, as `--wait` does, then prints one word on stdout:
+
+| Word | How the card ended |
+| --- | --- |
+| `activate` | A click on the card, away from its ×, or on its `--open` button. |
+| `dismiss` | Its ×, a secondary click, VoiceOver's Dismiss or `drip dismiss` took it away, on screen or before it showed. |
+| `timeout` | Its time ran out: `--seconds`, or the 10 minutes a `--stay` card waits. |
+| `replaced` | A newer card with the same `--id` took its place, on screen or before it showed. |
+
+```sh
+case $(drip info "Deploy finished" --open "$CI_URL" --button View --stay --result) in
+activate) echo "seen" ;;
+dismiss) echo "put off" ;;
+*) echo "missed" ;;
+esac
+```
+
+The word comes only with exit 0. The exit codes stay as [Exit codes](#exit-codes) gives them, and
+errors and warnings stay on stderr, so a failure, such as no GUI session (3), prints nothing on
+stdout. `--wait` beside `--result` changes nothing. A `--yes` question answers through drip's exit
+status instead, so `--yes` with `--result` is a usage error (2). `drip run` exits 2 and `drip hook`
+exits 1 for `--result`: a hook's stdout belongs to its agent, and drip never prints there. When a
+newer card with the same `--id` takes the card's place on screen, drip waits until that card has
+gone too, then prints `replaced`.
 
 ## Clicks
 

@@ -25,17 +25,18 @@ public struct QueueDirectory {
     /// Queues the cards of the process `pid` and returns its ticket's name. A foreground drip
     /// queues its background drip itself, before returning, so the order is the order drips were
     /// run in; one that hands its stack on queues it right `after` its own ticket. Only a
-    /// background drip's cards are `adoptable`. `stamp` is when it was queued, in nanoseconds
-    /// since 1970.
+    /// background drip's cards are `adoptable`, and only the ticket of a drip that prints how its
+    /// card ended `reportsResult`. `stamp` is when it was queued, in nanoseconds since 1970.
     @discardableResult
     public func enqueue(
-        pid: Int32, cards: [Card], adoptable: Bool = false, after parent: String? = nil,
+        pid: Int32, cards: [Card], adoptable: Bool = false, reportsResult: Bool = false, after parent: String? = nil,
         stamp: UInt64 = UInt64(Date().timeIntervalSince1970 * 1_000_000_000)
     ) -> String {
         try? FileManager.default.createDirectory(
             atPath: path, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let start = processStart(pid)
-        let contents = (try? JSONEncoder().encode(TicketContents(cards: cards, adoptable: adoptable))) ?? Data()
+        let contents = (try? JSONEncoder().encode(
+            TicketContents(cards: cards, adoptable: adoptable, reportsResult: reportsResult))) ?? Data()
         let name = parent.flatMap { QueueTicket.name(after: $0, pid: pid, start: start) }
             ?? QueueTicket.name(stamp: stamp, pid: pid, start: start)
         write(contents, to: name, writer: pid)
@@ -76,6 +77,7 @@ public struct QueueDirectory {
             {
                 ticket.cards = contents.cards
                 ticket.adoptable = contents.adoptable
+                ticket.reportsResult = contents.reportsResult
             }
             ticket.claimed = claims(of: ticket.name)
             return ticket

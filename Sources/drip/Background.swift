@@ -192,6 +192,9 @@ enum CardQueue {
     }
     /// The cards this process queues, kept for when it queues again after giving up its turn.
     private static var cards: [Card] = []
+    /// Whether this process prints how its card ended, as `drip --result` does, so no other drip
+    /// takes the card over: see `QueueTicket.reportsResult`. Set before it first queues.
+    static var reportsResult = false
     private static var leavesAtExit = false
 
     /// Queues the cards of the process `pid`, as `QueueDirectory.enqueue` describes.
@@ -227,7 +230,7 @@ enum CardQueue {
     static func join(cards: [Card]? = nil) {
         let me = getpid()
         if let cards { self.cards = cards }
-        if queue.ticket(of: me) == nil { queue.enqueue(pid: me, cards: self.cards) }
+        if queue.ticket(of: me) == nil { queue.enqueue(pid: me, cards: self.cards, reportsResult: reportsResult) }
         mine = queue.ticket(of: me)
         if !leavesAtExit {
             leavesAtExit = true

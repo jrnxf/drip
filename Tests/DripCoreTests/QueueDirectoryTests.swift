@@ -79,6 +79,15 @@ final class QueueDirectoryTests {
         #expect(queue.isFirst(100))
     }
 
+    /// A drip that prints how its card ended says so in its ticket, for the drips that read it.
+    @Test func aTicketKeepsWhetherItsDripReportsTheResult() throws {
+        running[100] = 1
+        running[200] = 1
+        queue.enqueue(pid: 100, cards: [Card(preset: .info, title: "plain")], stamp: 1)
+        queue.enqueue(pid: 200, cards: [Card(preset: .info, title: "result")], reportsResult: true, stamp: 2)
+        #expect(queue.load().map(\.reportsResult) == [false, true])
+    }
+
     /// A stack that took over some of a ticket's cards leaves the rest to the drip that queued it.
     @Test func aTicketIsFullyAdoptedOnlyOnceEveryCardIsClaimed() throws {
         let name = run(100, stamp: 1, cards: ["a", "b"])

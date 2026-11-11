@@ -191,6 +191,34 @@ struct QueueTests {
         #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }).count == 1)
     }
 
+    /// A card whose drip prints how it ended never takes the place of one on screen, so it waits its
+    /// turn even with the same id, and the card on screen gives way to it.
+    @Test func aCardThatReportsItsResultWaitsItsTurnWhateverItsID() {
+        let mine = ticket(1, pid: 10, card("a"))
+        let reporting = QueueTicket(
+            name: QueueTicket.name(stamp: 2, pid: 20), cards: [card("a", title: "result")], reportsResult: true)!
+        let waiting = CardTurns.waiting(after: mine.name, queue: [mine, reporting], isAlive: { _ in true }, except: ["a"])
+        #expect(waiting.map(\.card.title) == ["result"])
+        #expect(waiting.map(\.adoptable) == [false])
+    }
+
+    /// It never swaps into an older drip's card on screen, which would leave its drip with no end to
+    /// print, but it still takes the place of an older card queued with the same id.
+    @Test func aCardThatReportsItsResultNeverSwapsIn() {
+        let reporting = QueueTicket(
+            name: QueueTicket.name(stamp: 2, pid: 20), cards: [card("a", title: "result")], reportsResult: true)!
+        let mine = ticket(1, pid: 10, card("a"))
+        let queue = [mine, reporting]
+        #expect(CardReplacement.replacement(for: card("a"), after: mine.name, queue: queue, isAlive: { _ in true })
+            == nil)
+        #expect(CardReplacement.isReplaced(card("a"), in: mine, queue: queue, isAlive: { _ in true }))
+        // A plain card queued after it still swaps in.
+        let plain = ticket(3, pid: 30, card("a", title: "plain"))
+        let found = CardReplacement.replacement(
+            for: card("a"), after: mine.name, queue: queue + [plain], isAlive: { _ in true })
+        #expect(found?.card.title == "plain")
+    }
+
     /// A drip queued behind a question waits for its answer, past its usual patience.
     @Test func aDripQueuedBehindAQuestionWaitsForItsAnswer() {
         var question = Card.staying(title: "merge?")
@@ -226,6 +254,17 @@ struct QueueTests {
         let older = try JSONEncoder().encode(cards)
         #expect(TicketContents.decode(older) == TicketContents(cards: cards, adoptable: false))
         #expect(TicketContents.decode(Data("nope".utf8)) == nil)
+        // A ticket an older drip wrote has no reportsResult: its drip reports nothing.
+        let reporting = try JSONEncoder().encode(TicketContents(cards: cards, adoptable: false, reportsResult: true))
+        #expect(TicketContents.decode(reporting)?.reportsResult == true)
+        let withoutResult = try JSONEncoder().encode(Older(cards: cards, adoptable: true))
+        #expect(TicketContents.decode(withoutResult) == TicketContents(cards: cards, adoptable: true))
+    }
+
+    /// A ticket as drips before --result wrote it.
+    private struct Older: Encodable {
+        var cards: [Card]
+        var adoptable: Bool
     }
 
     private func adoptable(_ stamp: UInt64, pid: Int32, _ cards: Card...) -> QueueTicket {

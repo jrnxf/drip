@@ -83,6 +83,9 @@ final class StackPresenter: CardPresenting {
     /// This drip's own cards still to come that the last look at the queue found a newer card with
     /// the same id replaced, which the overflow drop leaves out of its count.
     private var replacedOwn: [Card] = []
+    /// How each card on screen that something took away ends, by its entry's id, until it has left:
+    /// a card with no end here ran out of time.
+    private var ends: [Int: CardResult] = [:]
     /// Newer drips' cards the stack can take in, oldest first, as the last look at the queue found
     /// them, less those taken in since.
     private var others: [(ticket: String, index: Int, card: Card)] = []
@@ -396,7 +399,7 @@ final class StackPresenter: CardPresenting {
             own = true
         case .skipOwn:
             // Replaced since it was queued: the drop's count goes down instead.
-            neverShown(stack.dropWaiting(at: 0))
+            neverShown(stack.dropWaiting(at: 0), as: .replaced)
             return
         case let .enter(index):
             let found = others.remove(at: index)
@@ -600,7 +603,7 @@ final class StackPresenter: CardPresenting {
                     if let card = stack.nextOwn() { enter(card, own: true) }
                     return
                 case .skipOwn:
-                    neverShown(stack.dropWaiting(at: 0))
+                    neverShown(stack.dropWaiting(at: 0), as: .replaced)
                     return
                 case .tucked:
                     if let tucked = stack.nextTucked() { enter(tucked.card, own: tucked.own) }
@@ -632,6 +635,9 @@ final class StackPresenter: CardPresenting {
         }
         for left in changes.left {
             if left.entry.own, left.entry.card.goesUnanswered(clicked: left.clicked) { CardActions.missed = true }
+            // A card nothing took away ran out of time.
+            if left.entry.own { CardActions.end(ends[left.entry.id] ?? .timeout) }
+            ends[left.entry.id] = nil
             drawings[left.entry.id]?.layers.showPointer(nil)
             drawings[left.entry.id]?.layers.fade(left.cues, into: false, at: started + left.time)
         }
@@ -785,13 +791,21 @@ final class StackPresenter: CardPresenting {
             return
         }
         if entry.card.opensOnClick { CardActions.click(entry.card, console: console) }
+        note(.activate, for: entry)
         entry.dismissed = entry.dismissed ?? false
+    }
+
+    /// Notes how `entry` ends, once something first takes it away, for when it has left.
+    private func note(_ result: CardResult, for entry: CardStack.Entry) {
+        guard entry.dismissed == nil, ends[entry.id] == nil else { return }
+        ends[entry.id] = result
     }
 
     /// Takes `entry` away without bringing anything forward: a click on its ×, a secondary click,
     /// VoiceOver's Dismiss, or `drip dismiss`. A question goes unanswered.
     private func dismiss(_ entry: CardStack.Entry) {
         guard !entry.isLeaving else { return }
+        note(.dismiss, for: entry)
         entry.dismissed = entry.dismissed ?? false
         drawings[entry.id]?.layers.showPointer(nil)
     }
@@ -805,7 +819,7 @@ final class StackPresenter: CardPresenting {
             dismiss(entry)
         }
         for card in stack.dropWaiting(where: { dismissals.dismisses(id: $0.id, since: queuedAt) }) {
-            neverShown(card)
+            neverShown(card, as: .dismiss)
         }
         for (index, tucked) in stack.tucked.enumerated().reversed()
             where dismissals.dismisses(id: tucked.card.id, since: arrivals[tucked.entry] ?? queuedAt)
@@ -815,9 +829,11 @@ final class StackPresenter: CardPresenting {
     }
 
     /// Notes this drip's own card that went before it ever showed: a button on it was never clicked,
-    /// and a question on it goes unanswered.
-    private func neverShown(_ card: Card?) {
-        if card?.goesUnanswered(clicked: false) == true { CardActions.missed = true }
+    /// and a question on it goes unanswered. It ended as `result`.
+    private func neverShown(_ card: Card?, as result: CardResult) {
+        guard let card else { return }
+        if card.goesUnanswered(clicked: false) { CardActions.missed = true }
+        CardActions.end(result)
     }
 
     /// When a pause starts while a background drip shows cards, as for a screen share, takes them
@@ -848,6 +864,7 @@ final class StackPresenter: CardPresenting {
     private func press(_ answer: CardAnswer, on entry: CardStack.Entry) {
         guard let action = entry.card.action, !entry.isLeaving, entry.dismissed == nil else { return }
         CardActions.answer(answer, to: action, console: console)
+        note(CardResult(pressing: answer), for: entry)
         entry.answer = answer
         entry.dismissed = true
         // The answer goes out now, not once the card has gone.
@@ -881,6 +898,7 @@ final class StackPresenter: CardPresenting {
                     [weak self, weak entry] () -> Bool in
                     guard let self, let entry, !entry.isLeaving else { return false }
                     CardActions.click(entry.card, console: self.console)
+                    self.note(.activate, for: entry)
                     entry.dismissed = entry.dismissed ?? false
                     return true
                 })

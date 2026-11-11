@@ -7,13 +7,20 @@ protocol CardDisplay {
     /// gone, or as soon as a question is answered, with the exit status to report. `locked` says what happens while the screen is locked;
     /// `stack` is how the cards stack at the notch, as the resolver gave it, and nil shows them one at
     /// a time.
-    func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32
+    /// `reportsResult` when drip prints how the card ended, as `drip --result` does: no other
+    /// drip then takes the card over.
+    func show(
+        _ cards: [Card], locked: LockedScreen, stack: StackSettings?, reportsResult: Bool, console: Console
+    ) -> Int32
 
     /// Hands the cards to a background drip and returns at once, or shows them here when it cannot.
     func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32
 
     /// The button pressed on a question `show` showed, if any.
     var pressed: CardAnswer? { get }
+
+    /// How the card `show` showed ended, once it has gone; nil when it never showed.
+    var result: CardResult? { get }
 
     /// Checks the cards' sounds and icons, warning about and replacing any that cannot load.
     func prepare(_ cards: [Card], console: Console) -> [Card]
@@ -37,6 +44,14 @@ protocol CardDisplay {
         _ card: Card, appearance: RenderCommand.Appearance, at time: Double?, leaving: Bool, to path: String,
         console: Console
     ) -> Int32
+}
+
+extension CardDisplay {
+    /// Shows the cards, as `show(_:locked:stack:reportsResult:console:)` does, for a drip that
+    /// prints nothing of how they ended.
+    func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32 {
+        show(cards, locked: locked, stack: stack, reportsResult: false, console: console)
+    }
 }
 
 /// The settings the resolver of one command gave, noted where the card is made and read where it
@@ -143,8 +158,14 @@ struct DripCLI {
             let card = try resolver.resolve(
                 kind: command.kind, title: command.title, rest: command.rest, flags: flags,
                 standardInput: StandardInput.read)
-            return deliver(
-                [card], wait: flags.wait, record: true, settings: BackgroundSettings(resolver), console: console)
+            let status = deliver(
+                [card], wait: flags.wait, record: true, settings: BackgroundSettings(resolver),
+                reportsResult: command.result, console: console)
+            // Only a card that showed has an end to print; errors went to stderr.
+            if command.result, status == ExitStatus.shown, let result = display.result {
+                FileHandle.standardOutput.write(Data(result.line.utf8))
+            }
+            return status
         } catch {
             return report(error, console)
         }
@@ -383,10 +404,11 @@ struct DripCLI {
     /// what the caller's resolver gave: how many cards the history keeps and how the cards stack, so
     /// the drip that shows them never reads the config again. `record` is false for cards shown
     /// again from the history, which keeps them already. `remind` says whether to print that drip is
-    /// paused: a drip that waits for its card says so as it starts to wait instead.
+    /// paused: a drip that waits for its card says so as it starts to wait instead. `reportsResult`
+    /// when drip prints how the card ended, which needs `wait`.
     private func deliver(
         _ cards: [Card], wait: Bool, record: Bool, settings: BackgroundSettings?, remind: Bool = true,
-        console: Console
+        reportsResult: Bool = false, console: Console
     ) -> Int32 {
         let request = BackgroundRequest(cards: display.prepare(cards, console: console), record: record, settings: settings)
         switch Delivery.choose(for: request.cards, wait: wait) {
@@ -397,7 +419,7 @@ struct DripCLI {
             let settings = request.settingsToShow
             return display.show(
                 request.cards, locked: .wait(record: request.record, history: settings.history), stack: settings.stack,
-                console: console)
+                reportsResult: reportsResult, console: console)
         }
     }
 
@@ -680,7 +702,9 @@ struct DripCLI {
 #if !canImport(AppKit)
 /// Used where AppKit is missing: every card fails as if there were no GUI session.
 struct UnavailableDisplay: CardDisplay {
-    func show(_ cards: [Card], locked: LockedScreen, stack: StackSettings?, console: Console) -> Int32 {
+    func show(
+        _ cards: [Card], locked: LockedScreen, stack: StackSettings?, reportsResult: Bool, console: Console
+    ) -> Int32 {
         console.error("no GUI session: drip shows cards only on macOS")
         return ExitStatus.noGUISession
     }
@@ -703,6 +727,8 @@ struct UnavailableDisplay: CardDisplay {
     var hasGUISession: Bool { false }
 
     var pressed: CardAnswer? { nil }
+
+    var result: CardResult? { nil }
 
     func front(of card: Card) -> WhenFocused.Front {
         WhenFocused.Front(app: false)

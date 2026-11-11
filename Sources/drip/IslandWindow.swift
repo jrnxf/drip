@@ -1394,17 +1394,19 @@ final class IslandPresenter: CardPresenting {
 
     private func schedule(after seconds: Double) {
         pending?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.leave(clicked: false) }
+        let work = DispatchWorkItem { [weak self] in self?.leave(clicked: false, as: .timeout) }
         pending = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 
-    private func leave(clicked: Bool) {
+    /// Takes the card away, ended as `result`: a click on its button is `clicked`.
+    private func leave(clicked: Bool, as result: CardResult) {
         guard let departure else { return }
         self.departure = nil
         pending?.cancel()
         holdLimit?.cancel()
         if card.goesUnanswered(clicked: clicked) { CardActions.missed = true }
+        CardActions.end(result)
         layers?.showPointer(nil)
         stopWatchingPointer()
         departure()
@@ -1514,20 +1516,20 @@ final class IslandPresenter: CardPresenting {
             return
         }
         if card.opensOnClick { CardActions.click(card, console: console) }
-        leave(clicked: false)
+        leave(clicked: false, as: .activate)
     }
 
     /// Takes the card away without bringing anything forward: a click on its ×, a secondary click,
     /// VoiceOver's Dismiss, or `drip dismiss`. A question goes unanswered.
     func dismiss() {
-        leave(clicked: false)
+        leave(clicked: false, as: .dismiss)
     }
 
     /// Answers the card with one of its buttons, from a click or from VoiceOver.
     private func press(_ answer: CardAnswer) {
         guard departure != nil, let action = card.action else { return }
         CardActions.answer(answer, to: action, console: console)
-        leave(clicked: true)
+        leave(clicked: true, as: CardResult(pressing: answer))
         handOffExit()
     }
 
@@ -1561,7 +1563,7 @@ final class IslandPresenter: CardPresenting {
             actions.append(NSAccessibilityCustomAction(name: CardAccessibility.open) { [weak self] () -> Bool in
                 guard let self, self.departure != nil else { return false }
                 CardActions.click(self.card, console: self.console)
-                self.leave(clicked: false)
+                self.leave(clicked: false, as: .activate)
                 return true
             })
         }
