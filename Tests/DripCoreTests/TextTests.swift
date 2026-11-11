@@ -221,6 +221,39 @@ struct TextTests {
         #expect(lines.allSatisfy { CardText.isRightToLeft($0) })
     }
 
+    /// Both lines align to the card's direction, the title's first strong direction. Each line keeps
+    /// the base direction of its own text.
+    @Test func cardDirectionComesFromTheTitleThenTheDetail() {
+        let hebrewOverLatin = CardText.direction(title: "שלום עולם", detail: "Build 42 finished (ok)")
+        #expect(hebrewOverLatin == CardText.Direction(alignsRight: true, titleRightToLeft: true, detailRightToLeft: false))
+        let arabicOverLatin = CardText.direction(title: "مرحبا بالعالم", detail: "Build finished.")
+        #expect(arabicOverLatin.alignsRight && !arabicOverLatin.detailRightToLeft)
+        let latinOverHebrew = CardText.direction(title: "Build finished", detail: "שלום עולם")
+        #expect(latinOverHebrew == CardText.Direction(alignsRight: false, titleRightToLeft: false, detailRightToLeft: true))
+        #expect(!CardText.direction(title: "Build finished", detail: nil).alignsRight)
+        #expect(CardText.direction(title: "שלום", detail: nil).alignsRight)
+    }
+
+    /// A line with no strong letter takes the card's direction, in the title and in the detail.
+    @Test func aNeutralLineTakesTheCardsDirection() {
+        let rightToLeftCard = CardText.direction(title: "שלום עולם", detail: "(12:30)")
+        #expect(rightToLeftCard == CardText.Direction(alignsRight: true, titleRightToLeft: true, detailRightToLeft: true))
+        let neutralTitle = CardText.direction(title: "#42 - 3/5", detail: "مرحبا بالعالم")
+        #expect(neutralTitle == CardText.Direction(alignsRight: true, titleRightToLeft: true, detailRightToLeft: true))
+        let leftToRightCard = CardText.direction(title: "Build finished", detail: "(12:30)")
+        #expect(leftToRightCard == CardText.Direction(alignsRight: false, titleRightToLeft: false, detailRightToLeft: false))
+    }
+
+    /// A title with no strong letter ("404", "#123", an emoji, nothing) takes the detail's direction.
+    @Test func cardDirectionFallsBackToTheDetailForANeutralTitle() {
+        for title in ["404", "#123", "🎉", ""] {
+            #expect(CardText.direction(title: title, detail: "שלום עולם")
+                == CardText.Direction(alignsRight: true, titleRightToLeft: true, detailRightToLeft: true))
+            #expect(!CardText.direction(title: title, detail: "Build finished").alignsRight)
+            #expect(!CardText.direction(title: title, detail: nil).alignsRight)
+        }
+    }
+
     /// A typesetter's break is used as given when it fits, and moved back to the last space when the
     /// line it makes is too wide by the renderer's own measure.
     @Test func wrapTakesTheTypesettersBreakButNeverAWiderLine() {

@@ -251,11 +251,47 @@ public enum CardText {
     /// True when the first strongly directional character of `text` belongs to a right-to-left
     /// script (Hebrew, Arabic and their neighbors), so the line should be right-aligned.
     public static func isRightToLeft(_ text: String) -> Bool {
+        firstStrongIsRightToLeft(text) ?? false
+    }
+
+    /// How a card sets its two text lines. Both lines align to the side of the card's direction: the
+    /// title's first strong direction, or the detail's when the title has none ("404", "#123", an
+    /// emoji). Each line keeps the base direction of its own text, so a Latin line under a Hebrew
+    /// title keeps its punctuation where it belongs. A line with no strong letter ("(12:30)") takes
+    /// the card's direction.
+    public struct Direction: Equatable, Sendable {
+        /// True when both lines hug the right edge.
+        public let alignsRight: Bool
+        /// True when the title's base direction is right to left.
+        public let titleRightToLeft: Bool
+        /// True when the detail's base direction is right to left.
+        public let detailRightToLeft: Bool
+
+        public init(alignsRight: Bool, titleRightToLeft: Bool, detailRightToLeft: Bool) {
+            self.alignsRight = alignsRight
+            self.titleRightToLeft = titleRightToLeft
+            self.detailRightToLeft = detailRightToLeft
+        }
+    }
+
+    public static func direction(title: String, detail: String?) -> Direction {
+        let own = firstStrongIsRightToLeft(title)
+        let detailOwn = detail.flatMap(firstStrongIsRightToLeft)
+        let card = own ?? detailOwn ?? false
+        return Direction(
+            alignsRight: card,
+            titleRightToLeft: own ?? card,
+            detailRightToLeft: detailOwn ?? card)
+    }
+
+    /// The first strongly directional letter of `text`: true for right to left, false for left to
+    /// right, nil when there is none.
+    private static func firstStrongIsRightToLeft(_ text: String) -> Bool? {
         for scalar in text.unicodeScalars {
             if isRightToLeftScalar(scalar) { return true }
             if scalar.properties.isAlphabetic { return false }
         }
-        return false
+        return nil
     }
 
     private static func isRightToLeftScalar(_ scalar: Unicode.Scalar) -> Bool {
