@@ -51,10 +51,17 @@ public struct DoctorReport: Equatable {
         public var awayAfter: Double
         public var history: Int
         public var debug: Bool
+        /// Whether cards have their outline: from `DRIP_CONTRAST`, else the config, and always while
+        /// Increase Contrast is on.
+        public var contrast: Bool
+        /// Whether Increase Contrast alone turns the outline on.
+        public var contrastFromSystem: Bool
 
         /// The settings of `resolver`, for a card whose preset sets none of its own, and the debug log's
-        /// switch, which reads `environment` and `file` itself.
-        public init(resolver: CardResolver, environment: [String: String], file: ConfigFile) {
+        /// switch, which reads `environment` and `file` itself. `increaseContrast` is the Mac's setting.
+        public init(
+            resolver: CardResolver, environment: [String: String], file: ConfigFile, increaseContrast: Bool = false
+        ) {
             seconds = resolver.seconds(for: nil)
             size = resolver.size
             sound = resolver.sound
@@ -67,6 +74,8 @@ public struct DoctorReport: Equatable {
             awayAfter = resolver.awayAfter
             history = resolver.historyLimit
             debug = DebugLog.isEnabled(environment: environment) { file }
+            contrast = resolver.contrast || increaseContrast
+            contrastFromSystem = !resolver.contrast && increaseContrast
         }
     }
 
@@ -100,9 +109,10 @@ public struct DoctorReport: Equatable {
 
     /// Reads the config file, the environment, the pause and the state directory. `hasGUISession`
     /// and `screenLocked` are what the cards go by, and `showsCards` is false where drip shows no cards.
+    /// `increaseContrast` is whether Increase Contrast is on in System Settings.
     public init(
         environment: [String: String], hasGUISession: Bool, screenLocked: Bool, showsCards: Bool = true,
-        now: Date = Date()
+        increaseContrast: Bool = false, now: Date = Date()
     ) {
         version = dripVersion
         self.now = now
@@ -124,7 +134,7 @@ public struct DoctorReport: Equatable {
         environmentProblems = problems
         settings = Settings(
             resolver: CardResolver(config: file.config, environment: variables), environment: environment,
-            file: file)
+            file: file, increaseContrast: increaseContrast)
         stateDirectory = StateDirectory.path(environment: environment)
         stateDirectoryWritable = Self.canWrite(directory: stateDirectory)
     }
@@ -238,6 +248,8 @@ public struct DoctorReport: Equatable {
             ("away_after", Defaults.number(settings.awayAfter), .number(Defaults.number(settings.awayAfter))),
             ("history", "\(settings.history)", .number("\(settings.history)")),
             ("debug", settings.debug ? "true" : "false", .bool(settings.debug)),
+            ("contrast", settings.contrastFromSystem ? "true (Increase Contrast)" : settings.contrast ? "true" : "false",
+             .bool(settings.contrast)),
         ]
     }
 

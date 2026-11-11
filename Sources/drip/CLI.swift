@@ -589,13 +589,15 @@ struct DripCLI {
         #if canImport(AppKit)
         let screenLocked = ScreenLock.isLocked
         let showsCards = true
+        let increaseContrast = CardPresenters.increaseContrast
         #else
         let screenLocked = false
         let showsCards = false
+        let increaseContrast = false
         #endif
         let report = DoctorReport(
             environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
-            screenLocked: screenLocked, showsCards: showsCards)
+            screenLocked: screenLocked, showsCards: showsCards, increaseContrast: increaseContrast)
         print(command.json ? report.json : report.text())
         if let reasons = report.standardError {
             FileHandle.standardError.write(Data((reasons + "\n").utf8))
