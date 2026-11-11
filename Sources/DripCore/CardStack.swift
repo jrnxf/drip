@@ -67,6 +67,10 @@ public final class CardStack {
             if case .shown = phase { return true }
             return false
         }
+
+        /// Whether a newer card with the same id may take this card's place: it is on screen, and
+        /// nothing has taken it away.
+        var isSwappable: Bool { isShown && dismissed == nil }
     }
 
     /// What changed in one step of the stack's clock.
@@ -156,9 +160,18 @@ public final class CardStack {
     }
 
     /// This drip's own cards on screen with an id, which a newer drip's card with the same id takes
-    /// the place of: shown, and not leaving. A stack that takes no cards in looks for those newer
-    /// cards itself, as a drip that shows one card at a time does.
-    public var replaceable: [Entry] { live.filter { $0.own && $0.isShown && $0.card.id != nil } }
+    /// the place of: shown, not leaving and not taken away. A stack that takes no cards in looks for
+    /// those newer cards itself, as a drip that shows one card at a time does.
+    public var replaceable: [Entry] { live.filter { $0.own && $0.card.id != nil && $0.isSwappable } }
+
+    /// The card on screen that `card`, with the same id, takes the place of: shown, not leaving and
+    /// not taken away, and able to swap. A card already taken away, as by a click or `drip dismiss`,
+    /// is left to go, so a newer card never swaps into it only to go with it; it comes in as a card
+    /// of its own instead.
+    public func swapTarget(for card: Card) -> Entry? {
+        guard let id = card.id else { return nil }
+        return live.first { $0.card.id == id && $0.isSwappable && CardReplacement.canSwap($0.card, for: card) }
+    }
 
     /// Whether the stack holds fewer cards than it may show at once.
     public var hasRoom: Bool { live.count < settings.max }
@@ -248,12 +261,7 @@ public final class CardStack {
     /// newer one has taken over. The caller checks `isReady(at:)` first.
     public func nextAdmission(adoptable: [Card], isReplaced: (Card) -> Bool = { _ in false }) -> Admission? {
         for (index, card) in adoptable.enumerated() {
-            if let id = card.id,
-               let shown = live.first(where: { $0.card.id == id && $0.isShown }),
-               CardReplacement.canSwap(shown.card, for: card)
-            {
-                return .swap(shown, index)
-            }
+            if let shown = swapTarget(for: card) { return .swap(shown, index) }
             guard overflow == nil, waiting.isEmpty, hasRoom else { break }
             return .enter(index)
         }

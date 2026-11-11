@@ -679,6 +679,8 @@ final class StackPresenter: CardPresenting {
         if !changes.gone.isEmpty {
             let kept = Set(stack.entries.map(\.id) + stack.tucked.map(\.entry))
             arrivals = arrivals.filter { kept.contains($0.key) }
+            // A card that gives way comes back as a new entry, so its old end goes with it here.
+            ends = ends.filter { kept.contains($0.key) }
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)

@@ -164,8 +164,7 @@ extension CardStack {
     /// Whether `card`, another drip's, shows in place of a card on screen with the same id rather
     /// than taking a place of its own.
     public func swapsInPlace(_ card: Card) -> Bool {
-        guard let id = card.id else { return false }
-        return live.contains { $0.card.id == id && $0.isShown && CardReplacement.canSwap($0.card, for: card) }
+        swapTarget(for: card) != nil
     }
 
     /// Whether the next card waiting can grow out of the overflow drop now: the drop is at rest, the
