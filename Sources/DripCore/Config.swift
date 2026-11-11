@@ -169,9 +169,13 @@ public enum ConfigLoader {
     /// Loads the config file as a card command reads it: a key drip cannot use keeps its default, and
     /// a file it cannot use at all leaves every key at its default. Each problem is also a warning.
     public static func loadLeniently(environment: [String: String]) -> ConfigFile {
-        let path = path(environment: environment)
+        loadLeniently(path: path(environment: environment)) ?? ConfigFile(config: Config(), warnings: [])
+    }
+
+    /// As above, from the file at `path`; nil when there is no file.
+    static func loadLeniently(path: String) -> ConfigFile? {
         do {
-            guard let text = try text(at: path) else { return ConfigFile(config: Config(), warnings: []) }
+            guard let text = try text(at: path) else { return nil }
             return parseLeniently(text, path: path)
         } catch {
             return ConfigFile(unusable: .wrapping(error, path: path))

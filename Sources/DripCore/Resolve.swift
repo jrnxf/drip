@@ -28,6 +28,23 @@ public struct CardResolver {
     /// How many cards the history keeps: `DRIP_HISTORY`, then the config's `history`, then the default.
     public var historyLimit: Int { environment.history ?? config.history ?? Defaults.history }
 
+    /// How long a card of `preset` stays without `--seconds`: `DRIP_SECONDS`, then the preset's own
+    /// time, then the config's `seconds`, then the default. A nil `preset` sets no time of its own.
+    public func seconds(for preset: Preset?) -> Double {
+        environment.seconds ?? preset?.seconds ?? config.seconds ?? Defaults.seconds
+    }
+
+    /// The sound of every card without `--sound`: `DRIP_SOUND`, then the config's top-level `sound`.
+    /// Nil when each preset plays its own. A preset the config gives a sound of its own keeps it,
+    /// unless `DRIP_SOUND` is set or the config's `sound` is `none`.
+    public var sound: Sound? { environment.sound ?? config.sound }
+
+    /// `DRIP_SIZE`, then the config's `size`, then the default.
+    public var size: CardSize { environment.size ?? config.size ?? Defaults.size }
+
+    /// `DRIP_MOTION`, then the config's `motion`, then the default.
+    public var motion: Motion { environment.motion ?? config.motion ?? Defaults.motion }
+
     /// Resolves `drip [KIND] [TITLE] [options]` into a card.
     ///
     /// The first positional is the kind when it names a preset; otherwise it is the title and the
@@ -64,10 +81,8 @@ public struct CardResolver {
     private func card(preset: Preset, title: String, detail: String?, flags: CardFlags) -> Card {
         // The config's top-level sound mutes every preset, or replaces the sound of those that set
         // none of their own.
-        var presetSound = preset.sound
-        if config.sound == Sound.none || config.presets[preset.name]?.sound == nil {
-            presetSound = config.sound ?? preset.sound
-        }
+        let keepsOwnSound = environment.sound == nil && config.sound != Sound.none
+            && config.presets[preset.name]?.sound != nil
         var card = Card(
             kind: preset.name,
             title: title,
@@ -75,10 +90,10 @@ public struct CardResolver {
             icon: flags.icon ?? preset.icon,
             fallbackIcon: preset.icon,
             color: flags.color ?? preset.color,
-            sound: flags.sound ?? environment.sound ?? presetSound,
-            seconds: flags.seconds ?? environment.seconds ?? preset.seconds ?? config.seconds ?? Defaults.seconds,
-            size: flags.size ?? environment.size ?? config.size ?? Defaults.size,
-            motion: flags.motion ?? environment.motion ?? config.motion ?? Defaults.motion
+            sound: flags.sound ?? (keepsOwnSound ? preset.sound : sound ?? preset.sound),
+            seconds: flags.seconds ?? seconds(for: preset),
+            size: flags.size ?? size,
+            motion: flags.motion ?? motion
         )
         if flags.open != nil || flags.button != nil {
             card.action = CardAction(

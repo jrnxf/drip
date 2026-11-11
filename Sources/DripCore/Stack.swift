@@ -31,7 +31,17 @@ public struct StackSettings: Equatable, Sendable, Codable {
     public static func current(environment: [String: String], config: Config? = nil) -> StackSettings? {
         let settings = (try? EnvironmentSettings(environment: environment)) ?? EnvironmentSettings()
         let config = config ?? ConfigLoader.loadLeniently(environment: environment).config
-        guard let mode = (settings.stack ?? config.stack ?? .chain).mode else { return nil }
-        return StackSettings(mode: mode, max: settings.stackMax ?? config.stackMax ?? Defaults.stackMax)
+        guard let mode = choice(settings, config: config).mode else { return nil }
+        return StackSettings(mode: mode, max: maxCards(settings, config: config))
+    }
+
+    /// `DRIP_STACK`, then the config's `stack`, then chain.
+    public static func choice(_ settings: EnvironmentSettings, config: Config) -> Choice {
+        settings.stack ?? config.stack ?? .chain
+    }
+
+    /// `DRIP_STACK_MAX`, then the config's `stack_max`, then the default.
+    public static func maxCards(_ settings: EnvironmentSettings, config: Config) -> Int {
+        settings.stackMax ?? config.stackMax ?? Defaults.stackMax
     }
 }
