@@ -193,12 +193,34 @@ struct ConfigTests {
         #expect(try ConfigLoader.parse("sound = true", path: path).config == Config())
     }
 
+    /// Dotted keys and inline tables read as the same preset as a `[preset.ci]` table.
+    @Test func dottedKeysAndInlineTablesReadLikeTables() throws {
+        let expected = try ConfigLoader.parse("[preset.ci]\nsound = \"Hero\"\nseconds = 3", path: path)
+        #expect(expected.config.presets["ci"]?.sound == .named("Hero"))
+        for text in [
+            "preset.ci.sound = \"Hero\"\npreset.ci.seconds = 3",
+            "[preset]\nci.sound = \"Hero\"\nci.seconds = 3",
+            "[preset]\nci = { sound = \"Hero\", seconds = 3 }",
+            "preset = { ci = { sound = \"Hero\", seconds = 3 } }",
+        ] {
+            let file = try ConfigLoader.parse(text, path: path)
+            #expect(file.config == expected.config, "\(text.debugDescription)")
+            #expect(file.warnings.isEmpty)
+        }
+        // A bad field in a dotted key warns, and the other fields stay.
+        let file = ConfigLoader.parseLeniently(
+            "preset.ci.sound = \"Hero\"\npreset.ci.seconds = \"x\"\nsize.big = 1", path: path)
+        #expect(file.config.presets["ci"]?.sound == .named("Hero"))
+        #expect(file.problems.map(\.key) == ["preset.ci.seconds", "size"])
+        #expect(file.problems.map(\.line) == [2, 3])
+    }
+
     @Test func syntaxErrorsNameTheLine() {
         assertError("seconds = 4.5\nsize = ", line: 2, key: nil, message: "expected a value")
         assertError("[preset.ok]\nsound = \"Hero\"\n[[preset]]", line: 3, key: nil,
                     message: "arrays of tables are not supported")
-        assertError("seconds = 3\npreset.ok.icon = \"star\"", line: 2, key: nil,
-                    message: "dotted keys are not supported")
+        assertError("seconds = 3\nt = { a = 1", line: 2, key: nil, message: "unterminated inline table")
+        assertError("[preset]\nci.sound = \"Hero\"\n[preset.ci]", line: 3, key: nil, message: "table 'preset.ci' is already defined")
     }
 
     @Test func configPath() {

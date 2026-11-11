@@ -112,8 +112,6 @@ struct TOMLTests {
     @Test func unsupportedSyntaxNamesTheLine() {
         assertError("a = 1\n[[item]]", line: 2, contains: "arrays of tables are not supported")
         assertError("a = 1\nlist = [1, 2]", line: 2, contains: "arrays are not supported")
-        assertError("a = 1\nt = { b = 1 }", line: 2, contains: "inline tables are not supported")
-        assertError("a = 1\npreset.ok.sound = \"Hero\"", line: 2, contains: "dotted keys are not supported")
         assertError("a = 1\n\"quoted\" = 1", line: 2, contains: "quoted keys are not supported")
         assertError("a = 1\n'quoted' = 1", line: 2, contains: "quoted keys are not supported")
         assertError("a = 1\n[preset.\"ok\"]", line: 2, contains: "quoted keys are not supported")
@@ -130,6 +128,102 @@ struct TOMLTests {
         assertError("a = 1\nb = 0xff", line: 2, contains: "hexadecimal, octal and binary integers are not supported")
         assertError("a = 1\nb = 0o755", line: 2, contains: "hexadecimal, octal and binary integers are not supported")
         assertError("a = 1\nb = 0b1101", line: 2, contains: "hexadecimal, octal and binary integers are not supported")
+    }
+
+    @Test func dottedKeysMakeTables() throws {
+        let table = try TOML.parse("""
+            preset.ok.sound = "Hero"
+            preset . ok . seconds = 3
+            [t]
+            a.b = 1
+            a.c = 2
+            """)
+        guard case let .table(presets)? = table["preset"]?.value,
+              case let .table(ok)? = presets["ok"]?.value,
+              case let .table(t)? = table["t"]?.value,
+              case let .table(a)? = t["a"]?.value
+        else { Issue.record("\(table)"); return }
+        #expect(ok.keys == ["sound", "seconds"])
+        #expect(ok["sound"] == TOMLItem(value: .string("Hero"), line: 1))
+        #expect(ok["seconds"] == TOMLItem(value: .integer(3), line: 2))
+        #expect(a.keys == ["b", "c"])
+        #expect(a["c"] == TOMLItem(value: .integer(2), line: 5))
+    }
+
+    @Test func inlineTablesMakeTables() throws {
+        let table = try TOML.parse("""
+            t = { a = 1, b.c = "x", d = { e = true }, f = {} }
+            [preset]
+            ci = { sound = "Hero" }
+            """)
+        guard case let .table(t)? = table["t"]?.value,
+              case let .table(b)? = t["b"]?.value,
+              case let .table(d)? = t["d"]?.value,
+              case let .table(f)? = t["f"]?.value,
+              case let .table(presets)? = table["preset"]?.value,
+              case let .table(ci)? = presets["ci"]?.value
+        else { Issue.record("\(table)"); return }
+        #expect(t.keys == ["a", "b", "d", "f"])
+        #expect(t["a"] == TOMLItem(value: .integer(1), line: 1))
+        #expect(b["c"] == TOMLItem(value: .string("x"), line: 1))
+        #expect(d["e"] == TOMLItem(value: .boolean(true), line: 1))
+        #expect(f.keys.isEmpty)
+        #expect(ci["sound"] == TOMLItem(value: .string("Hero"), line: 3))
+        #expect(presets["ci"]?.line == 3)
+    }
+
+    @Test func dottedKeysAndHeadersMix() throws {
+        // TOML 1.0: a header may add a new sub-table below a dotted key's table.
+        let table = try TOML.parse("b.c = \"red\"\n[b.d]\nsmooth = true")
+        guard case let .table(b)? = table["b"]?.value else { Issue.record("\(table)"); return }
+        #expect(b.keys == ["c", "d"])
+        // A parent table may be defined after its child, and dotted keys may follow a header.
+        _ = try TOML.parse("[a.b]\nx = 1\n[a]\nc.d = 1")
+    }
+
+    @Test func tablesCannotBeRedefined() {
+        assertError("a.b = 1\na.b = 2", line: 2, contains: "'a.b' is defined twice")
+        assertError("a.b = 1\na = 2", line: 2, contains: "defined twice")
+        assertError("a = 1\na.b = 2", line: 2, contains: "'a' is already a value")
+        assertError("a.b = 1\n[a]", line: 2, contains: "already defined")
+        assertError("[a]\nb.c = 1\n[a.b]", line: 3, contains: "already defined")
+        assertError("[a.b]\n[a]\nb.c = 1", line: 3, contains: "already defined as a table")
+        assertError("[a]\nb = { c = 1 }\nb.d = 2", line: 3, contains: "already defined as a table")
+        assertError("a = { b = 1 }\n[a]", line: 2, contains: "already defined")
+        assertError("a = { b = 1 }\n[a.c]", line: 2, contains: "'a' is an inline table, so [a.c] cannot add to it")
+        assertError("[a]\nb = {}\n[a.b]", line: 3, contains: "already defined")
+        assertError("[a]\nb = { c = 1 }\n[a.b]", line: 3, contains: "already defined")
+        assertError("a = { b = 1, b = 2 }", line: 1, contains: "defined twice")
+        assertError("a = { b.c = 1, b = 2 }", line: 1, contains: "defined twice")
+        assertError("a = { b = { c = 1 }, b.d = 2 }", line: 1, contains: "already defined as a table")
+    }
+
+    @Test func theLimitAllowsEightTables() throws {
+        _ = try TOML.parse("a.b.c.d.e.f.g.h.i = 1")
+        _ = try TOML.parse("a = { b.c = { d.e = { f.g = 1 } } }")
+        _ = try TOML.parse("a.b.c.d.e.f.g = {}")
+    }
+
+    @Test func malformedInlineTablesAndDottedKeys() {
+        assertError("a = 1\nt = { b = 1", line: 2, contains: "unterminated inline table")
+        assertError("t = { b = 1,", line: 1, contains: "unterminated inline table")
+        assertError("t = { b = 1, }", line: 1, contains: "trailing comma")
+        assertError("t = { b = 1 c = 2 }", line: 1, contains: "expected ',' or '}'")
+        assertError("t = { , }", line: 1, contains: "expected a key")
+        assertError("t = { b }", line: 1, contains: "expected '='")
+        assertError("t = { b = }", line: 1, contains: "expected a value")
+        assertError("t = { b = 1 } x", line: 1, contains: "end of the line")
+        assertError("a. = 1", line: 1, contains: "expected a key")
+        assertError(".a = 1", line: 1, contains: "expected a key")
+        assertError("a..b = 1", line: 1, contains: "expected a key")
+        assertError("a.\"b\" = 1", line: 1, contains: "quoted keys are not supported")
+        // Deep nesting is an error, not a crash.
+        assertError(Array(repeating: "a", count: 50_000).joined(separator: ".") + " = 1", line: 1, contains: "at most 8 tables")
+        assertError("t = " + String(repeating: "{ a = ", count: 50_000), line: 1, contains: "at most 8 tables")
+        // One limit counts dotted keys and inline tables together.
+        assertError("a.b.c.d.e.f.g.h.i.j = 1", line: 1, contains: "at most 8 tables")
+        assertError("a.b.c.d.e.f.g = { h = { i = {} } }", line: 1, contains: "at most 8 tables")
+        assertError("a = { b.c = { d.e = { f.g = { h.i = {} } } } }", line: 1, contains: "at most 8 tables")
     }
 
     private func assertError(
