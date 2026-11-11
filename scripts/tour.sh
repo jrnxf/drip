@@ -226,12 +226,15 @@ step "drip hook --approve" \
     'answer=$(printf "%s\n" "$claude_permission" | drip hook claude --approve) || true
 drip ok "Hook answered" -d "printed: ${answer:-nothing, so the terminal asks}" --seconds 3'
 
+# The last card, written once: the dry run prints it and the real run evals it.
+done_cmd='drip ok "Tour done" -d "Docs: docs/usage.md, docs/coding-agents.md, recipes/README.md." --seconds 3 --wait'
+
 if [ "$n" -ne "$total" ]; then
     die "internal: $n steps, expected $total"
 fi
 if [ "$dry_run" -eq 1 ]; then
     echo
-    echo "tour: after the last step: drip ok \"Tour done\""
+    printf '%s\n' "tour: after the last step: $done_cmd"
     # A card that needs no click shows for 3 seconds at most, so the tour stays quick.
     slow=$(awk '/--seconds [0-9.]+/ && !/--yes|--open|--on-click/ {
         match($0, /--seconds [0-9.]+/)
@@ -245,4 +248,4 @@ if [ "$dry_run" -eq 1 ]; then
     echo "tour: ok - no card without a click shows for more than 3 seconds"
     exit 0
 fi
-drip ok "Tour done" -d "That is the tour. The docs: docs/usage.md, docs/coding-agents.md and recipes/README.md." --seconds 3 --wait
+eval "$done_cmd"
