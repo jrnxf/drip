@@ -135,8 +135,9 @@ old one as its icon pops in, its sound plays, and its time starts again. When th
 state and the icon stays, such as an agent's, the icon stays still and the state pops in the ring. With reduced motion the
 size changes at once and only the crossfade remains; with motion `none` it all changes at once. A card that asks a question (`--yes`)
 never changes in place; the newer card then waits its turn. A question replaced before it showed
-exits 5. A `--result` card never takes an older card's place either: it waits its turn, so that
-its drip can say how its own card ended.
+exits 5. A `--result` card never takes the place of an older card on screen either: it waits its
+turn, so that its drip can say how its own card ended. An older card that has not shown yet it
+replaces as any card does.
 
 ## How a card ended
 
@@ -146,7 +147,7 @@ its drip can say how its own card ended.
 | --- | --- |
 | `activate` | A click on the card, away from its ×, or on its `--open` button. |
 | `dismiss` | Its ×, a secondary click, VoiceOver's Dismiss or `drip dismiss` took it away, on screen or before it showed. |
-| `timeout` | Its time ran out: `--seconds`, or the 10 minutes a `--stay` card waits. |
+| `timeout` | Its time ran out: `--seconds`, or the 10 minutes a `--stay` card waits. A `--stay` card that gives way to a newer drip's card counts down its `--seconds`, then ends this way too. |
 | `replaced` | A newer card with the same `--id` took its place, on screen or before it showed. |
 
 ```sh

@@ -592,6 +592,8 @@ final class StackPresenter: CardPresenting {
                     // A newer card with the same id as one on screen takes its place there.
                     let found = others.remove(at: index)
                     CardQueue.adopt(index: found.index, in: found.ticket)
+                    // This drip's own card ends here, however the card that takes its place goes.
+                    if shown.own { note(.replaced, for: shown) }
                     swap(shown, for: found.card)
                 case let .enter(index):
                     let found = others.remove(at: index)

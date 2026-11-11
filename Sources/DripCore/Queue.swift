@@ -126,13 +126,14 @@ public enum CardAdoption {
     }
 
     /// The cards a stack showing for the ticket `source` can adopt, oldest first: cards from newer,
-    /// live, adoptable tickets that nobody claimed and no newer card with the same id replaced.
+    /// live, adoptable tickets that nobody claimed and no newer card with the same id replaced. A
+    /// card whose drip prints how it ended is never one: only its own drip sees how it ends.
     public static func candidates(
         after source: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool
     ) -> [(ticket: String, index: Int, card: Card)] {
         var found: [(ticket: String, index: Int, card: Card)] = []
         for ticket in queue.sorted(by: { $0.name < $1.name })
-        where ticket.name > source && ticket.adoptable && isAlive(ticket) {
+        where ticket.name > source && ticket.adoptable && !ticket.reportsResult && isAlive(ticket) {
             for (index, card) in ticket.cards.enumerated()
             where !card.asksQuestion && !ticket.claimed.contains(claimKey(index: index))
                 && !CardReplacement.isReplaced(card, in: ticket, queue: queue, isAlive: isAlive)

@@ -159,6 +159,16 @@ struct QueueTests {
         #expect(CardAdoption.candidates(after: mine.name, queue: queue, isAlive: { $0.pid != 60 }).isEmpty)
     }
 
+    /// A card whose drip prints how it ended shows only in that drip's own stack, which alone sees
+    /// how it ends: no other stack adopts it, even from a ticket marked adoptable.
+    @Test func aStackNeverAdoptsACardThatReportsItsResult() {
+        let mine = ticket(1, pid: 10, card(nil))
+        let reporting = QueueTicket(
+            name: QueueTicket.name(stamp: 2, pid: 20), cards: [card(nil, title: "result")], adoptable: true,
+            reportsResult: true)!
+        #expect(CardAdoption.candidates(after: mine.name, queue: [mine, reporting], isAlive: { _ in true }).isEmpty)
+    }
+
     @Test func aStackSkipsACardThatANewerOneWithTheSameIDReplaces() {
         let mine = ticket(1, pid: 10, card(nil))
         let queue = [mine, adoptable(2, pid: 20, card("x", title: "old")), adoptable(3, pid: 30, card("x", title: "new"))]

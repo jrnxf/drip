@@ -42,11 +42,30 @@ struct ResultTests {
         #expect(message.contains("give --yes or --result, not both"), "\(message)")
     }
 
+    /// --no alone is no question, as without --result; an --open button is a click on the card.
+    @Test func resultWithTheOtherButtons() throws {
+        guard case let .exit(status, message) = CommandLineParser.parse(["warn", "Deploy?", "--no", "Later", "--result"])
+        else {
+            Issue.record("--no without --yes parsed")
+            return
+        }
+        #expect(status == ExitStatus.usage)
+        #expect(message.contains("--no needs --yes"), "\(message)")
+        let open = try show(["info", "Built", "--open", "https://example.com", "--button", "View", "--result"])
+        #expect(open.result)
+        #expect(open.flags.wait)
+    }
+
     /// drip run and drip hook print nothing of their cards: a hook's stdout belongs to its agent.
     @Test(arguments: [
         (["run", "--result", "true"], ExitStatus.usage),
         (["run", "--result=yes", "true"], ExitStatus.usage),
+        // After other options too: drip run sees every option before its command.
+        (["run", "--stay", "--result", "make"], ExitStatus.usage),
+        (["run", "-s", "3", "--result", "make"], ExitStatus.usage),
+        (["run", "--detail", "-x", "--id", "a", "--result", "make"], ExitStatus.usage),
         (["hook", "claude", "--result", "{}"], ExitStatus.hookFailed),
+        (["hook", "claude", "--min-turn", "5", "--result", "{}"], ExitStatus.hookFailed),
     ] as [([String], Int32)])
     func runAndHookTakeNoResult(_ arguments: [String], _ code: Int32) {
         guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
