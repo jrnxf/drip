@@ -93,8 +93,8 @@ card. Copy one into the agent's settings and adapt it.
 
 Start with [Permission cards](recipes/permission-cards/). It has the hooks for Claude Code, Codex
 and Gemini CLI. [recipes/](recipes/README.md) also has click recipes for herdr, WezTerm and Ghostty,
-and examples for Aider and opencode. [docs/coding-agents.md](docs/coding-agents.md) is the reference for
-`drip hook`, `drip watching` and `DRIP_HOOK`.
+and examples for Aider and opencode. [docs/coding-agents.md](docs/coding-agents.md) is the reference
+for `drip hook`, `drip watching` and `DRIP_HOOK`.
 
 To show the cards of an agent on a Linux box you reach over ssh, with no drip there, see
 [docs/remote.md](docs/remote.md).
