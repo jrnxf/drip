@@ -125,6 +125,42 @@ hooks for that session alone (`--dangerously-bypass-hook-trust`), where you woul
 Codex refreshes it at the same moment, Codex may ask you to run `codex login` again. Any program you
 run can read the Claude Code token and the Gemini API key in the Keychain without asking, as an unattended check must.
 
+## Running drip by hand
+
+drip reads three places, and a scratch run must move all of them:
+
+- `XDG_CONFIG_HOME` (else `~/.config`): `drip/config.toml`.
+- `XDG_STATE_HOME` (else `~/.local/state`): `drip/history.jsonl`, `drip/debug.log`, the held cards and the pause.
+- `DRIP_QUEUE_DIR` (an absolute path; else the user temp folder): the card queue that drips share.
+  Only this variable moves the queue. `TMPDIR` does not.
+
+Each `XDG_*` value must be an absolute path, or drip falls back to `HOME`. drip also writes under
+`HOME`: `drip follow` writes `~/Library/LaunchAgents` and `~/Library/Logs`. Unset every inherited
+`DRIP_*` variable, and `CLAUDE_CODE_SESSION_ATTENDED` and `CLAUDE_CODE_ENTRYPOINT` too, as the
+example does, or they change what drip reads. The example unsets `TMUX` and `TMUX_PANE` too, so a
+run inside tmux does not read the real pane. (`COLUMNS` and `NO_COLOR` only shape the output.)
+A scratch run still reads the real Mac's live state, the GUI session and Focus, so those parts of
+the `doctor` output describe the real Mac.
+
+Run it from the repo root, after `swift build`:
+
+```sh
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+env $(env | sed -n 's/^\(DRIP_[A-Za-z0-9_]*\)=.*/-u \1/p') \
+  -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT -u TMUX -u TMUX_PANE \
+  XDG_CONFIG_HOME="$scratch/config" XDG_STATE_HOME="$scratch/state" DRIP_QUEUE_DIR="$scratch/queue" \
+  .build/debug/drip doctor
+```
+
+Never point `XDG_STATE_HOME` or `XDG_CONFIG_HOME` at the real `~/.local/state` or `~/.config`. On a
+Mac in use, run by hand only commands that show no card, such as `doctor`, `history` (not
+`history --replay`, which shows the cards again) and `__render`: a drip with its own queue shows its
+cards on top of the person's own and ignores their `drip pause`. Do not run `drip follow` by hand: it
+installs a real LaunchAgent. Apart from `scripts/tour.sh`, which you run on purpose to watch cards,
+commands that show cards belong on a Mac nobody works at, as `scripts/mac-check.sh` and
+`scripts/mac-e2e.sh` run them with `DRIP_LIVE_CHECKS=isolated`.
+
 ## Releases
 
 A pushed tag makes a release: `.github/workflows/release.yml` builds the universal archive,
