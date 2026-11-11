@@ -13,9 +13,10 @@ build the latest `main` from source instead, run `brew install --HEAD jrnxf/tap/
 is signed ad hoc, so macOS asks again after each one.
 
 Homebrew installs the zsh, bash and fish completions, once your shell loads them
-([how](https://docs.brew.sh/Shell-Completion)), and the man page, so `man drip` works. For a source build, run
-`drip --generate-completion-script zsh` (or `bash`, `fish`) and save the output where your shell
-loads completions.
+([how](https://docs.brew.sh/Shell-Completion)). From the first release that ships the man page on,
+a release install also installs it, so `man drip` works. A `--HEAD` build has no man page. For a
+source build, run `drip --generate-completion-script zsh` (or `bash`, `fish`) and save the output
+where your shell loads completions. The source build steps below also add the man page.
 
 Without Homebrew, build it from source with the Swift in the Command Line Tools and put the binary
 on your `PATH`:
@@ -27,13 +28,17 @@ cd drip
 swift build -c release
 sudo mkdir -p /usr/local/bin
 sudo cp .build/release/drip /usr/local/bin/
+scripts/man-page.sh .build/release/drip .build/man
+sudo mkdir -p /usr/local/share/man/man1
+sudo cp .build/man/drip.1 /usr/local/share/man/man1/
 drip ok "drip works"
 ```
 
 ## Uninstall
 
 ```sh
-brew uninstall drip                       # or: sudo rm /usr/local/bin/drip, for a build from source
+brew uninstall drip                       # or, for a build from source:
+sudo rm /usr/local/bin/drip /usr/local/share/man/man1/drip.1
 rm -rf ~/.config/drip ~/.local/state/drip # the config and the history
 ```
 
