@@ -221,13 +221,27 @@ struct TextTests {
         #expect(lines.allSatisfy { CardText.isRightToLeft($0) })
     }
 
-    /// The detail follows the title's direction, so both lines align to the same side.
-    @Test func cardTakesItsDirectionFromTheTitle() {
-        #expect(CardText.cardIsRightToLeft(title: "שלום עולם", detail: "Build finished"))
-        #expect(CardText.cardIsRightToLeft(title: "مرحبا بالعالم", detail: "Build finished"))
-        #expect(!CardText.cardIsRightToLeft(title: "Build finished", detail: "שלום עולם"))
-        #expect(!CardText.cardIsRightToLeft(title: "Build finished", detail: nil))
-        #expect(CardText.cardIsRightToLeft(title: "שלום", detail: nil))
+    /// Both lines align to the card's direction, the title's first strong direction. Each line keeps
+    /// the base direction of its own text.
+    @Test func cardDirectionComesFromTheTitleThenTheDetail() {
+        let hebrewOverLatin = CardText.direction(title: "שלום עולם", detail: "Build 42 finished (ok)")
+        #expect(hebrewOverLatin == CardText.Direction(alignsRight: true, titleRightToLeft: true, detailRightToLeft: false))
+        let arabicOverLatin = CardText.direction(title: "مرحبا بالعالم", detail: "Build finished.")
+        #expect(arabicOverLatin.alignsRight && !arabicOverLatin.detailRightToLeft)
+        let latinOverHebrew = CardText.direction(title: "Build finished", detail: "שלום עולם")
+        #expect(latinOverHebrew == CardText.Direction(alignsRight: false, titleRightToLeft: false, detailRightToLeft: true))
+        #expect(!CardText.direction(title: "Build finished", detail: nil).alignsRight)
+        #expect(CardText.direction(title: "שלום", detail: nil).alignsRight)
+    }
+
+    /// A title with no strong letter ("404", "#123", an emoji, nothing) takes the detail's direction.
+    @Test func cardDirectionFallsBackToTheDetailForANeutralTitle() {
+        for title in ["404", "#123", "🎉", ""] {
+            #expect(CardText.direction(title: title, detail: "שלום עולם")
+                == CardText.Direction(alignsRight: true, titleRightToLeft: false, detailRightToLeft: true))
+            #expect(!CardText.direction(title: title, detail: "Build finished").alignsRight)
+            #expect(!CardText.direction(title: title, detail: nil).alignsRight)
+        }
     }
 
     /// A typesetter's break is used as given when it fits, and moved back to the last space when the

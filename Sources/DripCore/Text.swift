@@ -258,10 +258,36 @@ public enum CardText {
         return false
     }
 
-    /// The one direction a card reads in: the title's. The detail follows it, so both lines align to
-    /// the same side even when the detail is in another script.
-    public static func cardIsRightToLeft(title: String, detail _: String?) -> Bool {
-        isRightToLeft(title)
+    /// How a card sets its two text lines. Both lines align to the side of the card's direction: the
+    /// title's first strong direction, or the detail's when the title has none ("404", "#123", an
+    /// emoji). Each line keeps the base direction of its own text, so a Latin line under a Hebrew
+    /// title keeps its punctuation where it belongs.
+    public struct Direction: Equatable, Sendable {
+        /// True when both lines hug the right edge.
+        public let alignsRight: Bool
+        /// True when the title's own text reads right to left.
+        public let titleRightToLeft: Bool
+        /// True when the detail's own text reads right to left.
+        public let detailRightToLeft: Bool
+    }
+
+    public static func direction(title: String, detail: String?) -> Direction {
+        let own = firstStrongIsRightToLeft(title)
+        let detailOwn = detail.flatMap(firstStrongIsRightToLeft)
+        return Direction(
+            alignsRight: own ?? detailOwn ?? false,
+            titleRightToLeft: own ?? false,
+            detailRightToLeft: detailOwn ?? false)
+    }
+
+    /// The first strongly directional letter of `text`: true for right to left, false for left to
+    /// right, nil when there is none.
+    private static func firstStrongIsRightToLeft(_ text: String) -> Bool? {
+        for scalar in text.unicodeScalars {
+            if isRightToLeftScalar(scalar) { return true }
+            if scalar.properties.isAlphabetic { return false }
+        }
+        return nil
     }
 
     private static func isRightToLeftScalar(_ scalar: Unicode.Scalar) -> Bool {
