@@ -266,6 +266,12 @@ public enum CardText {
         public let titleRightToLeft: Bool
         /// True when the detail's base direction is right to left.
         public let detailRightToLeft: Bool
+
+        public init(alignsRight: Bool, titleRightToLeft: Bool, detailRightToLeft: Bool) {
+            self.alignsRight = alignsRight
+            self.titleRightToLeft = titleRightToLeft
+            self.detailRightToLeft = detailRightToLeft
+        }
     }
 
     public static func direction(title: String, detail: String?) -> Direction {
