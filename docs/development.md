@@ -130,20 +130,26 @@ run can read the Claude Code token and the Gemini API key in the Keychain withou
 drip reads three places, and a scratch run must move all of them:
 
 - `XDG_CONFIG_HOME` (else `~/.config`): `drip/config.toml`.
-- `XDG_STATE_HOME` (else `~/.local/state`): `drip/history.jsonl`, `drip/debug.log`, the held cards and the pause.
+- `XDG_STATE_HOME` (else `~/.local/state`): `drip/history.jsonl`, `drip/debug.log`,
+  `drip/remote.jsonl` (`DRIP_QUEUE` overrides it), the held cards and the pause.
 - `DRIP_QUEUE_DIR` (an absolute path; else the user temp folder): the card queue that drips share.
 
-Each `XDG_*` value must be an absolute path, or drip falls back to `HOME`. This is the same world
-`scripts/mac-e2e.sh` builds for itself.
+Each `XDG_*` value must be an absolute path, or drip falls back to `HOME`. Unset every inherited
+`DRIP_*` variable too, as the example does, or one can change what drip reads.
 
 ```sh
 scratch=$(mktemp -d)
-XDG_CONFIG_HOME=$scratch/config XDG_STATE_HOME=$scratch/state DRIP_QUEUE_DIR=$scratch/queue \
+env $(env | sed -n 's/^\(DRIP_[A-Z_]*\)=.*/-u \1/p') \
+  XDG_CONFIG_HOME="$scratch/config" XDG_STATE_HOME="$scratch/state" DRIP_QUEUE_DIR="$scratch/queue" \
   .build/debug/drip doctor
+rm -rf "$scratch"
 ```
 
-Never run drip against the real state folder. It fills your real history and debug log, and its
-cards can join your real card queue.
+The real state folder is never the target. On a Mac in use, run by hand only commands that show no
+card, such as `doctor`, `history` and `__render`: a drip with its own queue shows its cards on top
+of the person's own and ignores their `drip pause`. Do not run `drip follow` by hand: it installs a
+real LaunchAgent under `~/Library`. Commands that show cards belong on a Mac nobody works at, as
+`scripts/mac-check.sh` and `scripts/mac-e2e.sh` run them with `DRIP_LIVE_CHECKS=isolated`.
 
 ## Releases
 
