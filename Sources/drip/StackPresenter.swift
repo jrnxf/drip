@@ -86,6 +86,9 @@ final class StackPresenter: CardPresenting {
     /// How each card on screen that something took away ends, by its entry's id, until it has left:
     /// a card with no end here ran out of time.
     private var ends: [Int: CardResult] = [:]
+    /// The ticket each card on screen that a newer drip's card swapped into came from, by its entry's
+    /// id: only a card queued after it takes its place again. A card with none here is this drip's own.
+    private var sources: [Int: String] = [:]
     /// Newer drips' cards the stack can take in, oldest first, as the last look at the queue found
     /// them, less those taken in since.
     private var others: [(ticket: String, index: Int, card: Card)] = []
@@ -404,6 +407,7 @@ final class StackPresenter: CardPresenting {
         case let .enter(index):
             let found = others.remove(at: index)
             CardQueue.adopt(index: found.index, in: found.ticket)
+            CardQueue.supersede(with: found.card, from: found.ticket)
             if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
             card = found.card
             own = false
@@ -537,6 +541,24 @@ final class StackPresenter: CardPresenting {
     /// its own cards have gone, it hands the rest on and exits.
     private var adoptsNow: Bool { adopting || (asks && stack.holdsOwn) }
 
+    /// Swaps the newest card that a newer drip queued with the id of one of this drip's own cards on
+    /// screen into its place, for a stack that takes no cards in. The newer card is claimed first, so
+    /// its drip never shows it too, and it replaces every older card with its id for good.
+    private func replaceOwn() {
+        guard let mine = CardQueue.mine?.name else { return }
+        for entry in stack.replaceable {
+            guard let found = CardQueue.replacement(for: entry.card, after: sources[entry.id] ?? mine),
+                  let id = found.card.id
+            else { continue }
+            CardQueue.claim(id, in: found.ticket)
+            CardQueue.supersede(with: found.card, from: found.ticket)
+            // This drip's own card ends here, however the card that takes its place goes.
+            note(.replaced, for: entry)
+            swap(entry, for: found.card)
+            sources[entry.id] = found.ticket
+        }
+    }
+
     /// Brings in this drip's next card, or a newer drip's, when there is room and the pointer is away:
     /// dropped in while no card waits past a full stack, else grown out of the overflow drop.
     private func admit() {
@@ -548,12 +570,21 @@ final class StackPresenter: CardPresenting {
         }
         if !adoptsNow {
             foundAdoptable = false
-            othersWaiting = false
             needsRoom = false
             others = []
             if time - lastAdoptionCheck >= 0.25 {
                 lastAdoptionCheck = time
                 replacedOwn = stack.waiting.filter(CardQueue.isReplaced)
+                if Away.isAway {
+                    othersWaiting = false
+                } else {
+                    // A stack that takes no cards in still lets a newer card with the same id take
+                    // the place of its own on screen, and its cards that wait give way to any drip
+                    // waiting for its turn, as a drip that shows one card at a time does.
+                    if stack.isReady(at: time) { replaceOwn() }
+                    othersWaiting = stack.live.contains(where: \.isWaiting)
+                        && CardQueue.othersWait(except: Set(stack.live.compactMap(\.card.id)), adopts: false)
+                }
             }
         } else if time - lastAdoptionCheck >= 0.25, !Away.isAway {
             // The queue is looked at whatever the stack is doing, so the overflow drop's count stays
@@ -576,7 +607,7 @@ final class StackPresenter: CardPresenting {
             // Cards that wait for you give way to newer drips' cards.
             if stack.live.contains(where: \.isWaiting) {
                 let shown = Set(stack.live.compactMap(\.card.id))
-                othersWaiting = CardQueue.waiting(except: shown).contains { !$0.adoptable }
+                othersWaiting = CardQueue.othersWait(except: shown, adopts: true)
                 needsRoom = !stack.hasRoom && others.contains { found in
                     !(found.card.id.map(shown.contains) ?? false)
                 }
@@ -592,12 +623,15 @@ final class StackPresenter: CardPresenting {
                     // A newer card with the same id as one on screen takes its place there.
                     let found = others.remove(at: index)
                     CardQueue.adopt(index: found.index, in: found.ticket)
+                    CardQueue.supersede(with: found.card, from: found.ticket)
                     // This drip's own card ends here, however the card that takes its place goes.
                     if shown.own { note(.replaced, for: shown) }
                     swap(shown, for: found.card)
+                    sources[shown.id] = found.ticket
                 case let .enter(index):
                     let found = others.remove(at: index)
                     CardQueue.adopt(index: found.index, in: found.ticket)
+                    CardQueue.supersede(with: found.card, from: found.ticket)
                     if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
                     enter(found.card, own: false)
                     return
@@ -649,6 +683,7 @@ final class StackPresenter: CardPresenting {
         if !changes.gone.isEmpty {
             let kept = Set(stack.entries.map(\.id) + stack.tucked.map(\.entry))
             arrivals = arrivals.filter { kept.contains($0.key) }
+            sources = sources.filter { kept.contains($0.key) }
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)

@@ -353,6 +353,7 @@ final class ReplacementWatch {
         {
             // Claimed first, so the newer drip never shows the card too.
             CardQueue.claim(id, in: found.ticket)
+            CardQueue.supersede(with: found.card, from: found.ticket)
             CardActions.end(.replaced)
             presenter.replace(with: found.card)
             current = found.card
@@ -363,7 +364,7 @@ final class ReplacementWatch {
         // A card that waits for you gives way to a newer drip waiting for its turn; a question never
         // does, and the newer drip waits for its answer.
         if current.waits, !current.waitsForAnswer,
-           !CardQueue.waiting(except: Set([current.id].compactMap { $0 })).isEmpty
+           CardQueue.othersWait(except: Set([current.id].compactMap { $0 }), adopts: false)
         {
             presenter.stopWaiting()
         }

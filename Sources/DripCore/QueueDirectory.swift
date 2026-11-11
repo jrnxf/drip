@@ -96,6 +96,15 @@ public struct QueueDirectory {
         write((try? JSONEncoder().encode(claimed.sorted())) ?? Data(), to: QueueTicket.claimName(for: ticket), writer: getpid())
     }
 
+    /// Marks every older live card with `id` as replaced by the card from `newer` that a showing
+    /// drip took over, so each stays replaced once `newer`'s drip has exited. See
+    /// `CardReplacement.superseded`.
+    public func supersede(_ id: String, by newer: String) {
+        for ticket in CardReplacement.superseded(id: id, by: newer, queue: load(), isAlive: isAlive) {
+            claim(id, in: ticket)
+        }
+    }
+
     public func remove(_ ticket: String) {
         try? FileManager.default.removeItem(atPath: file(ticket))
         try? FileManager.default.removeItem(atPath: file(QueueTicket.claimName(for: ticket)))

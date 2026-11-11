@@ -11,7 +11,9 @@ import Foundation
 /// process started, so a later process given the same pid is not taken for it. It holds the
 /// cards, so a newer drip's card can replace them and a showing drip can adopt them into its stack.
 /// When a showing drip takes over a newer ticket's card on screen, it marks that card as claimed,
-/// by its id or by its place in the ticket, and the newer drip then skips it.
+/// by its id or by its place in the ticket, and the newer drip then skips it. It claims the id in
+/// every older ticket that holds a card with it too, so those cards stay replaced once the newer
+/// drip has gone.
 public struct QueueTicket: Equatable, Sendable {
     public var name: String
     public var pid: Int32
@@ -150,8 +152,9 @@ public enum CardAdoption {
 public enum CardTurns {
     /// The cards of live drips queued after `source` that still wait for their turn: not adopted,
     /// claimed or replaced, and without an id in `except`, as such a card takes the place of a card
-    /// on screen instead. A card whose drip prints how it ended never takes another's place, so it
-    /// waits whatever its id. `adoptable` says whether a stack at the notch could take the card in.
+    /// on screen instead. A question, or a card whose drip prints how it ended, never takes another's
+    /// place, so it waits whatever its id. `adoptable` says whether a stack at the notch could take
+    /// the card in.
     public static func waiting(
         after source: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool, except ids: Set<String> = []
     ) -> [(card: Card, adoptable: Bool)] {
@@ -159,13 +162,24 @@ public enum CardTurns {
         for ticket in queue.sorted(by: { $0.name < $1.name }) where ticket.name > source && isAlive(ticket) {
             for (index, card) in ticket.cards.enumerated()
             where !ticket.claimed.contains(CardAdoption.claimKey(index: index))
-                && (ticket.reportsResult || !(card.id.map(ids.contains) ?? false))
+                && (ticket.reportsResult || card.asksQuestion || !(card.id.map(ids.contains) ?? false))
                 && !CardReplacement.isReplaced(card, in: ticket, queue: queue, isAlive: isAlive)
             {
                 found.append((card, ticket.adoptable && !card.asksQuestion))
             }
         }
         return found
+    }
+
+    /// Whether the cards that wait for you on screen give way: a newer drip's card waits for its turn
+    /// that the drip showing them does not take in. A stack that `adopts` takes in every adoptable
+    /// card itself, so only the others count. For any other drip every card waiting counts. Cards
+    /// with an id in `except` take the place of a card on screen instead, as for `waiting`.
+    public static func othersWait(
+        after source: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool, except ids: Set<String> = [],
+        adopts: Bool
+    ) -> Bool {
+        waiting(after: source, queue: queue, isAlive: isAlive, except: ids).contains { !adopts || !$0.adoptable }
     }
 
     /// Whether a live drip queued before `source` shows, or will show, a question that waits for its
@@ -209,6 +223,19 @@ public enum CardReplacement {
             return canSwap(showing, for: card) && !ticket.reportsResult ? (ticket.name, card) : nil
         }
         return nil
+    }
+
+    /// The live tickets queued before `newer` that hold a card with `id` not yet claimed. Once a
+    /// showing drip takes over `newer`'s card with that id, those cards are replaced for good. The
+    /// newer drip exits soon after, as it has nothing left to show, and its ticket goes with it. So
+    /// each of these tickets needs the id claimed to stay replaced.
+    public static func superseded(
+        id: String, by newer: String, queue: [QueueTicket], isAlive: (QueueTicket) -> Bool
+    ) -> [String] {
+        queue.filter { ticket in
+            ticket.name < newer && !ticket.claimed.contains(id) && ticket.cards.contains { $0.id == id }
+                && isAlive(ticket)
+        }.map(\.name).sorted()
     }
 
     /// The cards in order, keeping only the newest card for each id; cards without an id all stay.

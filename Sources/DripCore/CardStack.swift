@@ -155,6 +155,11 @@ public final class CardStack {
         entries.map(\.animator.end).reduce(overflow?.end ?? 0, max)
     }
 
+    /// This drip's own cards on screen with an id, which a newer drip's card with the same id takes
+    /// the place of: shown, and not leaving. A stack that takes no cards in looks for those newer
+    /// cards itself, as a drip that shows one card at a time does.
+    public var replaceable: [Entry] { live.filter { $0.own && $0.isShown && $0.card.id != nil } }
+
     /// Whether the stack holds fewer cards than it may show at once.
     public var hasRoom: Bool { live.count < settings.max }
 

@@ -594,6 +594,30 @@ struct CardStackTests {
         #expect(stack.nextAdmission(adoptable: [identified("other")]) == nil)
     }
 
+    /// A drip that waits for its cards takes no others in, but a newer card with the id of one of its
+    /// own on screen still takes that card's place: only its own shown cards with an id qualify.
+    @Test func aStackOffersItsOwnShownCardsWithAnIDForANewerCardToReplace() {
+        let stack = CardStack(
+            settings: StackSettings(mode: .chain, max: 3),
+            cards: [identified("a", id: "build"), identified("b"), identified("c", id: "test")])
+        var time = run(stack, until: 0.05)
+        // Still dropping in, so not on screen yet.
+        #expect(stack.replaceable.isEmpty)
+        time = run(stack, from: time, until: 4)
+        #expect(titles(stack.replaceable) == ["a", "c"])
+        // Another drip's card it took in is not its own to give up.
+        stack.enter(identified("d", id: "lint"), metrics: metrics, own: false, decided: time, at: time)
+        time = run(stack, from: time, until: time + 1)
+        #expect(titles(stack.replaceable) == ["a", "c"])
+        // Swapped, it stays this drip's own, with the newer card's id.
+        let entry = stack.replaceable[0]
+        stack.swap(entry, for: identified("a2", id: "build"), metrics: metrics, at: time, reduced: false)
+        #expect(titles(stack.replaceable) == ["a2", "c"])
+        // One that leaves is gone already.
+        stack.leave(entry, at: time)
+        #expect(titles(stack.replaceable) == ["c"])
+    }
+
     @Test func aCardThatAsksAQuestionNeverSwapsIntoPlace() {
         var question = card("a", seconds: 10)
         question.id = "build"

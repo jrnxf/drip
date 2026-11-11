@@ -281,16 +281,24 @@ enum CardQueue {
         return CardReplacement.replacement(for: showing, after: source, queue: queue.load(), isAlive: isAlive)
     }
 
-    /// The cards of newer drips still waiting for their turn, leaving out those with an id in
-    /// `except`, which take the place of a card on screen instead; and whether a stack could adopt each.
-    static func waiting(except ids: Set<String>) -> [(card: Card, adoptable: Bool)] {
-        guard let mine else { return [] }
-        return CardTurns.waiting(after: mine.name, queue: queue.load(), isAlive: isAlive, except: ids)
+    /// Whether this drip's cards that wait for you give way: a newer drip waits for its turn with a
+    /// card this drip does not take in. Cards with an id in `except` take the place of a card on
+    /// screen instead. A drip that `adopts` takes in every adoptable card itself.
+    static func othersWait(except ids: Set<String>, adopts: Bool) -> Bool {
+        guard let mine else { return false }
+        return CardTurns.othersWait(after: mine.name, queue: queue.load(), isAlive: isAlive, except: ids, adopts: adopts)
     }
 
     /// Marks the card with `id` in `ticket` as taken over, so its own drip skips it.
     static func claim(_ id: String, in ticket: String) {
         queue.claim(id, in: ticket)
+    }
+
+    /// Marks every older card with the id of `card`, which this drip took over from `ticket`, as
+    /// replaced for good: `ticket`'s drip exits once it has nothing left to show.
+    static func supersede(with card: Card, from ticket: String) {
+        guard let id = card.id else { return }
+        queue.supersede(id, by: ticket)
     }
 
     /// Whether the drip that queued `ticket` still runs: its pid is alive and, when the ticket says

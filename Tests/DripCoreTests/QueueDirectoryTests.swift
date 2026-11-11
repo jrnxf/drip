@@ -88,6 +88,33 @@ final class QueueDirectoryTests {
         #expect(queue.load().map(\.reportsResult) == [false, true])
     }
 
+    /// A showing drip takes over a newer drip's card, and that drip exits: an older drip's card with
+    /// the same id, still waiting its turn, stays replaced on disk.
+    @Test func aCardTakenOverKeepsOlderCardsWithItsIDReplacedAfterItsDripExits() throws {
+        let card = { (title: String, id: String?) in
+            var card = Card(preset: .info, title: title)
+            card.id = id
+            return card
+        }
+        running[100] = 1
+        running[200] = 1
+        running[300] = 1
+        let showing = queue.enqueue(pid: 100, cards: [card("showing", "build")], stamp: 1)
+        let waiting = queue.enqueue(pid: 200, cards: [card("older", "build"), card("other", nil)], stamp: 2)
+        let newer = queue.enqueue(pid: 300, cards: [card("newer", "build")], adoptable: true, stamp: 3)
+        queue.claim(CardAdoption.claimKey(index: 0), in: newer)
+        queue.supersede("build", by: newer)
+        // The newer drip has nothing left to show, so it exits and its ticket goes.
+        queue.leave(300)
+        running[300] = nil
+        let tickets = queue.load()
+        #expect(tickets.map(\.name) == [showing, waiting])
+        let older = try #require(tickets.last)
+        #expect(older.claimed == ["build"])
+        #expect(CardReplacement.isReplaced(older.cards[0], in: older, queue: tickets, isAlive: queue.isAlive))
+        #expect(!CardReplacement.isReplaced(older.cards[1], in: older, queue: tickets, isAlive: queue.isAlive))
+    }
+
     /// A stack that took over some of a ticket's cards leaves the rest to the drip that queued it.
     @Test func aTicketIsFullyAdoptedOnlyOnceEveryCardIsClaimed() throws {
         let name = run(100, stamp: 1, cards: ["a", "b"])

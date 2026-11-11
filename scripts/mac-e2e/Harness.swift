@@ -1531,6 +1531,16 @@ check(13, "--result when a newer card with the same id takes its place") { expec
     dripRun(["ok", "e2e result newer", "-d", "took its place", "-s", "1", "--id", id], extra: single)
     result.expect("replaced", within: 8, &expect)
 }
+check(13, "--result when a newer card with the same id takes its place in a stack") { expect in
+    // The default stack takes no other drip's cards in while it waits, but it still swaps a newer
+    // card with the same id into its own on screen.
+    let id = fresh("replaced-stack")
+    let result = ResultRun(["info", "e2e result", "-d", "a newer card takes its place", "-s", "30", "--id", id])
+    expect.within(3, wait(3) { showing }, "the card shows")
+    pause(1.2)
+    dripRun(["ok", "e2e result newer", "-d", "took its place", "-s", "1", "--id", id])
+    result.expect("replaced", within: 8, &expect)
+}
 if canClick {
     check(13, "--result when a click takes a card away") { expect in
         bringForward(elsewhere)

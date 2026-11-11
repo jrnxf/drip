@@ -429,7 +429,10 @@ true. Once the pointer has rested for 5 seconds, the stack lets go, and moving i
 again. A click on a card you can click dismisses it; one `--activate none` leaves without a button
 neither holds the stack nor is dismissed by a click. Clicks pass to the window below only while no
 card in the stack takes clicks, as for a lone card. Only the cards of drips
-that returned at once stack; a card that waits (`--wait`, or a question) waits its turn. While a
+that returned at once stack; a card that waits (`--wait`, or a question) waits its turn. A drip
+that waits takes no other drip's cards into its stack, but a newer card with the same `--id` still
+takes the place of its card on screen, and its `--stay` card gives way to a drip waiting its turn:
+it counts down its `--seconds`, then goes. While a
 question shows, cards that count down stack around it; a card that waits, or another question,
 waits for its answer. drip exits as soon as the question is answered, so the command after it
 runs at once, and the cards still in the stack play out without it.
