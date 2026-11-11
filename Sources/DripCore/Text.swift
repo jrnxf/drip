@@ -258,6 +258,12 @@ public enum CardText {
         return false
     }
 
+    /// The one direction a card reads in: the title's. The detail follows it, so both lines align to
+    /// the same side even when the detail is in another script.
+    public static func cardIsRightToLeft(title: String, detail _: String?) -> Bool {
+        isRightToLeft(title)
+    }
+
     private static func isRightToLeftScalar(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
         case 0x0590...0x08FF, // Hebrew, Arabic, Syriac, Thaana, NKo, Samaritan, Mandaic, Arabic Extended

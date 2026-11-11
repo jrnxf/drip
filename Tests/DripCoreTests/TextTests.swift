@@ -221,6 +221,15 @@ struct TextTests {
         #expect(lines.allSatisfy { CardText.isRightToLeft($0) })
     }
 
+    /// The detail follows the title's direction, so both lines align to the same side.
+    @Test func cardTakesItsDirectionFromTheTitle() {
+        #expect(CardText.cardIsRightToLeft(title: "שלום עולם", detail: "Build finished"))
+        #expect(CardText.cardIsRightToLeft(title: "مرحبا بالعالم", detail: "Build finished"))
+        #expect(!CardText.cardIsRightToLeft(title: "Build finished", detail: "שלום עולם"))
+        #expect(!CardText.cardIsRightToLeft(title: "Build finished", detail: nil))
+        #expect(CardText.cardIsRightToLeft(title: "שלום", detail: nil))
+    }
+
     /// A typesetter's break is used as given when it fits, and moved back to the last space when the
     /// line it makes is too wide by the renderer's own measure.
     @Test func wrapTakesTheTypesettersBreakButNeverAWiderLine() {

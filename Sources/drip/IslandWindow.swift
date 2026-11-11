@@ -121,6 +121,7 @@ final class IslandLayers {
         }
         // The text column depends only on the size, the icon and the button.
         let column = CGFloat(islandMetrics(textSize: .zero, titleLines: 0, detailLines: 0).textColumn)
+        let cardRightToLeft = CardText.cardIsRightToLeft(title: card.title, detail: card.detail)
         let (titleText, detailText) = Self.wrapped(card, column: column)
         let titleSizes = titleText.map { Self.measure($0, maxWidth: column) }
         let detailSizes = detailText.map { Self.measure($0, maxWidth: column) }
@@ -145,9 +146,9 @@ final class IslandLayers {
                 return layer
             }
         }
-        titleLines = stack(titleText, titleSizes, rightToLeft: CardText.isRightToLeft(card.title))
+        titleLines = stack(titleText, titleSizes, rightToLeft: cardRightToLeft)
         top += spacing
-        detailLines = stack(detailText, detailSizes, rightToLeft: card.detail.map(CardText.isRightToLeft) ?? false)
+        detailLines = stack(detailText, detailSizes, rightToLeft: cardRightToLeft)
         textSize = block
         metrics = islandMetrics(textSize: block, titleLines: titleText.count, detailLines: detailText.count)
         size = CGSize(width: ceil(metrics.maxWidth) + 40, height: ceil(metrics.maxHeight))
@@ -457,12 +458,13 @@ final class IslandLayers {
     /// The card's title and detail as the island lays them out in a text column `column` points wide.
     private static func wrapped(_ card: Card, column: CGFloat) -> (title: [NSAttributedString], detail: [NSAttributedString]) {
         let sizeScale = CGFloat(card.size.scale)
+        let rightToLeft = CardText.cardIsRightToLeft(title: card.title, detail: card.detail)
         let title = lines(
-            card.title, font: .systemFont(ofSize: 14 * sizeScale, weight: .semibold), color: .white, width: column,
+            card.title, rightToLeft: rightToLeft, font: .systemFont(ofSize: 14 * sizeScale, weight: .semibold), color: .white, width: column,
             maxLines: Defaults.titleLines)
         let detail = card.detail.map {
             lines(
-                $0, font: .systemFont(ofSize: 12 * sizeScale, weight: .regular), color: NSColor(white: 0.62, alpha: 1),
+                $0, rightToLeft: rightToLeft, font: .systemFont(ofSize: 12 * sizeScale, weight: .regular), color: NSColor(white: 0.62, alpha: 1),
                 width: column, maxLines: Defaults.detailLines)
         } ?? []
         return (title, detail)
@@ -496,10 +498,10 @@ final class IslandLayers {
     /// an unfitted string in the text layer hid the whole island, is not proven. So every line gets
     /// its own layer, as wide as the widest line.
     private static func lines(
-        _ text: String, font: NSFont, color: NSColor, width: CGFloat, maxLines: Int
+        _ text: String, rightToLeft: Bool, font: NSFont, color: NSColor, width: CGFloat, maxLines: Int
     ) -> [NSAttributedString] {
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
-        if CardText.isRightToLeft(text) {
+        if rightToLeft {
             // Every line reads right to left, however it starts.
             let paragraph = NSMutableParagraphStyle()
             paragraph.baseWritingDirection = .rightToLeft
