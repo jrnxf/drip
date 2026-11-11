@@ -328,6 +328,9 @@ public struct CardFlags: Equatable {
     public var size: CardSize?
     /// Set only by `drip __render`: everywhere else the motion comes from the config or `DRIP_MOTION`.
     public var motion: Motion?
+    /// Set only by `drip __render`: everywhere else the outline comes from the config or
+    /// `DRIP_CONTRAST`.
+    public var contrast: Bool?
     /// Keeps the card on screen, as `--stay` does, unless a time is set for it.
     public var stay: Bool
     public var wait: Bool
@@ -925,8 +928,8 @@ public struct DoctorCommand: ParsableCommand {
 }
 
 /// `drip __render --out card.png [KIND] [TITLE] [options]`: draws a card offscreen into a PNG.
-/// Hidden from help; used by the snapshot tests, which also set the size and motion, settings the
-/// other commands take only from the config and the environment.
+/// Hidden from help; used by the snapshot tests, which also set the size, motion and outline,
+/// settings the other commands take only from the config and the environment.
 public struct RenderCommand: ParsableCommand {
     public enum Appearance: String, ExpressibleByArgument, CaseIterable {
         case light, dark
@@ -962,11 +965,15 @@ public struct RenderCommand: ParsableCommand {
     @Flag(help: "With --at, draw the card's exit instead of its entrance.")
     public var leaving = false
 
-    /// The card options, with the size and motion.
+    @Flag(help: "Draw the card's outline, as Increase Contrast or the config's contrast does.")
+    public var contrast = false
+
+    /// The card options, with the size, motion and outline.
     public var flags: CardFlags {
         var flags = options.flags(yes: question.yes, no: question.no)
         flags.size = size
         flags.motion = motion
+        flags.contrast = contrast ? true : nil
         return flags
     }
 

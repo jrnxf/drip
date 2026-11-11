@@ -257,6 +257,10 @@ public struct Card: Equatable, Sendable, Codable {
     public var seconds: Double
     public var size: CardSize
     public var motion: Motion
+    /// True when the card has its outline whatever the system says, as the config's `contrast` or
+    /// `DRIP_CONTRAST` asks; nil leaves it to Increase Contrast. Never false, so a card without it
+    /// encodes as it did before, and an older card reads.
+    public var contrast: Bool?
     /// A button on the card; nil for none.
     public var action: CardAction?
     /// Names what the card is about, such as an agent session: a newer card with the same id

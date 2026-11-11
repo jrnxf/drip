@@ -14,6 +14,7 @@ when_focused = "quiet"        # quiet | show | skip: an agent's card while you w
 away_after = 60               # seconds without keyboard or mouse before you count as away; 0: always away
 history = 1000                # most cards the history keeps, 0 to 1000; 0 stops recording (see drip history)
 debug = false                 # true: keep the debug log, a diagnostic aid (see Debug log)
+contrast = false              # true: outline every card, as Increase Contrast in System Settings does
 
 [preset.ok]                  # override a built-in preset, any subset of keys
 sound = "Hero"
@@ -30,14 +31,15 @@ icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this fi
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
 `DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`, `DRIP_AWAY_AFTER`,
-`DRIP_HISTORY`, `DRIP_DEBUG`, and for the
+`DRIP_HISTORY`, `DRIP_DEBUG`, `DRIP_CONTRAST`, and for the
 [zsh block](usage.md#without-typing-drip-run) `DRIP_SLOW_AFTER` and `DRIP_SLOW_IGNORE`;
 `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the
 environment is a usage error, which exits 2, when drip makes a card and in `drip watching`.
 `drip hook` exits 1 for it instead. `drip run` says so, still runs the command and shows its card
 with the defaults, and exits with the command's code. `drip history`, `drip debug` and
 `drip dismiss` never read it, and nor does a hook that shows nothing or only takes a card away. An
-invalid `DRIP_DEBUG` counts as unset. A preset's own `seconds` and `sound` beat the top-level ones, except
+invalid `DRIP_DEBUG` counts as unset. Increase Contrast turns the outline on whatever `contrast`
+says. A preset's own `seconds` and `sound` beat the top-level ones, except
 that a top-level `sound = false` mutes every preset. A custom preset starts from `info` and replaces
 what it sets. Its name must match `[a-z][a-z0-9-]*` and must not be one of drip's subcommands or a
 name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `remote-hook`,

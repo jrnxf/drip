@@ -54,6 +54,11 @@ final class HistoryTests {
             + #""motion":"full"}"#
         let decoded = try JSONDecoder().decode(Card.self, from: Data(older.utf8))
         #expect(decoded.waitLimit == nil && decoded.icon == .symbol("exclamationmark.circle.fill"))
+        #expect(decoded.contrast == nil)
+
+        // A card without the outline writes no contrast key, so older drips still read it.
+        let plain = String(decoding: try JSONEncoder().encode(card("plain")), as: UTF8.self)
+        #expect(!plain.contains("contrast"))
     }
 
     @Test func keepsOnlyTheNewestEntries() throws {

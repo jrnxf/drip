@@ -73,6 +73,10 @@ public struct CardResolver {
     /// `DRIP_MOTION`, then the config's `motion`, then the default.
     public var motion: Motion { environment.motion ?? config.motion ?? Defaults.motion }
 
+    /// `DRIP_CONTRAST`, then the config's `contrast`, then off: whether every card has its outline,
+    /// whatever Increase Contrast says.
+    public var contrast: Bool { environment.contrast ?? config.contrast ?? false }
+
     /// Resolves `drip [KIND] [TITLE] [options]` into a card.
     ///
     /// The first positional is the kind when it names a preset; otherwise it is the title and the
@@ -126,6 +130,8 @@ public struct CardResolver {
                 label: CardText.line(flags.button, limit: Defaults.buttonLimit) ?? "Open", open: flags.open,
                 decline: flags.open == nil ? CardText.line(flags.decline, limit: Defaults.buttonLimit) : nil)
         }
+        // Left out when off, so a card's JSON reads as it did before the outline.
+        card.contrast = (flags.contrast ?? contrast) ? true : nil
         card.id = flags.id
         card.activate = CardActivation.target(flag: flags.activate, sender: environment.sender)
         card.pane = flags.activate == nil && card.activate != nil ? environment.pane : nil

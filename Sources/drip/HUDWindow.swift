@@ -405,6 +405,12 @@ enum CardPresenters {
         card.motion.capped(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
+    /// Whether the card has its outline: when the config or `DRIP_CONTRAST` asks for it, and while
+    /// Increase Contrast is on.
+    static func outlined(_ card: Card) -> Bool {
+        card.contrast == true || NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+    }
+
     /// The strong ease-out every entrance and exit uses.
     static let easeOut = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
 
@@ -422,6 +428,25 @@ enum CardPresenters {
 }
 
 /// Plays a card's sound and keeps the process alive until it has finished.
+/// Calls `changed` on the main thread each time Increase Contrast is turned on or off, until
+/// stopped, so a card on screen takes its outline on or off at once.
+final class ContrastWatch {
+    private var observer: NSObjectProtocol?
+
+    init(_ changed: @escaping () -> Void) {
+        observer = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
+        ) { _ in changed() }
+    }
+
+    func stop() {
+        if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+        observer = nil
+    }
+
+    deinit { stop() }
+}
+
 final class CardSound {
     private var sound: NSSound?
 

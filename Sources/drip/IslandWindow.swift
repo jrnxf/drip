@@ -58,6 +58,9 @@ final class IslandLayers {
     let size: CGSize
     let root = CALayer()
     let shape = CAShapeLayer()
+    /// The line just inside the drop's edge, in `shape`, so it fades and hides with it; shown only
+    /// while `outlined`. In a stack, the stack draws its own.
+    private let edge: ContrastEdge
     /// Holds the icon, ring and text, clipped to the drop.
     let content = CALayer()
     let icon = CALayer()
@@ -155,6 +158,11 @@ final class IslandLayers {
         iconSide = 28 * sizeScale
         ringSide = buttonsWidth ?? 20 * sizeScale
         textEdge = CGFloat(IslandUpdate.textEdge) * sizeScale
+        edge = ContrastEdge(
+            frame: CGRect(origin: .zero, size: size),
+            notchMask: IslandPath.notchMask(size: size, metrics: metrics, centerX: size.width / 2, scale: scale),
+            scale: scale)
+        edge.isShown = card.contrast == true
 
         root.frame = CGRect(origin: .zero, size: size)
         root.isGeometryFlipped = true
@@ -164,6 +172,7 @@ final class IslandLayers {
         shape.fillColor = NSColor.black.cgColor
         shape.contentsScale = scale
         root.addSublayer(shape)
+        shape.addSublayer(edge.layer)
         content.frame = root.bounds
         content.masksToBounds = true
         root.addSublayer(content)
@@ -534,6 +543,8 @@ final class IslandLayers {
     struct Frame {
         /// Nil leaves the shape alone, for a card whose outline a stack draws.
         var path: CGPath?
+        /// The drop without the notch, for the contrast edge; nil with `path`.
+        var drop: CGPath?
         var iconPosition: CGPoint
         var iconScale: CGFloat
         var ringPosition: CGPoint
@@ -550,8 +561,9 @@ final class IslandLayers {
         let clip = CGRect(
             x: centerX - islandShape.pillWidth / 2, y: islandShape.pillTop, width: islandShape.pillWidth,
             height: islandShape.pillHeight)
+        let drop = withPath ? IslandPath.drop(islandShape, metrics: metrics, centerX: centerX) : nil
         return Frame(
-            path: withPath ? IslandPath.make(islandShape, metrics: metrics, centerX: centerX) : nil,
+            path: drop.map { IslandPath.island(drop: $0, metrics: metrics, centerX: centerX) }, drop: drop,
             iconPosition: CGPoint(x: centerX + layout.iconCenter.x, y: layout.iconCenter.y),
             iconScale: CGFloat(layout.iconSize) / iconSide,
             ringPosition: CGPoint(x: centerX + layout.ringCenter.x, y: layout.ringCenter.y),
@@ -559,6 +571,13 @@ final class IslandLayers {
             textPosition: CGPoint(x: centerX + layout.textX, y: layout.textCenterY),
             textEnd: CGFloat(layout.textRoom) + textEdge,
             clip: clip, clipRadius: CGFloat(islandShape.pillRadius(metrics)))
+    }
+
+    /// Whether the drop has its outline: on for a card whose `contrast` says so, which is all the
+    /// offscreen renderer looks at; the live screen also follows Increase Contrast.
+    var outlined: Bool {
+        get { edge.isShown }
+        set { edge.isShown = newValue }
     }
 
     /// Leaves the notch itself out of the black shape, for the live screen.
@@ -571,6 +590,7 @@ final class IslandLayers {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if let path = frame.path { shape.path = path }
+        if let drop = frame.drop { edge.path = drop }
         icon.position = frame.iconPosition
         icon.transform = CATransform3DMakeScale(frame.iconScale, frame.iconScale, 1)
         ring.position = frame.ringPosition
@@ -640,6 +660,8 @@ extension IslandLayers {
         // blended; at 240 a second, every display frame still gets its own.
         let paths = frames.compactMap(\.path)
         if paths.count == frames.count { shape.add(keyframes("path", paths, discrete: true), forKey: "island") }
+        let drops = frames.compactMap(\.drop)
+        if drops.count == frames.count { edge.play(drops, duration: duration, begin: begin) }
         content.add(keyframes("bounds", frames.map { NSValue(rect: $0.clip) }), forKey: "island")
         content.add(
             keyframes("position", frames.map { NSValue(point: CGPoint(x: $0.clip.midX, y: $0.clip.midY)) }),
@@ -908,14 +930,26 @@ extension IslandLayers {
 /// Every part winds the same way, so overlaps fill as a union.
 enum IslandPath {
     static func make(_ shape: IslandShape, metrics: IslandMetrics, centerX: CGFloat) -> CGPath {
+        island(drop: drop(shape, metrics: metrics, centerX: centerX), metrics: metrics, centerX: centerX)
+    }
+
+    /// The drop alone, without the notch: what the contrast edge follows.
+    static func drop(_ shape: IslandShape, metrics: IslandMetrics, centerX: CGFloat) -> CGPath {
         let path = CGMutablePath()
-        addNotch(to: path, metrics: metrics, centerX: centerX)
         let field = DropletField(metrics: metrics, shape: shape)
         if field.touchesNotch {
             addTraced(field, to: path, centerX: centerX)
         } else {
             addCapsule(shape, metrics: metrics, to: path, centerX: centerX)
         }
+        return path
+    }
+
+    /// The notch and `drop` together.
+    static func island(drop: CGPath, metrics: IslandMetrics, centerX: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        addNotch(to: path, metrics: metrics, centerX: centerX)
+        path.addPath(drop)
         return path
     }
 
@@ -978,6 +1012,72 @@ enum IslandPath {
             path.addArc(tangent1End: corners[index], tangent2End: corners[index + 1], radius: pillRadius)
         }
         path.closeSubpath()
+    }
+}
+
+/// A line just inside a shape's edge, so the black island stands out from a dark menu bar or
+/// window: white at 70 %, 1.5 points wide. Its layer goes inside the shape it outlines, so it
+/// shares that shape's geometry and fades and hides with it. Hidden until `isShown`.
+final class ContrastEdge {
+    static let width: CGFloat = 1.5
+    static let color = NSColor(white: 1, alpha: 0.7).cgColor
+
+    /// Holds the line, left out of the notch, where the hardware covers it anyway and a screen
+    /// recording would show a line drawn under it.
+    let layer = CALayer()
+    private let line = CAShapeLayer()
+    /// The shape itself, so only the line's inner half shows.
+    private let clip = CAShapeLayer()
+
+    init(frame: CGRect, notchMask: CAShapeLayer?, scale: CGFloat) {
+        layer.frame = frame
+        layer.mask = notchMask
+        layer.isHidden = true
+        line.frame = layer.bounds
+        line.fillColor = nil
+        line.strokeColor = Self.color
+        // Twice as wide as it shows: the clip keeps the half inside the shape.
+        line.lineWidth = 2 * Self.width
+        line.contentsScale = scale
+        clip.frame = layer.bounds
+        clip.contentsScale = scale
+        line.mask = clip
+        layer.addSublayer(line)
+    }
+
+    var isShown: Bool {
+        get { !layer.isHidden }
+        set {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.isHidden = !newValue
+            CATransaction.commit()
+        }
+    }
+
+    /// The outlined shape's path, set without implicit animations.
+    var path: CGPath? {
+        get { line.path }
+        set {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            line.path = newValue
+            clip.path = newValue
+            CATransaction.commit()
+        }
+    }
+
+    /// Plays `paths` one after another, sampled evenly over `duration` from `begin`, and leaves the
+    /// last. Without blending: a traced shape's paths differ in their number of points.
+    func play(_ paths: [CGPath], duration: Double, begin: CFTimeInterval? = nil) {
+        path = paths.last
+        let animation = CAKeyframeAnimation(keyPath: "path")
+        animation.values = paths
+        animation.duration = duration
+        animation.calculationMode = .discrete
+        if let begin { animation.beginTime = begin }
+        line.add(animation, forKey: "outline")
+        clip.add(animation, forKey: "outline")
     }
 }
 
@@ -1132,6 +1232,8 @@ final class IslandPresenter: CardPresenting {
     /// A background drip waiting, while a question shows, to take its card's exit on once it is
     /// answered.
     private var standby: BackgroundDrip.Spawned?
+    /// Takes the outline on or off as Increase Contrast is turned on or off.
+    private var contrastWatch: ContrastWatch?
 
     /// Keyframes per second when sampling the springs.
     private static let framesPerSecond = 240.0
@@ -1147,7 +1249,12 @@ final class IslandPresenter: CardPresenting {
         let scale = CardPresenters.targetScreen()?.backingScaleFactor ?? 2
         let layers = IslandLayers(card: card, notch: notch, scale: scale, console: console)
         layers.maskNotch()
+        layers.outlined = CardPresenters.outlined(card)
         self.layers = layers
+        contrastWatch = ContrastWatch { [weak self] in
+            guard let self, let layers = self.layers else { return }
+            layers.outlined = CardPresenters.outlined(self.card)
+        }
         let frame = self.frame(holding: [layers])
         let panel = IslandPanel(
             contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -1257,6 +1364,7 @@ final class IslandPresenter: CardPresenting {
         let motion = CardPresenters.motion(for: card)
         let layers = IslandLayers(card: card, notch: notch, scale: old.root.contentsScale, console: console)
         layers.maskNotch()
+        layers.outlined = CardPresenters.outlined(card)
         self.layers = layers
         // A card replaced again before it had faded out goes at once.
         retiring?.root.removeFromSuperlayer()
@@ -1583,6 +1691,8 @@ final class IslandPresenter: CardPresenting {
         guard let onFinish else { return }
         self.onFinish = nil
         stopWatchingPointer()
+        contrastWatch?.stop()
+        contrastWatch = nil
         panel?.orderOut(nil)
         if waitingForSound, let sound {
             sound.waitUntilDone { onFinish(true) }

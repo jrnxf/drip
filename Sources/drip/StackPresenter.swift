@@ -60,6 +60,10 @@ final class StackPresenter: CardPresenting {
     private let container = CALayer()
     /// The notch and every card's capsule, melted together where a drop is forming or returning.
     private let liquid = CAShapeLayer()
+    /// The line just inside `liquid`'s edge, while `outlined`.
+    private var edge: ContrastEdge?
+    /// Takes the outline on or off as Increase Contrast is turned on or off.
+    private var contrastWatch: ContrastWatch?
     private var size = CGSize.zero
     private var scale: CGFloat = 2
     private var timer: Timer?
@@ -199,6 +203,11 @@ final class StackPresenter: CardPresenting {
         liquid.fillColor = NSColor.black.cgColor
         liquid.contentsScale = scale
         container.addSublayer(liquid)
+        // In the liquid, so it shares its flipped geometry and the notch's mask.
+        let edge = ContrastEdge(frame: liquid.bounds, notchMask: nil, scale: scale)
+        liquid.addSublayer(edge.layer)
+        self.edge = edge
+        contrastWatch = ContrastWatch { [weak self] in self?.contrastChanged() }
         view.layer?.addSublayer(container)
         panel.contentView = view
         panel.setFrame(frame, display: false)
@@ -235,6 +244,7 @@ final class StackPresenter: CardPresenting {
         let end = max(stack.end, start + 0.05)
         let count = Int(((end - start) * Self.framesPerSecond).rounded(.up)) + 1
         let outline = stack.outline
+        let outlined = self.outlined
         let cards = entries.map(\.animator)
         let drawings = entries.map { self.drawings[$0.id]! }
         let layers = drawings.map(\.layers)
@@ -244,11 +254,17 @@ final class StackPresenter: CardPresenting {
         let sinking = entries.map(\.sinks)
         let centerX = size.width / 2
         var paths = [CGPath?](repeating: nil, count: count)
+        var edges = [CGPath?](repeating: nil, count: count)
         var frames = [[IslandLayers.Frame?]](repeating: [IslandLayers.Frame?](repeating: nil, count: count), count: cards.count)
         paths.withUnsafeMutableBufferPointer { paths in
-            DispatchQueue.concurrentPerform(iterations: count) { index in
-                let time = start + (end - start) * Double(index) / Double(count - 1)
-                paths[index] = Self.path(at: time, outline: outline, centerX: centerX, without: sinking)
+            edges.withUnsafeMutableBufferPointer { edges in
+                DispatchQueue.concurrentPerform(iterations: count) { index in
+                    let time = start + (end - start) * Double(index) / Double(count - 1)
+                    let cards = Self.cardsPath(at: time, outline: outline, centerX: centerX, without: sinking)
+                    paths[index] = Self.path(cards: cards, outline: outline, centerX: centerX)
+                    // One edge around the cards where they melt together, not one around each.
+                    if outlined { edges[index] = cards.normalized() }
+                }
             }
         }
         for (card, layer) in zip(cards.indices, layers) where moving[card] {
@@ -261,6 +277,7 @@ final class StackPresenter: CardPresenting {
                         let path = CGMutablePath()
                         IslandPath.addCapsule(shape, metrics: cards[card].metrics, to: path, centerX: layer.centerX)
                         frame.path = path
+                        frame.drop = path
                     }
                     samples[index] = frame
                 }
@@ -311,6 +328,8 @@ final class StackPresenter: CardPresenting {
         animation.calculationMode = .discrete
         animation.beginTime = begin
         liquid.add(animation, forKey: "stack")
+        edge?.isShown = outlined
+        if outlined { edge?.play(edges.compactMap { $0 }, duration: end - start, begin: begin) }
         for (card, layer) in zip(cards.indices, layers) {
             if moving[card] {
                 layer.play(frames[card].compactMap { $0 }, duration: end - start, begin: begin)
@@ -345,13 +364,20 @@ final class StackPresenter: CardPresenting {
         }
     }
 
-    /// The notch and every card at `time`, each card melted into what it grows out of while it is
-    /// close enough. Leaves out each card `without` says, which draws its own shape.
-    private static func path(at time: Double, outline: StackOutline, centerX: CGFloat, without: [Bool] = []) -> CGPath {
+    /// The notch and `cards`, as `cardsPath` gives them.
+    private static func path(cards: CGPath, outline: StackOutline, centerX: CGFloat) -> CGPath {
         let path = CGMutablePath()
         if let metrics = outline.notch {
             IslandPath.addNotch(to: path, metrics: metrics, centerX: centerX)
         }
+        path.addPath(cards)
+        return path
+    }
+
+    /// Every card at `time`, and the overflow drop, each melted into what it grows out of while it
+    /// is close enough. Leaves out each card `without` says, which draws its own shape.
+    private static func cardsPath(at time: Double, outline: StackOutline, centerX: CGFloat, without: [Bool] = []) -> CGPath {
+        let path = CGMutablePath()
         let cards = outline.pieces(at: time).enumerated().filter { !without.indices.contains($0.offset) || !without[$0.offset] }
         for piece in cards.map(\.element) + outline.overflowPieces(at: time) {
             switch piece {
@@ -364,10 +390,23 @@ final class StackPresenter: CardPresenting {
         return path
     }
 
+    /// Whether the stack has its outline: while Increase Contrast is on, or while a card on it asks
+    /// for it.
+    private var outlined: Bool {
+        stack.entries.contains { CardPresenters.outlined($0.card) }
+    }
+
+    /// Takes the outline on or off at once, as Increase Contrast was turned on or off.
+    private func contrastChanged() {
+        for drawing in drawings.values { drawing.layers.outlined = CardPresenters.outlined(drawing.layers.card) }
+        replan(from: now)
+    }
+
     /// A card's icon, ring and text, hanging from the top of the screen and centered on the notch;
     /// the stack draws its outline.
     private func makeLayers(for card: Card) -> IslandLayers {
         let layers = IslandLayers(card: card, notch: notch, scale: scale, console: console)
+        layers.outlined = CardPresenters.outlined(card)
         layers.shape.isHidden = true
         if liquid.mask == nil {
             liquid.mask = IslandPath.notchMask(size: size, metrics: layers.metrics, centerX: size.width / 2, scale: scale)
@@ -950,6 +989,8 @@ final class StackPresenter: CardPresenting {
     private func finish() {
         timer?.invalidate()
         timer = nil
+        contrastWatch?.stop()
+        contrastWatch = nil
         gate?.stop()
         gate = nil
         panel?.orderOut(nil)

@@ -48,7 +48,10 @@ exits 2, or 1 for `drip hook`.
 The size and the motion are settings rather than flags: `size` (`compact`, `regular` or `large`,
 scaling fonts, icon and padding by 0.85, 1.0 or 1.25) and `motion` (`full` drops the card out of
 the notch on its springs and takes it back in, `subtle` only fades, `none` neither; Reduce Motion in System Settings caps it at
-`subtle`) in the [config](config.md), or `DRIP_SIZE` and `DRIP_MOTION`.
+`subtle`) in the [config](config.md), or `DRIP_SIZE` and `DRIP_MOTION`. Increase Contrast in System
+Settings > Accessibility > Display draws a thin white outline inside every card, so its edge shows on
+a dark menu bar or a black wallpaper. `contrast = true` in the config, or `DRIP_CONTRAST=1`, draws it
+too.
 
 | Preset | Icon | Color | Sound |
 | --- | --- | --- | --- |
