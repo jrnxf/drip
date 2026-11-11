@@ -260,6 +260,28 @@ struct QueueTests {
         #expect(CardTurns.waiting(after: mine.name, queue: [mine, waiting], isAlive: alive).map(\.card.title) == ["b"])
     }
 
+    /// A stack that swapped a newer card in looks again from its own ticket on: the card it took and
+    /// the older ones it replaced have the id claimed, so only a card queued since takes the place.
+    @Test func onceACardIsSwappedInOnlyACardQueuedSinceTakesItsPlace() {
+        let mine = ticket(1, pid: 10, card("a"))
+        var older = ticket(2, pid: 20, card("a", title: "older"))
+        var taken = ticket(3, pid: 30, card("a", title: "taken"))
+        let alive = { (_: QueueTicket) in true }
+        let found = CardReplacement.replacement(for: card("a"), after: mine.name, queue: [mine, older, taken], isAlive: alive)
+        #expect(found?.ticket == taken.name)
+        taken.claimed.insert("a")
+        for name in CardReplacement.superseded(id: "a", by: taken.name, queue: [mine, older, taken], isAlive: alive) {
+            if name == older.name { older.claimed.insert("a") }
+        }
+        let shown = card("a", title: "taken")
+        #expect(CardReplacement.replacement(for: shown, after: mine.name, queue: [mine, older, taken], isAlive: alive)
+            == nil)
+        let since = ticket(4, pid: 40, card("a", title: "since"))
+        let next = CardReplacement.replacement(
+            for: shown, after: mine.name, queue: [mine, older, taken, since], isAlive: alive)
+        #expect(next?.card.title == "since")
+    }
+
     /// Only older, live tickets that hold the id and have not claimed it yet need it claimed.
     @Test func aCardTakenOverSupersedesOnlyOlderLiveUnclaimedCardsWithItsID() {
         let dead = ticket(1, pid: 10, card("a"))

@@ -89,8 +89,16 @@ public struct QueueDirectory {
         return Set((try? JSONDecoder().decode([String].self, from: data)) ?? [])
     }
 
-    /// Marks the card with `id` in `ticket` as taken over, so its own drip skips it.
+    /// Marks the card with `id` in `ticket` as taken over, so its own drip skips it. Two drips can
+    /// claim in one ticket at once, so each holds the ticket file's lock while it reads the claims,
+    /// adds its own and writes them back: neither loses the other's. A ticket already gone has no
+    /// drip left to skip anything, so it gets no claims.
     public func claim(_ id: String, in ticket: String) {
+        let lock = open(file(ticket), O_RDONLY | O_CLOEXEC)
+        guard lock >= 0 else { return }
+        defer { close(lock) }
+        flock(lock, LOCK_EX)
+        defer { flock(lock, LOCK_UN) }
         var claimed = claims(of: ticket)
         claimed.insert(id)
         write((try? JSONEncoder().encode(claimed.sorted())) ?? Data(), to: QueueTicket.claimName(for: ticket), writer: getpid())

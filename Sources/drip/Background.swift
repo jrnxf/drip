@@ -281,6 +281,14 @@ enum CardQueue {
         return CardReplacement.replacement(for: showing, after: source, queue: queue.load(), isAlive: isAlive)
     }
 
+    /// For each of this drip's cards on screen, the newest card queued after this drip's own ticket
+    /// that should take its place, and its ticket, from one read of the queue.
+    static func replacements(for showing: [Card]) -> [(ticket: String, card: Card)?] {
+        guard let mine, showing.contains(where: { $0.id != nil }) else { return showing.map { _ in nil } }
+        let tickets = queue.load()
+        return showing.map { CardReplacement.replacement(for: $0, after: mine.name, queue: tickets, isAlive: isAlive) }
+    }
+
     /// Whether this drip's cards that wait for you give way: a newer drip waits for its turn with a
     /// card this drip does not take in. Cards with an id in `except` take the place of a card on
     /// screen instead. A drip that `adopts` takes in every adoptable card itself.

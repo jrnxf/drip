@@ -86,9 +86,6 @@ final class StackPresenter: CardPresenting {
     /// How each card on screen that something took away ends, by its entry's id, until it has left:
     /// a card with no end here ran out of time.
     private var ends: [Int: CardResult] = [:]
-    /// The ticket each card on screen that a newer drip's card swapped into came from, by its entry's
-    /// id: only a card queued after it takes its place again. A card with none here is this drip's own.
-    private var sources: [Int: String] = [:]
     /// Newer drips' cards the stack can take in, oldest first, as the last look at the queue found
     /// them, less those taken in since.
     private var others: [(ticket: String, index: Int, card: Card)] = []
@@ -543,19 +540,19 @@ final class StackPresenter: CardPresenting {
 
     /// Swaps the newest card that a newer drip queued with the id of one of this drip's own cards on
     /// screen into its place, for a stack that takes no cards in. The newer card is claimed first, so
-    /// its drip never shows it too, and it replaces every older card with its id for good.
+    /// its drip never shows it too, and it replaces every older card with its id for good. Each card
+    /// that took a place, and each older one, has the id claimed, so the next look, from this drip's
+    /// own ticket on, finds only a card queued since.
     private func replaceOwn() {
-        guard let mine = CardQueue.mine?.name else { return }
-        for entry in stack.replaceable {
-            guard let found = CardQueue.replacement(for: entry.card, after: sources[entry.id] ?? mine),
-                  let id = found.card.id
-            else { continue }
+        let entries = stack.replaceable
+        guard !entries.isEmpty else { return }
+        for (entry, found) in zip(entries, CardQueue.replacements(for: entries.map(\.card))) {
+            guard let found, let id = found.card.id else { continue }
             CardQueue.claim(id, in: found.ticket)
             CardQueue.supersede(with: found.card, from: found.ticket)
             // This drip's own card ends here, however the card that takes its place goes.
             note(.replaced, for: entry)
             swap(entry, for: found.card)
-            sources[entry.id] = found.ticket
         }
     }
 
@@ -627,7 +624,6 @@ final class StackPresenter: CardPresenting {
                     // This drip's own card ends here, however the card that takes its place goes.
                     if shown.own { note(.replaced, for: shown) }
                     swap(shown, for: found.card)
-                    sources[shown.id] = found.ticket
                 case let .enter(index):
                     let found = others.remove(at: index)
                     CardQueue.adopt(index: found.index, in: found.ticket)
@@ -683,7 +679,6 @@ final class StackPresenter: CardPresenting {
         if !changes.gone.isEmpty {
             let kept = Set(stack.entries.map(\.id) + stack.tucked.map(\.entry))
             arrivals = arrivals.filter { kept.contains($0.key) }
-            sources = sources.filter { kept.contains($0.key) }
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)

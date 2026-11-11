@@ -115,6 +115,26 @@ final class QueueDirectoryTests {
         #expect(!CardReplacement.isReplaced(older.cards[1], in: older, queue: tickets, isAlive: queue.isAlive))
     }
 
+    /// Drips that claim in one ticket at the same time all keep their claims: none overwrites
+    /// another's with what it read before that one wrote.
+    @Test func claimsMadeAtTheSameTimeAreAllKept() throws {
+        let name = run(100, stamp: 1)
+        let queue = queue
+        let ids = (0..<64).map { "id\($0)" }
+        DispatchQueue.concurrentPerform(iterations: ids.count) { queue.claim(ids[$0], in: name) }
+        #expect(queue.claims(of: name) == Set(ids))
+    }
+
+    /// A ticket whose drip has left has no one to skip a claimed card, so a claim leaves no file.
+    @Test func aTicketAlreadyGoneGetsNoClaims() throws {
+        let name = run(100, stamp: 1)
+        queue.leave(100)
+        queue.claim("build", in: name)
+        #expect(queue.claims(of: name).isEmpty)
+        let files = try FileManager.default.contentsOfDirectory(atPath: root).filter { !$0.hasPrefix(".") }
+        #expect(files.isEmpty, "\(files)")
+    }
+
     /// A stack that took over some of a ticket's cards leaves the rest to the drip that queued it.
     @Test func aTicketIsFullyAdoptedOnlyOnceEveryCardIsClaimed() throws {
         let name = run(100, stamp: 1, cards: ["a", "b"])
