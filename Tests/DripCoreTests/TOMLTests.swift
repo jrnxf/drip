@@ -192,11 +192,18 @@ struct TOMLTests {
         assertError("[a.b]\n[a]\nb.c = 1", line: 3, contains: "already defined as a table")
         assertError("[a]\nb = { c = 1 }\nb.d = 2", line: 3, contains: "already defined as a table")
         assertError("a = { b = 1 }\n[a]", line: 2, contains: "an inline table")
-        assertError("a = { b = 1 }\n[a.c]", line: 2, contains: "an inline table")
+        assertError("a = { b = 1 }\n[a.c]", line: 2, contains: "'a' is an inline table, so [a.c] cannot add to it")
+        assertError("[a]\nb = {}\n[a.b]", line: 3, contains: "already defined")
         assertError("[a]\nb = { c = 1 }\n[a.b]", line: 3, contains: "already defined")
         assertError("a = { b = 1, b = 2 }", line: 1, contains: "defined twice")
         assertError("a = { b.c = 1, b = 2 }", line: 1, contains: "defined twice")
         assertError("a = { b = { c = 1 }, b.d = 2 }", line: 1, contains: "already defined as a table")
+    }
+
+    @Test func theLimitAllowsEightTables() throws {
+        _ = try TOML.parse("a.b.c.d.e.f.g.h.i = 1")
+        _ = try TOML.parse("a = { b.c = { d.e = { f.g = 1 } } }")
+        _ = try TOML.parse("a.b.c.d.e.f.g = {}")
     }
 
     @Test func malformedInlineTablesAndDottedKeys() {
@@ -213,8 +220,12 @@ struct TOMLTests {
         assertError("a..b = 1", line: 1, contains: "expected a key")
         assertError("a.\"b\" = 1", line: 1, contains: "quoted keys are not supported")
         // Deep nesting is an error, not a crash.
-        assertError(Array(repeating: "a", count: 50_000).joined(separator: ".") + " = 1", line: 1, contains: "at most 8 keys")
-        assertError("t = " + String(repeating: "{ a = ", count: 50_000), line: 1, contains: "nest at most 8")
+        assertError(Array(repeating: "a", count: 50_000).joined(separator: ".") + " = 1", line: 1, contains: "at most 8 tables")
+        assertError("t = " + String(repeating: "{ a = ", count: 50_000), line: 1, contains: "at most 8 tables")
+        // One limit counts dotted keys and inline tables together.
+        assertError("a.b.c.d.e.f.g.h.i.j = 1", line: 1, contains: "at most 8 tables")
+        assertError("a.b.c.d.e.f.g = { h = { i = {} } }", line: 1, contains: "at most 8 tables")
+        assertError("a = { b.c = { d.e = { f.g = { h.i = {} } } } }", line: 1, contains: "at most 8 tables")
     }
 
     private func assertError(

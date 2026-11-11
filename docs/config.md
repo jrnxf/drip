@@ -49,7 +49,8 @@ shows. `drip doctor` lists every problem in the file at once, and exits 4 when t
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
 of one or two keys such as `[preset.ok]`, and values that are single-line strings, decimal
-integers, floats or booleans. Dotted keys and single-line inline tables work too, so
-`preset.ci.sound = "Hero"` and `ci = { sound = "Hero" }` under `[preset]` both read as a `[preset.ci]`
-table. Any other TOML syntax, such as arrays or multi-line strings, prints a warning with the line, and every key keeps its default. So does a file
-larger than 1 MB.
+integers, floats or booleans. Dotted keys and single-line inline tables work too. Each of these
+reads as a `[preset.ci]` table with `sound = "Hero"`: `preset.ci.sound = "Hero"` at the top level,
+and `ci.sound = "Hero"` or `ci = { sound = "Hero" }` under `[preset]`. Any other TOML syntax, such as
+arrays or multi-line strings, prints a warning with the line, and every key keeps its default. So
+does a file larger than 1 MB.

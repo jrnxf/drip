@@ -10,8 +10,9 @@ public enum TOML {
     /// The most keys a table header has.
     public static let headerDepth = 2
 
-    /// The most keys a dotted key has, and the most inline tables inside each other. Deeper input is
-    /// an error, since it would exhaust the stack.
+    /// The most tables a key line goes down: its dotted keys and the inline tables inside each other
+    /// count together (`a.b = { c.d = {} }` goes down 4). Deeper input is an error, since it would
+    /// exhaust the stack.
     public static let nestingDepth = 8
 
     public static func parse(_ text: String) throws -> TOMLTable {
@@ -99,7 +100,8 @@ private final class TableNode {
         case implicit
         /// Defined by a `[header]`.
         case header
-        /// Made by a dotted key. Only dotted keys of the same section add to it.
+        /// Made by a dotted key. Dotted keys of the same section add to it, and a header may add a
+        /// sub-table below it, but nothing may define or redefine it.
         case dotted
         /// An inline table, which nothing extends.
         case inline
@@ -178,7 +180,7 @@ private struct LineParser {
                 table = child
             case let .table(child)?:
                 if child.origin == .inline {
-                    throw error("'\(key)' is an inline table, which cannot be extended")
+                    throw error("'\(path[0...offset].joined(separator: "."))' is an inline table, so [\(path.joined(separator: "."))] cannot add to it")
                 }
                 if isLast {
                     guard child.origin == .implicit else {
@@ -194,70 +196,84 @@ private struct LineParser {
         return table
     }
 
-    /// Parses `key = value` or `a.b.c = value` and adds it to `table`. `depth` counts the inline
-    /// tables around this one.
+    /// Parses `key = value` or `a.b.c = value` and adds it to `table`. `depth` counts the tables
+    /// above `table` on this line: the dotted keys and inline tables around it.
     mutating func parseKeyValue(into table: TableNode, depth: Int) throws {
         var path = [try parseKey()]
         skipWhitespace()
         while consume(".") {
-            if path.count == TOML.nestingDepth {
-                throw error("dotted keys have at most \(TOML.nestingDepth) keys")
-            }
+            if depth + path.count > TOML.nestingDepth { throw tooDeep() }
             skipWhitespace()
             path.append(try parseKey())
             skipWhitespace()
         }
         guard consume("=") else { throw error("expected '=' after the key") }
         skipWhitespace()
+        let entry: Entry
+        if peek() == "{" {
+            entry = .table(try parseInlineTable(depth: depth + path.count))
+        } else {
+            entry = .value(TOMLItem(value: try parseValue(), line: line))
+        }
+        // Walk the existing tables first, so that an error leaves the tree as it was.
         var parent = table
+        var missing = path.dropLast()
         for (offset, key) in path.dropLast().enumerated() {
             let name = path[0...offset].joined(separator: ".")
             switch parent.entries[key] {
             case nil:
-                let child = TableNode(line: line, origin: .dotted)
-                parent.set(key, .table(child))
-                parent = child
+                break
             case let .table(child)? where child.origin == .dotted:
                 parent = child
+                missing = path[(offset + 1)...].dropLast()
+                continue
             case .table?:
                 throw error("'\(name)' is already defined as a table, so a dotted key cannot add to it")
             case .value?:
                 throw error("'\(name)' is already a value, not a table")
             }
-        }
-        let entry: Entry
-        if peek() == "{" {
-            entry = .table(try parseInlineTable(depth: depth + 1))
-        } else {
-            entry = .value(TOMLItem(value: try parseValue(), line: line))
+            break
         }
         let key = path[path.count - 1]
-        guard parent.entries[key] == nil else { throw error("'\(path.joined(separator: "."))' is defined twice") }
+        if missing.isEmpty, parent.entries[key] != nil {
+            throw error("'\(path.joined(separator: "."))' is defined twice")
+        }
+        for name in missing {
+            let child = TableNode(line: line, origin: .dotted)
+            parent.set(name, .table(child))
+            parent = child
+        }
         parent.set(key, entry)
     }
 
-    /// Parses `{ key = value, ... }` on this line, with no trailing comma.
+    /// Parses `{ key = value, ... }` on this line, with no trailing comma. `depth` is the number of
+    /// tables down that the inline table is.
     private mutating func parseInlineTable(depth: Int) throws -> TableNode {
-        if depth > TOML.nestingDepth {
-            throw error("inline tables nest at most \(TOML.nestingDepth) deep")
-        }
+        if depth > TOML.nestingDepth { throw tooDeep() }
         advance()
         let table = TableNode(line: line, origin: .inline)
         skipWhitespace()
+        try requireMore()
         if consume("}") { return table }
         while true {
-            skipWhitespace()
             try parseKeyValue(into: table, depth: depth)
             skipWhitespace()
+            try requireMore()
             if consume("}") { return table }
-            guard consume(",") else {
-                throw error(peek() == nil ? "unterminated inline table; it must end with '}' on the same line"
-                                          : "expected ',' or '}' in the inline table")
-            }
+            guard consume(",") else { throw error("expected ',' or '}' in the inline table") }
             skipWhitespace()
+            try requireMore()
             if peek() == "}" { throw error("a trailing comma is not allowed in an inline table") }
-            if peek() == nil { throw error("unterminated inline table; it must end with '}' on the same line") }
         }
+    }
+
+    /// An inline table ends on its line, so the line ending inside one is an error.
+    private func requireMore() throws {
+        if peek() == nil { throw error("unterminated inline table; it must end with '}' on the same line") }
+    }
+
+    private func tooDeep() -> TOMLError {
+        error("dotted keys and inline tables go down at most \(TOML.nestingDepth) tables")
     }
 
     private mutating func parseKey() throws -> String {
