@@ -363,7 +363,7 @@ A git hook, such as `.git/hooks/post-merge`, which drip never slows down:
 drip info "pulled $(git log -1 --format='%h %s')"
 ```
 
-Coding agents have [a section of their own](agents.md).
+Coding agents have [a section of their own](coding-agents.md).
 
 ## At the notch
 

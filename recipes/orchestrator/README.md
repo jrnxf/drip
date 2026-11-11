@@ -24,4 +24,4 @@ Any other value is an error that exits 1.
 
 ## Change it
 
-Use `DRIP_HOOK=on` on a worker you want to hear from. See the [reference](../../docs/agents.md#drip_hook).
+Use `DRIP_HOOK=on` on a worker you want to hear from. See the [reference](../../docs/coding-agents.md#drip_hook).

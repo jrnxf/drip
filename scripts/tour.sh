@@ -245,4 +245,4 @@ if [ "$dry_run" -eq 1 ]; then
     echo "tour: ok - no card without a click shows for more than 3 seconds"
     exit 0
 fi
-drip ok "Tour done" -d "That is the tour. The docs: docs/usage.md, docs/agents.md and recipes/README.md." --seconds 3 --wait
+drip ok "Tour done" -d "That is the tour. The docs: docs/usage.md, docs/coding-agents.md and recipes/README.md." --seconds 3 --wait
