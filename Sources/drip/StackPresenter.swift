@@ -240,31 +240,31 @@ final class StackPresenter: CardPresenting {
     /// no keyframes.
     private func replan(from start: Double) {
         let sampling = CACurrentMediaTime()
-        let entries = stack.entries
+        // Every entry has its drawing by now; one that somehow had none is left out of the plan
+        // rather than ending the process.
+        let all = stack.entries
+        let entries = all.filter { self.drawings[$0.id] != nil }
         let end = max(stack.end, start + 0.05)
         let count = Int(((end - start) * Self.framesPerSecond).rounded(.up)) + 1
         let outline = stack.outline
         let outlined = self.outlined
         let cards = entries.map(\.animator)
-        let drawings = entries.map { self.drawings[$0.id]! }
+        let drawings = entries.compactMap { self.drawings[$0.id] }
         let layers = drawings.map(\.layers)
         let retiring = drawings.map(\.retiring)
         let moving = entries.map { $0.animator.end > start }
         // A card sinking away fades on its own shape, out of the stack's.
         let sinking = entries.map(\.sinks)
+        // The outline's pieces go by every entry, drawn or not.
+        let melted = all.map(\.sinks)
         let centerX = size.width / 2
         var paths = [CGPath?](repeating: nil, count: count)
         var frames = [[IslandLayers.Frame?]](repeating: [IslandLayers.Frame?](repeating: nil, count: count), count: cards.count)
         paths.withUnsafeMutableBufferPointer { paths in
             DispatchQueue.concurrentPerform(iterations: count) { index in
                 let time = start + (end - start) * Double(index) / Double(count - 1)
-                paths[index] = Self.path(at: time, outline: outline, centerX: centerX, without: sinking)
+                paths[index] = Self.path(at: time, outline: outline, centerX: centerX, without: melted)
             }
-        }
-        // One setting for the whole stack, a sinking card's own shape too.
-        for drawing in drawings {
-            drawing.layers.outlined = outlined
-            drawing.retiring?.outlined = outlined
         }
         for (card, layer) in zip(cards.indices, layers) where moving[card] {
             frames[card].withUnsafeMutableBufferPointer { samples in
@@ -326,9 +326,8 @@ final class StackPresenter: CardPresenting {
         animation.calculationMode = .discrete
         animation.beginTime = begin
         liquid.add(animation, forKey: "stack")
-        edge?.isShown = outlined
         // One edge around the cards where they melt together, not one around each.
-        edge?.play(paths.compactMap { $0 }, duration: end - start, begin: begin)
+        edge?.play(values, duration: end - start, begin: begin)
         for (card, layer) in zip(cards.indices, layers) {
             if moving[card] {
                 layer.play(frames[card].compactMap { $0 }, duration: end - start, begin: begin)
@@ -348,6 +347,13 @@ final class StackPresenter: CardPresenting {
             }
         }
         overflowLayers?.play(overflowFrames, duration: end - start, begin: begin)
+        // One setting for the whole stack, a sinking card's own shape too. After the keyframes, so
+        // an edge that comes on now follows them from the start.
+        edge?.isShown = outlined
+        for drawing in drawings {
+            drawing.layers.outlined = outlined
+            drawing.retiring?.outlined = outlined
+        }
         CATransaction.commit()
         settlePressGates()
     }
@@ -388,8 +394,10 @@ final class StackPresenter: CardPresenting {
         stack.entries.contains { CardPresenters.outlined($0.card) }
     }
 
-    /// Takes the outline on or off at once, as Increase Contrast was turned on or off.
+    /// Takes the outline on or off at once, as Increase Contrast was turned on or off. Only when
+    /// that changes the stack's outline: a replan plays every card's motion again from now.
     private func contrastChanged() {
+        guard let edge, edge.isShown != outlined else { return }
         replan(from: now)
     }
 

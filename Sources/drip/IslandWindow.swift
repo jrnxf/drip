@@ -1026,8 +1026,11 @@ final class ContrastEdge {
     private let clip = CAShapeLayer()
     /// The shape last given, as given: drawn once the edge shows.
     private var shape: CGPath?
+    /// The keyframes last played, with when they began on the `CACurrentMediaTime` clock: played
+    /// again if the edge shows before they end, so the line follows the moving shape.
+    private var playing: (paths: [CGPath], duration: Double, begin: CFTimeInterval)?
     /// The last shape merged, and the outline it gave, as a resting card gives the same shape again.
-    private var merged: (shape: CGPath, outline: CGPath)?
+    private var merged = LastResult<CGPath, CGPath>()
 
     init(frame: CGRect, notchMask: CAShapeLayer?, scale: CGFloat) {
         layer.frame = frame
@@ -1052,7 +1055,15 @@ final class ContrastEdge {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             layer.isHidden = !newValue
-            if newValue { draw(shape) }
+            if newValue {
+                if let playing, CACurrentMediaTime() < playing.begin + playing.duration {
+                    // Mid-motion: from where the shape is now, not where it comes to rest.
+                    play(playing.paths, duration: playing.duration, begin: playing.begin)
+                } else {
+                    playing = nil
+                    draw(shape)
+                }
+            }
             CATransaction.commit()
         }
     }
@@ -1075,6 +1086,9 @@ final class ContrastEdge {
     /// shape it has when `paths` is empty.
     func play(_ paths: [CGPath], duration: Double, begin: CFTimeInterval? = nil) {
         guard !paths.isEmpty else { return }
+        // The layers keep the media clock, so a play from now begins about now: within the same
+        // transaction as the shape's, which is all a replay needs.
+        playing = (paths, duration, begin ?? CACurrentMediaTime())
         guard isShown else {
             shape = paths.last
             return
@@ -1086,6 +1100,7 @@ final class ContrastEdge {
         animation.values = outlines
         animation.duration = duration
         animation.calculationMode = .discrete
+        // Left unset from now, as the shape's is, so the two start on the same frame.
         if let begin { animation.beginTime = begin }
         line.add(animation, forKey: "outline")
         clip.add(animation, forKey: "outline")
@@ -1099,32 +1114,23 @@ final class ContrastEdge {
 
     /// `shape`'s parts merged into one outline.
     private func outline(_ shape: CGPath) -> CGPath {
-        if let merged, merged.shape == shape { return merged.outline }
-        let outline = shape.normalized()
-        merged = (shape, outline)
-        return outline
+        merged.value(for: shape) { $0.normalized() }
     }
 
     /// Each of `shapes` merged, on every core at once: about 0.05 ms a shape, so a second of
     /// keyframes would hold the main thread for a frame or two. A card at rest gives the same shape
     /// frame after frame, and each run of them is merged once.
     private func outlines(_ shapes: [CGPath]) -> [CGPath] {
-        var firsts: [Int] = []
-        var run = [Int](repeating: 0, count: shapes.count)
-        for index in shapes.indices {
-            if index > 0, shapes[index] == shapes[index - 1] {
-                run[index] = run[index - 1]
-            } else {
-                run[index] = firsts.count
-                firsts.append(index)
-            }
-        }
+        let runs = Runs(shapes)
+        let firsts = runs.firsts
         var outlines = [CGPath?](repeating: nil, count: firsts.count)
         outlines.withUnsafeMutableBufferPointer { outlines in
             DispatchQueue.concurrentPerform(iterations: firsts.count) { outlines[$0] = shapes[firsts[$0]].normalized() }
         }
-        if let shape = shapes.last, let outline = outlines.last ?? nil { merged = (shape, outline) }
-        return run.map { outlines[$0]! }
+        // Each slot is filled above; a shape that somehow gave none falls back to itself.
+        let merged = zip(firsts, outlines).map { first, outline in outline ?? shapes[first] }
+        if let shape = shapes.last, let outline = merged.last { self.merged.keep(outline, for: shape) }
+        return runs.expand(merged)
     }
 }
 
