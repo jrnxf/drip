@@ -9,7 +9,7 @@ struct DocLinkTests {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let git = Process()
         git.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        git.arguments = ["git", "ls-files", "*.md"]
+        git.arguments = ["git", "ls-files", "-z", "*.md"]
         git.currentDirectoryURL = root
         // CI checks the repo out as another user, which git calls dubious ownership.
         git.environment = ProcessInfo.processInfo.environment.merging([
@@ -24,22 +24,24 @@ struct DocLinkTests {
         let stderr = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         git.waitUntilExit()
         #expect(git.terminationStatus == 0, "git ls-files failed: \(stderr)")
-        let files = listing.split(separator: "\n").map(String.init)
+        let files = listing.split(separator: "\0").map(String.init)
         #expect(!files.isEmpty)
 
         let link = try NSRegularExpression(pattern: #"\[[^\]]*\]\(([^)\s]+)"#)
         let codeSpan = try NSRegularExpression(pattern: "`[^`]*`")
         for file in files {
             var fenced = false
-            let text = try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
+            // A listed file can be missing from the working tree (deleted or renamed, not yet staged).
+            guard let text = try? String(contentsOf: root.appendingPathComponent(file), encoding: .utf8) else { continue }
             for var line in text.components(separatedBy: "\n") {
-                if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") { fenced.toggle() }
-                if fenced || line.trimmingCharacters(in: .whitespaces).hasPrefix("```") { continue }
+                let isFence = line.trimmingCharacters(in: .whitespaces).hasPrefix("```")
+                if isFence { fenced.toggle() }
+                if fenced || isFence { continue }
                 line = codeSpan.stringByReplacingMatches(in: line, range: NSRange(line.startIndex..., in: line), withTemplate: "")
                 for match in link.matches(in: line, range: NSRange(line.startIndex..., in: line)) {
                     let target = String(line[Range(match.range(at: 1), in: line)!])
                     var path = String(target.prefix { $0 != "#" && $0 != "?" })
-                    if path.isEmpty || ["http:", "https:", "mailto:"].contains(where: path.hasPrefix) { continue }
+                    if path.isEmpty || path.range(of: #"^([A-Za-z][A-Za-z0-9+.-]*:|//)"#, options: .regularExpression) != nil { continue }
                     path = path.removingPercentEncoding ?? path
                     let base = path.hasPrefix("/") ? root : root.appendingPathComponent(file).deletingLastPathComponent()
                     let found = FileManager.default.fileExists(atPath: base.appendingPathComponent(path).path)
