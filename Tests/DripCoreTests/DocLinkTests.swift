@@ -11,11 +11,19 @@ struct DocLinkTests {
         git.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         git.arguments = ["git", "ls-files", "*.md"]
         git.currentDirectoryURL = root
+        // CI checks the repo out as another user, which git calls dubious ownership.
+        git.environment = ProcessInfo.processInfo.environment.merging([
+            "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "safe.directory", "GIT_CONFIG_VALUE_0": "*",
+        ]) { $1 }
         let pipe = Pipe()
+        let errors = Pipe()
         git.standardOutput = pipe
+        git.standardError = errors
         try git.run()
         let listing = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let stderr = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         git.waitUntilExit()
+        #expect(git.terminationStatus == 0, "git ls-files failed: \(stderr)")
         let files = listing.split(separator: "\n").map(String.init)
         #expect(!files.isEmpty)
 
