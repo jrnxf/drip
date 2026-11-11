@@ -14,6 +14,7 @@ drip debug [--clear]
 drip dismiss [--id ID]
 drip pause [DURATION]
 drip resume
+drip doctor [--json]
 drip --version | --help
 drip help <subcommand>
 ```
@@ -270,6 +271,36 @@ While drip is paused, every drip run in a terminal prints a reminder to stderr, 
 paused, 23m left (drip resume to unpause)`. A drip whose stderr is not a terminal, such as one in a
 script's log, and `drip hook`, print nothing about it, and `--quiet` keeps it quiet too.
 
+## Checking drip
+
+`drip doctor` says what stops cards now, and checks the config file. It changes nothing, so it is
+safe to run at any time.
+
+```sh
+drip doctor           # the report, for you
+drip doctor --json    # the same, as one JSON object, for scripts
+```
+
+It prints drip's version, whether there is a GUI session, whether drip is paused and whether the
+screen is locked, the config file and every problem and warning in it, the settings a card starts
+from after the `DRIP_*` variables and the config file (a top-level `sound` names the presets the
+config gives a sound of their own, which keep it), and the state directory and whether drip can
+write it. Without it drip keeps no history, pause or debug log, but cards still show. Its last lines
+say `cards show now`, or one `stops cards:` line for each thing that keeps cards off the screen: a
+`DRIP_*` variable drip cannot read (every card command exits 2), no GUI session (a card exits 3), a
+pause (cards are held until it ends, but a question already on screen stays) or a locked screen
+(cards wait for the unlock). stderr gets one line for each of these, and one for an invalid config
+file. With `--json`, stdout is the JSON alone.
+
+It exits 2 for a `DRIP_*` variable drip cannot read, as a card command does, whatever else it
+finds. Else it exits 4 when the config file is invalid: a card command still shows its card and
+uses the default for each bad key, but `drip doctor` lists every one. A file that is not TOML, is
+over 1 MB or is not UTF-8 is invalid as a whole, and drip ignores all of it. An unknown key is only
+a warning. Else it exits 1 when something stops cards now, and 0 when all is well. `--json` has the
+same keys every time, listed in [the contract](contract.md). On Linux, where drip shows no cards,
+it checks the config file and the variables only: there an agent's hooks run `drip-remote-hook`
+(see [remote](remote.md)).
+
 ## Buttons
 
 `--open` adds a button that opens a URL or a file, such as a CI run, a pull request or a log.
@@ -378,10 +409,10 @@ runs at once, and the cards still in the stack play out without it.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching. |
-| 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
-| 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2. |
-| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. |
-| 4 | Reserved for a command that checks the config file. No command exits 4 today: a bad config warns on stderr and drip uses the defaults for the bad keys. |
+| 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). `drip doctor`: something stops cards now (it says what), and neither 2 nor 4 applies. Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
+| 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. `drip doctor` exits 2 for a bad `DRIP_*` variable, whatever else it finds. `drip hook` never exits 2. |
+| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. On a Mac, `drip doctor` exits 1, unless 2 or 4 applies. |
+| 4 | `drip doctor`: the config file is invalid, and no `DRIP_*` variable is bad (that is 2). No card command exits 4: a bad config warns on stderr and drip uses the defaults for the bad keys. |
 | 5 | drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not. |
 
 `drip run` exits with the wrapped command's exit code instead, 127 when it is not found.

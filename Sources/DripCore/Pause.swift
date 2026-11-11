@@ -99,12 +99,18 @@ public struct DripPause {
     /// What `drip pause` prints about a pause that ends at `end`: `drip is paused until 15:42
     /// (1h left)`, with `tomorrow` before a time that is not today.
     public static func status(end: Date, now: Date = Date(), timeZone: TimeZone = .current) -> String {
+        "drip is paused " + timeLeft(end: end, now: now, timeZone: timeZone)
+    }
+
+    /// When a pause that ends at `end` ends, and how long is left: `until 15:42 (1h left)`, with
+    /// `tomorrow` before a time that is not today.
+    public static func timeLeft(end: Date, now: Date = Date(), timeZone: TimeZone = .current) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let parts = calendar.dateComponents([.hour, .minute], from: end)
         // A pause is never longer than a day, so an end that is not today is tomorrow.
         let day = calendar.isDate(end, inSameDayAs: now) ? "" : "tomorrow "
-        return "drip is paused until \(day)\(pad(parts.hour ?? 0)):\(pad(parts.minute ?? 0))"
+        return "until \(day)\(pad(parts.hour ?? 0)):\(pad(parts.minute ?? 0))"
             + " (\(describe(seconds: end.timeIntervalSince(now))) left)"
     }
 

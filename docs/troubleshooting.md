@@ -1,5 +1,14 @@
 # Troubleshooting
 
+## Run drip doctor first
+
+`drip doctor` says in one go what stops cards now: a `DRIP_*` variable drip cannot read, no GUI
+session (as over ssh), a pause, or a locked screen. It also lists every problem in the config
+file, the settings drip uses and where it keeps its state. It changes nothing. It exits 2 for a
+bad `DRIP_*` variable, else 4 when the config file is invalid, else 1 when something stops cards,
+else 0. `drip doctor --json` prints the same for a script. See
+[Checking drip](usage.md#checking-drip).
+
 ## Permissions
 
 **No permissions.** drip uses only public APIs that need no permission, so a card needs no macOS
@@ -22,7 +31,8 @@ back to the main screen. It also shows over full-screen apps and on every Space.
 unlock or the end of the pause (see [Missed cards](usage.md#missed-cards-and-history)), and `drip history
 --missed` lists them. Over ssh there is no GUI session, so drip exits 3. drip does not follow Focus,
 since reading it would take a permission: cards show during Do Not Disturb, and in screen shares and
-recordings. Run `drip pause` for those instead (see [Pausing](usage.md#pausing)).
+recordings. Run `drip pause` for those instead (see [Pausing](usage.md#pausing)). `drip doctor`
+says which of these holds now.
 
 ## Privacy
 

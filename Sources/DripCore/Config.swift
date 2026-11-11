@@ -138,7 +138,7 @@ public enum ConfigLoader {
             [command.configuration.commandName].compactMap { $0 } + command.configuration.aliases
         }
         // Names with no subcommand yet: `help` and `version` are the flags' words, the rest are planned.
-        let kept = ["help", "version", "config", "completion", "completions", "doctor", "test"]
+        let kept = ["help", "version", "config", "completion", "completions", "test"]
         // The internal subcommands start with underscores, which no preset name can.
         return Set((subcommands + kept).filter { !$0.hasPrefix("_") })
     }()
@@ -169,9 +169,13 @@ public enum ConfigLoader {
     /// Loads the config file as a card command reads it: a key drip cannot use keeps its default, and
     /// a file it cannot use at all leaves every key at its default. Each problem is also a warning.
     public static func loadLeniently(environment: [String: String]) -> ConfigFile {
-        let path = path(environment: environment)
+        loadLeniently(path: path(environment: environment)) ?? ConfigFile(config: Config(), warnings: [])
+    }
+
+    /// As above, from the file at `path`; nil when there is no file.
+    static func loadLeniently(path: String) -> ConfigFile? {
         do {
-            guard let text = try text(at: path) else { return ConfigFile(config: Config(), warnings: []) }
+            guard let text = try text(at: path) else { return nil }
             return parseLeniently(text, path: path)
         } catch {
             return ConfigFile(unusable: .wrapping(error, path: path))

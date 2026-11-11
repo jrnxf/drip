@@ -267,6 +267,8 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         return send(["exit": 1, "message": "drip: the debug log lives on your Mac, not in this page"])
     case .invocation(.pause), .invocation(.resume):
         return send(["exit": 1, "message": "drip: a pause holds the cards on your Mac, not in this page"])
+    case .invocation(.doctor):
+        return send(["exit": 1, "message": "drip: drip doctor checks your Mac, not this page"])
     case .invocation(.finished):
         return send(["exit": ExitStatus.noGUISession, "message": "drip: a finished command is a shell's to report, not this page's"])
     case .invocation(.render), .invocation(.background):
