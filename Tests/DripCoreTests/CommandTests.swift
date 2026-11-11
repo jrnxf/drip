@@ -508,7 +508,10 @@ struct CommandTests {
         #expect(command.appearance == .dark)
         #expect(command.kind == "fail")
         #expect(command.title == "nope")
-        #expect(command.flags == CardFlags(detail: "exit 1", size: .large))
+        // Off, not left to the config or DRIP_CONTRAST, without --contrast.
+        var flags = CardFlags(detail: "exit 1", size: .large)
+        flags.contrast = false
+        #expect(command.flags == flags)
     }
 
     @Test func renderRequiresOut() {

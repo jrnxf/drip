@@ -102,6 +102,21 @@ struct CommandFlagTests {
         #expect(command.flags.motion == Motion.none)
     }
 
+    /// A snapshot has its outline only with `--contrast`, whatever the config or DRIP_CONTRAST say.
+    @Test func renderDrawsTheOutlineOnlyWithItsFlag() throws {
+        func outlined(_ arguments: [String], _ config: Config, _ environment: EnvironmentSettings) throws -> Bool? {
+            guard case let .invocation(.render(command)) = CommandLineParser.parse(
+                ["__render", "--out", "x.png", "ok", "t"] + arguments)
+            else { Issue.record("__render did not parse"); return nil }
+            return try CardResolver(config: config, environment: environment)
+                .resolve(kind: "ok", title: "t", flags: command.flags).contrast
+        }
+        let on = EnvironmentSettings(contrast: true)
+        #expect(try outlined([], Config(contrast: true), on) == nil)
+        #expect(try outlined([], Config(), on) == nil)
+        #expect(try outlined(["--contrast"], Config(contrast: false), EnvironmentSettings(contrast: false)) == true)
+    }
+
     @Test func theRemovedNotchFlagIsAUsageError() {
         guard case let .exit(status, message) = CommandLineParser.parse(["ok", "t", "--notch", "droplet"]) else {
             Issue.record("parsed"); return

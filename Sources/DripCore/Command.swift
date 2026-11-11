@@ -328,8 +328,8 @@ public struct CardFlags: Equatable {
     public var size: CardSize?
     /// Set only by `drip __render`: everywhere else the motion comes from the config or `DRIP_MOTION`.
     public var motion: Motion?
-    /// Set only by `drip __render`: everywhere else the outline comes from the config or
-    /// `DRIP_CONTRAST`.
+    /// Set only by `drip __render`, always, so a snapshot has its outline only with `--contrast`:
+    /// everywhere else the outline comes from the config or `DRIP_CONTRAST`.
     public var contrast: Bool?
     /// Keeps the card on screen, as `--stay` does, unless a time is set for it.
     public var stay: Bool
@@ -973,7 +973,8 @@ public struct RenderCommand: ParsableCommand {
         var flags = options.flags(yes: question.yes, no: question.no)
         flags.size = size
         flags.motion = motion
-        flags.contrast = contrast ? true : nil
+        // Never left to the config or DRIP_CONTRAST, so the same command draws the same card anywhere.
+        flags.contrast = contrast
         return flags
     }
 
