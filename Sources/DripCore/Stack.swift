@@ -26,11 +26,9 @@ public struct StackSettings: Equatable, Sendable, Codable {
     }
 
     /// The settings from `DRIP_STACK` and `DRIP_STACK_MAX`, then the config's `stack` and
-    /// `stack_max`, then the defaults. Nil when stacking is off. A variable or a config key that cannot
-    /// be read is left out: the drip that queued the cards already reported it.
-    public static func current(environment: [String: String], config: Config? = nil) -> StackSettings? {
-        let settings = (try? EnvironmentSettings(environment: environment)) ?? EnvironmentSettings()
-        let config = config ?? ConfigLoader.loadLeniently(environment: environment).config
+    /// `stack_max`, then the defaults. Nil when stacking is off. `CardResolver.stack` gives them from
+    /// the config the drip read once, and the drip that shows the cards gets them from it.
+    public static func resolved(_ settings: EnvironmentSettings, config: Config) -> StackSettings? {
         guard let mode = choice(settings, config: config).mode else { return nil }
         return StackSettings(mode: mode, max: maxCards(settings, config: config))
     }

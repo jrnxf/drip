@@ -534,6 +534,33 @@ public struct EnvironmentSettings: Equatable {
 }
 
 extension EnvironmentSettings {
+    /// The `DRIP_*` variables, each taken in by name only when drip can read it with those taken in
+    /// before it, so one drip cannot read leaves the others in, and the problem with each it leaves
+    /// out. Every variable is either in the settings or has a problem.
+    public static func leniently(_ environment: [String: String]) -> (settings: EnvironmentSettings, problems: [String]) {
+        var problems: [String] = []
+        var usable = environment.filter { !$0.key.hasPrefix("DRIP_") }
+        var settings: EnvironmentSettings
+        do {
+            settings = try EnvironmentSettings(environment: usable)
+        } catch {
+            problems.append("\(error)")
+            usable = [:]
+            settings = EnvironmentSettings()
+        }
+        for name in environment.keys.filter({ $0.hasPrefix("DRIP_") }).sorted() {
+            var tried = usable
+            tried[name] = environment[name]
+            do {
+                settings = try EnvironmentSettings(environment: tried)
+                usable = tried
+            } catch {
+                problems.append("\(error)")
+            }
+        }
+        return (settings, problems)
+    }
+
     /// `DRIP_DEBUG`: `1`, `true`, `on` or `yes`, or `0`, `false`, `off` or `no`; nil when unset or
     /// empty. Throws a `UsageError` for anything else.
     public static func debug(environment: [String: String]) throws -> Bool? {

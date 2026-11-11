@@ -191,7 +191,9 @@ struct DeliveryTests {
             sound: .file("~/sounds/done.aiff"), seconds: 7.5, size: .large, motion: .subtle)
         card.action = CardAction(label: "View run", open: "https://example.com/run/1")
         let others = [Card(preset: .fail, title: "x"), Card(preset: .info, title: "y")]
-        let request = BackgroundRequest(cards: [card] + others)
+        let settings = BackgroundSettings(
+            stack: StackSettings(mode: .push, max: 4), history: 40, whenFocused: .show, awayAfter: 12, debug: true)
+        let request = BackgroundRequest(cards: [card] + others, record: true, settings: settings)
         #expect(try BackgroundRequest.decode(request.encoded()) == request)
     }
 
@@ -208,7 +210,7 @@ struct DeliveryTests {
 
     @Test func aRequestFromBeforeHandOffsHandsNothingOn() throws {
         let old = try BackgroundRequest.decode(Data(#"{"cards":[],"record":false}"#.utf8))
-        #expect(old == BackgroundRequest(cards: [], record: false))
+        #expect(old == BackgroundRequest(cards: [], record: false, settings: nil))
         #expect(old.handOff == nil)
     }
 

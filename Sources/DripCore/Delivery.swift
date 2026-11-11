@@ -26,14 +26,54 @@ public enum Delivery: Equatable, Sendable {
     }
 }
 
+/// What a background drip needs to show cards, resolved by the drip that made them from its one
+/// config read, so the background drip reads no config.
+public struct BackgroundSettings: Equatable, Sendable, Codable {
+    /// How the cards stack at the notch; nil shows them one at a time.
+    public var stack: StackSettings?
+    /// How many cards the history keeps.
+    public var history: Int
+    /// What a waiting card does while its terminal is in front, for the second look at one a hook
+    /// skipped.
+    public var whenFocused: WhenFocused
+    /// Seconds without the keyboard or mouse after which you are away, for that second look.
+    public var awayAfter: Double
+    /// The config's `debug`, for that second look's debug log; `DRIP_DEBUG` still decides first.
+    public var debug: Bool?
+
+    public init(
+        stack: StackSettings?, history: Int = Defaults.history, whenFocused: WhenFocused = .default,
+        awayAfter: Double = WhenFocused.defaultAwayAfter, debug: Bool? = nil
+    ) {
+        self.stack = stack
+        self.history = history
+        self.whenFocused = whenFocused
+        self.awayAfter = awayAfter
+        self.debug = debug
+    }
+
+    /// The settings `resolver` gives.
+    public init(_ resolver: CardResolver) {
+        self.init(
+            stack: resolver.stack, history: resolver.historyLimit, whenFocused: resolver.whenFocused,
+            awayAfter: resolver.awayAfter, debug: resolver.config.debug)
+    }
+
+    /// The config the second look at a skipped card reads in place of the file: it gives the same
+    /// settings.
+    public var config: Config {
+        Config(whenFocused: whenFocused, awayAfter: awayAfter, debug: debug)
+    }
+}
+
 /// The cards a background drip shows, as JSON on its standard input.
 public struct BackgroundRequest: Equatable, Sendable, Codable {
     public var cards: [Card]
     /// False for cards shown again from the history, which keeps them already.
     public var record: Bool
-    /// How many cards the history keeps, as the drip that made the cards resolved it; nil keeps
-    /// the default.
-    public var history: Int?
+    /// The settings that show the cards; nil for a request from a drip that predates them, or from
+    /// one with no resolver. See `settings(orRead:)`.
+    public var settings: BackgroundSettings?
     /// Set when the cards are already on screen in a stack that hands them on, to show where they
     /// are instead of dropping them in again.
     public var handOff: StackHandOff?
@@ -57,47 +97,41 @@ public struct BackgroundRequest: Equatable, Sendable, Codable {
         }
     }
 
-    public init(cards: [Card], record: Bool = true, history: Int? = nil) {
+    /// `resurface` set looks again at `cards`, the waiting card a hook skipped, after a delay.
+    public init(cards: [Card], record: Bool, settings: BackgroundSettings?, resurface: Resurface? = nil) {
         self.cards = cards
         self.record = record
-        self.history = history
-    }
-
-    /// A request to look again at `cards`, the waiting card a hook skipped, after a delay.
-    public init(cards: [Card], resurface: Resurface, history: Int? = nil) {
-        self.cards = cards
-        record = true
-        self.history = history
+        self.settings = settings
         self.resurface = resurface
     }
 
-    /// A request for the cards `handOff` hands on, which are recorded already.
+    /// A request for the cards `handOff` hands on, which are recorded already and stack as it says.
     public init(handOff: StackHandOff) {
-        cards = handOff.cards.map(\.card)
-        record = false
+        self.init(cards: handOff.cards.map(\.card), record: false, settings: BackgroundSettings(stack: handOff.settings))
         self.handOff = handOff
     }
 
     private enum CodingKeys: String, CodingKey {
-        case cards, record, history, handOff, resurface
+        case cards, record, settings, handOff, resurface
     }
 
-    /// A request from a drip that predates `record` is recorded, and one that predates `handOff`
-    /// hands nothing on.
+    /// A request from a drip that predates `record` is recorded, one that predates `settings` reads
+    /// them as `settings(orRead:)` says, and one that predates `handOff` hands nothing on.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         cards = try container.decode([Card].self, forKey: .cards)
         record = try container.decodeIfPresent(Bool.self, forKey: .record) ?? true
-        history = try container.decodeIfPresent(Int.self, forKey: .history)
+        settings = try container.decodeIfPresent(BackgroundSettings.self, forKey: .settings)
         handOff = try container.decodeIfPresent(StackHandOff.self, forKey: .handOff)
         resurface = try container.decodeIfPresent(Resurface.self, forKey: .resurface)
     }
 
-    /// What the background drip does with the cards while the screen is locked.
-    public var locked: LockedScreen { .pool(record: record, history: historyLimit) }
-
-    /// How many cards the history keeps, as the request says or by default.
-    public var historyLimit: Int { history ?? Defaults.history }
+    /// The settings that show the cards: as the request says, with no config read, or, for a
+    /// request without them, as `read` gives. `read` reads `DRIP_*` and the config as the drip that
+    /// sent it did, and is the one config read a background drip makes.
+    public func settings(orRead read: () -> BackgroundSettings) -> BackgroundSettings {
+        settings ?? read()
+    }
 
     public func encoded() throws -> Data {
         try JSONEncoder().encode(self)

@@ -1,6 +1,6 @@
 /// What an agent's card does while the terminal the agent runs in is in front: you are likely
 /// watching it already.
-public enum WhenFocused: String, CaseIterable, Sendable {
+public enum WhenFocused: String, CaseIterable, Sendable, Codable {
     /// A card that counts down comes without a sound and with a short countdown. A card that waits
     /// for you shows as any other.
     case quiet

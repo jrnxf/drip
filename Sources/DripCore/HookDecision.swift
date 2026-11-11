@@ -381,4 +381,15 @@ extension AgentHook {
         return (shown, front)
     }
 }
+
+extension AgentHook.Surroundings {
+    /// These surroundings, reading `settings` in place of the config file, for the second look at a
+    /// waiting card a hook skipped: it reads no file.
+    public func reading(_ settings: BackgroundSettings) -> AgentHook.Surroundings {
+        var looked = self
+        // The hook's drip said the file's warnings already.
+        looked.loadConfig = { _ in ConfigFile(config: settings.config, warnings: []) }
+        return looked
+    }
+}
 #endif

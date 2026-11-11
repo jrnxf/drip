@@ -45,6 +45,28 @@ public struct CardResolver {
         environment.sound == nil && config.sound != Sound.none && config.presets[preset.name]?.sound != nil
     }
 
+    /// How the cards stack at the notch: `DRIP_STACK` and `DRIP_STACK_MAX`, then the config's `stack`
+    /// and `stack_max`, then the defaults. Nil when stacking is off.
+    public var stack: StackSettings? { StackSettings.resolved(environment, config: config) }
+
+    /// The settings from the config file `loadConfig` reads and the environment, for a drip that
+    /// shows its card whatever the environment says: each `DRIP_*` variable drip cannot read is left
+    /// out, and the others still apply. `warnings` are the file's. `error` is what a card command's
+    /// strict read of the environment throws, nil when it reads, for a caller that reports it.
+    public static func leniently(
+        environment: [String: String],
+        loadConfig: ([String: String]) -> ConfigFile = { ConfigLoader.loadLeniently(environment: $0) }
+    ) -> (resolver: CardResolver, warnings: [String], error: Error?) {
+        let file = loadConfig(environment)
+        do {
+            let settings = try EnvironmentSettings(environment: environment)
+            return (CardResolver(config: file.config, environment: settings), file.warnings, nil)
+        } catch {
+            let settings = EnvironmentSettings.leniently(environment).settings
+            return (CardResolver(config: file.config, environment: settings), file.warnings, error)
+        }
+    }
+
     /// `DRIP_SIZE`, then the config's `size`, then the default.
     public var size: CardSize { environment.size ?? config.size ?? Defaults.size }
 

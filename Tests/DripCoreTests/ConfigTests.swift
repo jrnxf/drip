@@ -470,25 +470,120 @@ struct StackSettingsTests {
         #expect(try ConfigLoader.parse("stack = \"off\"", path: path).config.stack == .off)
     }
 
-    @Test func stackMaxComesFromTheEnvironmentThenTheConfigThenThree() {
+    /// The stack as `DRIP_STACK` and `DRIP_STACK_MAX` set it, then the config.
+    private func stack(_ environment: [String: String], _ config: Config) throws -> StackSettings? {
+        CardResolver(config: config, environment: try EnvironmentSettings(environment: environment)).stack
+    }
+
+    @Test func stackMaxComesFromTheEnvironmentThenTheConfigThenThree() throws {
         let config = Config(stackMax: 5)
-        #expect(StackSettings.current(environment: [:], config: Config()) == StackSettings(mode: .chain, max: 3))
-        #expect(StackSettings.current(environment: [:], config: config)?.max == 5)
-        #expect(StackSettings.current(environment: ["DRIP_STACK_MAX": "2"], config: config)?.max == 2)
+        #expect(try stack([:], Config()) == StackSettings(mode: .chain, max: 3))
+        #expect(try stack([:], config)?.max == 5)
+        #expect(try stack(["DRIP_STACK_MAX": "2"], config)?.max == 2)
     }
 
-    @Test func stackModeComesFromTheEnvironmentThenTheConfig() {
-        #expect(StackSettings.current(environment: ["DRIP_STACK": "push"], config: Config())?.mode == .push)
-        #expect(StackSettings.current(environment: ["DRIP_STACK": "off"], config: Config()) == nil)
-        #expect(StackSettings.current(environment: [:], config: Config(stack: .push))?.mode == .push)
-        #expect(StackSettings.current(environment: [:], config: Config(stack: .off)) == nil)
-        #expect(StackSettings.current(environment: ["DRIP_STACK": "chain"], config: Config(stack: .off))?.mode == .chain)
+    @Test func stackModeComesFromTheEnvironmentThenTheConfig() throws {
+        #expect(try stack(["DRIP_STACK": "push"], Config())?.mode == .push)
+        #expect(try stack(["DRIP_STACK": "off"], Config()) == nil)
+        #expect(try stack([:], Config(stack: .push))?.mode == .push)
+        #expect(try stack([:], Config(stack: .off)) == nil)
+        #expect(try stack(["DRIP_STACK": "chain"], Config(stack: .off))?.mode == .chain)
     }
 
-    /// A drip with a bad DRIP_STACK or DRIP_STACK_MAX exits 2 before it hands off a card, so the
-    /// drip that shows the cards falls back to the defaults.
+    /// `drip run` and a replay show their card whatever the environment says: each `DRIP_*`
+    /// variable drip cannot read is left out, and the config and the other variables still apply.
     @Test func invalidStackSettingsAreLeftOut() {
-        #expect(StackSettings.current(environment: ["DRIP_STACK": "psuh"], config: Config()) == StackSettings(mode: .chain, max: 3))
-        #expect(StackSettings.current(environment: ["DRIP_STACK_MAX": "40"], config: Config(stackMax: 5))?.max == 5)
+        let file = ConfigFile(config: Config(stack: .push, stackMax: 5), warnings: ["a key drip ignores"])
+        let load = { (_: [String: String]) in file }
+        let psuh = CardResolver.leniently(environment: ["DRIP_STACK": "psuh", "DRIP_STACK_MAX": "2"], loadConfig: load)
+        #expect(psuh.resolver.stack == StackSettings(mode: .push, max: 2))
+        #expect(psuh.warnings == ["a key drip ignores"])
+        // The error is the one a card command reports.
+        #expect((psuh.error as? UsageError)?.message.hasPrefix("DRIP_STACK must be ") == true)
+        let tooMany = CardResolver.leniently(environment: ["DRIP_STACK": "chain", "DRIP_STACK_MAX": "40"], loadConfig: load)
+        #expect(tooMany.resolver.stack == StackSettings(mode: .chain, max: 5))
+        let fine = CardResolver.leniently(environment: [:], loadConfig: load)
+        #expect(fine.resolver.stack == StackSettings(mode: .push, max: 5))
+        #expect(fine.error == nil)
     }
+
+    /// Each `DRIP_*` variable is either in the settings or has a problem: none goes without a word.
+    @Test func eachVariableIsKeptOrHasAProblem() {
+        let (settings, problems) = EnvironmentSettings.leniently([
+            "DRIP_STACK": "push", "DRIP_STACK_MAX": "40", "DRIP_HISTORY": "lots", "DRIP_SECONDS": "5",
+        ])
+        #expect(settings.stack == .push)
+        #expect(settings.seconds == 5)
+        #expect(settings.stackMax == nil)
+        #expect(settings.history == nil)
+        #expect(problems.count == 2)
+        #expect(problems.allSatisfy { $0.hasPrefix("DRIP_HISTORY") || $0.hasPrefix("DRIP_STACK_MAX") })
+    }
+
+    #if !os(WASI) // An agent's hook does not run on WebAssembly.
+    /// A card reads the config once: where its drip makes it. The drip that shows it takes the
+    /// settings from the request, and reads nothing.
+    @Test func aCardReadsTheConfigOnce() throws {
+        var reads = 0
+        var made: CardResolver?
+        let surroundings = AgentHook.Surroundings(
+            environment: ["__CFBundleIdentifier": "com.apple.Terminal"], hasGUISession: true, isInstalled: { _ in false },
+            front: { _ in WhenFocused.Front(app: false, pane: false, idle: 0) },
+            loadConfig: { _ in
+                reads += 1
+                return ConfigFile(config: Config(stack: .push, stackMax: 5, history: 40), warnings: [])
+            },
+            resolver: { file, environment in
+                let resolver = CardResolver(config: file.config, environment: try EnvironmentSettings(environment: environment))
+                made = resolver
+                return resolver
+            })
+        let card = try #require(try ShellHook.card(command: "make", status: 0, seconds: 30, in: surroundings))
+        #expect(reads == 1)
+        let settings = BackgroundSettings(try #require(made))
+        let request = try BackgroundRequest.decode(BackgroundRequest(cards: [card], record: true, settings: settings).encoded())
+        let read = { () -> BackgroundSettings in
+            reads += 1
+            return BackgroundSettings(stack: nil)
+        }
+        let shown = request.settings(orRead: read)
+        #expect(shown.stack == StackSettings(mode: .push, max: 5))
+        #expect(shown.history == 40)
+        #expect(reads == 1)
+
+        // Stacking off is said too, and needs no read.
+        let off = try BackgroundRequest.decode(BackgroundRequest(
+            cards: [card], record: true, settings: BackgroundSettings(CardResolver(config: Config(stack: .off)))).encoded())
+        #expect(off.settings(orRead: read).stack == nil)
+        #expect(reads == 1)
+
+        // A request from a drip that predates `settings` reads them, once.
+        let old = try BackgroundRequest.decode(Data(#"{"cards":[],"record":true,"history":7}"#.utf8))
+        #expect(old.settings(orRead: read) == BackgroundSettings(stack: nil))
+        #expect(reads == 2)
+    }
+
+    /// The second look at a waiting card a hook skipped reads the settings the hook's drip resolved,
+    /// not the file.
+    @Test func aSecondLookReadsTheSettingsTheHookRead() throws {
+        var reads = 0
+        let surroundings = AgentHook.Surroundings(
+            environment: [:], hasGUISession: true, isInstalled: { _ in false },
+            front: { _ in WhenFocused.Front(app: false, pane: false, idle: 0) },
+            loadConfig: { _ in
+                reads += 1
+                return ConfigFile(config: Config(), warnings: [])
+            },
+            resolver: { file, _ in CardResolver(config: file.config) })
+        let settings = BackgroundSettings(CardResolver(config: Config(whenFocused: .show, awayAfter: 30, debug: true)))
+        let looked = surroundings.reading(settings)
+        let file = looked.loadConfig([:])
+        let resolver = try looked.resolver(file, [:])
+        #expect(resolver.whenFocused == .show)
+        #expect(resolver.awayAfter == 30)
+        #expect(file.config.debug == true)
+        #expect(file.warnings.isEmpty)
+        #expect(reads == 0)
+    }
+    #endif
 }
