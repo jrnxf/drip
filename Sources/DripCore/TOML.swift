@@ -1,17 +1,22 @@
 /// A parser for the part of TOML that config.toml uses. It records the line of every key, so config
 /// errors can name it.
 ///
-/// Supports comments, `key = value` with bare keys, table headers such as `[preset.ok]`, and values
-/// that are single-line basic or literal strings, decimal integers, floats and booleans. Any other
-/// TOML syntax is an error naming its line.
+/// Supports comments, `key = value` with bare keys, dotted keys such as `preset.ok.sound = "Hero"`,
+/// table headers such as `[preset.ok]`, single-line inline tables such as `{ sound = "Hero" }`, and
+/// values that are single-line basic or literal strings, decimal integers, floats and booleans.
+/// Tables follow TOML 1.0: a header, a dotted key or an inline table cannot redefine a table that
+/// another one made, and an inline table is closed. Any other TOML syntax is an error naming its line.
 public enum TOML {
     /// The most keys a table header has.
     public static let headerDepth = 2
 
+    /// The most keys a dotted key has, and the most inline tables inside each other. Deeper input is
+    /// an error, since it would exhaust the stack.
+    public static let nestingDepth = 8
+
     public static func parse(_ text: String) throws -> TOMLTable {
-        let root = TableNode(line: 1)
+        let root = TableNode(line: 1, origin: .header)
         var current = root
-        var headers: Set<[String]> = []
         for (offset, scalars) in text.unicodeScalars.split(separator: "\n", omittingEmptySubsequences: false)
             .enumerated() {
             var parser = LineParser(scalars, line: offset + 1)
@@ -20,9 +25,9 @@ public enum TOML {
             case nil, "#"?:
                 continue
             case "["?:
-                current = try parser.parseHeader(root: root, headers: &headers)
+                current = try parser.parseHeader(root: root)
             default:
-                try parser.parseKeyValue(into: current)
+                try parser.parseKeyValue(into: current, depth: 0)
             }
             try parser.endOfLine()
         }
@@ -88,12 +93,26 @@ public struct TOMLTable: Equatable {
 
 /// A table while it is being built. A class, because a later header can add to a parent table.
 private final class TableNode {
+    /// What made the table, which decides what may change it later.
+    enum Origin {
+        /// Made as the parent of a header's table. A header may still define it, once.
+        case implicit
+        /// Defined by a `[header]`.
+        case header
+        /// Made by a dotted key. Only dotted keys of the same section add to it.
+        case dotted
+        /// An inline table, which nothing extends.
+        case inline
+    }
+
     let line: Int
+    var origin: Origin
     var keys: [String] = []
     var entries: [String: Entry] = [:]
 
-    init(line: Int) {
+    init(line: Int, origin: Origin) {
         self.line = line
+        self.origin = origin
     }
 
     func set(_ key: String, _ entry: Entry) {
@@ -134,7 +153,7 @@ private struct LineParser {
 
     // MARK: Tables and keys
 
-    mutating func parseHeader(root: TableNode, headers: inout Set<[String]>) throws -> TableNode {
+    mutating func parseHeader(root: TableNode) throws -> TableNode {
         advance()
         if peek() == "[" { throw error("arrays of tables are not supported") }
         var path: [String] = []
@@ -149,17 +168,24 @@ private struct LineParser {
             skipWhitespace()
         } while consume(".")
         guard consume("]") else { throw error("expected ']' to close the table header") }
-        guard headers.insert(path).inserted else {
-            throw error("table '\(path.joined(separator: "."))' is already defined")
-        }
         var table = root
-        for key in path {
+        for (offset, key) in path.enumerated() {
+            let isLast = offset == path.count - 1
             switch table.entries[key] {
             case nil:
-                let child = TableNode(line: line)
+                let child = TableNode(line: line, origin: isLast ? .header : .implicit)
                 table.set(key, .table(child))
                 table = child
             case let .table(child)?:
+                if child.origin == .inline {
+                    throw error("'\(key)' is an inline table, which cannot be extended")
+                }
+                if isLast {
+                    guard child.origin == .implicit else {
+                        throw error("table '\(path.joined(separator: "."))' is already defined")
+                    }
+                    child.origin = .header
+                }
                 table = child
             case .value?:
                 throw error("'\(key)' is already a value, not a table")
@@ -168,15 +194,70 @@ private struct LineParser {
         return table
     }
 
-    mutating func parseKeyValue(into table: TableNode) throws {
-        let key = try parseKey()
+    /// Parses `key = value` or `a.b.c = value` and adds it to `table`. `depth` counts the inline
+    /// tables around this one.
+    mutating func parseKeyValue(into table: TableNode, depth: Int) throws {
+        var path = [try parseKey()]
         skipWhitespace()
-        if peek() == "." { throw error("dotted keys are not supported; use a [table] header") }
+        while consume(".") {
+            if path.count == TOML.nestingDepth {
+                throw error("dotted keys have at most \(TOML.nestingDepth) keys")
+            }
+            skipWhitespace()
+            path.append(try parseKey())
+            skipWhitespace()
+        }
         guard consume("=") else { throw error("expected '=' after the key") }
         skipWhitespace()
-        let value = try parseValue()
-        guard table.entries[key] == nil else { throw error("'\(key)' is defined twice") }
-        table.set(key, .value(TOMLItem(value: value, line: line)))
+        var parent = table
+        for (offset, key) in path.dropLast().enumerated() {
+            let name = path[0...offset].joined(separator: ".")
+            switch parent.entries[key] {
+            case nil:
+                let child = TableNode(line: line, origin: .dotted)
+                parent.set(key, .table(child))
+                parent = child
+            case let .table(child)? where child.origin == .dotted:
+                parent = child
+            case .table?:
+                throw error("'\(name)' is already defined as a table, so a dotted key cannot add to it")
+            case .value?:
+                throw error("'\(name)' is already a value, not a table")
+            }
+        }
+        let entry: Entry
+        if peek() == "{" {
+            entry = .table(try parseInlineTable(depth: depth + 1))
+        } else {
+            entry = .value(TOMLItem(value: try parseValue(), line: line))
+        }
+        let key = path[path.count - 1]
+        guard parent.entries[key] == nil else { throw error("'\(path.joined(separator: "."))' is defined twice") }
+        parent.set(key, entry)
+    }
+
+    /// Parses `{ key = value, ... }` on this line, with no trailing comma.
+    private mutating func parseInlineTable(depth: Int) throws -> TableNode {
+        if depth > TOML.nestingDepth {
+            throw error("inline tables nest at most \(TOML.nestingDepth) deep")
+        }
+        advance()
+        let table = TableNode(line: line, origin: .inline)
+        skipWhitespace()
+        if consume("}") { return table }
+        while true {
+            skipWhitespace()
+            try parseKeyValue(into: table, depth: depth)
+            skipWhitespace()
+            if consume("}") { return table }
+            guard consume(",") else {
+                throw error(peek() == nil ? "unterminated inline table; it must end with '}' on the same line"
+                                          : "expected ',' or '}' in the inline table")
+            }
+            skipWhitespace()
+            if peek() == "}" { throw error("a trailing comma is not allowed in an inline table") }
+            if peek() == nil { throw error("unterminated inline table; it must end with '}' on the same line") }
+        }
     }
 
     private mutating func parseKey() throws -> String {
@@ -209,8 +290,6 @@ private struct LineParser {
             return .string(try parseLiteralString())
         case "["?:
             throw error("arrays are not supported")
-        case "{"?:
-            throw error("inline tables are not supported")
         case "#"? where peek(1).map({ $0.properties.isASCIIHexDigit }) == true:
             // color = #a78bfa: the # starts a comment.
             throw error("expected a value; a color needs quotes, as in \"#a78bfa\", since # starts a comment")
