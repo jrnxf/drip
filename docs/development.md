@@ -130,26 +130,31 @@ run can read the Claude Code token and the Gemini API key in the Keychain withou
 drip reads three places, and a scratch run must move all of them:
 
 - `XDG_CONFIG_HOME` (else `~/.config`): `drip/config.toml`.
-- `XDG_STATE_HOME` (else `~/.local/state`): `drip/history.jsonl`, `drip/debug.log`,
-  `drip/remote.jsonl` (`DRIP_QUEUE` overrides it), the held cards and the pause.
+- `XDG_STATE_HOME` (else `~/.local/state`): `drip/history.jsonl`, `drip/debug.log`, the held cards and the pause.
 - `DRIP_QUEUE_DIR` (an absolute path; else the user temp folder): the card queue that drips share.
 
-Each `XDG_*` value must be an absolute path, or drip falls back to `HOME`. Unset every inherited
-`DRIP_*` variable too, as the example does, or one can change what drip reads.
+Each `XDG_*` value must be an absolute path, or drip falls back to `HOME`. drip also writes under
+`HOME`: `drip follow` writes `~/Library/LaunchAgents` and `~/Library/Logs`. Unset every inherited
+`DRIP_*` variable, and `CLAUDE_CODE_SESSION_ATTENDED` and `CLAUDE_CODE_ENTRYPOINT` too, as the
+example does, or they change what drip reads. (`COLUMNS`, `NO_COLOR`, `TMUX_PANE` and `TMPDIR` only
+shape the output, the tmux pane and the temp folder.)
 
 ```sh
 scratch=$(mktemp -d)
-env $(env | sed -n 's/^\(DRIP_[A-Z_]*\)=.*/-u \1/p') \
+env $(env | sed -n 's/^\(DRIP_[A-Za-z0-9_]*\)=.*/-u \1/p') \
+  -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT \
   XDG_CONFIG_HOME="$scratch/config" XDG_STATE_HOME="$scratch/state" DRIP_QUEUE_DIR="$scratch/queue" \
   .build/debug/drip doctor
 rm -rf "$scratch"
 ```
 
-The real state folder is never the target. On a Mac in use, run by hand only commands that show no
-card, such as `doctor`, `history` and `__render`: a drip with its own queue shows its cards on top
-of the person's own and ignores their `drip pause`. Do not run `drip follow` by hand: it installs a
-real LaunchAgent under `~/Library`. Commands that show cards belong on a Mac nobody works at, as
-`scripts/mac-check.sh` and `scripts/mac-e2e.sh` run them with `DRIP_LIVE_CHECKS=isolated`.
+Never point `XDG_STATE_HOME` or `XDG_CONFIG_HOME` at the real `~/.local/state` or `~/.config`. On a
+Mac in use, run by hand only commands that show no card, such as `doctor`, `history` (not
+`history --replay`, which shows the cards again) and `__render`: a drip with its own queue shows its
+cards on top of the person's own and ignores their `drip pause`. Do not run `drip follow` by hand: it
+installs a real LaunchAgent. Apart from `scripts/tour.sh`, which you run on purpose to watch cards,
+commands that show cards belong on a Mac nobody works at, as `scripts/mac-check.sh` and
+`scripts/mac-e2e.sh` run them with `DRIP_LIVE_CHECKS=isolated`.
 
 ## Releases
 
