@@ -234,11 +234,21 @@ struct TextTests {
         #expect(CardText.direction(title: "שלום", detail: nil).alignsRight)
     }
 
+    /// A line with no strong letter takes the card's direction, in the title and in the detail.
+    @Test func aNeutralLineTakesTheCardsDirection() {
+        let rightToLeftCard = CardText.direction(title: "שלום עולם", detail: "(12:30)")
+        #expect(rightToLeftCard == CardText.Direction(alignsRight: true, titleRightToLeft: true, detailRightToLeft: true))
+        let neutralTitle = CardText.direction(title: "#42 - 3/5", detail: "مرحبا بالعالم")
+        #expect(neutralTitle == CardText.Direction(alignsRight: true, titleRightToLeft: true, detailRightToLeft: true))
+        let leftToRightCard = CardText.direction(title: "Build finished", detail: "(12:30)")
+        #expect(leftToRightCard == CardText.Direction(alignsRight: false, titleRightToLeft: false, detailRightToLeft: false))
+    }
+
     /// A title with no strong letter ("404", "#123", an emoji, nothing) takes the detail's direction.
     @Test func cardDirectionFallsBackToTheDetailForANeutralTitle() {
         for title in ["404", "#123", "🎉", ""] {
             #expect(CardText.direction(title: title, detail: "שלום עולם")
-                == CardText.Direction(alignsRight: true, titleRightToLeft: false, detailRightToLeft: true))
+                == CardText.Direction(alignsRight: true, titleRightToLeft: true, detailRightToLeft: true))
             #expect(!CardText.direction(title: title, detail: "Build finished").alignsRight)
             #expect(!CardText.direction(title: title, detail: nil).alignsRight)
         }

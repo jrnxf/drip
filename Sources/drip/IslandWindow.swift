@@ -121,7 +121,8 @@ final class IslandLayers {
         }
         // The text column depends only on the size, the icon and the button.
         let column = CGFloat(islandMetrics(textSize: .zero, titleLines: 0, detailLines: 0).textColumn)
-        let (titleText, detailText, direction) = Self.wrapped(card, column: column)
+        let wrapped = Self.wrapped(card, column: column)
+        let (titleText, detailText, direction) = (wrapped.title, wrapped.detail, wrapped.direction)
         let titleSizes = titleText.map { Self.measure($0, maxWidth: column) }
         let detailSizes = detailText.map { Self.measure($0, maxWidth: column) }
         let spacing = detailText.isEmpty ? 0 : 3 * sizeScale
@@ -454,8 +455,14 @@ final class IslandLayers {
         parent.addSublayer(ringProgress)
     }
 
+    private struct WrappedText {
+        let title: [NSAttributedString]
+        let detail: [NSAttributedString]
+        let direction: CardText.Direction
+    }
+
     /// The card's title and detail as the island lays them out in a text column `column` points wide.
-    private static func wrapped(_ card: Card, column: CGFloat) -> (title: [NSAttributedString], detail: [NSAttributedString], direction: CardText.Direction) {
+    private static func wrapped(_ card: Card, column: CGFloat) -> WrappedText {
         let sizeScale = CGFloat(card.size.scale)
         let direction = CardText.direction(title: card.title, detail: card.detail)
         let title = lines(
@@ -466,7 +473,7 @@ final class IslandLayers {
                 $0, rightToLeft: direction.detailRightToLeft, font: .systemFont(ofSize: 12 * sizeScale, weight: .regular), color: NSColor(white: 0.62, alpha: 1),
                 width: column, maxLines: Defaults.detailLines)
         } ?? []
-        return (title, detail, direction)
+        return WrappedText(title: title, detail: detail, direction: direction)
     }
 
     /// The lines the island shows for `card`, laid out as `init` does with the card's icon and
@@ -486,8 +493,8 @@ final class IslandLayers {
             notchWidth: 0, notchHeight: 0, scale: Double(sizeScale), textWidth: 0, textHeight: 0, hasIcon: card.showsIconAtNotch,
             actionWidth: yes.map { IslandMetrics.buttonsWidth(yes: $0, no: no, scale: Double(sizeScale)) } ?? 0,
             declineWidth: no ?? 0)
-        let (title, detail, _) = wrapped(card, column: CGFloat(metrics.textColumn))
-        return ShownText(title: title.map(\.string), detail: detail.map(\.string))
+        let text = wrapped(card, column: CGFloat(metrics.textColumn))
+        return ShownText(title: text.title.map(\.string), detail: text.detail.map(\.string))
     }
 
     /// `text` broken into at most `maxLines` lines, each cut to fit `width`, the last with an ellipsis
@@ -501,8 +508,8 @@ final class IslandLayers {
     ) -> [NSAttributedString] {
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
         if rightToLeft {
-            // A right-to-left line reads right to left, however it starts. A left-to-right line keeps
-            // its natural base direction.
+            // A right-to-left line reads right to left, however it starts. A neutral line takes the
+            // card's direction. Other lines keep their natural base direction.
             let paragraph = NSMutableParagraphStyle()
             paragraph.baseWritingDirection = .rightToLeft
             attributes[.paragraphStyle] = paragraph
