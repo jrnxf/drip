@@ -13,7 +13,7 @@ build the latest `main` from source instead, run `brew install --HEAD jrnxf/tap/
 is signed ad hoc, so macOS asks again after each one.
 
 Homebrew installs the zsh, bash and fish completions, once your shell loads them
-([how](https://docs.brew.sh/Shell-Completion)). For a source build, run
+([how](https://docs.brew.sh/Shell-Completion)), and the man page, so `man drip` works. For a source build, run
 `drip --generate-completion-script zsh` (or `bash`, `fish`) and save the output where your shell
 loads completions.
 

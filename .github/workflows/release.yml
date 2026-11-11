@@ -4,8 +4,8 @@ name: Release
 # with drip's own certificate (see the Sign step), packed in
 # drip-<version>-universal-apple-darwin.tar.gz with its .sha256, publishes the tag's GitHub release
 # with both attached, then points the Homebrew formula at it, so brew installs drip without
-# compiling. The archive holds one directory of the same name, with the executable drip, README.md,
-# LICENSE and THIRD_PARTY.md.
+# compiling. The archive holds one directory of the same name, with the executable drip, its man
+# page drip.1, README.md, LICENSE and THIRD_PARTY.md.
 #
 # Two kinds of tag:
 # - v0.1.0-pre.N, a development build: Sources/DripCore/Version.swift says 0.1.0-pre, and the build
@@ -207,6 +207,14 @@ jobs:
           fi
         env:
           TAG: ${{ github.ref_name }}
+      # The man page, generated from the same argument parser as the binary. The plugin writes only
+      # to the directory it is allowed, which sits outside the package.
+      - name: Generate the man page
+        run: |
+          mkdir "$RUNNER_TEMP/man"
+          swift package --allow-writing-to-directory "$RUNNER_TEMP/man" generate-manual \
+            --output-directory "$RUNNER_TEMP/man"
+          test -s "$RUNNER_TEMP/man/drip.1"
       # Named for the version drip prints, which the step above holds to the tag.
       - name: Archive
         id: archive
@@ -214,7 +222,7 @@ jobs:
           dir="drip-$(./drip --version)-$TARGET"
           mkdir "$dir"
           install -m 0755 drip "$dir/drip"
-          install -m 0644 README.md LICENSE THIRD_PARTY.md "$dir/"
+          install -m 0644 "$RUNNER_TEMP/man/drip.1" README.md LICENSE THIRD_PARTY.md "$dir/"
           # No AppleDouble files for extended attributes, and no runner account in the headers.
           COPYFILE_DISABLE=1 tar -czf "$dir.tar.gz" --uid 0 --gid 0 --uname root --gname wheel "$dir"
           echo "archive=$dir.tar.gz" >> "$GITHUB_OUTPUT"
@@ -222,11 +230,14 @@ jobs:
       - name: Check the archive
         run: |
           tar -tvzf "$ARCHIVE"
-          printf '%s\n' "$DIR/" "$DIR/LICENSE" "$DIR/README.md" "$DIR/THIRD_PARTY.md" "$DIR/drip" > expected.txt
+          printf '%s\n' "$DIR/" "$DIR/LICENSE" "$DIR/README.md" "$DIR/THIRD_PARTY.md" "$DIR/drip" \
+            "$DIR/drip.1" > expected.txt
           tar -tzf "$ARCHIVE" | LC_ALL=C sort | diff expected.txt -
           mkdir unpacked
           tar -xzf "$ARCHIVE" -C unpacked
           test "$(stat -f %Lp "unpacked/$DIR/drip")" = 755
+          test "$(stat -f %Lp "unpacked/$DIR/drip.1")" = 644
+          man -l "unpacked/$DIR/drip.1" > /dev/null
           codesign --verify --strict --all-architectures "unpacked/$DIR/drip"
           "unpacked/$DIR/drip" --version
         env:
