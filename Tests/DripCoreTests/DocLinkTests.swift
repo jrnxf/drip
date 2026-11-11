@@ -1,29 +1,42 @@
-#if !os(WASI) // Walks the repo folder, which the browser's sandbox has not.
+#if !os(WASI) // Runs git and reads the repo folder, which the browser's sandbox has not.
 import Foundation
 import Testing
 
-/// Every relative link in a markdown file points at a file or folder that exists. Anchors and web links are not checked.
+/// Every relative link in a tracked markdown file points at a file or folder that exists.
+/// Not checked: anchors, web links, angle-bracket or paren targets, HTML tags, reference definitions, letter case.
 struct DocLinkTests {
     @Test func relativeMarkdownLinksPointAtFilesThatExist() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let skipped: Set = [".build", ".git", ".claude", "node_modules"]
-        let localOnly: Set = ["LAUNCH-PLAN.md", "LAUNCH-FOLLOWUPS.md", "api-surface-audit.md"]
-        let link = try NSRegularExpression(pattern: #"\[[^\]]*\]\(([^)\s]+)"#)
-        var files: [URL] = []
-        let walker = try #require(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
-        for case let url as URL in walker {
-            if skipped.contains(url.lastPathComponent) { walker.skipDescendants() }
-            else if url.pathExtension == "md", !localOnly.contains(url.lastPathComponent) { files.append(url) }
-        }
+        let git = Process()
+        git.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        git.arguments = ["git", "ls-files", "*.md"]
+        git.currentDirectoryURL = root
+        let pipe = Pipe()
+        git.standardOutput = pipe
+        try git.run()
+        let listing = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        git.waitUntilExit()
+        let files = listing.split(separator: "\n").map(String.init)
         #expect(!files.isEmpty)
+
+        let link = try NSRegularExpression(pattern: #"\[[^\]]*\]\(([^)\s]+)"#)
+        let codeSpan = try NSRegularExpression(pattern: "`[^`]*`")
         for file in files {
-            let text = try String(contentsOf: file, encoding: .utf8)
-            for match in link.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-                let target = String(text[Range(match.range(at: 1), in: text)!])
-                let path = String(target.split(separator: "#", omittingEmptySubsequences: false)[0])
-                if path.isEmpty || ["http:", "https:", "mailto:"].contains(where: path.hasPrefix) { continue }
-                let found = FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent(path).path)
-                #expect(found, "\(file.lastPathComponent) links to \(target), which does not exist")
+            var fenced = false
+            let text = try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
+            for var line in text.components(separatedBy: "\n") {
+                if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") { fenced.toggle() }
+                if fenced || line.trimmingCharacters(in: .whitespaces).hasPrefix("```") { continue }
+                line = codeSpan.stringByReplacingMatches(in: line, range: NSRange(line.startIndex..., in: line), withTemplate: "")
+                for match in link.matches(in: line, range: NSRange(line.startIndex..., in: line)) {
+                    let target = String(line[Range(match.range(at: 1), in: line)!])
+                    var path = String(target.prefix { $0 != "#" && $0 != "?" })
+                    if path.isEmpty || ["http:", "https:", "mailto:"].contains(where: path.hasPrefix) { continue }
+                    path = path.removingPercentEncoding ?? path
+                    let base = path.hasPrefix("/") ? root : root.appendingPathComponent(file).deletingLastPathComponent()
+                    let found = FileManager.default.fileExists(atPath: base.appendingPathComponent(path).path)
+                    #expect(found, "\(file) links to \(target), which does not exist")
+                }
             }
         }
     }
