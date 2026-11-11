@@ -37,8 +37,7 @@ drip ok "drip works"
 ## Uninstall
 
 ```sh
-brew uninstall drip                       # or, for a build from source:
-sudo rm /usr/local/bin/drip /usr/local/share/man/man1/drip.1
+brew uninstall drip                       # or: sudo rm /usr/local/bin/drip /usr/local/share/man/man1/drip.1, for a build from source
 rm -rf ~/.config/drip ~/.local/state/drip # the config and the history
 ```
 

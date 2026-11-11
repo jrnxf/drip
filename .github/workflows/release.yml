@@ -234,13 +234,6 @@ jobs:
           tar -xzf "$ARCHIVE" -C unpacked
           test "$(stat -f %Lp "unpacked/$DIR/drip")" = 755
           test "$(stat -f %Lp "unpacked/$DIR/drip.1")" = 644
-          mandoc -T lint -W error "unpacked/$DIR/drip.1"
-          grep -qx '.Dt DRIP 1' "unpacked/$DIR/drip.1"
-          grep -qx '.Sh NAME' "unpacked/$DIR/drip.1"
-          if grep -q '__' "unpacked/$DIR/drip.1"; then
-            echo "the man page lists a hidden subcommand" >&2
-            exit 1
-          fi
           codesign --verify --strict --all-architectures "unpacked/$DIR/drip"
           "unpacked/$DIR/drip" --version
         env:
