@@ -14,8 +14,7 @@ struct HUDDisplay: CardDisplay {
             console.error("no GUI session: cards need a logged-in macOS desktop (for example, not over ssh)")
             return ExitStatus.noGUISession
         }
-        CardQueue.reportsResult = reportsResult
-        CardQueue.waitForTurn(cards: cards)
+        CardQueue.waitForTurn(cards: cards, reportsResult: reportsResult)
         // Cards a stack at the notch adopted are on screen already: they only go in the history.
         let adopted = cards.indices.filter(CardQueue.isAdopted)
         if !adopted.isEmpty { record(adopted.map { cards[$0] }, missed: false, locked: locked, console: console) }

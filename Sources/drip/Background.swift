@@ -193,8 +193,9 @@ enum CardQueue {
     /// The cards this process queues, kept for when it queues again after giving up its turn.
     private static var cards: [Card] = []
     /// Whether this process prints how its card ended, as `drip --result` does, so no other drip
-    /// takes the card over: see `QueueTicket.reportsResult`. Set before it first queues.
-    static var reportsResult = false
+    /// takes the card over: see `QueueTicket.reportsResult`. Set with the cards, so a ticket never
+    /// goes out without it.
+    private static var reportsResult = false
     private static var leavesAtExit = false
 
     /// Queues the cards of the process `pid`, as `QueueDirectory.enqueue` describes.
@@ -203,13 +204,14 @@ enum CardQueue {
     }
 
     /// Waits until every drip queued earlier has shown its cards, or until a showing drip has
-    /// adopted all of this one's, queuing `cards`, or the cards it queued before when nil. Past
+    /// adopted all of this one's, queuing `cards`, or the cards it queued before when nil, and
+    /// whether this process `reportsResult` with them. Past
     /// `patience`, it waits on only while an earlier drip's question waits for its answer, which
     /// never gives way, and never longer than a question waits. The ticket goes when this process
     /// exits.
-    static func waitForTurn(cards: [Card]? = nil) {
+    static func waitForTurn(cards: [Card]? = nil, reportsResult: Bool = false) {
         let me = getpid()
-        join(cards: cards)
+        join(cards: cards, reportsResult: reportsResult)
         let start = Date()
         var deadline = start.addingTimeInterval(patience)
         let longest = deadline.addingTimeInterval(Defaults.waitLimit)
@@ -224,13 +226,16 @@ enum CardQueue {
         }
     }
 
-    /// Takes this process's ticket, queuing `cards`, or the cards it queued before when nil, unless
-    /// it has one already, as a background drip a stack was handed on to does. The ticket goes when
-    /// this process exits.
-    static func join(cards: [Card]? = nil) {
+    /// Takes this process's ticket, queuing `cards`, or the cards it queued before when nil, and
+    /// whether it `reportsResult` with them, unless it has one already, as a background drip a stack
+    /// was handed on to does. The ticket goes when this process exits.
+    static func join(cards: [Card]? = nil, reportsResult: Bool = false) {
         let me = getpid()
-        if let cards { self.cards = cards }
-        if queue.ticket(of: me) == nil { queue.enqueue(pid: me, cards: self.cards, reportsResult: reportsResult) }
+        if let cards {
+            self.cards = cards
+            self.reportsResult = reportsResult
+        }
+        if queue.ticket(of: me) == nil { queue.enqueue(pid: me, cards: self.cards, reportsResult: self.reportsResult) }
         mine = queue.ticket(of: me)
         if !leavesAtExit {
             leavesAtExit = true

@@ -212,6 +212,35 @@ struct QueueTests {
         #expect(waiting.map(\.adoptable) == [false])
     }
 
+    /// A newer plain card with the same id still replaces it while it waits: it no longer waits its
+    /// turn, and the newer card swaps into the card on screen instead.
+    @Test func aCardThatReportsItsResultIsReplacedWhileItWaits() {
+        let mine = ticket(1, pid: 10, card("a"))
+        let reporting = QueueTicket(
+            name: QueueTicket.name(stamp: 2, pid: 20), cards: [card("a", title: "result")], reportsResult: true)!
+        let plain = ticket(3, pid: 30, card("a", title: "plain"))
+        let queue = [mine, reporting, plain]
+        #expect(CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }, except: ["a"]).isEmpty)
+        #expect(CardReplacement.isReplaced(reporting.cards[0], in: reporting, queue: queue, isAlive: { _ in true }))
+        let found = CardReplacement.replacement(for: card("a"), after: mine.name, queue: queue, isAlive: { _ in true })
+        #expect(found?.card.title == "plain")
+    }
+
+    /// Queued after a plain card with the same id, it replaces that card, as a newer question does,
+    /// so neither swaps in: the plain card never shows, and it waits its turn.
+    @Test func aCardThatReportsItsResultReplacesAnOlderPlainCardWithItsID() {
+        let mine = ticket(1, pid: 10, card("a"))
+        let plain = ticket(2, pid: 20, card("a", title: "plain"))
+        let reporting = QueueTicket(
+            name: QueueTicket.name(stamp: 3, pid: 30), cards: [card("a", title: "result")], reportsResult: true)!
+        let queue = [mine, plain, reporting]
+        #expect(CardReplacement.replacement(for: card("a"), after: mine.name, queue: queue, isAlive: { _ in true })
+            == nil)
+        #expect(CardReplacement.isReplaced(plain.cards[0], in: plain, queue: queue, isAlive: { _ in true }))
+        let waiting = CardTurns.waiting(after: mine.name, queue: queue, isAlive: { _ in true }, except: ["a"])
+        #expect(waiting.map(\.card.title) == ["result"])
+    }
+
     /// It never swaps into an older drip's card on screen, which would leave its drip with no end to
     /// print, but it still takes the place of an older card queued with the same id.
     @Test func aCardThatReportsItsResultNeverSwapsIn() {
