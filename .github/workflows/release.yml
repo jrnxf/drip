@@ -4,8 +4,8 @@ name: Release
 # with drip's own certificate (see the Sign step), packed in
 # drip-<version>-universal-apple-darwin.tar.gz with its .sha256, publishes the tag's GitHub release
 # with both attached, then points the Homebrew formula at it, so brew installs drip without
-# compiling. The archive holds one directory of the same name, with the executable drip, README.md,
-# LICENSE and THIRD_PARTY.md.
+# compiling. The archive holds one directory of the same name, with the executable drip, its man
+# page drip.1, README.md, LICENSE and THIRD_PARTY.md.
 #
 # Two kinds of tag:
 # - v0.1.0-pre.N, a development build: Sources/DripCore/Version.swift says 0.1.0-pre, and the build
@@ -22,8 +22,10 @@ name: Release
 #
 # Tap setup: jrnxf/homebrew-tap's docs/automatic-updates.md, which issues the TAP_DEPLOY_KEY
 # secret. Formula/drip.rb must already exist in the tap and install the binary with
-# `bin.install "drip"`: the bump script writes the formula's url and sha256, adding them to a
-# HEAD-only formula, but it never adds a formula or its install step.
+# `bin.install "drip"`. It installs the man page with
+# `man1.install "drip.1" if File.exist?("drip.1")`, so an archive without drip.1 (an older
+# release, or a `--HEAD` build) still installs. The bump script writes the formula's url and
+# sha256, adding them to a HEAD-only formula, but it never adds a formula or its install steps.
 on:
   push:
     tags: ["v*"]
@@ -207,6 +209,10 @@ jobs:
           fi
         env:
           TAG: ${{ github.ref_name }}
+      # The man page of the universal binary, from scripts/man-page.sh. It fails the job when the
+      # page lists a hidden subcommand or is not a valid man page.
+      - name: Generate the man page
+        run: scripts/man-page.sh --check ./drip "$RUNNER_TEMP/man"
       # Named for the version drip prints, which the step above holds to the tag.
       - name: Archive
         id: archive
@@ -214,7 +220,7 @@ jobs:
           dir="drip-$(./drip --version)-$TARGET"
           mkdir "$dir"
           install -m 0755 drip "$dir/drip"
-          install -m 0644 README.md LICENSE THIRD_PARTY.md "$dir/"
+          install -m 0644 "$RUNNER_TEMP/man/drip.1" README.md LICENSE THIRD_PARTY.md "$dir/"
           # No AppleDouble files for extended attributes, and no runner account in the headers.
           COPYFILE_DISABLE=1 tar -czf "$dir.tar.gz" --uid 0 --gid 0 --uname root --gname wheel "$dir"
           echo "archive=$dir.tar.gz" >> "$GITHUB_OUTPUT"
@@ -222,11 +228,13 @@ jobs:
       - name: Check the archive
         run: |
           tar -tvzf "$ARCHIVE"
-          printf '%s\n' "$DIR/" "$DIR/LICENSE" "$DIR/README.md" "$DIR/THIRD_PARTY.md" "$DIR/drip" > expected.txt
+          printf '%s\n' "$DIR/" "$DIR/LICENSE" "$DIR/README.md" "$DIR/THIRD_PARTY.md" "$DIR/drip" \
+            "$DIR/drip.1" > expected.txt
           tar -tzf "$ARCHIVE" | LC_ALL=C sort | diff expected.txt -
           mkdir unpacked
           tar -xzf "$ARCHIVE" -C unpacked
           test "$(stat -f %Lp "unpacked/$DIR/drip")" = 755
+          test "$(stat -f %Lp "unpacked/$DIR/drip.1")" = 644
           codesign --verify --strict --all-architectures "unpacked/$DIR/drip"
           "unpacked/$DIR/drip" --version
         env:
