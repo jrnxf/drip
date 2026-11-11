@@ -132,20 +132,25 @@ drip reads three places, and a scratch run must move all of them:
 - `XDG_CONFIG_HOME` (else `~/.config`): `drip/config.toml`.
 - `XDG_STATE_HOME` (else `~/.local/state`): `drip/history.jsonl`, `drip/debug.log`, the held cards and the pause.
 - `DRIP_QUEUE_DIR` (an absolute path; else the user temp folder): the card queue that drips share.
+  Only this variable moves the queue. `TMPDIR` does not.
 
 Each `XDG_*` value must be an absolute path, or drip falls back to `HOME`. drip also writes under
 `HOME`: `drip follow` writes `~/Library/LaunchAgents` and `~/Library/Logs`. Unset every inherited
 `DRIP_*` variable, and `CLAUDE_CODE_SESSION_ATTENDED` and `CLAUDE_CODE_ENTRYPOINT` too, as the
-example does, or they change what drip reads. (`COLUMNS`, `NO_COLOR`, `TMUX_PANE` and `TMPDIR` only
-shape the output, the tmux pane and the temp folder.)
+example does, or they change what drip reads. The example unsets `TMUX` and `TMUX_PANE` too, so a
+run inside tmux does not read the real pane. (`COLUMNS` and `NO_COLOR` only shape the output.)
+A scratch run still reads the real Mac's live state, the GUI session and Focus, so those parts of
+the `doctor` output describe the real Mac.
+
+Run it from the repo root, after `swift build`:
 
 ```sh
 scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
 env $(env | sed -n 's/^\(DRIP_[A-Za-z0-9_]*\)=.*/-u \1/p') \
-  -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT \
+  -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT -u TMUX -u TMUX_PANE \
   XDG_CONFIG_HOME="$scratch/config" XDG_STATE_HOME="$scratch/state" DRIP_QUEUE_DIR="$scratch/queue" \
   .build/debug/drip doctor
-rm -rf "$scratch"
 ```
 
 Never point `XDG_STATE_HOME` or `XDG_CONFIG_HOME` at the real `~/.local/state` or `~/.config`. On a
