@@ -16,8 +16,8 @@ public enum ExitStatus {
     /// A mistake on the command line, or in a `DRIP_*` variable. Nothing else exits 2.
     public static let usage: Int32 = 2
     public static let noGUISession: Int32 = 3
-    /// Reserved for a command whose job is to check the config file. No command exits 4 today:
-    /// every one warns about a bad key and goes on with its default.
+    /// `drip doctor`: the config file is invalid. No card command exits 4: each one warns about a
+    /// bad key and goes on with its default.
     public static let invalidConfig: Int32 = 4
     /// drip asked with `--yes` and no button was clicked: the card timed out, a newer card with the
     /// same id replaced it, or it was clicked off its buttons. Only a question exits 5.
@@ -55,10 +55,10 @@ public enum ExitStatus {
     /// list them, word for word. A test holds the docs to it.
     public static let table: [Row] = [
         Row(code: shown, meaning: "The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching."),
-        Row(code: failed, meaning: "A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure."),
+        Row(code: failed, meaning: "A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). `drip doctor`: something stops cards now (it says what). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure."),
         Row(code: usage, meaning: "Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2."),
-        Row(code: noGUISession, meaning: "No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1."),
-        Row(code: invalidConfig, meaning: "Reserved for a command that checks the config file. No command exits 4 today: a bad config warns on stderr and drip uses the defaults for the bad keys."),
+        Row(code: noGUISession, meaning: "No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` and `drip doctor` 1."),
+        Row(code: invalidConfig, meaning: "`drip doctor`: the config file is invalid. No card command exits 4: a bad config warns on stderr and drip uses the defaults for the bad keys."),
         Row(code: notClicked, meaning: "drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not."),
     ]
 
@@ -364,12 +364,13 @@ public struct DripCommand: ParsableCommand {
             drip dismiss [--id ID]
             drip pause [DURATION]
             drip resume
+            drip doctor [--json]
             """,
         version: dripVersion,
         subcommands: [
             ShowCommand.self, RunCommand.self, HookCommand.self, RemoteHookCommand.self, WatchingCommand.self, FollowCommand.self,
-            HistoryCommand.self, DebugCommand.self, DismissCommand.self, PauseCommand.self, ResumeCommand.self, RenderCommand.self,
-            BackgroundCommand.self, FinishedCommand.self,
+            HistoryCommand.self, DebugCommand.self, DismissCommand.self, PauseCommand.self, ResumeCommand.self, DoctorCommand.self,
+            RenderCommand.self, BackgroundCommand.self, FinishedCommand.self,
         ],
         defaultSubcommand: ShowCommand.self
     )
@@ -870,6 +871,27 @@ public struct ResumeCommand: ParsableCommand {
     public init() {}
 }
 
+/// `drip doctor [--json]`: says what stops cards now, and where drip reads its settings from.
+public struct DoctorCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "doctor",
+        abstract: "Say what stops cards now, and check the config file.",
+        usage: "drip doctor [--json]",
+        discussion: """
+            Prints drip's version, whether there is a GUI session, whether drip is paused or the \
+            screen is locked, the config file and every problem in it, the settings drip uses, and \
+            the state directory. It changes nothing. Exits 0 when all is well, 1 when something stops \
+            cards now (it says what), 4 when the config file is invalid, and 2 for a usage error, in \
+            its arguments or a DRIP_* variable. --json prints the same as one JSON object.
+            """
+    )
+
+    @Flag(help: "Print the report as one JSON object, for scripts.")
+    public var json = false
+
+    public init() {}
+}
+
 /// `drip __render --out card.png [KIND] [TITLE] [options]`: draws a card offscreen into a PNG.
 /// Hidden from help; used by the snapshot tests, which also set the size and motion, settings the
 /// other commands take only from the config and the environment.
@@ -950,6 +972,7 @@ public enum Invocation {
     case pause(PauseCommand)
     /// `drip resume`: ends a pause now.
     case resume
+    case doctor(DoctorCommand)
     case render(RenderCommand)
     /// The background drip: shows the cards it reads from standard input.
     case background
@@ -992,6 +1015,7 @@ public enum CommandLineParser {
             case let command as DismissCommand: return .invocation(.dismiss(command))
             case let command as PauseCommand: return .invocation(.pause(command))
             case is ResumeCommand: return .invocation(.resume)
+            case let command as DoctorCommand: return .invocation(.doctor(command))
             case let command as RenderCommand: return .invocation(.render(command))
             case is BackgroundCommand: return .invocation(.background)
             default:

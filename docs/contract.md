@@ -14,10 +14,10 @@ version. Everything else can change in any release.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching. |
-| 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
+| 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). `drip doctor`: something stops cards now (it says what). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
 | 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2. |
-| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. |
-| 4 | Reserved for a command that checks the config file. No command exits 4 today: a bad config warns on stderr and drip uses the defaults for the bad keys. |
+| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` and `drip doctor` 1. |
+| 4 | `drip doctor`: the config file is invalid. No card command exits 4: a bad config warns on stderr and drip uses the defaults for the bad keys. |
 | 5 | drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not. |
 
 `drip run` exits with the wrapped command's exit code instead, 127 when it is not found.
@@ -30,6 +30,14 @@ exit.
 `detail`, `button`, `open`, `id` and `activate` when the card had none. New keys can come in any
 release, so ignore keys you do not know. [Missed cards and
 history](usage.md#missed-cards-and-history) has an example.
+
+**`drip doctor --json`.** One JSON object: `version`, `status` (the exit code), `stops_cards` (a
+list of `no_gui_session`, `paused` and `screen_locked`, empty when cards show now), `gui_session`,
+`paused`, `pause_ends` (ISO 8601, or null), `screen_locked`, `config` (`path`, `exists`, `valid`,
+`errors` and `warnings`, each a list of lines), `environment_error` (the `DRIP_*` variable drip
+cannot read, or null), `settings` (by the config file's keys, `sound` null when each preset plays
+its own) and `state_directory`. Every key is always there. New keys can come in any release, so
+ignore keys you do not know. [Checking drip](usage.md#checking-drip) has the details.
 
 **The `--on-click` payload.** The command reads one line of JSON on stdin, version 1:
 

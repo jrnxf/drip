@@ -78,6 +78,12 @@ struct ExitCodeTests {
         Case(code: 2, what: "drip watching --pane with a DRIP_* variable drip cannot read",
              arguments: ["watching", "--pane", "%3"], environment: ["DRIP_SECONDS": "soon"]),
         Case(code: 2, what: "drip debug --clear with an extra argument", arguments: ["debug", "--clear", "extra"]),
+        Case(code: 2, what: "drip doctor with a DRIP_* variable drip cannot read", arguments: ["doctor"],
+             environment: ["DRIP_SECONDS": "soon"]),
+
+        // An invalid config comes before what stops cards, so it is 4 with a GUI session or without.
+        Case(code: 4, what: "drip doctor with an invalid config", arguments: ["doctor"], config: broken),
+        Case(code: 4, what: "drip doctor --json with an invalid config", arguments: ["doctor", "--json"], config: broken),
     ]
 
     /// Rows only the macOS drip gives: elsewhere the background drip has no cards to show.
@@ -96,6 +102,7 @@ struct ExitCodeTests {
         Case(code: 0, what: "drip hook without a GUI session", arguments: ["hook", "claude"],
              input: #"{"hook_event_name":"Stop","session_id":"s1","cwd":"/home/user/api"}"#),
         Case(code: 1, what: "drip watching without a GUI session", arguments: ["watching", "--app", "com.apple.Terminal"]),
+        Case(code: 1, what: "drip doctor without a GUI session", arguments: ["doctor"]),
     ]
 
     /// Rows that show a real card and wait for it, unclicked.
@@ -155,13 +162,12 @@ struct ExitCodeTests {
         try Self.expect(run)
     }
 
-    /// The lists above name a case for each code in the table, but 4, which is kept for a command that
-    /// checks the config file. Which of them run depends on the host: the tests above say which they skip.
+    /// The lists above name a case for each code in the table. Which of them run depends on the host:
+    /// the tests above say which they skip.
     @Test func everyCodeHasACaseListed() {
         let table = Set(ExitStatus.table.map(\.code))
         #expect(ExitStatus.table.map(\.code) == Array(0...5))
-        #expect(Set((Self.anywhere + Self.macOnly + Self.withoutGUI + Self.onScreen).map(\.code))
-            == table.subtracting([ExitStatus.invalidConfig]))
+        #expect(Set((Self.anywhere + Self.macOnly + Self.withoutGUI + Self.onScreen).map(\.code)) == table)
     }
 
     // MARK: - Exit 5, without a screen

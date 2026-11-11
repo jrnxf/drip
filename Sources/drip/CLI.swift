@@ -121,6 +121,8 @@ struct DripCLI {
             return pause(command.seconds)
         case .invocation(.resume):
             return resume()
+        case let .invocation(.doctor(command)):
+            return doctor(command)
         case let .invocation(.render(command)):
             return render(command)
         case .invocation(.background):
@@ -539,6 +541,22 @@ struct DripCLI {
             Console().error("\(error)")
             return ExitStatus.failed
         }
+    }
+
+    /// Says what stops cards now, and checks the config file, changing nothing. The GUI session and
+    /// the screen lock are read as the cards read them.
+    private func doctor(_ command: DoctorCommand) -> Int32 {
+        #if canImport(AppKit)
+        let screenLocked = ScreenLock.isLocked
+        #else
+        let screenLocked = false
+        #endif
+        let report = DoctorReport(
+            environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
+            screenLocked: screenLocked)
+        print(command.json ? report.json : report.text())
+        report.failures.forEach(Console().error)
+        return report.status
     }
 
     /// While drip is paused, says so on stderr with the time left, so a pause is never forgotten.

@@ -44,7 +44,7 @@ struct CommandTests {
 
     /// `drip help run` shows run's help, as `drip run --help` does.
     @Test func helpForASubcommand() {
-        for name in ["run", "hook", "remote-hook", "history", "pause", "resume", "show"] {
+        for name in ["run", "hook", "remote-hook", "history", "pause", "resume", "doctor", "show"] {
             guard case let .exit(status, help) = CommandLineParser.parse(["help", name]),
                   case let .exit(_, flag) = CommandLineParser.parse([name, "--help"]),
                   case let .exit(_, short) = CommandLineParser.parse([name, "-h"])
@@ -460,7 +460,7 @@ struct CommandTests {
         }
         #expect(order.allSatisfy { $0 != nil }, "\(help)")
         #expect(order.compactMap { $0 } == order.compactMap { $0 }.sorted(), "\(help)")
-        for subcommand in ["run", "hook", "remote-hook", "history", "pause", "resume"] {
+        for subcommand in ["run", "hook", "remote-hook", "history", "pause", "resume", "doctor"] {
             #expect(help.contains("\n  \(subcommand) "), "\(subcommand)")
         }
         #expect(help.contains("--seconds"), "\(help)")
@@ -484,7 +484,7 @@ struct CommandTests {
                 Issue.record("\(shell) did not exit"); continue
             }
             #expect(status == 0, "\(shell)")
-            for subcommand in ["run", "hook", "history", "pause", "resume"] {
+            for subcommand in ["run", "hook", "history", "pause", "resume", "doctor"] {
                 #expect(script.contains(subcommand), "\(shell): \(subcommand)")
             }
             #expect(!script.contains("__render"), "\(shell)")
