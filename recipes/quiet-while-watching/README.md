@@ -9,7 +9,7 @@ For: people who use `drip watching` in their own scripts. This recipe is a patte
 `drip watching` exits 0 when you are watching the terminal (it is in front, its tmux pane shows, and
 you used the keyboard or mouse within `away_after`). It exits 1 when you are not, and also when drip
 cannot tell, for example without a GUI session: it then says why on stderr. It exits 2 only for a
-usage error. It uses the same detection as `when_focused`. See the [reference](../../docs/agents.md#drip-watching).
+usage error. It uses the same detection as `when_focused`. See the [reference](../../docs/coding-agents.md#drip-watching).
 
 ## Example
 
