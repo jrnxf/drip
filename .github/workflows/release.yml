@@ -22,8 +22,9 @@ name: Release
 #
 # Tap setup: jrnxf/homebrew-tap's docs/automatic-updates.md, which issues the TAP_DEPLOY_KEY
 # secret. Formula/drip.rb must already exist in the tap and install the binary with
-# `bin.install "drip"`: the bump script writes the formula's url and sha256, adding them to a
-# HEAD-only formula, but it never adds a formula or its install step.
+# `bin.install "drip"` and its man page with `man1.install "drip.1"`: the bump script writes the
+# formula's url and sha256, adding them to a HEAD-only formula, but it never adds a formula or its
+# install steps.
 on:
   push:
     tags: ["v*"]
@@ -207,14 +208,10 @@ jobs:
           fi
         env:
           TAG: ${{ github.ref_name }}
-      # The man page, generated from the same argument parser as the binary. The plugin writes only
-      # to the directory it is allowed, which sits outside the package.
+      # The man page of the universal binary, from scripts/man-page.sh. It fails the job when the
+      # page lists a hidden subcommand or is not a valid man page.
       - name: Generate the man page
-        run: |
-          mkdir "$RUNNER_TEMP/man"
-          swift package --allow-writing-to-directory "$RUNNER_TEMP/man" generate-manual \
-            --output-directory "$RUNNER_TEMP/man"
-          test -s "$RUNNER_TEMP/man/drip.1"
+        run: scripts/man-page.sh ./drip "$RUNNER_TEMP/man"
       # Named for the version drip prints, which the step above holds to the tag.
       - name: Archive
         id: archive
@@ -237,7 +234,13 @@ jobs:
           tar -xzf "$ARCHIVE" -C unpacked
           test "$(stat -f %Lp "unpacked/$DIR/drip")" = 755
           test "$(stat -f %Lp "unpacked/$DIR/drip.1")" = 644
-          man -l "unpacked/$DIR/drip.1" > /dev/null
+          mandoc -T lint -W error "unpacked/$DIR/drip.1"
+          grep -qx '.Dt DRIP 1' "unpacked/$DIR/drip.1"
+          grep -qx '.Sh NAME' "unpacked/$DIR/drip.1"
+          if grep -q '__' "unpacked/$DIR/drip.1"; then
+            echo "the man page lists a hidden subcommand" >&2
+            exit 1
+          fi
           codesign --verify --strict --all-architectures "unpacked/$DIR/drip"
           "unpacked/$DIR/drip" --version
         env:
