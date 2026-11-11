@@ -51,6 +51,8 @@ The file uses a small subset of TOML: comments, `key = value` lines with bare ke
 of one or two keys such as `[preset.ok]`, and values that are single-line strings, decimal
 integers, floats or booleans. Dotted keys and single-line inline tables work too. Each of these
 reads as a `[preset.ci]` table with `sound = "Hero"`: `preset.ci.sound = "Hero"` at the top level,
-and `ci.sound = "Hero"` or `ci = { sound = "Hero" }` under `[preset]`. Any other TOML syntax, such as
-arrays or multi-line strings, prints a warning with the line, and every key keeps its default. So
-does a file larger than 1 MB.
+and `ci.sound = "Hero"` or `ci = { sound = "Hero" }` under `[preset]`. Dotted keys and inline tables
+go down at most 8 tables together. Defining a table twice, by a header, a dotted key or an inline
+table, is an error. Such an error, and any other TOML syntax drip does not read, such as arrays or
+multi-line strings, prints a warning with the line, and every key keeps its default. So does a file
+larger than 1 MB.

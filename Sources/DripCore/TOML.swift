@@ -215,25 +215,9 @@ private struct LineParser {
         } else {
             entry = .value(TOMLItem(value: try parseValue(), line: line))
         }
-        // Walk the existing tables first, so that an error leaves the tree as it was.
-        var parent = table
-        var missing = path.dropLast()
-        for (offset, key) in path.dropLast().enumerated() {
-            let name = path[0...offset].joined(separator: ".")
-            switch parent.entries[key] {
-            case nil:
-                break
-            case let .table(child)? where child.origin == .dotted:
-                parent = child
-                missing = path[(offset + 1)...].dropLast()
-                continue
-            case .table?:
-                throw error("'\(name)' is already defined as a table, so a dotted key cannot add to it")
-            case .value?:
-                throw error("'\(name)' is already a value, not a table")
-            }
-            break
-        }
+        // Look before adding, so that an error leaves the tree as it was.
+        let (found, missing) = try dottedParent(of: path, in: table)
+        var parent = found
         let key = path[path.count - 1]
         if missing.isEmpty, parent.entries[key] != nil {
             throw error("'\(path.joined(separator: "."))' is defined twice")
@@ -244,6 +228,26 @@ private struct LineParser {
             parent = child
         }
         parent.set(key, entry)
+    }
+
+    /// The deepest table that a dotted key's path already has, and the names of the tables below it
+    /// that are still to be made. Only tables that dotted keys made may be walked.
+    private func dottedParent(of path: [String], in table: TableNode) throws -> (TableNode, ArraySlice<String>) {
+        var parent = table
+        for (offset, key) in path.dropLast().enumerated() {
+            guard let entry = parent.entries[key] else { return (parent, path[offset...].dropLast()) }
+            switch entry {
+            case let .table(child) where child.origin == .dotted:
+                parent = child
+            case .table:
+                let name = path[0...offset].joined(separator: ".")
+                throw error("'\(name)' is already defined as a table, so a dotted key cannot add to it")
+            case .value:
+                let name = path[0...offset].joined(separator: ".")
+                throw error("'\(name)' is already a value, not a table")
+            }
+        }
+        return (parent, [])
     }
 
     /// Parses `{ key = value, ... }` on this line, with no trailing comma. `depth` is the number of
