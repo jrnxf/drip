@@ -6,7 +6,7 @@ import Foundation
 #endif
 
 /// Changes a config file makes to one preset; nil where it keeps the preset's value.
-public struct PresetOverride: Equatable, Sendable, Codable {
+public struct PresetOverride: Equatable {
     public var icon: Icon?
     public var color: CardColor?
     public var sound: Sound?
@@ -20,9 +20,8 @@ public struct PresetOverride: Equatable, Sendable, Codable {
     }
 }
 
-/// The settings from config.toml; nil where the file does not set a key. A background drip gets
-/// them in its request, from the drip that read the file.
-public struct Config: Equatable, Sendable, Codable {
+/// The settings from config.toml; nil where the file does not set a key.
+public struct Config: Equatable {
     public var seconds: Double?
     public var size: CardSize?
     /// The sound of every preset that sets none of its own; `none` mutes every preset.
@@ -535,20 +534,31 @@ public struct EnvironmentSettings: Equatable {
 }
 
 extension EnvironmentSettings {
-    /// The `DRIP_*` variables, each read on its own so one drip cannot read leaves the others in, and
-    /// the problem with each it cannot read, by name.
+    /// The `DRIP_*` variables, each taken in by name only when drip can read it with those taken in
+    /// before it, so one drip cannot read leaves the others in, and the problem with each it leaves
+    /// out. Every variable is either in the settings or has a problem.
     public static func leniently(_ environment: [String: String]) -> (settings: EnvironmentSettings, problems: [String]) {
         var problems: [String] = []
-        var usable = environment
+        var usable = environment.filter { !$0.key.hasPrefix("DRIP_") }
+        var settings: EnvironmentSettings
+        do {
+            settings = try EnvironmentSettings(environment: usable)
+        } catch {
+            problems.append("\(error)")
+            usable = [:]
+            settings = EnvironmentSettings()
+        }
         for name in environment.keys.filter({ $0.hasPrefix("DRIP_") }).sorted() {
+            var tried = usable
+            tried[name] = environment[name]
             do {
-                _ = try EnvironmentSettings(environment: [name: environment[name] ?? ""])
+                settings = try EnvironmentSettings(environment: tried)
+                usable = tried
             } catch {
                 problems.append("\(error)")
-                usable[name] = nil
             }
         }
-        return ((try? EnvironmentSettings(environment: usable)) ?? EnvironmentSettings(), problems)
+        return (settings, problems)
     }
 
     /// `DRIP_DEBUG`: `1`, `true`, `on` or `yes`, or `0`, `false`, `off` or `no`; nil when unset or

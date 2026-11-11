@@ -382,14 +382,13 @@ extension AgentHook {
     }
 }
 
-extension BackgroundRequest.Resurface {
-    /// `surroundings` for the second look: they read the config the hook's drip read, or for a
-    /// request without one, the file as `surroundings` does.
-    public func surroundings(_ surroundings: AgentHook.Surroundings) -> AgentHook.Surroundings {
-        guard let config else { return surroundings }
-        var looked = surroundings
+extension AgentHook.Surroundings {
+    /// These surroundings, reading `settings` in place of the config file, for the second look at a
+    /// waiting card a hook skipped: it reads no file.
+    public func reading(_ settings: BackgroundSettings) -> AgentHook.Surroundings {
+        var looked = self
         // The hook's drip said the file's warnings already.
-        looked.loadConfig = { _ in ConfigFile(config: config, warnings: []) }
+        looked.loadConfig = { _ in ConfigFile(config: settings.config, warnings: []) }
         return looked
     }
 }

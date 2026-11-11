@@ -139,9 +139,11 @@ final class HistoryTests {
         #expect(CardHistory(path: path).entries().map(\.card.title) == ["b", "c"])
         try LockedScreen.pool(record: true, history: 0).record([card("d")], missed: false, in: CardHistory(path: path))
         #expect(CardHistory(path: path).entries().map(\.card.title) == ["b", "c"])
-        var request = BackgroundRequest(cards: cards, resolver: CardResolver(config: Config(history: 0)))
-        request = try BackgroundRequest.decode(request.encoded())
-        #expect(request.locked == .pool(record: true, history: 0))
+        // A card's drip sends the history size its config gives, not the default.
+        let settings = BackgroundSettings(CardResolver(config: Config(history: 0)))
+        let request = try BackgroundRequest.decode(
+            BackgroundRequest(cards: cards, record: true, settings: settings).encoded())
+        #expect(request.settings?.history == 0)
     }
 
     @Test func theJSONListingIsFlat() throws {
@@ -393,23 +395,24 @@ final class HistoryTests {
         let history = CardHistory(path: try scratch().appending("/history.jsonl"))
         try history.record([card("a"), card("b")], missed: true)
         let before = history.entries()
-        let replay = BackgroundRequest(cards: before.map(HistoryListing.replay), record: false, resolver: CardResolver())
+        let settings = BackgroundSettings(CardResolver())
+        let replay = BackgroundRequest(cards: before.map(HistoryListing.replay), record: false, settings: settings)
         let received = try BackgroundRequest.decode(replay.encoded())
-        try received.locked.record(received.cards, missed: true, in: history)
-        try LockedScreen.wait(record: received.record, history: received.historyLimit).record(received.cards, missed: false, in: history)
+        try LockedScreen.pool(record: received.record, history: settings.history).record(received.cards, missed: true, in: history)
+        try LockedScreen.wait(record: received.record, history: settings.history).record(received.cards, missed: false, in: history)
         #expect(history.entries() == before)
         // A card sent as usual is recorded, by either path.
-        let sent = try BackgroundRequest.decode(BackgroundRequest(cards: [card("c")], resolver: CardResolver()).encoded())
-        try sent.locked.record(sent.cards, missed: true, in: history)
-        try LockedScreen.wait(record: sent.record, history: sent.historyLimit).record([card("d")], missed: false, in: history)
+        let sent = try BackgroundRequest.decode(
+            BackgroundRequest(cards: [card("c")], record: true, settings: settings).encoded())
+        try LockedScreen.pool(record: sent.record, history: settings.history).record(sent.cards, missed: true, in: history)
+        try LockedScreen.wait(record: sent.record, history: settings.history).record([card("d")], missed: false, in: history)
         #expect(history.entries().map(\.card.title) == ["a", "b", "c", "d"])
     }
 
     @Test func aRequestWithoutRecordIsRecorded() throws {
         let request = try BackgroundRequest.decode(Data(#"{"cards":[]}"#.utf8))
         #expect(request.record)
-        #expect(request.locked == .pool(record: true, history: Defaults.history))
-        #expect(request.historyLimit == Defaults.history)
+        #expect(request.settings == nil)
     }
 
     // MARK: Holding cards while the screen is locked

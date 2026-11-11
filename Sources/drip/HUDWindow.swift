@@ -101,8 +101,9 @@ struct HUDDisplay: CardDisplay {
         }
         if BackgroundDrip.start(request) { return ExitStatus.shown }
         console.warn("cannot start a background drip; showing the card here instead")
+        let settings = request.settingsToShow
         return show(
-            request.cards, locked: .wait(record: request.record, history: request.historyLimit), stack: request.stackToShow,
+            request.cards, locked: .wait(record: request.record, history: settings.history), stack: settings.stack,
             console: console)
     }
 
@@ -336,7 +337,8 @@ final class ReplacementWatch {
             // Paused for a screen share or a meeting: the card goes, and shows once the pause ends.
             stop()
             presenter.dismiss()
-            _ = BackgroundDrip.start(BackgroundRequest(cards: [current], record: false, stack: stack))
+            _ = BackgroundDrip.start(
+                BackgroundRequest(cards: [current], record: false, settings: BackgroundSettings(stack: stack)))
             return
         }
         guard CardQueue.mine != nil, current.id != nil || current.waits else { return }

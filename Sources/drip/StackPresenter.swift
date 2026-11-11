@@ -839,7 +839,8 @@ final class StackPresenter: CardPresenting {
         others = []
         foundAdoptable = false
         if !cards.isEmpty {
-            _ = BackgroundDrip.start(BackgroundRequest(cards: cards, record: false, stack: stack.settings))
+            _ = BackgroundDrip.start(
+                BackgroundRequest(cards: cards, record: false, settings: BackgroundSettings(stack: stack.settings)))
         }
     }
 

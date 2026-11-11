@@ -491,69 +491,81 @@ struct StackSettingsTests {
     }
 
     /// `drip run` and a replay show their card whatever the environment says: each `DRIP_*`
-    /// variable drip cannot read is a warning and left out, and the config and the other variables
-    /// still apply.
+    /// variable drip cannot read is left out, and the config and the other variables still apply.
     @Test func invalidStackSettingsAreLeftOut() {
         let file = ConfigFile(config: Config(stack: .push, stackMax: 5), warnings: ["a key drip ignores"])
-        let psuh = CardResolver.leniently(file: file, environment: ["DRIP_STACK": "psuh", "DRIP_STACK_MAX": "2"])
+        let load = { (_: [String: String]) in file }
+        let psuh = CardResolver.leniently(environment: ["DRIP_STACK": "psuh", "DRIP_STACK_MAX": "2"], loadConfig: load)
         #expect(psuh.resolver.stack == StackSettings(mode: .push, max: 2))
-        #expect(psuh.warnings.count == 2)
-        #expect(psuh.warnings.first == "a key drip ignores")
-        #expect(psuh.warnings.last?.hasPrefix("DRIP_STACK must be ") == true)
-        let tooMany = CardResolver.leniently(file: file, environment: ["DRIP_STACK": "chain", "DRIP_STACK_MAX": "40"])
+        #expect(psuh.warnings == ["a key drip ignores"])
+        // The error is the one a card command reports.
+        #expect((psuh.error as? UsageError)?.message.hasPrefix("DRIP_STACK must be ") == true)
+        let tooMany = CardResolver.leniently(environment: ["DRIP_STACK": "chain", "DRIP_STACK_MAX": "40"], loadConfig: load)
         #expect(tooMany.resolver.stack == StackSettings(mode: .chain, max: 5))
-        #expect(CardResolver.leniently(file: file, environment: [:]).resolver.stack == StackSettings(mode: .push, max: 5))
+        let fine = CardResolver.leniently(environment: [:], loadConfig: load)
+        #expect(fine.resolver.stack == StackSettings(mode: .push, max: 5))
+        #expect(fine.error == nil)
+    }
+
+    /// Each `DRIP_*` variable is either in the settings or has a problem: none goes without a word.
+    @Test func eachVariableIsKeptOrHasAProblem() {
+        let (settings, problems) = EnvironmentSettings.leniently([
+            "DRIP_STACK": "push", "DRIP_STACK_MAX": "40", "DRIP_HISTORY": "lots", "DRIP_SECONDS": "5",
+        ])
+        #expect(settings.stack == .push)
+        #expect(settings.seconds == 5)
+        #expect(settings.stackMax == nil)
+        #expect(settings.history == nil)
+        #expect(problems.count == 2)
+        #expect(problems.allSatisfy { $0.hasPrefix("DRIP_HISTORY") || $0.hasPrefix("DRIP_STACK_MAX") })
     }
 
     #if !os(WASI) // An agent's hook does not run on WebAssembly.
-    /// A card reads the config once: where its drip makes it. The drip that shows it takes the stack
-    /// from the request, and reads nothing.
+    /// A card reads the config once: where its drip makes it. The drip that shows it takes the
+    /// settings from the request, and reads nothing.
     @Test func aCardReadsTheConfigOnce() throws {
         var reads = 0
-        var warnings: [String] = []
         var made: CardResolver?
         let surroundings = AgentHook.Surroundings(
             environment: ["__CFBundleIdentifier": "com.apple.Terminal"], hasGUISession: true, isInstalled: { _ in false },
             front: { _ in WhenFocused.Front(app: false, pane: false, idle: 0) },
             loadConfig: { _ in
                 reads += 1
-                return ConfigFile(config: Config(stack: .push, stackMax: 5), warnings: ["a key drip ignores"])
+                return ConfigFile(config: Config(stack: .push, stackMax: 5, history: 40), warnings: [])
             },
             resolver: { file, environment in
-                warnings += file.warnings
                 let resolver = CardResolver(config: file.config, environment: try EnvironmentSettings(environment: environment))
                 made = resolver
                 return resolver
             })
         let card = try #require(try ShellHook.card(command: "make", status: 0, seconds: 30, in: surroundings))
         #expect(reads == 1)
-        let request = try BackgroundRequest.decode(BackgroundRequest(cards: [card], resolver: made).encoded())
-        let read = { () -> StackSettings? in
+        let settings = BackgroundSettings(try #require(made))
+        let request = try BackgroundRequest.decode(BackgroundRequest(cards: [card], record: true, settings: settings).encoded())
+        let read = { () -> BackgroundSettings in
             reads += 1
-            return nil
+            return BackgroundSettings(stack: nil)
         }
-        #expect(request.stack(orRead: read) == StackSettings(mode: .push, max: 5))
+        let shown = request.settings(orRead: read)
+        #expect(shown.stack == StackSettings(mode: .push, max: 5))
+        #expect(shown.history == 40)
         #expect(reads == 1)
-        #expect(warnings == ["a key drip ignores"])
-        #expect(request.record)
 
         // Stacking off is said too, and needs no read.
-        let off = try BackgroundRequest.decode(
-            BackgroundRequest(cards: [card], resolver: CardResolver(config: Config(stack: .off))).encoded())
-        #expect(off.stack(orRead: read) == nil)
+        let off = try BackgroundRequest.decode(BackgroundRequest(
+            cards: [card], record: true, settings: BackgroundSettings(CardResolver(config: Config(stack: .off)))).encoded())
+        #expect(off.settings(orRead: read).stack == nil)
         #expect(reads == 1)
 
-        // A request from a drip that predates `stacking`, or one with no resolver, reads as it did.
-        let old = try BackgroundRequest.decode(Data(#"{"cards":[],"record":true}"#.utf8))
-        #expect(old.stack(orRead: { reads += 1; return StackSettings(mode: .chain, max: 2) }) == StackSettings(mode: .chain, max: 2))
+        // A request from a drip that predates `settings` reads them, once.
+        let old = try BackgroundRequest.decode(Data(#"{"cards":[],"record":true,"history":7}"#.utf8))
+        #expect(old.settings(orRead: read) == BackgroundSettings(stack: nil))
         #expect(reads == 2)
-        let none = BackgroundRequest(cards: [card], resolver: nil)
-        #expect(!none.record)
-        #expect(none.stacking == nil)
     }
 
-    /// The second look at a waiting card a hook skipped reads the config the hook read, not the file.
-    @Test func aSecondLookReadsTheConfigTheHookRead() throws {
+    /// The second look at a waiting card a hook skipped reads the settings the hook's drip resolved,
+    /// not the file.
+    @Test func aSecondLookReadsTheSettingsTheHookRead() throws {
         var reads = 0
         let surroundings = AgentHook.Surroundings(
             environment: [:], hasGUISession: true, isInstalled: { _ in false },
@@ -563,17 +575,15 @@ struct StackSettingsTests {
                 return ConfigFile(config: Config(), warnings: [])
             },
             resolver: { file, _ in CardResolver(config: file.config) })
-        let config = Config(whenFocused: .show, awayAfter: 30)
-        let resurface = BackgroundRequest.Resurface(agent: "claude", noted: 1, config: config)
-        let sent = try BackgroundRequest.decode(BackgroundRequest(
-            cards: [Card(preset: .info, title: "t")], resurface: resurface,
-            resolver: CardResolver(config: config)).encoded())
-        let looked = try #require(sent.resurface).surroundings(surroundings)
-        #expect(looked.loadConfig([:]) == ConfigFile(config: config, warnings: []))
+        let settings = BackgroundSettings(CardResolver(config: Config(whenFocused: .show, awayAfter: 30, debug: true)))
+        let looked = surroundings.reading(settings)
+        let file = looked.loadConfig([:])
+        let resolver = try looked.resolver(file, [:])
+        #expect(resolver.whenFocused == .show)
+        #expect(resolver.awayAfter == 30)
+        #expect(file.config.debug == true)
+        #expect(file.warnings.isEmpty)
         #expect(reads == 0)
-        // From a drip that predates it, the second look reads the file.
-        _ = BackgroundRequest.Resurface(agent: "claude", noted: 1).surroundings(surroundings).loadConfig([:])
-        #expect(reads == 1)
     }
     #endif
 }
