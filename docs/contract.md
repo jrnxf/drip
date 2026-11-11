@@ -14,10 +14,10 @@ version. Everything else can change in any release.
 | Code | Meaning |
 | --- | --- |
 | 0 | The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching. |
-| 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). `drip doctor`: something stops cards now (it says what). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
-| 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2. |
-| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` and `drip doctor` 1. |
-| 4 | `drip doctor`: the config file is invalid. No card command exits 4: a bad config warns on stderr and drip uses the defaults for the bad keys. |
+| 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). `drip doctor`: something stops cards now (it says what), and neither 2 nor 4 applies. Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
+| 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. `drip doctor` exits 2 for a bad `DRIP_*` variable, whatever else it finds. `drip hook` never exits 2. |
+| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. On a Mac, `drip doctor` exits 1, unless 2 or 4 applies. |
+| 4 | `drip doctor`: the config file is invalid, and no `DRIP_*` variable is bad (that is 2). No card command exits 4: a bad config warns on stderr and drip uses the defaults for the bad keys. |
 | 5 | drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not. |
 
 `drip run` exits with the wrapped command's exit code instead, 127 when it is not found.
@@ -32,11 +32,12 @@ release, so ignore keys you do not know. [Missed cards and
 history](usage.md#missed-cards-and-history) has an example.
 
 **`drip doctor --json`.** One JSON object: `version`, `status` (the exit code), `stops_cards` (a
-list of `no_gui_session`, `paused` and `screen_locked`, empty when cards show now), `gui_session`,
-`paused`, `pause_ends` (ISO 8601, or null), `screen_locked`, `config` (`path`, `exists`, `valid`,
-`errors` and `warnings`, each a list of lines), `environment_error` (the `DRIP_*` variable drip
-cannot read, or null), `settings` (by the config file's keys, `sound` null when each preset plays
-its own) and `state_directory`. Every key is always there. New keys can come in any release, so
+list of `bad_variable`, `no_gui_session`, `paused` and `screen_locked`, empty when cards show now),
+`shows_cards` (false on Linux, where drip shows no cards), `gui_session`, `paused`, `pause_ends`
+(ISO 8601, or null), `screen_locked`, `config` (`path`, `exists`, `valid`, `ignored` when drip
+ignores the whole file, and `errors` and `warnings`, each a list of lines), `environment_errors`
+(a line for each `DRIP_*` variable drip cannot read), `settings` (by the config file's keys,
+`sound` null when each preset plays its own) and `state_directory` (`path` and `writable`). Every key is always there. New keys can come in any release, so
 ignore keys you do not know. [Checking drip](usage.md#checking-drip) has the details.
 
 **The `--on-click` payload.** The command reads one line of JSON on stdin, version 1:

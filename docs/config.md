@@ -44,7 +44,8 @@ name kept for them: `run`, `hook`, `history`, `show`, `help`, `version`, `remote
 `watching`, `follow`, `config`, `completion`, `completions`, `doctor`, `pause`, `resume`, `test`,
 `dismiss`, `clear` or `debug`. A custom preset's ring shows no state's mark. Unknown keys print a warning;
 a wrong type or an invalid value prints a warning too, and that key keeps its default, so the card still
-shows. `drip doctor` lists every problem in the file at once, and exits 4 when there is one.
+shows. `drip doctor` lists every problem in the file at once, and exits 4 when there is one, unless a
+`DRIP_*` variable is bad, which exits 2.
 
 The file uses a small subset of TOML: comments, `key = value` lines with bare keys, table headers
 of one or two keys such as `[preset.ok]`, and values that are single-line strings, decimal

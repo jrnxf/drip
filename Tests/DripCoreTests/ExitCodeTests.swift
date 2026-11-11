@@ -102,8 +102,15 @@ struct ExitCodeTests {
         Case(code: 0, what: "drip hook without a GUI session", arguments: ["hook", "claude"],
              input: #"{"hook_event_name":"Stop","session_id":"s1","cwd":"/home/user/api"}"#),
         Case(code: 1, what: "drip watching without a GUI session", arguments: ["watching", "--app", "com.apple.Terminal"]),
-        Case(code: 1, what: "drip doctor without a GUI session", arguments: ["doctor"]),
+        // On Linux drip shows no cards at all, so no GUI session stops nothing there.
+        Case(code: showsCards ? 1 : 0, what: "drip doctor without a GUI session", arguments: ["doctor"]),
     ]
+
+    #if canImport(AppKit)
+    static let showsCards = true
+    #else
+    static let showsCards = false
+    #endif
 
     /// Rows that show a real card and wait for it, unclicked.
     static let onScreen: [Case] = [

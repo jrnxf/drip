@@ -16,8 +16,8 @@ public enum ExitStatus {
     /// A mistake on the command line, or in a `DRIP_*` variable. Nothing else exits 2.
     public static let usage: Int32 = 2
     public static let noGUISession: Int32 = 3
-    /// `drip doctor`: the config file is invalid. No card command exits 4: each one warns about a
-    /// bad key and goes on with its default.
+    /// `drip doctor`: the config file is invalid, and no `DRIP_*` variable is bad. No card command
+    /// exits 4: each one warns about a bad key and goes on with its default.
     public static let invalidConfig: Int32 = 4
     /// drip asked with `--yes` and no button was clicked: the card timed out, a newer card with the
     /// same id replaced it, or it was clicked off its buttons. Only a question exits 5.
@@ -55,10 +55,10 @@ public enum ExitStatus {
     /// list them, word for word. A test holds the docs to it.
     public static let table: [Row] = [
         Row(code: shown, meaning: "The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching."),
-        Row(code: failed, meaning: "A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). `drip doctor`: something stops cards now (it says what). Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure."),
-        Row(code: usage, meaning: "Usage error: a mistake in the command line or a `DRIP_*` variable. `drip hook` never exits 2."),
-        Row(code: noGUISession, meaning: "No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` and `drip doctor` 1."),
-        Row(code: invalidConfig, meaning: "`drip doctor`: the config file is invalid. No card command exits 4: a bad config warns on stderr and drip uses the defaults for the bad keys."),
+        Row(code: failed, meaning: "A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). `drip doctor`: something stops cards now (it says what), and neither 2 nor 4 applies. Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure."),
+        Row(code: usage, meaning: "Usage error: a mistake in the command line or a `DRIP_*` variable. `drip doctor` exits 2 for a bad `DRIP_*` variable, whatever else it finds. `drip hook` never exits 2."),
+        Row(code: noGUISession, meaning: "No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. On a Mac, `drip doctor` exits 1, unless 2 or 4 applies."),
+        Row(code: invalidConfig, meaning: "`drip doctor`: the config file is invalid, and no `DRIP_*` variable is bad (that is 2). No card command exits 4: a bad config warns on stderr and drip uses the defaults for the bad keys."),
         Row(code: notClicked, meaning: "drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not."),
     ]
 
@@ -880,9 +880,9 @@ public struct DoctorCommand: ParsableCommand {
         discussion: """
             Prints drip's version, whether there is a GUI session, whether drip is paused or the \
             screen is locked, the config file and every problem in it, the settings drip uses, and \
-            the state directory. It changes nothing. Exits 0 when all is well, 1 when something stops \
-            cards now (it says what), 4 when the config file is invalid, and 2 for a usage error, in \
-            its arguments or a DRIP_* variable. --json prints the same as one JSON object.
+            the state directory. It changes nothing. Exits 2 for a usage error, in its arguments or a \
+            DRIP_* variable, else 4 when the config file is invalid, else 1 when something stops cards \
+            now (it says what), else 0. --json prints the same as one JSON object.
             """
     )
 

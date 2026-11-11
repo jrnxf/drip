@@ -2,10 +2,11 @@
 
 ## Run drip doctor first
 
-`drip doctor` says in one go what stops cards now: no GUI session (as over ssh), a pause, or a
-locked screen. It also lists every problem in the config file, the settings drip uses and where
-it keeps its state. It changes nothing. It exits 0 when all is well, 1 when something stops cards,
-and 4 when the config file is invalid. `drip doctor --json` prints the same for a script. See
+`drip doctor` says in one go what stops cards now: a `DRIP_*` variable drip cannot read, no GUI
+session (as over ssh), a pause, or a locked screen. It also lists every problem in the config
+file, the settings drip uses and where it keeps its state. It changes nothing. It exits 2 for a
+bad `DRIP_*` variable, else 4 when the config file is invalid, else 1 when something stops cards,
+else 0. `drip doctor --json` prints the same for a script. See
 [Checking drip](usage.md#checking-drip).
 
 ## Permissions

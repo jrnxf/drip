@@ -544,18 +544,23 @@ struct DripCLI {
     }
 
     /// Says what stops cards now, and checks the config file, changing nothing. The GUI session and
-    /// the screen lock are read as the cards read them.
+    /// the screen lock are read as the cards read them. Without AppKit drip shows no cards at all, so
+    /// none of the three stops them.
     private func doctor(_ command: DoctorCommand) -> Int32 {
         #if canImport(AppKit)
         let screenLocked = ScreenLock.isLocked
+        let showsCards = true
         #else
         let screenLocked = false
+        let showsCards = false
         #endif
         let report = DoctorReport(
             environment: ProcessInfo.processInfo.environment, hasGUISession: display.hasGUISession,
-            screenLocked: screenLocked)
+            screenLocked: screenLocked, showsCards: showsCards)
         print(command.json ? report.json : report.text())
-        report.failures.forEach(Console().error)
+        if let reasons = report.standardError {
+            FileHandle.standardError.write(Data((reasons + "\n").utf8))
+        }
         return report.status
     }
 
