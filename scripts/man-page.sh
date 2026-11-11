@@ -92,7 +92,7 @@ awk -v names="$names" '
 
 # Fails the caller when the page does not hold what it must.
 for name in $names; do
-  if grep -q "^\.It Em $name\$" "$out/drip.1"; then
+  if grep -qxF ".It Em $name" "$out/drip.1"; then
     echo "scripts/man-page.sh: drip.1 still lists the hidden subcommand $name" >&2
     exit 1
   fi

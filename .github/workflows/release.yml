@@ -22,9 +22,10 @@ name: Release
 #
 # Tap setup: jrnxf/homebrew-tap's docs/automatic-updates.md, which issues the TAP_DEPLOY_KEY
 # secret. Formula/drip.rb must already exist in the tap and install the binary with
-# `bin.install "drip"` and its man page with `man1.install "drip.1"`: the bump script writes the
-# formula's url and sha256, adding them to a HEAD-only formula, but it never adds a formula or its
-# install steps.
+# `bin.install "drip"`. It installs the man page with
+# `man1.install "drip.1" if File.exist?("drip.1")`, so an archive without drip.1 (an older
+# release, or a `--HEAD` build) still installs. The bump script writes the formula's url and
+# sha256, adding them to a HEAD-only formula, but it never adds a formula or its install steps.
 on:
   push:
     tags: ["v*"]
