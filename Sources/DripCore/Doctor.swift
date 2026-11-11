@@ -42,6 +42,8 @@ public struct DoctorReport: Equatable {
         public var size: CardSize
         /// The sound of every card; nil when each preset plays its own.
         public var sound: Sound?
+        /// The presets that keep the sound the config gives them over `sound`, by name.
+        public var presetsWithOwnSound: [String]
         public var motion: Motion
         public var stack: StackSettings.Choice
         public var stackMax: Int
@@ -56,6 +58,8 @@ public struct DoctorReport: Equatable {
             seconds = resolver.seconds(for: nil)
             size = resolver.size
             sound = resolver.sound
+            presetsWithOwnSound = resolver.sound == nil ? []
+                : resolver.presets.values.filter(resolver.keepsOwnSound).map(\.name).sorted()
             motion = resolver.motion
             stack = StackSettings.choice(resolver.environment, config: resolver.config)
             stackMax = StackSettings.maxCards(resolver.environment, config: resolver.config)
@@ -67,6 +71,8 @@ public struct DoctorReport: Equatable {
     }
 
     public var version: String
+    /// When the report was made: the one clock for the pause and its time left.
+    public var now: Date
     /// Whether this drip shows cards at all: false on Linux, where an agent's hooks run
     /// `drip-remote-hook` and `drip follow` on the Mac shows the cards.
     public var showsCards: Bool
@@ -99,6 +105,7 @@ public struct DoctorReport: Equatable {
         now: Date = Date()
     ) {
         version = dripVersion
+        self.now = now
         self.showsCards = showsCards
         self.hasGUISession = hasGUISession
         self.screenLocked = screenLocked
@@ -169,26 +176,27 @@ public struct DoctorReport: Equatable {
         return ExitStatus.shown
     }
 
-    /// What goes to stderr: one `drip:` line for each cause, each bad variable and the invalid config
-    /// file first, then where the help is after a bad variable, as for any usage error. Nil when all
-    /// is well.
+    /// What goes to stderr: one `drip:` line for each cause. The bad variables come first, then where
+    /// the help is, as for any usage error, then the invalid config file and the rest. Nil when all is
+    /// well.
     public var standardError: String? {
-        var lines = environmentProblems
+        var lines: [String] = []
+        if !environmentProblems.isEmpty {
+            lines.append(CommandLineParser.usageMessage(
+                environmentProblems.joined(separator: "\ndrip: "), subcommand: DoctorCommand.configuration.commandName))
+        }
         if !configProblems.isEmpty {
             let count = configProblems.count
-            lines.append("invalid config: \(count) problem\(count == 1 ? "" : "s") in \(configPath)")
+            lines.append("drip: invalid config: \(count) problem\(count == 1 ? "" : "s") in \(configPath)")
         }
-        lines += blockers.filter { $0 != .badVariable }.map(\.explanation)
+        lines += blockers.filter { $0 != .badVariable }.map { "drip: " + $0.explanation }
         guard !lines.isEmpty else { return nil }
-        let text = lines.joined(separator: "\ndrip: ")
-        return CardText.printable(
-            environmentProblems.isEmpty ? "drip: " + text
-                : CommandLineParser.usageMessage(text, subcommand: DoctorCommand.configuration.commandName))
+        return CardText.printable(lines.joined(separator: "\n"))
     }
 
     /// The report for a terminal: a line for each item, then what stops cards, if anything. Text from
     /// the config file and the environment is made printable, a line break too.
-    public func text(now: Date = Date(), timeZone: TimeZone = .current) -> String {
+    public func text(timeZone: TimeZone = .current) -> String {
         func yesNo(_ value: Bool) -> String { value ? "yes" : "no" }
         func shown(_ text: String) -> String {
             CardText.printable(text).split(separator: "\n", omittingEmptySubsequences: false).joined(separator: "\\n")
@@ -225,12 +233,20 @@ public struct DoctorReport: Equatable {
         return lines.joined(separator: "\n")
     }
 
+    /// `glass`, with the presets that keep a sound of their own after it, or `each preset's own`.
+    private var soundText: String {
+        guard let sound = settings.sound else { return "each preset's own" }
+        let own = settings.presetsWithOwnSound
+        guard !own.isEmpty else { return sound.argument }
+        return "\(sound.argument) (\(own.joined(separator: ", ")) keep\(own.count == 1 ? "s" : "") \(own.count == 1 ? "its" : "their") own)"
+    }
+
     /// The settings by the config file's key, as the report and its JSON give them.
     private var settingFields: [(key: String, text: String, json: JSONValue)] {
         [
             ("seconds", Defaults.number(settings.seconds), .number(Defaults.number(settings.seconds))),
             ("size", settings.size.rawValue, .string(settings.size.rawValue)),
-            ("sound", settings.sound?.argument ?? "each preset's own", settings.sound.map { .string($0.argument) } ?? .null),
+            ("sound", soundText, settings.sound.map { .string($0.argument) } ?? .null),
             ("motion", settings.motion.rawValue, .string(settings.motion.rawValue)),
             ("stack", settings.stack.rawValue, .string(settings.stack.rawValue)),
             ("stack_max", "\(settings.stackMax)", .number("\(settings.stackMax)")),

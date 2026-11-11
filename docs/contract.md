@@ -37,7 +37,8 @@ list of `bad_variable`, `no_gui_session`, `paused` and `screen_locked`, empty wh
 (ISO 8601, or null), `screen_locked`, `config` (`path`, `exists`, `valid`, `ignored` when drip
 ignores the whole file, and `errors` and `warnings`, each a list of lines), `environment_errors`
 (a line for each `DRIP_*` variable drip cannot read), `settings` (by the config file's keys,
-`sound` null when each preset plays its own) and `state_directory` (`path` and `writable`). Every key is always there. New keys can come in any release, so
+`sound` null when each preset plays its own, and a preset the config gives a sound of its own
+keeps it unless `DRIP_SOUND` is set or `sound` is `none`) and `state_directory` (`path` and `writable`). Every key is always there. New keys can come in any release, so
 ignore keys you do not know. [Checking drip](usage.md#checking-drip) has the details.
 
 **The `--on-click` payload.** The command reads one line of JSON on stdin, version 1:

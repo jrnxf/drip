@@ -39,6 +39,12 @@ public struct CardResolver {
     /// unless `DRIP_SOUND` is set or the config's `sound` is `none`.
     public var sound: Sound? { environment.sound ?? config.sound }
 
+    /// Whether a card of `preset` keeps the sound the config gives that preset, over `sound`: when
+    /// `DRIP_SOUND` is unset and the config's top-level `sound` is not `none`.
+    public func keepsOwnSound(_ preset: Preset) -> Bool {
+        environment.sound == nil && config.sound != Sound.none && config.presets[preset.name]?.sound != nil
+    }
+
     /// `DRIP_SIZE`, then the config's `size`, then the default.
     public var size: CardSize { environment.size ?? config.size ?? Defaults.size }
 
@@ -81,8 +87,6 @@ public struct CardResolver {
     private func card(preset: Preset, title: String, detail: String?, flags: CardFlags) -> Card {
         // The config's top-level sound mutes every preset, or replaces the sound of those that set
         // none of their own.
-        let keepsOwnSound = environment.sound == nil && config.sound != Sound.none
-            && config.presets[preset.name]?.sound != nil
         var card = Card(
             kind: preset.name,
             title: title,
@@ -90,7 +94,7 @@ public struct CardResolver {
             icon: flags.icon ?? preset.icon,
             fallbackIcon: preset.icon,
             color: flags.color ?? preset.color,
-            sound: flags.sound ?? (keepsOwnSound ? preset.sound : sound ?? preset.sound),
+            sound: flags.sound ?? (keepsOwnSound(preset) ? preset.sound : sound ?? preset.sound),
             seconds: flags.seconds ?? seconds(for: preset),
             size: flags.size ?? size,
             motion: flags.motion ?? motion

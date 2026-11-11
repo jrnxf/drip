@@ -79,19 +79,22 @@ struct DoctorTests {
 
         let environment = try Self.environment()
         try DripPause(environment: environment).pause(until: Date().addingTimeInterval(1800))
-        let paused = DoctorReport(environment: environment, hasGUISession: true, screenLocked: true)
+        // A report made later than now, so a second clock would show.
+        let now = Date().addingTimeInterval(600)
+        let paused = DoctorReport(environment: environment, hasGUISession: true, screenLocked: true, now: now)
+        #expect(paused.now == now)
         #expect(paused.blockers == [.paused, .screenLocked])
         #expect(paused.status == ExitStatus.failed)
         // One stderr line for each cause.
         #expect(paused.standardError == ([.paused, .screenLocked] as [DoctorReport.Blocker])
             .map { "drip: " + $0.explanation }.joined(separator: "\n"))
-        let now = Date()
         let utc = try #require(TimeZone(identifier: "UTC"))
-        let text = paused.text(now: now, timeZone: utc)
+        let text = paused.text(timeZone: utc)
         let end = try #require(paused.pauseEnd)
         // The same words as drip pause, from the same code.
         let left = DripPause.timeLeft(end: end, now: now, timeZone: utc)
         #expect(left.hasPrefix("until "), "\(left)")
+        #expect(left.hasSuffix("(20m left)"), "\(left)")
         #expect(DripPause.status(end: end, now: now, timeZone: utc) == "drip is paused " + left)
         #expect(text.contains("\npaused: yes, \(left)\n"), "\(text)")
         // A question already on screen stays through a pause, so the report says so.
@@ -181,12 +184,20 @@ struct DoctorTests {
         #expect(text.contains("\nenvironment: DRIP_SECONDS must be"), "\(text)")
         #expect(text.hasSuffix("\nstops cards: \(DoctorReport.Blocker.badVariable.explanation)"), "\(text)")
         #expect(!text.contains("cards show now"), "\(text)")
-        // stderr in the form of any usage error.
+        // stderr in the form of any usage error: the help line right after the bad variables.
         let standardError = try #require(report.standardError)
-        #expect(standardError.hasPrefix("drip: DRIP_DEBUG must be"), "\(standardError)")
-        #expect(standardError.contains("\ndrip: DRIP_SECONDS must be"), "\(standardError)")
-        #expect(standardError.contains("\ndrip: invalid config: 1 problem in "), "\(standardError)")
-        #expect(standardError.hasSuffix("\nSee 'drip doctor --help'."), "\(standardError)")
+        let lines = standardError.split(separator: "\n").map(String.init)
+        #expect(lines.count == 4, "\(standardError)")
+        #expect(lines.first?.hasPrefix("drip: DRIP_DEBUG must be") == true, "\(standardError)")
+        #expect(lines.dropFirst().first?.hasPrefix("drip: DRIP_SECONDS must be") == true, "\(standardError)")
+        #expect(lines.dropFirst(2).first == "See 'drip doctor --help'.", "\(standardError)")
+        #expect(lines.last?.hasPrefix("drip: invalid config: 1 problem in ") == true, "\(standardError)")
+
+        // On a locked screen too, the lock comes after the help line.
+        let locked = try Self.report(extra: ["DRIP_SECONDS": "soon"], locked: true)
+        #expect(locked.standardError == CommandLineParser.usageMessage(
+            "DRIP_SECONDS must be a number between 0.5 and 60, not 'soon'", subcommand: "doctor")
+            + "\ndrip: " + DoctorReport.Blocker.screenLocked.explanation)
         let json = try JSONValue(parsing: report.json)
         #expect(json["stops_cards"] == .array([.string("bad_variable")]))
         #expect(json["environment_errors"]?.elements?.count == 2)
@@ -220,6 +231,33 @@ struct DoctorTests {
         #expect(report.text().contains(
             "(not writable, so drip keeps no history, pause or debug log, but cards still show)\ncards show now"))
         #expect(try JSONValue(parsing: report.json)["state_directory"]?["writable"] == .bool(false))
+    }
+
+    /// A top-level sound plays on every card but those of the presets the config gives a sound of their
+    /// own, and the report says which keep theirs. DRIP_SOUND and `none` beat them all.
+    @Test func theSoundSaysWhichPresetsKeepTheirOwn() throws {
+        let config = "sound = \"Glass\"\n[preset.deploy]\nsound = \"Hero\"\n[preset.ok]\nsound = \"Pop\"\n"
+        let report = try Self.report(config: config)
+        #expect(report.settings.presetsWithOwnSound == ["deploy", "ok"])
+        #expect(report.text().contains("\n  sound = Glass (deploy, ok keep their own)\n"), "\(report.text())")
+        #expect(try JSONValue(parsing: report.json)["settings"]?["sound"] == .string("Glass"))
+        let one = try Self.report(config: "sound = \"Glass\"\n[preset.ok]\nsound = \"Pop\"\n")
+        #expect(one.text().contains("\n  sound = Glass (ok keeps its own)\n"), "\(one.text())")
+        // The cards agree.
+        let environment = try Self.environment(config: config)
+        let resolver = CardResolver(config: ConfigLoader.loadLeniently(environment: environment).config)
+        #expect(try resolver.resolve(kind: "info", title: "t", flags: CardFlags()).sound == Sound(parsing: "Glass"))
+        #expect(try resolver.resolve(kind: "ok", title: "t", flags: CardFlags()).sound == Sound(parsing: "Pop"))
+        for (config, extra) in [
+            ("sound = \"none\"\n[preset.ok]\nsound = \"Pop\"\n", [String: String]()),
+            ("[preset.ok]\nsound = \"Pop\"\n", ["DRIP_SOUND": "Glass"]),
+        ] {
+            let all = try Self.report(config: config, extra: extra)
+            #expect(all.settings.presetsWithOwnSound.isEmpty, "\(config)")
+            #expect(!all.text().contains("own)"), "\(all.text())")
+        }
+        #expect(try Self.report(config: "[preset.ok]\nsound = \"Pop\"\n").text()
+            .contains("\n  sound = each preset's own\n"))
     }
 
     /// The settings are those the code the cards use gives.
