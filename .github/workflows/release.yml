@@ -211,7 +211,7 @@ jobs:
       # The man page of the universal binary, from scripts/man-page.sh. It fails the job when the
       # page lists a hidden subcommand or is not a valid man page.
       - name: Generate the man page
-        run: scripts/man-page.sh ./drip "$RUNNER_TEMP/man"
+        run: scripts/man-page.sh --check ./drip "$RUNNER_TEMP/man"
       # Named for the version drip prints, which the step above holds to the tag.
       - name: Archive
         id: archive

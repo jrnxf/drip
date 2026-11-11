@@ -1,19 +1,39 @@
 #!/bin/sh
-# Writes drip.1 for a drip binary: scripts/man-page.sh <binary> <output-directory>
-# Run from the repository root, with Swift. The release job and a source build both use it.
+# Writes drip.1 for a drip binary:
+#   scripts/man-page.sh [--check] <binary> <output-directory>
+#
+# Run it from anywhere; it moves to the repository root itself. The release job calls it with
+# --check, which also lints the page with mandoc and fails on any error. A source build leaves
+# --check out.
+#
+# Needs: python3 (reads the binary's help dump) and git (dates the page with the commit).
 #
 # The page comes from swift-argument-parser's generate-manual, run on the binary itself, so it
 # documents what the binary does. Two things drip --help leaves out are also left out here: the
-# subcommands the binary marks as hidden, and drip run's --version, which drip run rejects. The
-# date is the commit's, so a rebuild of the same commit gives the same page.
+# top-level subcommands the binary marks hidden, and drip run's --version, which drip run rejects.
+# The date is the commit's, so a rebuild of the same commit gives the same page.
 set -eu
 
+check=0
+if [ "${1:-}" = "--check" ]; then
+  check=1
+  shift
+fi
 if [ "$#" -ne 2 ]; then
-  echo "usage: scripts/man-page.sh <binary> <output-directory>" >&2
+  echo "usage: scripts/man-page.sh [--check] <binary> <output-directory>" >&2
   exit 2
 fi
-binary="$1"
-out="$2"
+
+# The paths are the caller's, so make them absolute before moving to the repository root.
+case "$1" in
+  /*) binary="$1" ;;
+  *) binary="$PWD/$1" ;;
+esac
+case "$2" in
+  /*) out="$2" ;;
+  *) out="$PWD/$2" ;;
+esac
+cd "$(dirname "$0")/.."
 
 date="$(git log -1 --format=%cs)" || date=""
 if [ -z "$date" ]; then
@@ -24,17 +44,23 @@ fi
 raw="$(mktemp -d)"
 trap 'rm -rf "$raw"' EXIT
 
-# The subcommands the binary marks hidden, one per line, from its own help dump.
+# The top-level subcommands the binary marks hidden, one per line. A hidden subcommand nested
+# under another is an error: this script drops top-level blocks only.
 "$binary" --experimental-dump-help > "$raw/help.json"
 python3 -I -c '
 import json, sys
-def hidden(command):
-    for sub in command.get("subcommands") or []:
-        if not sub.get("shouldDisplay", True):
-            print(sub["commandName"])
-        hidden(sub)
 with open(sys.argv[1]) as f:
-    hidden(json.load(f)["command"])
+    top = json.load(f)["command"]
+nested = []
+for sub in top.get("subcommands") or []:
+    for inner in sub.get("subcommands") or []:
+        if not inner.get("shouldDisplay", True):
+            nested.append(inner["commandName"])
+if nested:
+    sys.exit("scripts/man-page.sh: nested hidden subcommands are not handled: " + " ".join(nested))
+for sub in top.get("subcommands") or []:
+    if not sub.get("shouldDisplay", True):
+        print(sub["commandName"])
 ' "$raw/help.json" > "$raw/hidden"
 names="$(tr '\n' ' ' < "$raw/hidden")"
 
@@ -50,37 +76,38 @@ awk -v names="$names" '
   hiding { next }
   /^\.It Em run$/ { in_run = 1 }
   /^\.It Em / && !/^\.It Em run$/ { in_run = 0 }
-  in_run && /^\.It Fl -version$/ { getline; next }
+  in_run && /^\.It Fl -version$/ { dropping = 1; next }
+  dropping && /^\.(It|El)/ { dropping = 0 }
+  dropping { next }
   /^\.Ex -std$/ {
-    print ".Bl -tag -width 6n"
-    print ".It 0"
-    print "Success, or a yes answer."
-    print ".It 1"
-    print "A no answer, or drip could not do its work. It says why on stderr."
-    print ".It 2"
-    print "A usage error, in the command line or in a DRIP_* variable."
-    print ".It 3"
-    print "No GUI session, for example over ssh."
-    print ".It 4"
-    print "drip doctor: the config file is invalid."
-    print ".It 5"
-    print "A --yes question waited, and no button was clicked."
-    print ".El"
+    print ".Pp"
+    print "drip exits with a code that says how it ended. The EXIT CODES section of drip --help"
+    print "lists them, and docs/contract.md in the drip repository has the full table."
     print ".Pp"
     print "drip run exits with the wrapped command'\''s exit code, 127 when it is not found."
-    print "The full table is in docs/contract.md in the drip repository."
     next
   }
   { print }
 ' "$raw/drip.1" > "$out/drip.1"
 
-# Fails the caller when the page still lists a hidden subcommand as an entry.
+# Fails the caller when the page does not hold what it must.
 for name in $names; do
   if grep -q "^\.It Em $name\$" "$out/drip.1"; then
-    echo "drip.1 still lists the hidden subcommand $name" >&2
+    echo "scripts/man-page.sh: drip.1 still lists the hidden subcommand $name" >&2
     exit 1
   fi
 done
+if awk '/^\.It Em run$/ { r = 1; next } /^\.It Em / { r = 0 } r && /^\.It Fl -version$/ { f = 1 } END { exit !f }' "$out/drip.1"; then
+  echo "scripts/man-page.sh: drip.1 still lists --version under drip run" >&2
+  exit 1
+fi
 grep -qx '\.Dt DRIP 1' "$out/drip.1"
 grep -qx '\.Sh NAME' "$out/drip.1"
-mandoc -T lint -W error "$out/drip.1"
+grep -qx '\.Sh "EXIT STATUS"' "$out/drip.1"
+if grep -q '\.Ex -std' "$out/drip.1"; then
+  echo "scripts/man-page.sh: drip.1 still has the generic EXIT STATUS" >&2
+  exit 1
+fi
+if [ "$check" -eq 1 ]; then
+  mandoc -T lint -W error "$out/drip.1"
+fi
