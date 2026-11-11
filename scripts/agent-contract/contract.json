@@ -13,7 +13,7 @@
         },
         "Stop": {
           "reads": {"session_id": "string", "cwd": "string", "last_assistant_message": "string"},
-          "seen": ["hook_event_name", "transcript_path", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "stop_hook_active"]
+          "seen": ["hook_event_name", "transcript_path", "scratchpad_dir", "prompt_id", "permission_mode", "effort", "stop_hook_active", "background_tasks", "session_crons"]
         },
         "StopFailure": {
           "reads": {"session_id": "string", "cwd": "string", "last_assistant_message": "string"},
