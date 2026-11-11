@@ -381,4 +381,16 @@ extension AgentHook {
         return (shown, front)
     }
 }
+
+extension BackgroundRequest.Resurface {
+    /// `surroundings` for the second look: they read the config the hook's drip read, or for a
+    /// request without one, the file as `surroundings` does.
+    public func surroundings(_ surroundings: AgentHook.Surroundings) -> AgentHook.Surroundings {
+        guard let config else { return surroundings }
+        var looked = surroundings
+        // The hook's drip said the file's warnings already.
+        looked.loadConfig = { _ in ConfigFile(config: config, warnings: []) }
+        return looked
+    }
+}
 #endif

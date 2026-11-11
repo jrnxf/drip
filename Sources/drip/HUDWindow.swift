@@ -102,7 +102,7 @@ struct HUDDisplay: CardDisplay {
         if BackgroundDrip.start(request) { return ExitStatus.shown }
         console.warn("cannot start a background drip; showing the card here instead")
         return show(
-            request.cards, locked: .wait(record: request.record, history: request.historyLimit), stack: request.stack,
+            request.cards, locked: .wait(record: request.record, history: request.historyLimit), stack: request.stackToShow,
             console: console)
     }
 

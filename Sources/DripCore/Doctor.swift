@@ -120,29 +120,13 @@ public struct DoctorReport: Equatable {
         configIgnored = file.problems.contains { $0.key == nil }
         let problemWarnings = Set(file.problems.map(ConfigLoader.warning))
         configWarnings = file.warnings.filter { !problemWarnings.contains($0) }
-        let (variables, problems) = Self.readVariables(environment)
+        let (variables, problems) = EnvironmentSettings.leniently(environment)
         environmentProblems = problems
         settings = Settings(
             resolver: CardResolver(config: file.config, environment: variables), environment: environment,
             file: file)
         stateDirectory = StateDirectory.path(environment: environment)
         stateDirectoryWritable = Self.canWrite(directory: stateDirectory)
-    }
-
-    /// The `DRIP_*` variables, each read on its own so one drip cannot read leaves the others in, and
-    /// the problem with each it cannot read, by name.
-    private static func readVariables(_ environment: [String: String]) -> (EnvironmentSettings, [String]) {
-        var problems: [String] = []
-        var usable = environment
-        for name in environment.keys.filter({ $0.hasPrefix("DRIP_") }).sorted() {
-            do {
-                _ = try EnvironmentSettings(environment: [name: environment[name] ?? ""])
-            } catch {
-                problems.append("\(error)")
-                usable[name] = nil
-            }
-        }
-        return ((try? EnvironmentSettings(environment: usable)) ?? EnvironmentSettings(), problems)
     }
 
     /// Whether `directory`, or the nearest folder above it that is there, takes new files.

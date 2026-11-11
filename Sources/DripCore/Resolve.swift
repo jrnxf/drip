@@ -49,6 +49,16 @@ public struct CardResolver {
     /// and `stack_max`, then the defaults. Nil when stacking is off.
     public var stack: StackSettings? { StackSettings.resolved(environment, config: config) }
 
+    /// The settings from a config file already read and the environment, as a card command reads
+    /// them, but each `DRIP_*` variable drip cannot read is left out, for a command that still shows
+    /// its card. `warnings` are the file's, then one for each such variable.
+    public static func leniently(
+        file: ConfigFile, environment: [String: String]
+    ) -> (resolver: CardResolver, warnings: [String]) {
+        let (settings, problems) = EnvironmentSettings.leniently(environment)
+        return (CardResolver(config: file.config, environment: settings), file.warnings + problems)
+    }
+
     /// `DRIP_SIZE`, then the config's `size`, then the default.
     public var size: CardSize { environment.size ?? config.size ?? Defaults.size }
 

@@ -40,10 +40,22 @@ protocol CardDisplay {
 }
 
 /// The resolver of one command, noted where the card is made and read where it is delivered, so
-/// the settings that deliver the card come from the one config read that made it. The defaults
-/// until a resolver has run.
+/// the settings that deliver the card come from the one config read that made it; nil until a
+/// resolver has run.
 final class ResolvedSettings {
-    var resolver = CardResolver()
+    var resolver: CardResolver?
+}
+
+extension BackgroundRequest {
+    /// How the cards stack: as the request says, or, for one from an older drip or with no resolver,
+    /// as `DRIP_STACK` and the config say now, read leniently.
+    var stackToShow: StackSettings? {
+        stack(orRead: {
+            let environment = ProcessInfo.processInfo.environment
+            return CardResolver.leniently(file: ConfigLoader.loadLeniently(environment: environment), environment: environment)
+                .resolver.stack
+        })
+    }
 }
 
 /// Writes messages to stderr.
@@ -173,7 +185,7 @@ struct DripCLI {
 
     /// Shows a permission card with Allow and Deny and waits for it, printing the agent's answer on a
     /// click. A card that goes unclicked prints nothing, which leaves the answer to the terminal.
-    private func ask(_ card: Card, agent: AgentHook.Agent, resolver: CardResolver, console: Console) -> Int32 {
+    private func ask(_ card: Card, agent: AgentHook.Agent, resolver: CardResolver?, console: Console) -> Int32 {
         #if canImport(AppKit)
         let watch = ApprovalWatch(card: card, agent: agent, display: display)
         watch.start()
@@ -367,24 +379,23 @@ struct DripCLI {
 
     /// Everything that can fail is checked here, before the cards are handed off. `resolver` is the
     /// caller's, which says how many cards the history keeps and how the cards stack, so the drip
-    /// that shows them never reads the config again. `record` is false for cards shown again from
-    /// the history, which keeps them already. `remind` says whether to print that drip is paused: a
-    /// drip that waits for its card says so as it starts to wait instead.
+    /// that shows them never reads the config again; with none the cards are not recorded. `record`
+    /// is false for cards shown again from the history, which keeps them already. `remind` says
+    /// whether to print that drip is paused: a drip that waits for its card says so as it starts to
+    /// wait instead.
     private func deliver(
-        _ cards: [Card], wait: Bool, resolver: CardResolver, record: Bool = true, remind: Bool = true,
+        _ cards: [Card], wait: Bool, resolver: CardResolver?, record: Bool = true, remind: Bool = true,
         console: Console
     ) -> Int32 {
-        let cards = display.prepare(cards, console: console)
-        let history = resolver.historyLimit
-        switch Delivery.choose(for: cards, wait: wait) {
+        let request = BackgroundRequest(cards: display.prepare(cards, console: console), record: record, resolver: resolver)
+        switch Delivery.choose(for: request.cards, wait: wait) {
         case .background:
             if remind { remindIfPaused(console) }
-            return display.showInBackground(
-                BackgroundRequest(cards: cards, record: record, history: history, stack: resolver.stack),
-                console: console)
+            return display.showInBackground(request, console: console)
         case .wait:
             return display.show(
-                cards, locked: .wait(record: record, history: history), stack: resolver.stack, console: console)
+                request.cards, locked: .wait(record: request.record, history: request.historyLimit),
+                stack: request.stackToShow, console: console)
         }
     }
 
@@ -410,7 +421,7 @@ struct DripCLI {
             return resurfaceSkipped(request, resurface, console: console)
         }
         if let handOff = request.handOff { return HUDDisplay().resume(handOff, console: console) }
-        return display.show(request.cards, locked: request.locked, stack: request.stack, console: console)
+        return display.show(request.cards, locked: request.locked, stack: request.stackToShow, console: console)
         #else
         return ExitStatus.noGUISession
         #endif
@@ -429,11 +440,12 @@ struct DripCLI {
         Thread.sleep(forTimeInterval: resurface.delay)
         do {
             guard let shown = try AgentHook.resurfaced(
-                card, agent: agent, noted: resurface.noted, in: surroundings(console))
+                card, agent: agent, noted: resurface.noted, in: resurface.surroundings(surroundings(console)))
             else { return ExitStatus.shown }
             let locked = LockedScreen.wait(record: true, history: request.historyLimit)
             return display.show(
-                display.prepare([shown], console: console), locked: locked, stack: request.stack, console: console)
+                display.prepare([shown], console: console), locked: locked, stack: request.stackToShow,
+                console: console)
         } catch {
             return report(error, console)
         }
@@ -441,18 +453,12 @@ struct DripCLI {
     #endif
 
     /// Runs the command first, whatever happens to the card after, and exits with its code. A bad
-    /// environment still gets reported, and the card falls back to the defaults.
+    /// `DRIP_*` variable is a warning, and the card goes on without it.
     private func run(_ command: RunCommand) -> Int32 {
         let flags = command.flags
         let console = Console(quiet: flags.quiet)
         console.warnAbout(command.options)
-        let resolver: CardResolver
-        do {
-            resolver = try makeResolver(console)
-        } catch {
-            _ = report(error, console)
-            resolver = CardResolver()
-        }
+        let resolver = lenientResolver(console)
 
         let clock = ContinuousClock()
         let start = clock.now
@@ -495,16 +501,10 @@ struct DripCLI {
             HistoryListing.select(CardHistory(environment: environment).entries(), missed: command.missed), count: count)
         if command.replay {
             guard !entries.isEmpty else { return ExitStatus.shown }
-            // The cards show again as the config says now; a bad environment falls back to the defaults.
-            let resolver: CardResolver
-            do {
-                resolver = try makeResolver(console)
-            } catch {
-                _ = report(error, console)
-                resolver = CardResolver()
-            }
+            // The cards stack again as the config says now.
             return deliver(
-                entries.map(HistoryListing.replay), wait: false, resolver: resolver, record: false, console: console)
+                entries.map(HistoryListing.replay), wait: false, resolver: lenientResolver(console), record: false,
+                console: console)
         }
         do {
             if command.json {
@@ -607,8 +607,8 @@ struct DripCLI {
                 guard let agent else { return }
                 // A background drip waits for the card; this hook returns at once.
                 _ = BackgroundDrip.start(BackgroundRequest(
-                    cards: [card], resurface: .init(agent: agent.rawValue, noted: noted),
-                    history: resolved.resolver.historyLimit, stack: resolved.resolver.stack))
+                    cards: [card], resurface: .init(agent: agent.rawValue, noted: noted, config: resolved.resolver?.config),
+                    resolver: resolved.resolver))
                 #endif
             },
             away: {
@@ -647,6 +647,16 @@ struct DripCLI {
         return CardResolver(config: file.config, environment: settings)
     }
 
+    /// The settings as `makeResolver` reads them, for a command that shows its card whatever the
+    /// environment says: each `DRIP_*` variable drip cannot read is a warning, and left out.
+    private func lenientResolver(_ console: Console) -> CardResolver {
+        let environment = ProcessInfo.processInfo.environment
+        let (resolver, warnings) = CardResolver.leniently(
+            file: ConfigLoader.loadLeniently(environment: environment), environment: environment)
+        warnings.forEach(console.warn)
+        return resolver
+    }
+
     /// Prints an error and returns its exit status: 2 for a usage mistake, which also says where the
     /// help is, and 1 for anything else. A bad config is only a warning, said where it is read.
     private func report(_ error: Error, _ console: Console, subcommand: String? = nil) -> Int32 {
@@ -670,7 +680,7 @@ struct UnavailableDisplay: CardDisplay {
 
     func showInBackground(_ request: BackgroundRequest, console: Console) -> Int32 {
         show(
-            request.cards, locked: .wait(record: request.record, history: request.historyLimit), stack: request.stack,
+            request.cards, locked: .wait(record: request.record, history: request.historyLimit), stack: request.stackToShow,
             console: console)
     }
 

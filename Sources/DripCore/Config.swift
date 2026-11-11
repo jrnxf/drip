@@ -6,7 +6,7 @@ import Foundation
 #endif
 
 /// Changes a config file makes to one preset; nil where it keeps the preset's value.
-public struct PresetOverride: Equatable {
+public struct PresetOverride: Equatable, Sendable, Codable {
     public var icon: Icon?
     public var color: CardColor?
     public var sound: Sound?
@@ -20,8 +20,9 @@ public struct PresetOverride: Equatable {
     }
 }
 
-/// The settings from config.toml; nil where the file does not set a key.
-public struct Config: Equatable {
+/// The settings from config.toml; nil where the file does not set a key. A background drip gets
+/// them in its request, from the drip that read the file.
+public struct Config: Equatable, Sendable, Codable {
     public var seconds: Double?
     public var size: CardSize?
     /// The sound of every preset that sets none of its own; `none` mutes every preset.
@@ -534,6 +535,22 @@ public struct EnvironmentSettings: Equatable {
 }
 
 extension EnvironmentSettings {
+    /// The `DRIP_*` variables, each read on its own so one drip cannot read leaves the others in, and
+    /// the problem with each it cannot read, by name.
+    public static func leniently(_ environment: [String: String]) -> (settings: EnvironmentSettings, problems: [String]) {
+        var problems: [String] = []
+        var usable = environment
+        for name in environment.keys.filter({ $0.hasPrefix("DRIP_") }).sorted() {
+            do {
+                _ = try EnvironmentSettings(environment: [name: environment[name] ?? ""])
+            } catch {
+                problems.append("\(error)")
+                usable[name] = nil
+            }
+        }
+        return ((try? EnvironmentSettings(environment: usable)) ?? EnvironmentSettings(), problems)
+    }
+
     /// `DRIP_DEBUG`: `1`, `true`, `on` or `yes`, or `0`, `false`, `off` or `no`; nil when unset or
     /// empty. Throws a `UsageError` for anything else.
     public static func debug(environment: [String: String]) throws -> Bool? {
