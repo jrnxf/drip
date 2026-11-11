@@ -125,6 +125,26 @@ hooks for that session alone (`--dangerously-bypass-hook-trust`), where you woul
 Codex refreshes it at the same moment, Codex may ask you to run `codex login` again. Any program you
 run can read the Claude Code token and the Gemini API key in the Keychain without asking, as an unattended check must.
 
+## Running drip by hand
+
+drip reads three places, and a scratch run must move all of them:
+
+- `XDG_CONFIG_HOME` (else `~/.config`): `drip/config.toml`.
+- `XDG_STATE_HOME` (else `~/.local/state`): `drip/history.jsonl`, `drip/debug.log`, the held cards and the pause.
+- `DRIP_QUEUE_DIR` (an absolute path; else the user temp folder): the card queue that drips share.
+
+Each `XDG_*` value must be an absolute path, or drip falls back to `HOME`. This is the same world
+`scripts/mac-e2e.sh` builds for itself.
+
+```sh
+scratch=$(mktemp -d)
+XDG_CONFIG_HOME=$scratch/config XDG_STATE_HOME=$scratch/state DRIP_QUEUE_DIR=$scratch/queue \
+  .build/debug/drip doctor
+```
+
+Never run drip against the real state folder. It fills your real history and debug log, and its
+cards can join your real card queue.
+
 ## Releases
 
 A pushed tag makes a release: `.github/workflows/release.yml` builds the universal archive,
