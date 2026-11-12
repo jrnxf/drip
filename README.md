@@ -1,33 +1,19 @@
-<h1>
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/logo/drip-lockup-reversed.svg">
-    <img src="docs/logo/drip-lockup.svg" width="240" alt="drip">
+    <img src="docs/logo/drip-lockup.svg" width="300" alt="drip">
   </picture>
-</h1>
-
-<p align="center">
-  <img src="docs/demo.gif" width="400" alt="drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then Claude needs you, with Claude needs your permission to use Bash, replaced in place by Deploy failed, with staging: health check timed out after 30s, then the question Deploy to prod?, with Deploy and Cancel buttons, until it times out">
 </p>
 
+<h1 align="center">Notifications that work your way.</h1>
 
-drip is a command that shows a card at your Mac's notch. Call it from a script, a build or a shell
-hook to say that something finished, failed or needs an answer.
+<p align="center">Small cards at your Mac’s notch. Script them, connect them to your tools, and decide what deserves your attention.</p>
 
-No Notifications permission: drip draws its own card, not a Notification Center banner. drip returns at
-once, so it never slows the script that calls it. On a Mac without a notch, the card grows out of
-the top edge of the screen.
+<p align="center">From a simple heads-up to a question that waits for your answer.</p>
 
-[Recipes](recipes/README.md) · [Docs](docs/usage.md) · [drip.jrnxf.co](https://drip.jrnxf.co)
+<p align="center">You choose what matters, when it appears, and how it behaves.<br>Start small. Compose as you go.</p>
 
-- **One command, any script.** `drip ok "deployed"` shows a green card with an icon, a sound and a countdown.
-- **Wraps commands.** `drip run make test` shows how it went and how long it took, and keeps the exit code.
-- **Questions.** `--yes Deploy --no Cancel` waits for a click. It exits 0 for yes, 1 for no and 5 for no answer.
-- **Slow shell commands.** A zsh recipe gives a card to any command that runs 10 seconds or more.
-- **Coding agents.** Recipes for Claude Code, Codex and Gemini CLI call `drip hook` to show a card when the agent needs you.
-- **Remote machines.** A Linux box you reach over ssh can raise its cards on your Mac.
-- **Cards wait while the screen is locked.** They play back when you return.
-
-Requires macOS 13 or newer. Tested on macOS 15 and 26.
+<p align="center"><a href="https://drip.jrnxf.co">Interactive demo</a> · <a href="docs/usage.md">Documentation</a></p>
 
 ## Install
 
@@ -38,6 +24,25 @@ drip ok "hello"
 
 A green card grows out of the notch. Homebrew installs a prebuilt universal binary for Apple silicon
 and Intel, with no Xcode needed. To build from source, see [docs/install.md](docs/install.md).
+
+Requires macOS 13 or newer. Tested on macOS 15 and 26.
+
+<p align="center">
+  <img src="docs/demo.gif" width="400" alt="drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then Claude needs you, with Claude needs your permission to use Bash, replaced in place by Deploy failed, with staging: health check timed out after 30s, then the question Deploy to prod?, with Deploy and Cancel buttons, until it times out">
+</p>
+
+- **One command, any script.** `drip ok "deployed"` shows a green card with an icon, a sound and a countdown.
+- **Wraps commands.** `drip run make test` shows how it went and how long it took, and keeps the exit code.
+- **Questions.** `--yes Deploy --no Cancel` waits for a click. It exits 0 for yes, 1 for no and 5 for no answer.
+- **Slow shell commands.** A zsh recipe gives a card to any command that runs 10 seconds or more.
+- **Coding agents.** Recipes for Claude Code, Codex and Gemini CLI call `drip hook` to show a card when the agent needs you.
+- **Remote machines.** A Linux box you reach over ssh can raise its cards on your Mac.
+- **Cards wait while the screen is locked.** They play back when you return.
+
+No Notifications permission: drip draws its own card, not a Notification Center banner.
+On a Mac without a notch, the card grows out of the top edge of the screen.
+
+[Recipes](recipes/README.md)
 
 ## Quick start
 
