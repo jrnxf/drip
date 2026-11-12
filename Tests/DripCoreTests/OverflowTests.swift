@@ -117,6 +117,45 @@ struct OverflowTests {
         #expect(overflow.peekText == "e · d")
     }
 
+    /// The card past the stack's size waits in a drop under the full stack at every `stack_max`,
+    /// whether it is this drip's own card or another drip's.
+    @Test(arguments: Defaults.stackMaxRange) func theCardPastTheStackWaitsInTheDropAtEveryMax(max: Int) throws {
+        let titles = (1...(max + 1)).map { "card \($0)" }
+        let own = stack(titles, max: max, seconds: 30)
+        own.run(for: 8)
+        #expect(own.stack.live.count == max)
+        #expect(own.stack.overflow?.count == 1)
+        #expect(own.stack.overflow?.phase == .shown)
+
+        let driver = Driver(CardStack(settings: StackSettings(mode: .chain, max: max)), metrics: metrics)
+        driver.others = titles.map { card($0, seconds: 30) }
+        driver.run(for: 8)
+        #expect(driver.stack.live.count == max)
+        #expect(driver.stack.overflow?.count == 1)
+        #expect(driver.stack.overflow?.phase == .shown)
+    }
+
+    /// Cards that run out as fast as they come in, as a stack of six does at the default time,
+    /// never fill the stack long enough for a drop. The card past the stack still comes in as soon
+    /// as the first card has left, not after every card on screen has gone.
+    @Test(arguments: Defaults.stackMaxRange) func theCardPastTheStackComesInOnceTheFirstHasLeft(max: Int) throws {
+        let driver = Driver(CardStack(settings: StackSettings(mode: .chain, max: max)), metrics: metrics)
+        let titles = (1...(max + 1)).map { "card \($0)" }
+        driver.others = titles.map { card($0, seconds: Defaults.seconds) }
+        var liveWhenLastCameIn: [String]?
+        driver.run(for: 20, step: { _, _ in
+            if liveWhenLastCameIn == nil, driver.stack.live.contains(where: { $0.card.title == titles.last }) {
+                liveWhenLastCameIn = driver.stack.live.map(\.card.title)
+            }
+        })
+        let onScreen = try #require(liveWhenLastCameIn)
+        // Into the room the first card left, with the rest still on screen: it did not wait for all
+        // of them to go.
+        #expect(onScreen.count == max)
+        #expect(driver.stack.live.isEmpty)
+        #expect(driver.stack.overflow == nil)
+    }
+
     /// One of this drip's own cards still to come, replaced by a newer drip's card with the same id,
     /// stops counting as the newer card starts: the count stays as it was.
     @Test func aReplacedOwnCardIsNotCounted() throws {

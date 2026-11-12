@@ -246,7 +246,7 @@ extension CardStack {
         entry.phase = .entering(start: start, cues: cues)
         entry.countdownFrom = start + (cues.title.first ?? cues.sides) + 0.25
         entries.append(entry)
-        lastEntrance = time
+        noteEntrance(at: time)
         if last {
             self.overflow = nil
         } else {
@@ -277,7 +277,7 @@ extension CardStack {
         entry.countdownFrom = time + (cues.title.first ?? cues.sides) + 0.25
         entries.insert(entry, at: live.first.flatMap { first in entries.firstIndex { $0 === first } } ?? 0)
         place(at: time, except: entry, with: Self.handOver)
-        lastEntrance = time
+        noteEntrance(at: time)
         if !last { overflow.phase = .releasing(until: time + 0.4) }
         return Release(entry: entry, count: count, last: last)
     }

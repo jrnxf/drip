@@ -100,7 +100,19 @@ public final class CardStack {
     public internal(set) var entries: [Entry] = []
     /// This drip's own cards still to drop in.
     public private(set) var waiting: [Card]
-    var lastEntrance = -Double.infinity
+    private(set) var lastEntrance = -Double.infinity
+    /// Whether a card has left since the last one came in, with a card still waiting to come in. A
+    /// card whose time is up leaves before the next drops in, but after one has left, a card waiting
+    /// comes in first: with cards running out as fast as they come in, as a stack of six does at
+    /// the default time, the next would otherwise wait until every card on screen had gone.
+    private var leftSinceEntrance = false
+
+    /// Notes that a card came in at `time`: the next waits out the spacing, and owes the cards due
+    /// to leave nothing.
+    func noteEntrance(at time: Double) {
+        lastEntrance = time
+        leftSinceEntrance = false
+    }
     /// While the pointer is on any card nothing moves: every countdown stops, gaps stay open and new
     /// cards wait, so a card never slides out from under a click. Not for longer than `holdLimit`
     /// after the pointer last moved, so a pointer left resting on the stack never keeps it there.
@@ -146,11 +158,12 @@ public final class CardStack {
 
     /// Whether a card may drop in at `time`: one at a time, into a stack at rest, so a new drop
     /// never shoves cards still settling, and never while the pointer is on the stack. The overflow
-    /// drop is at rest too, with nothing dripping into it. A card whose time is up leaves first.
+    /// drop is at rest too, with nothing dripping into it. A card whose time is up leaves first, unless
+    /// a card has left since the last came in and another waits: that one comes in first.
     public func isReady(at time: Double) -> Bool {
         !hovering && time - lastEntrance >= Self.entranceSpacing && entries.allSatisfy { $0.animator.end <= time }
             && overflow.map { $0.end <= time && !$0.peeking } ?? true
-            && !entries.contains { $0.isShown && $0.remaining <= 0 && $0.dismissed == nil }
+            && (leftSinceEntrance || !entries.contains { $0.isShown && $0.remaining <= 0 && $0.dismissed == nil })
     }
 
     /// When every spring in the stack has settled, the overflow drop's and what drips into it
@@ -215,10 +228,10 @@ public final class CardStack {
         entry.isWaiting = handed.isWaiting
         entry.countdownFrom = time
         entries.append(entry)
-        lastEntrance = time
         let exit = handed.leaving.flatMap {
             leave(entry, at: time - $0, sinking: handed.sinks ?? false)
         }
+        noteEntrance(at: time)
         place(at: time)
         return (entry, exit)
     }
@@ -377,7 +390,7 @@ public final class CardStack {
         entry.animator = animator
         entry.phase = .entering(start: start, cues: cues)
         entry.countdownFrom = start + (cues.title.first ?? cues.sides) + 0.25
-        lastEntrance = decided
+        noteEntrance(at: decided)
         return entry
     }
 
@@ -410,6 +423,7 @@ public final class CardStack {
     @discardableResult
     public func leave(_ entry: Entry, at time: Double, sinking: Bool = false) -> IslandCues? {
         guard !entry.isLeaving else { return nil }
+        leftSinceEntrance = true
         let position = entries.firstIndex { $0 === entry } ?? 0
         let above = entries[..<position].last { !$0.isLeaving }
         // A card sinking away goes into nothing.
@@ -569,6 +583,9 @@ public final class CardStack {
         if let others {
             changes.overflowChanged = advanceOverflow(others, replaced: replaced, to: time, start: time + lead)
         }
+        // With no card waiting to come in, a leave owes nothing, so a card arriving later does not
+        // jump ahead of one that is due.
+        if queued.isEmpty { leftSinceEntrance = false }
         return changes
     }
 
