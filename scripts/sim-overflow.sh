@@ -11,20 +11,18 @@
 #
 #   scripts/sim-overflow.sh                 # stack_max 3, 6 cards, 0.4 s apart, 3 s each
 #   scripts/sim-overflow.sh --max 1 --count 4 --gap 0.8 --timeout 2 --id
-#   scripts/sim-overflow.sh --push          # DRIP_STACK=push
 set -eu
 
 cd "$(dirname "$0")/.."
 
 usage() {
     cat <<'USAGE'
-usage: scripts/sim-overflow.sh [--max N] [--count N] [--gap SECONDS] [--timeout SECONDS] [--id] [--push] [--bin PATH]
+usage: scripts/sim-overflow.sh [--max N] [--count N] [--gap SECONDS] [--timeout SECONDS] [--id] [--bin PATH]
   --max N            stack_max, 1 to 6 (default 3)
   --count N          cards to send (default stack_max + 3)
   --gap SECONDS      time between two sends (default 0.4)
   --timeout SECONDS  how long each card shows (default 3)
   --id               the first card has an id, and one more card with that id comes last
-  --push             stack with push instead of chain
   --bin PATH         the drip to run (default: .build/release/drip, built if missing)
 USAGE
 }
@@ -34,7 +32,6 @@ count=
 gap=0.4
 timeout=3
 swap=
-mode=chain
 drip=
 while [ $# -gt 0 ]; do
     case $1 in
@@ -43,7 +40,6 @@ while [ $# -gt 0 ]; do
     --gap) gap=$2; shift 2 ;;
     --timeout) timeout=$2; shift 2 ;;
     --id) swap=1; shift ;;
-    --push) mode=push; shift ;;
     --bin) drip=$2; shift 2 ;;
     -h | --help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
@@ -61,7 +57,7 @@ if [ -z "$drip" ]; then
     [ -x "$drip" ] || swift build -c release
 fi
 
-export DRIP_STACK=$mode DRIP_STACK_MAX=$max
+export DRIP_STACK=chain DRIP_STACK_MAX=$max
 unset DRIP_MOTION DRIP_SECONDS
 
 kinds="ok warn fail info"

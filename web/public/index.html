@@ -187,7 +187,7 @@
       <div>
         <div class="lbl">02 / spec sheet</div>
         <h2 class="type-title mt-10 mx-0 mb-18">up to <b>three alerts at once.</b></h2>
-        <p class="m-0 max-w-[46ch] text-ink-2">Cards that arrive while one shows stack below it. In chain mode, the default, each new card drops out of the last one. In push mode it drops out of the notch and moves the others down. Cards past the most it shows wait in a drop under the last card, or in push mode in a pill under the notch, which counts them and lists them under the pointer; each grows out of it as room opens. This module runs DripCore's <code>CardStack</code>: pick a mode, or press PLAY.</p>
+        <p class="m-0 max-w-[46ch] text-ink-2">Cards that arrive while one shows stack below it: each new card drops out of the last one. Cards whose time is up together leave together. Cards past the most it shows wait in a drop under the last card, which counts them and lists them under the pointer; each grows out of it as room opens. This module runs DripCore's <code>CardStack</code>: press PLAY.</p>
         <table class="spec">
           <tr><th scope="row">kinds</th><td>ok, warn, fail, info, and presets from your config: the kind is the look</td></tr>
           <tr><th scope="row">text</th><td>a title of up to 2 lines and a detail of up to 3, wrapped by the engine; a card is at most 640 pt wide</td></tr>
@@ -204,7 +204,6 @@
         <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
         <div class="display" id="stack-screen" role="img" aria-label="A display where drip stacks five cards"><div class="glyphs" aria-hidden="true"><span>STACK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok; drip warn; drip fail; drip info; drip ok</code>three cards stack under the notch, and a drop under them counts the two waiting for room</p></div>
         <div class="row">
-          <div class="switch3"><span class="lbl" id="mode-label">mode</span><div class="track" role="group" aria-labelledby="mode-label"><button type="button" data-stack="chain" aria-pressed="true">chain</button><button type="button" data-stack="push" aria-pressed="false">push</button></div></div>
           <span style="flex:1"></span>
           <button type="button" class="bigbtn" id="stack-play" aria-label="Play five cards">PLAY</button>
         </div>
@@ -222,7 +221,7 @@
           <li>Presets, flags and your <code>config.toml</code></li>
           <li><code>drip run</code>'s title and timing, and <code>drip hook</code>'s reading of the payload</li>
           <li>Text wrapping, sizes, springs, and the outline of the drop, traced by marching squares</li>
-          <li>Stacks of up to three cards, chained or pushed, and cards replaced in place: DripCore's <code>CardStack</code> places and times them</li>
+          <li>Stacks of up to three cards, each dropped out of the last, and cards replaced in place: DripCore's <code>CardStack</code> places and times them</li>
         </ul></div>
         <div><h3><i style="--c:#0a84ff"></i>drawn by this page</h3><ul>
           <li>The paint: simple icons stand in for SF Symbols</li>
@@ -850,7 +849,7 @@ class Stage {
       // A card that gave way and comes back drops in afresh.
       Object.assign(card, { start: entered.start, cues: entered.cues, visible: entered.countdownFrom - entered.start, waiting: entered.waits, exitCues: null, exitAt: undefined, swap: null });
       // The last card waiting is the overflow drop itself, spreading into it as its number rolls out.
-      if (entered.fromDrop) card.dropGhost = { count: entered.fromDrop, at: entered.start, handOver: entered.handOver, up: entered.rollsUp };
+      if (entered.fromDrop) card.dropGhost = { count: entered.fromDrop, at: entered.start, handOver: entered.handOver, up: true };
       st.newest = card; announce(card); this.emit("begin", card);
     }
     for (const swapped of changes.swapped ?? []) {
@@ -875,9 +874,7 @@ class Stage {
 
     const frames = drip.stack.frame(st.id, t);
     const drop = st.overflow ? drip.stack.overflowFrame(st.id, t) : null;
-    // A push stack's card sinking away as the next grows out of the overflow pill fades as it goes.
-    for (const { frame, opacity } of frames) { this.ctx.globalAlpha = opacity; this.fillShape(frame); }
-    this.ctx.globalAlpha = 1;
+    for (const { frame } of frames) this.fillShape(frame);
     for (const piece of drop?.pieces ?? []) this.fillShape(piece);
     for (const { handle, remaining, frame } of frames) {
       const card = st.cards.get(handle), ct = t - card.start;
@@ -1328,7 +1325,7 @@ async function execOne(stages, term, stage, config, alive) {
     if (stdin === null) { term.print(`zsh: only echo, printf and git log can pipe into drip here`, "err"); return 1; }
     stages = stages.slice(1);
   }
-  // `NAME=value drip …` sets drip's environment, as DRIP_STACK=push.
+  // `NAME=value drip …` sets drip's environment, as DRIP_STACK=off.
   const words = stages[0].slice(), env = {};
   while (words.length > 1 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) {
     const word = words.shift(), at = word.indexOf("=");
@@ -1400,13 +1397,13 @@ const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (narrow.matche
 const stages = [hero];
 
 // Five drips at once: three stack, and the other two queue in a drop under the last one.
-const STACK_LINES = (mode) => [
+const STACK_LINES = [
   `drip ok "Build finished" -d "make test: 246 passed in 3.2s"`,
   `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"`,
   `drip fail "Deploy failed" -d "staging: health check timed out"`,
   `drip info "Backup done" -d "412 files, 3.1 GB to the NAS"`,
   `drip ok "Release 1.4 is out" -d "14 files changed"`,
-].map((line) => (mode === "push" ? `DRIP_STACK=push ${line}` : line));
+];
 // The keys: one example each, with the LED in the color of the card it shows, its group, the hint
 // printed under its name, and what the display says when it is hovered or focused before a press.
 const CHIPS = [
@@ -1559,25 +1556,23 @@ FEATURES.forEach((feature, i) => {
   stage.autoplay = () => { const r = screen.getBoundingClientRect(); if (!played && !reduceMotion.matches && r.top < innerHeight * 0.8 && r.bottom > 0) play(); };
 });
 
-// ===== Spec sheet: the engine's stack, on a display of its own; the switch picks chain or push =====
+// ===== Spec sheet: the engine's stack, on a display of its own =====
 const stackScreen = document.getElementById("stack-screen");
 const stackTerm = new Term(document.getElementById("stack-tape"), { max: 8 });
 const stackStage = new Stage(stackScreen, { term: stackTerm, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 640)) });
 stages.push(stackStage);
-let stackMode = "chain", stackRun = 0, stackPlayed = false;
-async function playStack(mode = stackMode) {
+let stackRun = 0, stackPlayed = false;
+async function playStack() {
   if (!drip) return;
-  stackMode = mode; stackPlayed = true;
-  for (const b of document.querySelectorAll("[data-stack]")) b.setAttribute("aria-pressed", String(b.dataset.stack === mode));
+  stackPlayed = true;
   const run = ++stackRun, alive = () => run === stackRun;
   stackStage.reset(); stackTerm.clear();
-  for (const line of STACK_LINES(mode)) {
+  for (const line of STACK_LINES) {
     if (!alive()) return;
     await exec(line, stackTerm, stackStage, { config: "", shown: line.replace(/ -d .*/, ""), alive });
     await sleep(120);
   }
 }
-for (const b of document.querySelectorAll("[data-stack]")) b.addEventListener("click", () => playStack(b.dataset.stack));
 document.getElementById("stack-play").addEventListener("click", () => playStack());
 new IntersectionObserver(([entry]) => {
   if (entry.intersectionRatio > 0.6 && !stackPlayed && !reduceMotion.matches && drip) playStack();

@@ -62,7 +62,7 @@ Choose the size, stacking behavior, and reusable presets in `~/.config/drip/conf
 
 ```toml
 size  = "regular"         # compact | regular | large
-stack = "chain"           # chain | push | off
+stack = "chain"           # chain | off
 
 [preset.deploy]
 icon  = "paperplane.fill"

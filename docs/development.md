@@ -58,9 +58,38 @@ Audio Recording the first time. Run it again for a new take.
 `scripts/sim-overflow.sh` replays the overflow drop on a Mac: it sends more cards than the stack
 shows, a gap apart, so a drop forms under the last card, counts the cards waiting and goes back in
 once none waits. Start it with no drip card on screen. `--max`, `--count`, `--gap` and `--timeout`
-set the stack and the cards, `--id` ends with a card that swaps into the first in place, and `--push`
-stacks with push instead of chain; `--help` lists them. Nothing runs it for you: it is for filming
+set the stack and the cards, and `--id` ends with a card that swaps into the first in place;
+`--help` lists them. Nothing runs it for you: it is for filming
 the drop or for looking at its motion after a change.
+
+### Leaves in a moving stack
+
+A note for later, not a plan. A card whose time is up leaves only from a stack at rest, so it can
+sit with an empty ring for up to about a second: while a card drops in, or while the cards that
+left before it rise and the others close up. Two rules in `CardStack` keep that rare. Cards whose
+time is up within `roundWindow` of each other leave together when they are neighbours, and a card
+does not drop in while a card on screen would run out of time before it had settled
+(`entranceSettling`). It still happens when cards run out as fast as they come in, since a card
+waiting comes in after each leave, and for a card whose time is up just after a round has gone.
+
+The way to end the wait altogether is to let a leave start while other cards still move. What
+stands in the way is that an animator aims at a snapshot of its anchor: `IslandAnimator.exit` and
+`enter` take a `DropletAnchor`, a fixed place, and work out once when the drop lets go and when it
+is swallowed. With no rest gate a drop rises to where its card was, or a card drops out of one
+that has gone. What that change would have to settle:
+
+- A drop that follows its anchor as it moves, and what it does when the anchor leaves mid-drop:
+  letting go early is the likeliest answer.
+- Chains: a card hangs from one that goes into another, so one change replans every card below it.
+- Cues already sent. The ring's drain is a Core Animation animation with a start time, and the
+  sound is scheduled: they would freeze once set, and may then differ a little from the motion.
+- The overflow drop, which hangs from the last card, takes its seeds from it, and times the
+  hand-off on the leaving card holding its place.
+- The pointer, which holds the stack: with no rest gate it can hold cards in mid-air.
+- Pacing. The rest gate is also what keeps six cards readable.
+
+Try it in the web engine first: it has no lead time and no Core Animation, so each round is quick
+to judge by eye.
 
 ## The live agent check
 

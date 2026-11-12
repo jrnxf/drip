@@ -43,7 +43,7 @@ struct CardStackTests {
     }
 
     @Test func chainDropsEachCardFromTheOneAbove() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: ["a", "b", "c"].map { card($0, seconds: 10) })
+        let stack = CardStack(settings: StackSettings(max: 3), cards: ["a", "b", "c"].map { card($0, seconds: 10) })
         run(stack, until: 4)
         #expect(titles(stack.live) == ["a", "b", "c"])
         #expect(stack.live.map { $0.anchor?.card.title } == [nil, "a", "b"])
@@ -55,26 +55,9 @@ struct CardStackTests {
         #expect(stack.live.allSatisfy { $0.isShown })
     }
 
-    @Test func pushDropsEachCardFromTheNotchAndPushesTheOthersDown() {
-        let stack = CardStack(settings: StackSettings(mode: .push, max: 3), cards: ["a", "b", "c"].map { card($0, seconds: 10) })
-        var overlapped = false
-        run(stack, until: 4) { time, _ in
-            // The new drop never touches the card it pushes down.
-            let shapes = stack.live.map { $0.animator.shape(at: time) }
-            for (upper, lower) in zip(shapes, shapes.dropFirst()) where upper.pillTop + upper.pillHeight > lower.pillTop {
-                overlapped = true
-            }
-        }
-        #expect(!overlapped)
-        #expect(titles(stack.live) == ["c", "b", "a"])
-        #expect(stack.live.allSatisfy { $0.anchor == nil })
-        let tops = stack.live.map(\.animator.targetTop)
-        #expect(tops == [0, 1, 2].map { metrics.pillTop + Double($0) * (metrics.pillHeight + CardStack.gap) })
-    }
-
     @Test func aFourthCardWaitsForRoom() {
         let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 3),
+            settings: StackSettings(max: 3),
             cards: [card("a", seconds: 2), card("b", seconds: 6), card("c", seconds: 6), card("d", seconds: 6)])
         var most = 0
         var leftBeforeD: [String] = []
@@ -91,7 +74,7 @@ struct CardStackTests {
     }
 
     @Test func aCardThatWaitsStaysUntilItIsClicked() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [asking("a")])
         let time = run(stack, until: 30)
         #expect(titles(stack.live) == ["a"])
         #expect(stack.live[0].isWaiting)
@@ -102,7 +85,7 @@ struct CardStackTests {
     }
 
     @Test func aCardThatWaitsStaysNoLongerThanItsLimit() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [asking("a")])
         var leftAt: Double?
         run(stack, until: Defaults.waitLimit + 5) { time, changes in
             if leftAt == nil, !changes.left.isEmpty { leftAt = time }
@@ -112,7 +95,7 @@ struct CardStackTests {
 
     @Test func theOldestCardThatWaitsGivesWayWhenACardNeedsRoom() {
         let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 2),
+            settings: StackSettings(max: 2),
             cards: [asking("a", seconds: 2), asking("b", seconds: 2), card("c", seconds: 10)])
         var stopped: [String] = []
         var left: [String] = []
@@ -129,7 +112,7 @@ struct CardStackTests {
 
     @Test func noCardGivesWayWhileAnotherWillLeaveOnItsOwn() {
         let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 2),
+            settings: StackSettings(max: 2),
             cards: [asking("a"), card("b", seconds: 4), card("c", seconds: 10)])
         var stopped: [String] = []
         run(stack, until: 10) { _, changes in stopped += titles(changes.stoppedWaiting) }
@@ -140,18 +123,18 @@ struct CardStackTests {
 
     @Test func cardsThatWaitGiveWayToOtherDrips() {
         // Another drip's card waits for room in a full stack: the oldest gives way.
-        let full = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [asking("a")])
+        let full = CardStack(settings: StackSettings(max: 1), cards: [asking("a")])
         var stopped: [String] = []
         run(full, until: 3, needsRoom: true) { _, changes in stopped += titles(changes.stoppedWaiting) }
         #expect(stopped == ["a"])
 
         // With room for it, nothing gives way.
-        let roomy = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
+        let roomy = CardStack(settings: StackSettings(max: 3), cards: [asking("a")])
         run(roomy, until: 3, needsRoom: true)
         #expect(roomy.live[0].isWaiting)
 
         // A drip that waits for the stack to finish: every card that waits gives way.
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a"), asking("b")])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [asking("a"), asking("b")])
         var time = run(stack, until: 3)
         #expect(stack.live.allSatisfy { $0.isWaiting })
         let changes = stack.advance(to: time, elapsed: 0, lead: 0.06, othersWaiting: true)
@@ -168,7 +151,7 @@ struct CardStackTests {
         #expect(question.waitsForAnswer)
 
         // Another drip waits for the stack to finish: the card that stays gives way, the question does not.
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [question, asking("b")])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [question, asking("b")])
         var time = run(stack, until: 3)
         let changes = stack.advance(to: time, elapsed: 0, lead: 0, othersWaiting: true)
         #expect(titles(changes.stoppedWaiting) == ["b"])
@@ -177,7 +160,7 @@ struct CardStackTests {
         #expect(stack.live[0].isWaiting)
 
         // A full stack of questions and a card that needs room: nothing gives way, so it waits.
-        let full = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [question])
+        let full = CardStack(settings: StackSettings(max: 1), cards: [question])
         var stopped: [String] = []
         run(full, until: 30, needsRoom: true) { _, changes in stopped += titles(changes.stoppedWaiting) }
         #expect(stopped.isEmpty)
@@ -185,7 +168,7 @@ struct CardStackTests {
 
         // Beside a card that stays, that card gives way for room instead.
         let mixed = CardStack(
-            settings: StackSettings(mode: .chain, max: 2), cards: [question, asking("b", seconds: 2), card("c", seconds: 10)])
+            settings: StackSettings(max: 2), cards: [question, asking("b", seconds: 2), card("c", seconds: 10)])
         stopped = []
         run(mixed, until: 12) { _, changes in stopped += titles(changes.stoppedWaiting) }
         #expect(stopped == ["b"])
@@ -198,7 +181,7 @@ struct CardStackTests {
     }
 
     @Test func aStackHoldsItsOwnCardsUntilTheyHaveGone() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 1)])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [card("a", seconds: 1)])
         #expect(stack.holdsOwn)
         var time = run(stack, until: 1)
         stack.enter(card("adopted", seconds: 10), metrics: metrics, own: false, decided: time, at: time)
@@ -213,7 +196,7 @@ struct CardStackTests {
     @Test func anAnsweredQuestionHandsOnTheCardsItTookIn() throws {
         var question = asking("merge?")
         question.action = CardAction(label: "Merge", open: nil, decline: "Later")
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [question])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [question])
         var time = run(stack, until: 2)
         let done = stack.enter(card("done", seconds: 30), metrics: metrics, own: false, decided: time, at: time)
         let needsYou = stack.enter(asking("needs you"), metrics: metrics, own: false, decided: time, at: time)
@@ -267,7 +250,7 @@ struct CardStackTests {
     }
 
     @Test func aStackWithNoAdoptedCardsHandsOnNothing() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 1)])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [card("a", seconds: 1)])
         #expect(stack.handOff(at: 0) == nil)
         let time = run(stack, until: 4)
         #expect(stack.entries.isEmpty)
@@ -277,7 +260,7 @@ struct CardStackTests {
     /// The cards handed on show in the new stack where they were, in the same order, with the time
     /// they had left, and a card that was leaving goes on leaving from as far as it had got.
     @Test func handedOnCardsShowAsTheyWere() throws {
-        let settings = StackSettings(mode: .chain, max: 3)
+        let settings = StackSettings(max: 3)
         let before = CardStack(settings: settings)
         var time = 0.0
         for title in ["a", "b", "c"] {
@@ -321,7 +304,7 @@ struct CardStackTests {
     /// Shown a moment after they were handed on, the cards are as they are by then: a leaving card
     /// further into its exit, every countdown further on, a gliding card further on its way.
     @Test func handedOnCardsAgeUntilTheyShow() throws {
-        let settings = StackSettings(mode: .chain, max: 3)
+        let settings = StackSettings(max: 3)
         let before = CardStack(settings: settings)
         var time = 0.0
         for title in ["a", "b", "c"] {
@@ -369,7 +352,7 @@ struct CardStackTests {
     }
 
     @Test func aCardThatWaitsWaitsAgainWhenReplacedByOneThatWaits() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [asking("a")])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [asking("a")])
         let time = run(stack, until: 3)
         let entry = stack.live[0]
         _ = stack.advance(to: time, elapsed: 0, lead: 0, othersWaiting: true)
@@ -382,7 +365,7 @@ struct CardStackTests {
 
     @Test func theCardsBelowCloseTheGapAndHangFromTheCardAbove() {
         let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 3),
+            settings: StackSettings(max: 3),
             cards: [card("a", seconds: 10), card("b", seconds: 10), card("c", seconds: 10)])
         let time = run(stack, until: 4)
         // A click on the card, away from any button.
@@ -398,43 +381,157 @@ struct CardStackTests {
         #expect(stack.live[1].animator.end <= end)
     }
 
-    /// Three drips started together, whose cards' times run out within one exit of each other, the
-    /// bottom card's first: each leaves only once the drop before it has gone and the cards below
-    /// have closed up behind it, so no gap ever opens above a card that leaves and the last leaves
-    /// from under the notch.
-    @Test func cardsWhoseTimeRunsOutTogetherLeaveOneAtATime() {
-        let order = ["third", "first", "second"]
+    /// A stack of `titles` whose cards' times run out at `ends`, top to bottom, on the stack's clock,
+    /// and when each card left: the titles that left in one step, and the time.
+    private func leaves(_ titles: [String], ends: [Double], step: Double = 1.0 / 60, phase: Double = 0)
+        -> (stack: CardStack, left: [(titles: [String], time: Double)])
+    {
         // When each card starts counting down, learned from cards that stay.
-        let probe = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: order.map { card($0, seconds: 60) })
-        run(probe, until: 4)
-        let from = probe.live.map(\.countdownFrom)
-        // second's time runs out first, third's 0.25 s later as second's drop rises, first's just after.
-        let ends = [6.25, 6.3, 6.0]
-        let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 3),
-            cards: order.indices.map { card(order[$0], seconds: ends[$0] - from[$0]) })
-        var left: [(title: String, time: Double)] = []
-        var gone: [Double] = []
-        // Each card's top as it starts to leave, and the top of its place in a closed-up stack.
-        var tops: [(at: Double, place: Double)] = []
-        run(stack, until: 10) { time, changes in
-            for leaving in changes.left {
-                left.append((leaving.entry.card.title, time))
-                let place = stack.entries.filter { !$0.isLeaving || $0 === leaving.entry }.firstIndex { $0 === leaving.entry } ?? 0
-                tops.append((leaving.entry.exit?.top ?? 0, metrics.pillTop + Double(place) * (metrics.pillHeight + CardStack.gap)))
+        let probe = CardStack(settings: StackSettings(max: 6), cards: titles.map { card($0, seconds: 60) })
+        var time = phase
+        func drive(_ stack: CardStack, until: Double, each: (Double, CardStack.Changes) -> Void = { _, _ in }) {
+            time = phase
+            var last = phase
+            while time < until {
+                if stack.isReady(at: time), let next = stack.nextOwn() {
+                    stack.enter(next, metrics: metrics, own: true, decided: time, at: time)
+                }
+                each(time, stack.advance(to: time, elapsed: time - last, lead: 0))
+                last = time
+                time += step
             }
-            gone += changes.gone.map { _ in time }
         }
-        #expect(left.map(\.title) == ["second", "third", "first"])
-        #expect(gone.count == 3)
-        // Never two drops in the air at once.
-        for (next, previous) in zip(left.dropFirst(), gone) {
-            #expect(next.time >= previous)
+        drive(probe, until: 8)
+        let from = probe.live.map(\.countdownFrom)
+        let stack = CardStack(
+            settings: StackSettings(max: 6), cards: titles.indices.map { card(titles[$0], seconds: ends[$0] - from[$0]) })
+        var left: [(titles: [String], time: Double)] = []
+        drive(stack, until: 20) { time, changes in
+            if !changes.left.isEmpty { left.append((changes.left.map(\.entry.card.title), time)) }
         }
-        for top in tops {
-            #expect(abs(top.at - top.place) < 0.5)
+        return (stack, left)
+    }
+
+    /// Cards whose time runs out together leave together, in one motion, whatever frame each
+    /// countdown started on and however long a frame is.
+    @Test func cardsWhoseTimeRunsOutTogetherLeaveTogether() {
+        let titles = ["a", "b", "c", "d", "e", "f"]
+        // A few milliseconds apart, as countdowns that start on different frames end.
+        let ends = [12.004, 12.0, 12.011, 12.002, 12.016, 12.007]
+        for step in [1.0 / 60, 1.0 / 120, 1.0 / 47] {
+            for phase in stride(from: 0, to: step, by: step / 8) {
+                let (stack, left) = leaves(titles, ends: ends, step: step, phase: phase)
+                #expect(left.map(\.titles) == [titles], "step \(step) phase \(phase)")
+                #expect(stack.entries.isEmpty)
+            }
         }
-        #expect(tops.last.map { abs($0.at - metrics.pillTop) < 0.5 } == true)
+    }
+
+    /// A card whose time is up within the round's window goes with the first, once its own time is
+    /// up, so neither goes before its ring is empty. One whose time is up later goes on its own, once
+    /// the stack is at rest again.
+    @Test func aCardWhoseTimeIsUpSoonAfterGoesWithTheFirst() throws {
+        let inside = leaves(["a", "b"], ends: [10, 10.15]).left
+        #expect(inside.map(\.titles) == [["a", "b"]])
+        #expect(try #require(inside.first).time >= 10.15)
+        #expect(try #require(inside.first).time < 10.3)
+
+        let outside = leaves(["a", "b"], ends: [10, 10.5]).left
+        #expect(outside.map(\.titles) == [["a"], ["b"]])
+        #expect(try #require(outside.first).time < 10.12)
+        // The second waits for the first one's drop to go and the stack to close up.
+        #expect(try #require(outside.last).time > 10.5)
+    }
+
+    /// The round does not grow as it waits: each card here ends within the window of the one before,
+    /// but only those within it of the first go with the first.
+    @Test func aRoundTakesOnlyTheCardsWithinItsWindow() {
+        let left = leaves(["a", "b", "c", "d"], ends: [10, 10.15, 10.35, 10.5]).left
+        #expect(left.map(\.titles) == [["a", "b"], ["c", "d"]])
+    }
+
+    /// The cards that leave together are neighbours, so no card that stays is between two drops:
+    /// the one a drop is aimed at would otherwise move away under it. Two cards whose time is up
+    /// together with a card that stays between them leave one after the other, the upper first,
+    /// whichever frame each countdown ended on.
+    @Test func cardsThatLeaveTogetherAreNeighbours() {
+        for (first, third) in [(10.0, 10.0), (10.0, 10.012), (10.012, 10.0)] {
+            let (_, left) = leaves(["a", "b", "c"], ends: [first, 13, third])
+            #expect(left.map(\.titles) == [["a"], ["c"], ["b"]], "\(first) \(third)")
+        }
+        // A block in the middle goes into the card above it, and one at the bottom into the one above.
+        #expect(leaves(["a", "b", "c", "d", "e"], ends: [13, 10, 10, 10, 13]).left.map(\.titles) == [["b", "c", "d"], ["a", "e"]])
+        #expect(leaves(["a", "b", "c", "d"], ends: [13, 13, 10, 10]).left.map(\.titles) == [["c", "d"], ["a", "b"]])
+    }
+
+    /// Cards whose times run out within one exit of each other, the bottom card's first: it leaves
+    /// alone, on time, as the others are not due within its round. Those two then leave together,
+    /// from a stack at rest, each from its place in a closed-up stack.
+    @Test func cardsWhoseTimeRunsOutCloseTogetherLeaveInRounds() {
+        let (stack, left) = leaves(["third", "first", "second"], ends: [6.25, 6.3, 6.0])
+        #expect(left.map(\.titles) == [["second"], ["third", "first"]])
+        #expect(left[0].time < 6.12)
+        #expect(stack.entries.isEmpty)
+    }
+
+    /// No card that leaves ever runs into a card that stays, whichever cards go together.
+    @Test func cardsLeavingTogetherNeverRunIntoACardThatStays() {
+        let titles = ["a", "b", "c", "d", "e"]
+        for ends in [[10.0, 10, 10, 10, 10], [13, 10, 10, 10, 13], [10, 10, 13, 13, 13], [13, 13, 13, 10, 10], [10, 13, 10, 13, 10]] {
+            let probe = CardStack(settings: StackSettings(max: 6), cards: titles.map { card($0, seconds: 60) })
+            run(probe, until: 8)
+            let from = probe.live.map(\.countdownFrom)
+            let stack = CardStack(
+                settings: StackSettings(max: 6), cards: titles.indices.map { card(titles[$0], seconds: ends[$0] - from[$0]) })
+            var closest = Double.infinity
+            run(stack, until: 16) { time, _ in
+                for (index, leaving) in stack.entries.enumerated() where leaving.isLeaving {
+                    let above = leaving.animator.shape(at: time)
+                    for below in stack.entries[(index + 1)...] where !below.isLeaving {
+                        closest = min(closest, below.animator.shape(at: time).pillTop - (above.pillTop + above.pillHeight))
+                    }
+                }
+            }
+            #expect(closest > 0, "\(ends)")
+            #expect(stack.entries.isEmpty)
+        }
+    }
+
+    /// A card does not drop in when a card on screen would run out of time before it had settled:
+    /// that card would stay, its ring empty, until the new one was in. It leaves on time, and the
+    /// new card drops in after it.
+    @Test func aCardWaitsToDropInForACardAboutToLeave() throws {
+        let probe = CardStack(settings: StackSettings(max: 3), cards: ["a", "b"].map { card($0, seconds: 60) })
+        var bEnters = 0.0
+        run(probe, until: 4) { time, _ in
+            if bEnters == 0, probe.live.count == 2 { bEnters = time }
+        }
+        let from = probe.live[0].countdownFrom
+        // a's time runs out half a second after b could drop in.
+        let ends = bEnters + 0.5
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [card("a", seconds: ends - from), card("b", seconds: 60)])
+        var aLeaves: Double?
+        var bComes: Double?
+        run(stack, until: 6) { time, changes in
+            if changes.left.contains(where: { $0.entry.card.title == "a" }) { aLeaves = aLeaves ?? time }
+            if bComes == nil, stack.entries.contains(where: { $0.card.title == "b" }) { bComes = time }
+        }
+        let left = try #require(aLeaves)
+        // On time, within the steps a countdown starts and ends on, not after b has come in and settled.
+        #expect(left - ends < 0.12)
+        #expect(try #require(bComes) > left)
+
+        // With more time than a card takes to settle, b drops in at once and a still leaves on time.
+        let later = bEnters + CardStack.entranceSettling + 0.3
+        let roomy = CardStack(settings: StackSettings(max: 3), cards: [card("a", seconds: later - from), card("b", seconds: 60)])
+        var leaves: Double?
+        var comes: Double?
+        run(roomy, until: 6) { time, changes in
+            if changes.left.contains(where: { $0.entry.card.title == "a" }) { leaves = leaves ?? time }
+            if comes == nil, roomy.entries.contains(where: { $0.card.title == "b" }) { comes = time }
+        }
+        #expect(abs(try #require(comes) - bEnters) < 0.02)
+        #expect(try #require(leaves) - later < 0.12)
     }
 
     /// A card whose time runs out while the next card is still dropping in leaves as soon as the
@@ -443,7 +540,7 @@ struct CardStackTests {
     @Test func aCardWhoseTimeIsUpLeavesBeforeTheNextDropsIn() throws {
         let titles = ["a", "b", "c"]
         // When b starts to drop in and when a starts counting down, learned from cards that stay.
-        let probe = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: titles.map { card($0, seconds: 60) })
+        let probe = CardStack(settings: StackSettings(max: 3), cards: titles.map { card($0, seconds: 60) })
         var bEnters = 0.0
         run(probe, until: 4) { time, _ in
             if bEnters == 0, probe.live.count == 2 { bEnters = time }
@@ -451,7 +548,7 @@ struct CardStackTests {
         let from = probe.live[0].countdownFrom
         // a's time runs out while b is still settling.
         let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 3),
+            settings: StackSettings(max: 3),
             cards: [card("a", seconds: bEnters + 0.1 - from), card("b", seconds: 60), card("c", seconds: 60)])
         var aLeaves: Double?
         var cEnters: Double?
@@ -467,7 +564,7 @@ struct CardStackTests {
     @Test func aClickedButtonIsReported() {
         var withButton = card("a", seconds: 10)
         withButton.action = CardAction(label: "Open", open: nil)
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [withButton])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [withButton])
         let time = run(stack, until: 2)
         stack.live[0].dismissed = true
         let changes = stack.advance(to: time, elapsed: 0, lead: 0.06)
@@ -475,7 +572,7 @@ struct CardStackTests {
     }
 
     @Test func nothingMovesWhileThePointerIsOnTheStack() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 1), card("b")])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [card("a", seconds: 1), card("b")])
         let time = run(stack, until: 0.1)
         #expect(stack.hover(true))
         #expect(!stack.hover(true))
@@ -491,7 +588,7 @@ struct CardStackTests {
     /// A pointer left resting on the stack, as one moved there to read what is under a card, holds
     /// it for `holdLimit` at most; moving again holds it again.
     @Test func aRestingPointerLetsTheStackGo() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 1), card("b")])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [card("a", seconds: 1), card("b")])
         let time = run(stack, until: 0.1)
         #expect(stack.hover(true, moved: true, at: time))
         #expect(!stack.hover(true, moved: false, at: time + CardStack.holdLimit - 0.1))
@@ -520,7 +617,7 @@ struct CardStackTests {
     /// overflow drop with what is left of its wait, and comes back once there is room.
     @Test func aCardThatGivesWayComesBack() {
         let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 2),
+            settings: StackSettings(max: 2),
             cards: [asking("a", seconds: 2), asking("b", seconds: 2), card("c", seconds: 2)])
         stack.tucks = true
         var tucked: [String] = []
@@ -565,7 +662,7 @@ struct CardStackTests {
     /// drip's own cards not yet in.
     private func stackWithATuckedCard(then own: [Card] = []) -> CardStack {
         let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 2),
+            settings: StackSettings(max: 2),
             cards: [asking("a", seconds: 2), asking("b", seconds: 2), card("c", seconds: 2)] + own)
         stack.tucks = true
         var time = 0.0
@@ -582,7 +679,7 @@ struct CardStackTests {
 
     @Test func aNewerCardWithTheSameIdSwapsIntoThePlaceOnScreenEvenInAFullStack() {
         let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 2), cards: [identified("a", id: "build"), identified("b")])
+            settings: StackSettings(max: 2), cards: [identified("a", id: "build"), identified("b")])
         run(stack, until: 4)
         #expect(!stack.hasRoom)
         guard case let .swap(shown, 0)? = stack.nextAdmission(adoptable: [identified("a2", id: "build")]) else {
@@ -598,7 +695,7 @@ struct CardStackTests {
     /// own on screen still takes that card's place: only its own shown cards with an id qualify.
     @Test func aStackOffersItsOwnShownCardsWithAnIDForANewerCardToReplace() {
         let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 3),
+            settings: StackSettings(max: 3),
             cards: [identified("a", id: "build"), identified("b"), identified("c", id: "test")])
         var time = run(stack, until: 0.05)
         // Still dropping in, so not on screen yet.
@@ -622,7 +719,7 @@ struct CardStackTests {
     /// A newer card with its id never swaps into it only to go with it: it takes a place of its own.
     @Test func aNewerCardWithTheSameIdNeverSwapsIntoACardTakenAway() {
         let stack = CardStack(
-            settings: StackSettings(mode: .chain, max: 3), cards: [identified("a", id: "build"), identified("b")])
+            settings: StackSettings(max: 3), cards: [identified("a", id: "build"), identified("b")])
         run(stack, until: 4)
         let newer = identified("a2", id: "build")
         #expect(titles(stack.replaceable) == ["a"])
@@ -643,7 +740,7 @@ struct CardStackTests {
         var question = card("a", seconds: 10)
         question.id = "build"
         question.action = CardAction(label: "Merge", open: nil)
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [question])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [question])
         run(stack, until: 4)
         guard case .enter(0)? = stack.nextAdmission(adoptable: [identified("a2", id: "build")]) else {
             Issue.record("a question reports its click to the drip that showed it, so the newer card waits for its own place")
@@ -652,12 +749,12 @@ struct CardStackTests {
     }
 
     @Test func aNewerDripsCardTakesAFreePlaceOnlyWhenNoOwnCardWaits() {
-        let free = CardStack(settings: StackSettings(mode: .chain, max: 3))
+        let free = CardStack(settings: StackSettings(max: 3))
         guard case .enter(0)? = free.nextAdmission(adoptable: [card("other")]) else {
             Issue.record("the adopted card drops in")
             return
         }
-        let waiting = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("own")])
+        let waiting = CardStack(settings: StackSettings(max: 3), cards: [card("own")])
         guard case .own? = waiting.nextAdmission(adoptable: [card("other")]) else {
             Issue.record("this drip's own card goes first, so a newer drip's never jumps the queue")
             return
@@ -665,7 +762,7 @@ struct CardStackTests {
     }
 
     @Test func noNewerCardJumpsAnOwnCardThatWaitsPastAFullStack() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [card("a", seconds: 10), card("b")])
+        let stack = CardStack(settings: StackSettings(max: 1), cards: [card("a", seconds: 10), card("b")])
         run(stack, until: 4)
         #expect(stack.waiting.count == 1)
         #expect(stack.nextAdmission(adoptable: [card("other")]) == nil)
@@ -706,13 +803,13 @@ struct CardStackTests {
     }
 
     @Test func releaseTakesOwnFirstThenACardNotSwappingInPlace() {
-        let own = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("own")])
+        let own = CardStack(settings: StackSettings(max: 3), cards: [card("own")])
         guard case .own? = own.nextRelease(adoptable: [card("other")]) else {
             Issue.record("own first")
             return
         }
 
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [identified("a", id: "build")])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [identified("a", id: "build")])
         run(stack, until: 4)
         // "a2" shows in place of "a" and so does not grow out of the drop; "b" does.
         guard case .enter(1)? = stack.nextRelease(adoptable: [identified("a2", id: "build"), identified("b")]) else {
@@ -723,7 +820,7 @@ struct CardStackTests {
     }
 
     @Test func releaseSkipsAReplacedOwnCardInsteadOfShowingIt() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("old")])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [card("old")])
         guard case .skipOwn? = stack.nextRelease(adoptable: [card("other")], isReplaced: { $0.title == "old" }) else {
             Issue.record("the replaced card is dropped, not shown or passed over for a newer drip's")
             return
@@ -731,7 +828,7 @@ struct CardStackTests {
     }
 
     @Test func aCardThatGaveWayCanBeForgotten() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 1), cards: [asking("a"), card("c", seconds: 2)])
+        let stack = CardStack(settings: StackSettings(max: 1), cards: [asking("a"), card("c", seconds: 2)])
         stack.tucks = true
         var time = 0.0
         var gaveWay: [Int] = []
@@ -750,7 +847,7 @@ struct CardStackTests {
     }
 
     @Test func theCloseMarkIsTheCardsLeftEnd() throws {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 10)])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [card("a", seconds: 10)])
         let time = run(stack, until: 3)
         let entry = try #require(stack.live.first)
         let shape = entry.animator.shape(at: time)
@@ -761,7 +858,7 @@ struct CardStackTests {
         #expect(!stack.isOnClose(of: entry, at: IslandPoint(layout.iconCenter.x + layout.iconSize, middle), time: time))
         #expect(!stack.isOnClose(of: entry, at: IslandPoint(layout.iconCenter.x, shape.pillTop + shape.pillHeight + 10), time: time))
         // Without an icon there is no ×.
-        let bare = CardStack(settings: StackSettings(mode: .chain, max: 3))
+        let bare = CardStack(settings: StackSettings(max: 3))
         let noIcon = IslandMetrics(notchWidth: 185, notchHeight: 32, textWidth: 180, textHeight: 34, hasIcon: false)
         let other = bare.enter(card("b"), metrics: noIcon, own: true, decided: 0, at: 0)
         let end = run(bare, until: 3)
@@ -770,7 +867,7 @@ struct CardStackTests {
     }
 
     @Test func theOutlineMeltsEachDropIntoWhatItGrowsOutOf() {
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [card("a", seconds: 10)])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [card("a", seconds: 10)])
         let time = run(stack, until: 2)
         stack.enter(card("b"), metrics: metrics, own: true, decided: time, at: time)
         let outline = stack.outline
@@ -794,7 +891,7 @@ struct CardStackTests {
         var plain = card("b", seconds: 10)
         plain.activate = nil
         #expect(clickable.isClickable && !plain.isClickable)
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [clickable, plain])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [clickable, plain])
         let time = run(stack, until: 4)
         let (a, b) = (stack.live[0], stack.live[1])
         let middle = { (entry: CardStack.Entry) in
@@ -815,7 +912,7 @@ struct CardStackTests {
             clickable.activate = "com.apple.finder"
             return clickable
         }
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: cards)
+        let stack = CardStack(settings: StackSettings(max: 3), cards: cards)
         let time = run(stack, until: 4)
         let (a, b) = (stack.live[0], stack.live[1])
         #expect(a.card.isClickable && b.card.isClickable)
@@ -842,7 +939,7 @@ struct CardStackTests {
     @Test func thePointerFindsTheCardAndItsButton() {
         var withButton = card("a", seconds: 10)
         withButton.action = CardAction(label: "Open", open: nil)
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3), cards: [withButton, card("b", seconds: 10)])
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [withButton, card("b", seconds: 10)])
         let time = run(stack, until: 4)
         let (a, b) = (stack.live[0], stack.live[1])
         let middle = { (entry: CardStack.Entry) in
@@ -868,7 +965,7 @@ struct CardStackTests {
         buttons.declineWidth = no
         #expect(buttons.actionWidth == 116)
         #expect(IslandMetrics.buttonsWidth(yes: yes, no: nil, scale: 1.25) == yes)
-        let stack = CardStack(settings: StackSettings(mode: .chain, max: 3))
+        let stack = CardStack(settings: StackSettings(max: 3))
         let entry = stack.enter(question, metrics: buttons, own: true, decided: 0, at: 0)
         run(stack, until: 3)
         let layout = entry.animator.content(for: entry.animator.shape(at: 3))

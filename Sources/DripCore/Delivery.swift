@@ -163,7 +163,7 @@ public struct StackHandOff: Equatable, Sendable, Codable {
     /// open capsule whose top was at `top`: the background drip plays its exit on from there.
     public static func leaving(_ card: Card, top: Double, at time: Double) -> StackHandOff {
         StackHandOff(
-            settings: StackSettings(mode: .chain, max: 1),
+            settings: StackSettings(max: 1),
             cards: [HandedCard(card: card, top: top, remaining: 0, isWaiting: false, leaving: 0)], time: time)
     }
 
@@ -186,22 +186,18 @@ public struct HandedCard: Equatable, Sendable, Codable {
     public var isWaiting: Bool
     /// How long ago it started to leave; nil while it shows.
     public var leaving: Double?
-    /// Whether it left sinking away, as a push stack's card does as the next grows out of the
-    /// overflow pill; nil for not, as from a drip that did not say.
-    public var sinks: Bool?
     /// The springs still taking its top there, as it glides into a gap; none at rest.
     public var glide: [SpringMotion]
 
     public init(
         card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil,
-        sinks: Bool? = nil, glide: [SpringMotion] = []
+        glide: [SpringMotion] = []
     ) {
         self.card = card
         self.top = top
         self.remaining = remaining
         self.isWaiting = isWaiting
         self.leaving = leaving
-        self.sinks = sinks
         self.glide = glide
     }
 

@@ -264,7 +264,7 @@ private struct ConfigReader {
         case "size": config.size = try choice(item, key: key, CardSize.self)
         case "sound": config.sound = try sound(item, key: key)
         case "motion": config.motion = try choice(item, key: key, Motion.self)
-        case "stack": config.stack = try choice(item, key: key, StackSettings.Choice.self)
+        case "stack": config.stack = try stack(item, key: key)
         case "stack_max": config.stackMax = try integer(item, key: key, in: Defaults.stackMaxRange)
         case "stack_delay": config.stackDelay = try seconds(item, key: key, in: Defaults.stackDelayRange)
         case "when_focused": config.whenFocused = try choice(item, key: key, WhenFocused.self)
@@ -401,6 +401,15 @@ private struct ConfigReader {
         return choice
     }
 
+    /// How cards stack. A value drip no longer has, as `push`, stacks the cards and is a warning.
+    private mutating func stack(_ item: TOMLItem, key: String) throws -> StackSettings.Choice {
+        if let text = try? string(item, key: key), let choice = StackSettings.Choice.retired[text] {
+            warnings.append("\(path):\(item.line): stack = \"\(text)\" is gone, cards stack as \"\(choice.rawValue)\"")
+            return choice
+        }
+        return try choice(item, key: key, StackSettings.Choice.self)
+    }
+
     private func string(_ item: TOMLItem, key: String) throws -> String {
         guard case let .string(text) = item.value else { throw wrongType(item, key: key, expected: "a string") }
         return text
@@ -517,7 +526,7 @@ public struct EnvironmentSettings: Equatable {
         }
         size = try choice("DRIP_SIZE", CardSize.self)
         motion = try choice("DRIP_MOTION", Motion.self)
-        stack = try choice("DRIP_STACK", StackSettings.Choice.self)
+        stack = try value("DRIP_STACK").flatMap { StackSettings.Choice.retired[$0] } ?? choice("DRIP_STACK", StackSettings.Choice.self)
         whenFocused = try choice("DRIP_WHEN_FOCUSED", WhenFocused.self)
         func seconds(_ name: String, in range: ClosedRange<Double>) throws -> Double? {
             guard let text = value(name) else { return nil }

@@ -86,7 +86,7 @@ struct ApprovalTests {
     @Test func aPermissionCardDroppedBeforeItShowsGivesNoAnswer() throws {
         let plain = try #require(try ask(.claude, Self.claude, local(), approve: false))
         let asking = try #require(AgentHook.asking(plain))
-        let settings = StackSettings(mode: .chain, max: 3)
+        let settings = StackSettings(max: 3)
 
         let replaced = CardStack(settings: settings, cards: [asking])
         guard case .skipOwn? = replaced.nextRelease(adoptable: [], isReplaced: { $0.id == asking.id }) else {

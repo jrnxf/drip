@@ -242,8 +242,7 @@ final class StackPresenter: CardPresenting {
         let sampling = CACurrentMediaTime()
         // Every entry has its drawing by now; one that somehow had none is left out of the plan
         // rather than ending the process.
-        let all = stack.entries
-        let entries = all.filter { self.drawings[$0.id] != nil }
+        let entries = stack.entries.filter { self.drawings[$0.id] != nil }
         let end = max(stack.end, start + 0.05)
         let count = Int(((end - start) * Self.framesPerSecond).rounded(.up)) + 1
         let outline = stack.outline
@@ -253,17 +252,13 @@ final class StackPresenter: CardPresenting {
         let layers = drawings.map(\.layers)
         let retiring = drawings.map(\.retiring)
         let moving = entries.map { $0.animator.end > start }
-        // A card sinking away fades on its own shape, out of the stack's.
-        let sinking = entries.map(\.sinks)
-        // The outline's pieces go by every entry, drawn or not.
-        let melted = all.map(\.sinks)
         let centerX = size.width / 2
         var paths = [CGPath?](repeating: nil, count: count)
         var frames = [[IslandLayers.Frame?]](repeating: [IslandLayers.Frame?](repeating: nil, count: count), count: cards.count)
         paths.withUnsafeMutableBufferPointer { paths in
             DispatchQueue.concurrentPerform(iterations: count) { index in
                 let time = start + (end - start) * Double(index) / Double(count - 1)
-                paths[index] = Self.path(at: time, outline: outline, centerX: centerX, without: melted)
+                paths[index] = Self.path(at: time, outline: outline, centerX: centerX)
             }
         }
         for (card, layer) in zip(cards.indices, layers) where moving[card] {
@@ -271,20 +266,9 @@ final class StackPresenter: CardPresenting {
                 DispatchQueue.concurrentPerform(iterations: count) { index in
                     let time = start + (end - start) * Double(index) / Double(count - 1)
                     let shape = cards[card].shape(at: time)
-                    var frame = layer.frame(shape, layout: cards[card].content(for: shape), withPath: false)
-                    if sinking[card] {
-                        let path = CGMutablePath()
-                        IslandPath.addCapsule(shape, metrics: cards[card].metrics, to: path, centerX: layer.centerX)
-                        frame.path = path
-                    }
-                    samples[index] = frame
+                    samples[index] = layer.frame(shape, layout: cards[card].content(for: shape), withPath: false)
                 }
             }
-        }
-        let fades = cards.indices.map { card in
-            sinking[card] && moving[card] ? (0..<count).map { index in
-                cards[card].shape(at: start + (end - start) * Double(index) / Double(count - 1)).opacity
-            } : []
         }
         // A card replaced in place keeps to the capsule springing to the new card's size as it fades.
         var retiringFrames = [[IslandLayers.Frame]](repeating: [], count: cards.count)
@@ -331,15 +315,6 @@ final class StackPresenter: CardPresenting {
         for (card, layer) in zip(cards.indices, layers) {
             if moving[card] {
                 layer.play(frames[card].compactMap { $0 }, duration: end - start, begin: begin)
-                if let last = fades[card].last {
-                    layer.shape.isHidden = false
-                    layer.shape.opacity = Float(last)
-                    let fade = CAKeyframeAnimation(keyPath: "opacity")
-                    fade.values = fades[card]
-                    fade.duration = end - start
-                    fade.beginTime = begin
-                    layer.shape.add(fade, forKey: "sink")
-                }
                 if let old = retiring[card] { old.play(retiringFrames[card], duration: end - start, begin: begin) }
             } else {
                 let shape = cards[card].shape(at: start)
@@ -347,7 +322,7 @@ final class StackPresenter: CardPresenting {
             }
         }
         overflowLayers?.play(overflowFrames, duration: end - start, begin: begin)
-        // One setting for the whole stack, a sinking card's own shape too. After the keyframes, so
+        // One setting for the whole stack. After the keyframes, so
         // an edge that comes on now follows them from the start.
         edge?.isShown = outlined
         for drawing in drawings {
@@ -370,14 +345,13 @@ final class StackPresenter: CardPresenting {
     }
 
     /// The notch and every card at `time`, each card melted into what it grows out of while it is
-    /// close enough. Leaves out each card `without` says, which draws its own shape.
-    private static func path(at time: Double, outline: StackOutline, centerX: CGFloat, without: [Bool] = []) -> CGPath {
+    /// close enough.
+    private static func path(at time: Double, outline: StackOutline, centerX: CGFloat) -> CGPath {
         let path = CGMutablePath()
         if let metrics = outline.notch {
             IslandPath.addNotch(to: path, metrics: metrics, centerX: centerX)
         }
-        let cards = outline.pieces(at: time).enumerated().filter { !without.indices.contains($0.offset) || !without[$0.offset] }
-        for piece in cards.map(\.element) + outline.overflowPieces(at: time) {
+        for piece in outline.pieces(at: time) + outline.overflowPieces(at: time) {
             switch piece {
             case let .traced(field):
                 IslandPath.addTraced(field, to: path, centerX: centerX)
@@ -461,7 +435,7 @@ final class StackPresenter: CardPresenting {
         if release.last, let overflowLayers, case let .entering(start, _) = release.entry.phase {
             // The drop itself spreads into the card, and its last number rolls out over it.
             spreadInto = (release.entry.id, start + CardStack.handOver.duration)
-            overflowLayers.rollOut(from: release.count, at: started + start, up: stack.handOverRollsUp)
+            overflowLayers.rollOut(from: release.count, at: started + start, up: true)
         }
         show(release.entry, layers: layers, decided: decided)
     }
@@ -653,7 +627,7 @@ final class StackPresenter: CardPresenting {
                 needsRoom = false
             }
         }
-        if stack.isReady(at: time) {
+        if stack.isReady(at: time, starting: time + lead) {
             while let admission = stack.nextAdmission(adoptable: others.map(\.card), isReplaced: CardQueue.isReplaced) {
                 switch admission {
                 case let .swap(shown, index):
