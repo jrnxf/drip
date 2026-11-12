@@ -194,7 +194,7 @@ public enum Defaults {
     /// The most cards on screen at once.
     public static let stackMax = 3
     public static let stackMaxRange: ClosedRange<Int> = 1...6
-    /// `stack_delay`, in seconds: the pause after a card is in before the next drops in.
+    /// `stack_delay`, in seconds: the pause after a card is fully in before the next drops in.
     public static let stackDelayRange: ClosedRange<Double> = 0...5
     /// `history`: how many cards the history keeps; 0 keeps none.
     public static let historyRange: ClosedRange<Int> = 0...1000

@@ -419,7 +419,9 @@ it all happens in one motion: the next card grows out of the drop into its place
 move up and the count goes down. Cards whose time runs out together, within a quarter of a second,
 leave together in one motion when they are next to each other; any others leave once those have
 gone and the stack has settled. A card does not drop in while a card on screen is about to run out
-of time: that one leaves first, so it never sits there with an empty ring. Once none waits, the drop
+of time: that one leaves first, so it does not sit there with an empty ring. When cards run out as
+fast as they come in, a card that waits comes in first after each leave, so a card whose time is up
+can still wait about a second. Once none waits, the drop
 goes back into the last card. With the pointer on the drop, it widens to list the waiting cards'
 titles, newest first.
 A click on the drop does nothing. Whether they stack is `stack` in the config, or `DRIP_STACK`. With `chain`, the default, each new

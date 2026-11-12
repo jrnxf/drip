@@ -603,42 +603,41 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
         session.adoptable.compactMap { handle in islands[handle].map { (handle, $0) } }
     }
     // One change at a time, into a stack at rest, as CardStack.nextAdmission decides.
-    admit: if stack.isReady(at: time) {
-        while true {
-            let offered = adoptable()
-            switch stack.nextAdmission(adoptable: offered.map(\.island.card)) {
-            case let .swap(shown, index):
-                let (handle, island) = offered[index]
-                guard let old = session.islandOf[shown.id], let before = islands[old] else { break admit }
-                session.adoptable.removeAll { $0 == handle }
-                stack.swap(shown, for: island.card, metrics: island.animator.metrics, at: time, reduced: false)
-                session.islandOf[shown.id] = handle
-                swapped.append([
-                    "handle": handle, "old": old, "time": time,
-                    "kept": IslandUpdate.unchanged(
-                        oldTitle: before.titleLines, oldDetail: before.detailLines,
-                        newTitle: island.titleLines, newDetail: island.detailLines,
-                        from: before.animator.metrics, to: island.animator.metrics),
-                    "newState": IslandUpdate.changesState(from: before.card, to: island.card),
-                    "inRing": IslandUpdate.landsInRing(from: before.card, to: island.card),
-                    "waits": shown.isWaiting,
-                ])
-            case let .enter(index):
-                let handle = offered[index].handle
-                session.adoptable.removeAll { $0 == handle }
-                enter(handle, own: false)
-                break admit
-            case .own:
-                if stack.nextOwn() != nil { enter(session.own.removeFirst(), own: true) }
-                break admit
-            case .skipOwn:
-                break admit
-            case .tucked:
-                if let tucked = stack.nextTucked() { enter(session.tucked.removeFirst(), own: tucked.own) }
-                break admit
-            case nil:
-                break admit
-            }
+    let swapping = stack.canSwap(at: time), entering = stack.isReady(at: time)
+    admit: while true {
+        let offered = adoptable()
+        switch stack.nextAdmission(adoptable: offered.map(\.island.card), swapping: swapping, entering: entering) {
+        case let .swap(shown, index):
+            let (handle, island) = offered[index]
+            guard let old = session.islandOf[shown.id], let before = islands[old] else { break admit }
+            session.adoptable.removeAll { $0 == handle }
+            stack.swap(shown, for: island.card, metrics: island.animator.metrics, at: time, reduced: false)
+            session.islandOf[shown.id] = handle
+            swapped.append([
+                "handle": handle, "old": old, "time": time,
+                "kept": IslandUpdate.unchanged(
+                    oldTitle: before.titleLines, oldDetail: before.detailLines,
+                    newTitle: island.titleLines, newDetail: island.detailLines,
+                    from: before.animator.metrics, to: island.animator.metrics),
+                "newState": IslandUpdate.changesState(from: before.card, to: island.card),
+                "inRing": IslandUpdate.landsInRing(from: before.card, to: island.card),
+                "waits": shown.isWaiting,
+            ])
+        case let .enter(index):
+            let handle = offered[index].handle
+            session.adoptable.removeAll { $0 == handle }
+            enter(handle, own: false)
+            break admit
+        case .own:
+            if stack.nextOwn() != nil { enter(session.own.removeFirst(), own: true) }
+            break admit
+        case .skipOwn:
+            break admit
+        case .tucked:
+            if let tucked = stack.nextTucked() { enter(session.tucked.removeFirst(), own: tucked.own) }
+            break admit
+        case nil:
+            break admit
         }
     }
     func release() {

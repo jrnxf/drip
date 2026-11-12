@@ -464,6 +464,18 @@ struct CardStackTests {
         #expect(leaves(["a", "b", "c", "d"], ends: [13, 13, 10, 10]).left.map(\.titles) == [["c", "d"], ["a", "b"]])
     }
 
+    /// The card that opens a round keeps it: a card above that comes due later, and is not its
+    /// neighbour, waits for the next round rather than going first and leaving the first card's
+    /// round to start again.
+    @Test func aLaterCardThatIsNoNeighbourWaitsForTheNextRound() throws {
+        let left = leaves(["a", "b", "c", "d"], ends: [10.1, 10.6, 10.2, 10.0]).left
+        let first = try #require(left.first)
+        #expect(first.titles == ["c", "d"])
+        #expect(first.time >= 10.2)
+        #expect(first.time < 10.35)
+        #expect(left.flatMap(\.titles).sorted() == ["a", "b", "c", "d"])
+    }
+
     /// Cards whose times run out within one exit of each other, the bottom card's first: it leaves
     /// alone, on time, as the others are not due within its round. Those two then leave together,
     /// from a stack at rest, each from its place in a closed-up stack.
@@ -689,6 +701,31 @@ struct CardStackTests {
         #expect(shown.card.title == "a")
         // A card with no match has no place to go.
         #expect(stack.nextAdmission(adoptable: [identified("other")]) == nil)
+    }
+
+    /// A card about to run out holds back a card that would take a new place, but not a newer card
+    /// with its id: that one swaps in place, and its countdown starts again.
+    @Test func aNewerCardWithTheSameIdSwapsInPlaceForACardAboutToRunOut() throws {
+        let stack = CardStack(settings: StackSettings(max: 3), cards: [identified("a", id: "build")])
+        var time = run(stack, until: 1)
+        while try #require(stack.live.first).remaining > CardStack.entranceSettling / 2 {
+            _ = stack.advance(to: time, elapsed: 1.0 / 60, lead: 0)
+            time += 1.0 / 60
+        }
+        #expect(!stack.isReady(at: time))
+        #expect(stack.canSwap(at: time))
+        let newer = identified("a2", id: "build")
+        guard case let .swap(shown, 0)? = stack.nextAdmission(
+            adoptable: [newer, identified("other")], swapping: stack.canSwap(at: time), entering: stack.isReady(at: time))
+        else {
+            Issue.record("a newer card with the same id should swap in place")
+            return
+        }
+        stack.swap(shown, for: newer, metrics: metrics, at: time, reduced: false)
+        #expect(titles(stack.live) == ["a2"])
+        #expect(shown.remaining == newer.duration)
+        // The card with no match still waits, as it would take a new place.
+        #expect(stack.nextAdmission(adoptable: [identified("other")], swapping: true, entering: false) == nil)
     }
 
     /// A drip that waits for its cards takes no others in, but a newer card with the id of one of its

@@ -31,7 +31,8 @@ public struct Config: Equatable {
     public var stack: StackSettings.Choice?
     /// The most cards on screen at once.
     public var stackMax: Int?
-    /// The seconds from one card dropping in to the next.
+    /// The pause, in seconds from 0 to 5, after a card is fully in before the next drops in; nil for
+    /// the next to drop in once the stack has settled, about a second after the one before.
     public var stackDelay: Double?
     /// What an agent's card does while its terminal is in front.
     public var whenFocused: WhenFocused?
@@ -462,7 +463,8 @@ public struct EnvironmentSettings: Equatable {
     public var stack: StackSettings.Choice?
     /// The most cards on screen at once.
     public var stackMax: Int?
-    /// The seconds from one card dropping in to the next.
+    /// The pause, in seconds from 0 to 5, after a card is fully in before the next drops in; nil for
+    /// the next to drop in once the stack has settled, about a second after the one before.
     public var stackDelay: Double?
     /// What an agent's card does while its terminal is in front.
     public var whenFocused: WhenFocused?

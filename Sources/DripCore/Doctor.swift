@@ -47,7 +47,7 @@ public struct DoctorReport: Equatable {
         public var motion: Motion
         public var stack: StackSettings.Choice
         public var stackMax: Int
-        /// The pause after a card is in before the next, from `stack_delay`; nil for when the stack settles.
+        /// The pause after a card is fully in before the next, from `stack_delay`; nil for when the stack settles.
         public var stackDelay: Double?
         public var whenFocused: WhenFocused
         public var awayAfter: Double

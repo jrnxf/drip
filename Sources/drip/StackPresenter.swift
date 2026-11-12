@@ -592,7 +592,7 @@ final class StackPresenter: CardPresenting {
                     // A stack that takes no cards in still lets a newer card with the same id take
                     // the place of its own on screen, and its cards that wait give way to any drip
                     // waiting for its turn, as a drip that shows one card at a time does.
-                    if stack.isReady(at: time) { replaceOwn() }
+                    if stack.canSwap(at: time) { replaceOwn() }
                     othersWaiting = stack.live.contains(where: \.isWaiting)
                         && CardQueue.othersWait(except: Set(stack.live.compactMap(\.card.id)), adopts: false)
                 }
@@ -627,34 +627,35 @@ final class StackPresenter: CardPresenting {
                 needsRoom = false
             }
         }
-        if stack.isReady(at: time, starting: time + lead) {
-            while let admission = stack.nextAdmission(adoptable: others.map(\.card), isReplaced: CardQueue.isReplaced) {
-                switch admission {
-                case let .swap(shown, index):
-                    // A newer card with the same id as one on screen takes its place there.
-                    let found = others.remove(at: index)
-                    CardQueue.adopt(index: found.index, in: found.ticket)
-                    CardQueue.supersede(with: found.card, from: found.ticket)
-                    // This drip's own card ends here, however the card that takes its place goes.
-                    if shown.own { note(.replaced, for: shown) }
-                    swap(shown, for: found.card)
-                case let .enter(index):
-                    let found = others.remove(at: index)
-                    CardQueue.adopt(index: found.index, in: found.ticket)
-                    CardQueue.supersede(with: found.card, from: found.ticket)
-                    if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
-                    enter(found.card, own: false)
-                    return
-                case .own:
-                    if let card = stack.nextOwn() { enter(card, own: true) }
-                    return
-                case .skipOwn:
-                    neverShown(stack.dropWaiting(at: 0), as: .replaced)
-                    return
-                case .tucked:
-                    if let tucked = stack.nextTucked() { enter(tucked.card, own: tucked.own) }
-                    return
-                }
+        let swapping = stack.canSwap(at: time), entering = stack.isReady(at: time, starting: time + lead)
+        while let admission = stack.nextAdmission(
+            adoptable: others.map(\.card), isReplaced: CardQueue.isReplaced, swapping: swapping, entering: entering)
+        {
+            switch admission {
+            case let .swap(shown, index):
+                // A newer card with the same id as one on screen takes its place there.
+                let found = others.remove(at: index)
+                CardQueue.adopt(index: found.index, in: found.ticket)
+                CardQueue.supersede(with: found.card, from: found.ticket)
+                // This drip's own card ends here, however the card that takes its place goes.
+                if shown.own { note(.replaced, for: shown) }
+                swap(shown, for: found.card)
+            case let .enter(index):
+                let found = others.remove(at: index)
+                CardQueue.adopt(index: found.index, in: found.ticket)
+                CardQueue.supersede(with: found.card, from: found.ticket)
+                if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
+                enter(found.card, own: false)
+                return
+            case .own:
+                if let card = stack.nextOwn() { enter(card, own: true) }
+                return
+            case .skipOwn:
+                neverShown(stack.dropWaiting(at: 0), as: .replaced)
+                return
+            case .tucked:
+                if let tucked = stack.nextTucked() { enter(tucked.card, own: tucked.own) }
+                return
             }
         }
         if stack.canRelease(at: time) { release(decided: time) }

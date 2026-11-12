@@ -108,6 +108,8 @@ public final class CardStack {
     /// When the round of cards leaving together closes, on the stack's clock; nil with no round
     /// open. See `advance`.
     private var roundEnds: Double?
+    /// The card that opened the round: the round is the block of cards around it.
+    private var roundSeed: Entry?
 
     /// Notes that a card came in at `time`: the next waits out the spacing, and owes the cards due
     /// to leave nothing.
@@ -198,10 +200,24 @@ public final class CardStack {
     /// is when a card decided now starts to move, `time` by default; with `stack_delay` it is what
     /// counts, so the next drop starts on the frame the last card's text has faded in.
     public func isReady(at time: Double, starting start: Double? = nil) -> Bool {
-        let settled = (start ?? time) - time + Self.entranceSettling
-        return !hovering && entranceSpaced(at: time, starting: start ?? time)
+        isStill(at: time, starting: start ?? time)
+            && (leftSinceEntrance || !hasCardDue(within: (start ?? time) - time + Self.entranceSettling))
+    }
+
+    /// Whether a newer card with the same id as one on screen may take its place at `time`: as for a
+    /// card dropping in, but held back only by a card whose time is already up. A swap takes no new
+    /// place, so it never keeps a card from leaving once its ring is empty.
+    public func canSwap(at time: Double) -> Bool {
+        isStill(at: time, starting: time) && !hasCardDue(within: 0)
+    }
+
+    private func isStill(at time: Double, starting start: Double) -> Bool {
+        !hovering && entranceSpaced(at: time, starting: start)
             && overflow.map { $0.end <= time && !$0.peeking } ?? true
-            && (leftSinceEntrance || !entries.contains { $0.isShown && $0.remaining <= settled && $0.dismissed == nil })
+    }
+
+    private func hasCardDue(within seconds: Double) -> Bool {
+        entries.contains { $0.isShown && $0.remaining <= seconds && $0.dismissed == nil }
     }
 
     /// When every spring in the stack has settled, the overflow drop's and what drips into it
@@ -307,14 +323,21 @@ public final class CardStack {
     /// screen takes its place there; else the first `adoptable` card takes a place of its own when
     /// no card waits past a full stack; else this drip's next own card; else a card that gave way.
     /// `adoptable` is in the order the cards should come in, and `isReplaced` tells an own card a
-    /// newer one has taken over. The caller checks `isReady(at:)` first.
-    public func nextAdmission(adoptable: [Card], isReplaced: (Card) -> Bool = { _ in false }) -> Admission? {
+    /// newer one has taken over. `swapping` is `canSwap(at:)` and `entering` is `isReady(at:)`, both
+    /// checked once before the first call, so a card that swaps in place is never held back by a card
+    /// that is only about to run out.
+    public func nextAdmission(
+        adoptable: [Card], isReplaced: (Card) -> Bool = { _ in false }, swapping: Bool = true, entering: Bool = true
+    ) -> Admission? {
         for (index, card) in adoptable.enumerated() {
-            if let shown = swapTarget(for: card) { return .swap(shown, index) }
-            guard overflow == nil, waiting.isEmpty, hasRoom else { break }
+            if let shown = swapTarget(for: card) {
+                if swapping { return .swap(shown, index) }
+                break
+            }
+            guard entering, overflow == nil, waiting.isEmpty, hasRoom else { break }
             return .enter(index)
         }
-        guard overflow == nil else { return nil }
+        guard entering, overflow == nil else { return nil }
         if hasRoom, let own = waiting.first { return isReplaced(own) ? .skipOwn : .own }
         if adoptable.isEmpty, hasRoom, waiting.isEmpty, !tucked.isEmpty { return .tucked }
         return nil
@@ -474,10 +497,10 @@ public final class CardStack {
     /// Cards whose time is up leave from a stack at rest, and those whose time is up together leave
     /// together, in one motion. The first card whose time is up opens a round that closes
     /// `roundWindow` later. The round starts from that card, the topmost when the time of several is
-    /// up within `tie` of each other, and takes in the cards right above and below it whose time is
-    /// up before the round closes: one block, so no card that stays is between two that go. They
-    /// leave once the time of the last of them is up, so none goes before its ring is empty. The
-    /// round compares the cards' countdowns with each other, not with the frame the step falls on,
+    /// up within `tie` of each other, and keeps it until the round's cards leave. It takes in the
+    /// cards right above and below it whose time is up before the round closes: one block, so no
+    /// card that stays is between two that go. They leave once the time of the last of them is up,
+    /// so none goes before its ring is empty. The round compares the cards' countdowns with each other, not with the frame the step falls on,
     /// so the same cards always go together, in the same order.
     ///
     /// Given `queued`, other drips' cards waiting for this stack, oldest first, the overflow drop
@@ -555,7 +578,11 @@ public final class CardStack {
             let joins = { (entry: Entry) in
                 entry.isShown && entry.dismissed == nil && entry.remaining <= closes - time
             }
-            if let seed = entries.firstIndex(where: { joins($0) && $0.remaining <= Self.tie }) {
+            if roundSeed.map({ seed in !entries.contains { $0 === seed && joins($0) } }) ?? true {
+                let soonest = entries.filter(joins).map(\.remaining).min() ?? 0
+                roundSeed = entries.first { joins($0) && $0.remaining <= soonest + Self.tie }
+            }
+            if let seed = entries.firstIndex(where: { $0 === roundSeed }) {
                 var first = seed, last = seed
                 while first > 0, joins(entries[first - 1]) { first -= 1 }
                 while last + 1 < entries.count, joins(entries[last + 1]) { last += 1 }
@@ -563,10 +590,12 @@ public final class CardStack {
                 if entries[first...last].allSatisfy({ $0.remaining <= 0 }) {
                     round = Array(entries[first...last])
                     roundEnds = nil
+                    roundSeed = nil
                 }
             }
         } else {
             roundEnds = nil
+            roundSeed = nil
         }
         // A card leaving gathers into a round drop in place and only then rises, as it does without
         // an overflow drop. The next card waiting grows out of the drop, the cards below close up
