@@ -7,17 +7,16 @@
 
 <h1 align="center">Notifications that work your way.</h1>
 
-<p align="center">Small cards at your Mac’s notch. Script them, connect them to your tools, and decide what deserves your attention.</p>
-
-<p align="center">From a simple heads-up to a question that waits for your answer.</p>
-
-<p align="center">You choose what matters, when it appears, and how it behaves.<br>Start small. Compose as you go.</p>
-
-<p align="center"><a href="https://drip.jrnxf.co">Interactive demo</a> · <a href="docs/usage.md">Documentation</a></p>
-
 <p align="center">
   <img src="docs/demo.gif" width="400" alt="drip cards growing out of the camera notch in turn: Build finished, with make test: 246 passed in 3.2s, then Claude needs you, with Claude needs your permission to use Bash, replaced in place by Deploy failed, with staging: health check timed out after 30s, then the question Deploy to prod?, with Deploy and Cancel buttons, until it times out">
 </p>
+
+
+<p align="center">Small, scriptable cards that drip from your Mac’s notch. Connect them to your tools and control what deserves your attention.</p>
+
+
+<p align="center"><a href="https://drip.jrnxf.co">Interactive demo</a> · <a href="docs/usage.md">Documentation</a></p>
+
 
 ## Install
 
