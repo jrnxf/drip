@@ -47,6 +47,8 @@ public struct DoctorReport: Equatable {
         public var motion: Motion
         public var stack: StackSettings.Choice
         public var stackMax: Int
+        /// The pause after a card is fully in before the next, from `stack_delay`; nil for when the stack settles.
+        public var stackDelay: Double?
         public var whenFocused: WhenFocused
         public var awayAfter: Double
         public var history: Int
@@ -70,6 +72,7 @@ public struct DoctorReport: Equatable {
             motion = resolver.motion
             stack = StackSettings.choice(resolver.environment, config: resolver.config)
             stackMax = StackSettings.maxCards(resolver.environment, config: resolver.config)
+            stackDelay = StackSettings.delay(resolver.environment, config: resolver.config)
             whenFocused = resolver.whenFocused
             awayAfter = resolver.awayAfter
             history = resolver.historyLimit
@@ -244,6 +247,8 @@ public struct DoctorReport: Equatable {
             ("motion", settings.motion.rawValue, .string(settings.motion.rawValue)),
             ("stack", settings.stack.rawValue, .string(settings.stack.rawValue)),
             ("stack_max", "\(settings.stackMax)", .number("\(settings.stackMax)")),
+            ("stack_delay", settings.stackDelay.map(Defaults.number) ?? "auto",
+             settings.stackDelay.map { .number(Defaults.number($0)) } ?? .null),
             ("when_focused", settings.whenFocused.rawValue, .string(settings.whenFocused.rawValue)),
             ("away_after", Defaults.number(settings.awayAfter), .number(Defaults.number(settings.awayAfter))),
             ("history", "\(settings.history)", .number("\(settings.history)")),

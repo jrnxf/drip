@@ -192,13 +192,13 @@ struct DeliveryTests {
         card.action = CardAction(label: "View run", open: "https://example.com/run/1")
         let others = [Card(preset: .fail, title: "x"), Card(preset: .info, title: "y")]
         let settings = BackgroundSettings(
-            stack: StackSettings(mode: .push, max: 4), history: 40, whenFocused: .show, awayAfter: 12, debug: true)
+            stack: StackSettings(max: 4), history: 40, whenFocused: .show, awayAfter: 12, debug: true)
         let request = BackgroundRequest(cards: [card] + others, record: true, settings: settings)
         #expect(try BackgroundRequest.decode(request.encoded()) == request)
     }
 
     @Test func aHandOffSurvivesTheTripToTheBackgroundDrip() throws {
-        let handOff = StackHandOff(settings: StackSettings(mode: .push, max: 2), cards: [
+        let handOff = StackHandOff(settings: StackSettings(max: 2), cards: [
             HandedCard(card: Card(preset: .ok, title: "done"), top: 42, remaining: 12.5, isWaiting: false),
             HandedCard(card: .staying(title: "needs you"), top: 98, remaining: 590, isWaiting: true, leaving: 0.04),
         ])

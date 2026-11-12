@@ -69,7 +69,7 @@ stands where the ring would be, and every 2.4 seconds a soft halo grows out of i
 size and fades (with Reduce Motion, the dot alone). The card stays until you click it or a newer
 card with the same `--id` replaces it, and drip returns at once, so the script goes on. It gives way
 to other cards: when another card waits for its place and every card on screen waits too, the
-oldest goes back into the overflow drop (in push, the pill), keeping what is left of its wait, and comes
+oldest goes back into the overflow drop, keeping what is left of its wait, and comes
 back once there is room. It never stays longer than 10 minutes. A question (`--yes`), of any
 look, waits too and never gives way: it stays until it is answered, replaced or its 10 minutes are
 up, other cards stack around it, and a card with no room in the stack, or another question, waits
@@ -410,24 +410,25 @@ goes back into it the same way.
 
 **Several cards at once.** Cards that come in while one is showing stack below it, up to 3 at
 a time (`stack_max` in the [config](config.md), or `DRIP_STACK_MAX`, 1 to 6); the rest wait their
-turn in a small drop under the last card, which counts them. A card that comes later drips into the
+turn in a small drop under the last card, which counts them. Each card drops in once the stack has
+settled, about a second after the one before; `stack_delay` (or `DRIP_STACK_DELAY`, 0 to 5
+seconds) sets the pause after a card is fully in instead, so 0 is the fastest it goes (about 0.75 s). A card that comes later drips into the
 drop and the count goes up. A card that leaves gathers back into a round drop in place first, then
 rises into the notch or the card above, as in the entrance reversed. As the drop starts to rise,
 it all happens in one motion: the next card grows out of the drop into its place, the other cards
-move up and the count goes down. Cards whose time runs out together leave one at a time, each once
-the last one has gone and the others have settled into their places. Once none waits, the drop
+move up and the count goes down. Cards whose time runs out together, within a quarter of a second,
+leave together in one motion when they are next to each other; any others leave once those have
+gone and the stack has settled. A card does not drop in while a card on screen is about to run out
+of time: that one leaves first, so it does not sit there with an empty ring. When cards run out as
+fast as they come in, a card that waits comes in first after each leave, so a card whose time is up
+can still wait about a second. Once none waits, the drop
 goes back into the last card. With the pointer on the drop, it widens to list the waiting cards'
 titles, newest first.
-A click on the drop does nothing. How they stack is `stack` in the config, or `DRIP_STACK`. With `chain`, the default, each new
+A click on the drop does nothing. Whether they stack is `stack` in the config, or `DRIP_STACK`. With `chain`, the default, each new
 card drops out of the bottom of the last one and the oldest goes back into the notch first, the
-others moving up behind it. With `push` a new card drops out of the notch once the others have
-moved down out of its way, and the cards waiting wait in a small pill that drips out of the notch
-and floats just under it instead, the stack moving down to make room. A card that comes later
-drips from the notch into the pill. When a card leaves while cards wait, it sinks away as it fades, the other cards
-move down, the next card grows out of the pill into the top place and the count goes down, again in
-one motion; the last card waiting is the pill itself spreading into a card as the stack closes up
-under the notch.
-`off` shows one card at a time. While the pointer is on any card in the stack you can click, nothing moves: every countdown
+others moving up behind it.
+`off` shows one card at a time. drip once had a second way to stack, `push`: a config that still
+names it stacks its cards as `chain` does, with a warning. While the pointer is on any card in the stack you can click, nothing moves: every countdown
 stops, gaps stay open and new cards wait, though they still drip into the drop so its count stays
 true. Once the pointer has rested for 5 seconds, the stack lets go, and moving it holds the stack
 again. A click on a card you can click dismisses it; one `--activate none` leaves without a button

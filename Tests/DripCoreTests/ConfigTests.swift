@@ -138,7 +138,7 @@ struct ConfigTests {
         assertError("motion = \"lots\"", line: 1, key: "motion", message: "expected full, subtle or none, got 'lots'")
         assertError("[preset.history]\nicon = \"x\"", line: 1, key: "preset.history",
                     message: "'history' is kept for drip's own commands; give the preset another name")
-        assertError("stack = \"stacked\"", line: 1, key: "stack", message: "expected chain, push or off, got 'stacked'")
+        assertError("stack = \"stacked\"", line: 1, key: "stack", message: "expected chain or off, got 'stacked'")
         assertError("[preset.ok]\nicon = \"app:\"", line: 2, key: "preset.ok.icon",
                     message: "'app:' does not name an app by its bundle identifier, such as app:com.apple.Terminal")
         assertError("[preset.ok]\ncolor = \"teal\"", line: 2, key: "preset.ok.color",
@@ -513,8 +513,17 @@ struct StackSettingsTests {
     }
 
     @Test func configReadsTheStack() throws {
-        #expect(try ConfigLoader.parse("stack = \"push\"", path: path) == ConfigFile(config: Config(stack: .push), warnings: []))
+        #expect(try ConfigLoader.parse("stack = \"chain\"", path: path) == ConfigFile(config: Config(stack: .chain), warnings: []))
         #expect(try ConfigLoader.parse("stack = \"off\"", path: path).config.stack == .off)
+    }
+
+    /// A config written for the push stack drip once had still loads: its cards stack, with a warning.
+    @Test func aRetiredStackValueStacksWithAWarning() throws {
+        let file = try ConfigLoader.parse("seconds = 3\nstack = \"push\"", path: path)
+        #expect(file.config == Config(seconds: 3, stack: .chain))
+        #expect(file.warnings == ["\(path):2: stack = \"push\" is gone, cards stack as \"chain\""])
+        #expect(file.problems.isEmpty)
+        #expect(try stack(["DRIP_STACK": "push"], Config(stack: .off)) == StackSettings(max: 3))
     }
 
     /// The stack as `DRIP_STACK` and `DRIP_STACK_MAX` set it, then the config.
@@ -522,44 +531,63 @@ struct StackSettingsTests {
         CardResolver(config: config, environment: try EnvironmentSettings(environment: environment)).stack
     }
 
+    @Test func stackDelayIsASmallNumberOfSecondsInTheConfigAndTheEnvironment() throws {
+        let path = "config.toml"
+        #expect(try ConfigLoader.parse("stack_delay = 0.4", path: path).config.stackDelay == 0.4)
+        #expect(try ConfigLoader.parse("stack_delay = 1", path: path).config.stackDelay == 1)
+        #expect(try ConfigLoader.parse("stack_delay = 0", path: path).config.stackDelay == 0)
+        let tooLong = #expect(throws: ConfigError.self) { try ConfigLoader.parse("stack_delay = 6", path: path) }
+        #expect(tooLong?.description == "\(path):1: stack_delay: must be between 0 and 5")
+        let text = #expect(throws: ConfigError.self) { try ConfigLoader.parse("stack_delay = \"1\"", path: path) }
+        #expect(text?.description == "\(path):1: stack_delay: expected a number, got a string")
+        #expect(try EnvironmentSettings(environment: ["DRIP_STACK_DELAY": "0.25"]).stackDelay == 0.25)
+        #expect(try EnvironmentSettings(environment: ["DRIP_STACK_DELAY": ""]).stackDelay == nil)
+        #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_STACK_DELAY": "9"]) }
+        // The environment first, then the config; nothing set leaves the stack to settle.
+        let config = Config(stackDelay: 0.5)
+        #expect(StackSettings.delay(EnvironmentSettings(stackDelay: 0.2), config: config) == 0.2)
+        #expect(StackSettings.delay(EnvironmentSettings(), config: config) == 0.5)
+        #expect(StackSettings.delay(EnvironmentSettings(), config: Config()) == nil)
+        #expect(StackSettings.resolved(EnvironmentSettings(), config: config)?.delay == 0.5)
+    }
+
     @Test func stackMaxComesFromTheEnvironmentThenTheConfigThenThree() throws {
         let config = Config(stackMax: 5)
-        #expect(try stack([:], Config()) == StackSettings(mode: .chain, max: 3))
+        #expect(try stack([:], Config()) == StackSettings(max: 3))
         #expect(try stack([:], config)?.max == 5)
         #expect(try stack(["DRIP_STACK_MAX": "2"], config)?.max == 2)
     }
 
-    @Test func stackModeComesFromTheEnvironmentThenTheConfig() throws {
-        #expect(try stack(["DRIP_STACK": "push"], Config())?.mode == .push)
+    @Test func stackingComesFromTheEnvironmentThenTheConfig() throws {
         #expect(try stack(["DRIP_STACK": "off"], Config()) == nil)
-        #expect(try stack([:], Config(stack: .push))?.mode == .push)
+        #expect(try stack([:], Config(stack: .chain)) != nil)
         #expect(try stack([:], Config(stack: .off)) == nil)
-        #expect(try stack(["DRIP_STACK": "chain"], Config(stack: .off))?.mode == .chain)
+        #expect(try stack(["DRIP_STACK": "chain"], Config(stack: .off)) != nil)
     }
 
     /// `drip run` and a replay show their card whatever the environment says: each `DRIP_*`
     /// variable drip cannot read is left out, and the config and the other variables still apply.
     @Test func invalidStackSettingsAreLeftOut() {
-        let file = ConfigFile(config: Config(stack: .push, stackMax: 5), warnings: ["a key drip ignores"])
+        let file = ConfigFile(config: Config(stack: .chain, stackMax: 5), warnings: ["a key drip ignores"])
         let load = { (_: [String: String]) in file }
         let psuh = CardResolver.leniently(environment: ["DRIP_STACK": "psuh", "DRIP_STACK_MAX": "2"], loadConfig: load)
-        #expect(psuh.resolver.stack == StackSettings(mode: .push, max: 2))
+        #expect(psuh.resolver.stack == StackSettings(max: 2))
         #expect(psuh.warnings == ["a key drip ignores"])
         // The error is the one a card command reports.
         #expect((psuh.error as? UsageError)?.message.hasPrefix("DRIP_STACK must be ") == true)
         let tooMany = CardResolver.leniently(environment: ["DRIP_STACK": "chain", "DRIP_STACK_MAX": "40"], loadConfig: load)
-        #expect(tooMany.resolver.stack == StackSettings(mode: .chain, max: 5))
+        #expect(tooMany.resolver.stack == StackSettings(max: 5))
         let fine = CardResolver.leniently(environment: [:], loadConfig: load)
-        #expect(fine.resolver.stack == StackSettings(mode: .push, max: 5))
+        #expect(fine.resolver.stack == StackSettings(max: 5))
         #expect(fine.error == nil)
     }
 
     /// Each `DRIP_*` variable is either in the settings or has a problem: none goes without a word.
     @Test func eachVariableIsKeptOrHasAProblem() {
         let (settings, problems) = EnvironmentSettings.leniently([
-            "DRIP_STACK": "push", "DRIP_STACK_MAX": "40", "DRIP_HISTORY": "lots", "DRIP_SECONDS": "5",
+            "DRIP_STACK": "off", "DRIP_STACK_MAX": "40", "DRIP_HISTORY": "lots", "DRIP_SECONDS": "5",
         ])
-        #expect(settings.stack == .push)
+        #expect(settings.stack == .off)
         #expect(settings.seconds == 5)
         #expect(settings.stackMax == nil)
         #expect(settings.history == nil)
@@ -578,7 +606,7 @@ struct StackSettingsTests {
             front: { _ in WhenFocused.Front(app: false, pane: false, idle: 0) },
             loadConfig: { _ in
                 reads += 1
-                return ConfigFile(config: Config(stack: .push, stackMax: 5, history: 40), warnings: [])
+                return ConfigFile(config: Config(stack: .chain, stackMax: 5, history: 40), warnings: [])
             },
             resolver: { file, environment in
                 let resolver = CardResolver(config: file.config, environment: try EnvironmentSettings(environment: environment))
@@ -594,7 +622,7 @@ struct StackSettingsTests {
             return BackgroundSettings(stack: nil)
         }
         let shown = request.settings(orRead: read)
-        #expect(shown.stack == StackSettings(mode: .push, max: 5))
+        #expect(shown.stack == StackSettings(max: 5))
         #expect(shown.history == 40)
         #expect(reads == 1)
 

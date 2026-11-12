@@ -8,8 +8,9 @@ seconds   = 4.5
 size      = "regular"         # compact | regular | large
 sound     = true              # a sound for every preset, such as "Hero"; false or "none" mutes them
 motion    = "full"            # full | subtle | none
-stack     = "chain"           # chain | push | off: how cards stack
+stack     = "chain"           # chain | off: stack the cards, or show one at a time
 stack_max = 3                 # most cards on screen at once, 1 to 6
+# stack_delay = 0.5           # seconds to wait after a card is fully in before the next drops in, 0 to 5; unset: once the stack settles, about a second after the one before
 when_focused = "quiet"        # quiet | show | skip: an agent's card while you watch its terminal
 away_after = 60               # seconds without keyboard or mouse before you count as away; 0: always away
 history = 1000                # most cards the history keeps, 0 to 1000; 0 stops recording (see drip history)
@@ -30,7 +31,7 @@ icon = "app:com.apple.Terminal"   # an app's icon, or an image path from this fi
 ```
 
 Each setting comes from the first of: flags, the environment (`DRIP_SECONDS`, `DRIP_SIZE`,
-`DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_WHEN_FOCUSED`, `DRIP_AWAY_AFTER`,
+`DRIP_SOUND`, `DRIP_MOTION`, `DRIP_STACK`, `DRIP_STACK_MAX`, `DRIP_STACK_DELAY`, `DRIP_WHEN_FOCUSED`, `DRIP_AWAY_AFTER`,
 `DRIP_HISTORY`, `DRIP_DEBUG`, `DRIP_CONTRAST`, and for the
 [zsh block](usage.md#without-typing-drip-run) `DRIP_SLOW_AFTER` and `DRIP_SLOW_IGNORE`;
 `DRIP_SOUND=none` mutes), the config file, the built-in defaults. An invalid value in the

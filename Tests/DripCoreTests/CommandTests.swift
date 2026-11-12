@@ -209,8 +209,8 @@ struct CommandTests {
 
     /// drip's own usage mistakes print as the parser's do, keeping the message as written.
     @Test func usageMessagesSayWhereTheHelpIs() {
-        #expect(CommandLineParser.usageMessage("DRIP_STACK must be chain, push or off, not 'x'")
-            == "drip: DRIP_STACK must be chain, push or off, not 'x'\nSee 'drip --help'.")
+        #expect(CommandLineParser.usageMessage("DRIP_STACK must be chain or off, not 'x'")
+            == "drip: DRIP_STACK must be chain or off, not 'x'\nSee 'drip --help'.")
         #expect(CommandLineParser.usageMessage("no hook payload: pass it as an argument or on stdin", subcommand: "hook")
             == "drip: no hook payload: pass it as an argument or on stdin\nSee 'drip hook --help'.")
     }

@@ -129,7 +129,7 @@ struct Island {
 
 /// Runs a drip command line as the CLI would, up to the point where it hands cards to the screen.
 ///
-/// Request: `{"args": [...], "env": {"DRIP_STACK": "push"}, "config": "<toml>", "notch": {"width": w, "height": h},
+/// Request: `{"args": [...], "env": {"DRIP_STACK": "off"}, "config": "<toml>", "notch": {"width": w, "height": h},
 /// "widest": w, "run": {"status": n, "seconds": s}, "stdin": "<text piped in>"}`. `widest` caps how wide a card
 /// gets, for a screen narrower than the app's widest card, so its text wraps sooner. `run` is the outcome
 /// of the command `drip run` wraps, which the page fakes; without it a `drip run` reply asks for it.
@@ -186,7 +186,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         ]
         // As the app: a stack only for cards with full motion.
         if let stack, let first = cards.first, first.motion == .full {
-            delivery["stack"] = ["mode": stack.mode.rawValue, "max": stack.max] as [String: Any]
+            delivery["stack"] = ["max": stack.max] as [String: Any]
         }
         return delivery
     }
@@ -197,7 +197,7 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         let background = Delivery.choose(for: cards, wait: wait) == .background
         reply["deliveries"] = [
             delivery(
-                cards, stack: StackSettings.current(environment: environment, config: resolver.config),
+                cards, stack: StackSettings.resolved(EnvironmentSettings.leniently(environment).0, config: resolver.config),
                 adopting: background || cards.contains(where: \.waitsForAnswer), adoptable: background)
         ]
         // After the deliveries, which can warn about an icon.
@@ -530,16 +530,14 @@ final class StackSession {
 nonisolated(unsafe) var stacks: [Int32: StackSession] = [:]
 nonisolated(unsafe) var nextStack: Int32 = 1
 
-/// Starts a stack of the islands `handles`, from a delivery's settings: `{"mode": "chain", "max": 3,
+/// Starts a stack of the islands `handles`, from a delivery's settings: `{"max": 3,
 /// "adopting": true, "handles": [...]}`. Its clock starts at 0. Returns its handle.
 @_expose(wasm, "drip_stack_start")
 @_cdecl("drip_stack_start")
 public func dripStackStart(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Int32 {
     let input = request(pointer, length)
     let handles = (input["handles"] as? [Double] ?? []).map { Int32($0) }.filter { islands[$0] != nil }
-    let settings = StackSettings(
-        mode: StackSettings.Mode(rawValue: input["mode"] as? String ?? "") ?? .chain,
-        max: Int(input["max"] as? Double ?? Double(Defaults.stackMax)))
+    let settings = StackSettings(max: Int(input["max"] as? Double ?? Double(Defaults.stackMax)))
     let handle = nextStack
     nextStack += 1
     stacks[handle] = StackSession(
@@ -605,42 +603,41 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
         session.adoptable.compactMap { handle in islands[handle].map { (handle, $0) } }
     }
     // One change at a time, into a stack at rest, as CardStack.nextAdmission decides.
-    admit: if stack.isReady(at: time) {
-        while true {
-            let offered = adoptable()
-            switch stack.nextAdmission(adoptable: offered.map(\.island.card)) {
-            case let .swap(shown, index):
-                let (handle, island) = offered[index]
-                guard let old = session.islandOf[shown.id], let before = islands[old] else { break admit }
-                session.adoptable.removeAll { $0 == handle }
-                stack.swap(shown, for: island.card, metrics: island.animator.metrics, at: time, reduced: false)
-                session.islandOf[shown.id] = handle
-                swapped.append([
-                    "handle": handle, "old": old, "time": time,
-                    "kept": IslandUpdate.unchanged(
-                        oldTitle: before.titleLines, oldDetail: before.detailLines,
-                        newTitle: island.titleLines, newDetail: island.detailLines,
-                        from: before.animator.metrics, to: island.animator.metrics),
-                    "newState": IslandUpdate.changesState(from: before.card, to: island.card),
-                    "inRing": IslandUpdate.landsInRing(from: before.card, to: island.card),
-                    "waits": shown.isWaiting,
-                ])
-            case let .enter(index):
-                let handle = offered[index].handle
-                session.adoptable.removeAll { $0 == handle }
-                enter(handle, own: false)
-                break admit
-            case .own:
-                if stack.nextOwn() != nil { enter(session.own.removeFirst(), own: true) }
-                break admit
-            case .skipOwn:
-                break admit
-            case .tucked:
-                if let tucked = stack.nextTucked() { enter(session.tucked.removeFirst(), own: tucked.own) }
-                break admit
-            case nil:
-                break admit
-            }
+    let swapping = stack.canSwap(at: time), entering = stack.isReady(at: time)
+    admit: while true {
+        let offered = adoptable()
+        switch stack.nextAdmission(adoptable: offered.map(\.island.card), swapping: swapping, entering: entering) {
+        case let .swap(shown, index):
+            let (handle, island) = offered[index]
+            guard let old = session.islandOf[shown.id], let before = islands[old] else { break admit }
+            session.adoptable.removeAll { $0 == handle }
+            stack.swap(shown, for: island.card, metrics: island.animator.metrics, at: time, reduced: false)
+            session.islandOf[shown.id] = handle
+            swapped.append([
+                "handle": handle, "old": old, "time": time,
+                "kept": IslandUpdate.unchanged(
+                    oldTitle: before.titleLines, oldDetail: before.detailLines,
+                    newTitle: island.titleLines, newDetail: island.detailLines,
+                    from: before.animator.metrics, to: island.animator.metrics),
+                "newState": IslandUpdate.changesState(from: before.card, to: island.card),
+                "inRing": IslandUpdate.landsInRing(from: before.card, to: island.card),
+                "waits": shown.isWaiting,
+            ])
+        case let .enter(index):
+            let handle = offered[index].handle
+            session.adoptable.removeAll { $0 == handle }
+            enter(handle, own: false)
+            break admit
+        case .own:
+            if stack.nextOwn() != nil { enter(session.own.removeFirst(), own: true) }
+            break admit
+        case .skipOwn:
+            break admit
+        case .tucked:
+            if let tucked = stack.nextTucked() { enter(session.tucked.removeFirst(), own: tucked.own) }
+            break admit
+        case nil:
+            break admit
         }
     }
     func release() {
@@ -669,7 +666,6 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
                     "countdownFrom": release.entry.countdownFrom, "waits": release.entry.isWaiting,
                     "fromDrop": release.last ? release.count : 0,
                     "handOver": [CardStack.handOver.duration, CardStack.handOver.bounce, CardStack.handOver.settlingTime],
-                    "rollsUp": stack.handOverRollsUp,
                 ])
             }
         }
@@ -828,7 +824,7 @@ public func dripStackDismiss(_ stackHandle: Int32, _ handle: Int32) -> Int32 {
 
 /// Every card of the stack at `time`, top to bottom, leaving cards included, as doubles: the card
 /// count, then for each card its island's handle, the seconds left on its countdown, where its
-/// capsule's top is heading, how solid its black shape is, and its frame as `drip_frame` lays one
+/// capsule's top is heading, and its frame as `drip_frame` lays one
 /// out, the outline traced where its drop melts into the notch or the card above it. The page reads
 /// `drip_frame_length` doubles.
 @_expose(wasm, "drip_stack_frame")
@@ -841,7 +837,7 @@ public func dripStackFrame(_ stackHandle: Int32, _ time: Double) -> UnsafePointe
     frameBuffer.append(Double(entries.count))
     for (entry, piece) in zip(entries, pieces) {
         let shape = entry.animator.shape(at: time)
-        frameBuffer += [Double(session?.islandOf[entry.id] ?? 0), entry.remaining, entry.animator.targetTop, shape.opacity]
+        frameBuffer += [Double(session?.islandOf[entry.id] ?? 0), entry.remaining, entry.animator.targetTop]
         var field: DropletField?
         if case let .traced(traced) = piece { field = traced }
         appendFrame(shape: shape, metrics: entry.metrics, layout: entry.animator.content(for: shape), traced: field)

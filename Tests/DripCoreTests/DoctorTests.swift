@@ -280,21 +280,21 @@ struct DoctorTests {
 
     @Test func settingsComeFromTheVariablesThenTheConfig() throws {
         let report = try Self.report(
-            config: "seconds = 3\nsize = \"large\"\nstack = \"push\"\nhistory = 50\naway_after = 30\n",
+            config: "seconds = 3\nsize = \"large\"\nstack = \"off\"\nhistory = 50\naway_after = 30\n",
             extra: ["DRIP_SECONDS": "6", "DRIP_SOUND": "none", "DRIP_DEBUG": "1"])
         let settings = report.settings
         #expect(settings.seconds == 6)
         #expect(settings.size == .large)
         #expect(settings.sound == Sound.none)
         #expect(settings.motion == Defaults.motion)
-        #expect(settings.stack == .push)
+        #expect(settings.stack == .off)
         #expect(settings.stackMax == Defaults.stackMax)
         #expect(settings.whenFocused == .default)
         #expect(settings.awayAfter == 30)
         #expect(settings.history == 50)
         #expect(settings.debug)
         let text = report.text()
-        for line in ["  seconds = 6", "  size = large", "  sound = none", "  stack = push", "  history = 50", "  debug = true"] {
+        for line in ["  seconds = 6", "  size = large", "  sound = none", "  stack = off", "  history = 50", "  debug = true"] {
             #expect(text.contains(line + "\n"), "\(line): \(text)")
         }
     }
@@ -342,7 +342,7 @@ struct DoctorTests {
         #expect(well["config"]?.members?.map(\.key) == ["path", "exists", "valid", "ignored", "errors", "warnings"])
         #expect(well["state_directory"]?.members?.map(\.key) == ["path", "writable"])
         #expect(well["settings"]?.members?.map(\.key) == [
-            "seconds", "size", "sound", "motion", "stack", "stack_max", "when_focused", "away_after", "history", "debug",
+            "seconds", "size", "sound", "motion", "stack", "stack_max", "stack_delay", "when_focused", "away_after", "history", "debug",
             "contrast",
         ])
         #expect(well["settings"]?["contrast"] == .bool(false))
