@@ -57,10 +57,14 @@ struct OverflowTests {
             releases.append((time, release, start, release.entry.animator.targetTop, stack.live.map(\.card.title)))
         }
 
-        func run(for seconds: Double, metrics cardMetrics: ((Card) -> IslandMetrics)? = nil, step: (Double, CardStack.Changes) -> Void = { _, _ in }) {
+        func run(
+            for seconds: Double, metrics cardMetrics: ((Card) -> IslandMetrics)? = nil, before: (Double) -> Void = { _ in },
+            step: (Double, CardStack.Changes) -> Void = { _, _ in }
+        ) {
             let layout = cardMetrics ?? { _ in self.metrics }
             let until = time + seconds
             while time < until {
+                before(time)
                 if stack.isReady(at: time) {
                     if let index = others.firstIndex(where: stack.swapsInPlace),
                        let shown = stack.live.first(where: { $0.card.id == others[index].id })
@@ -154,6 +158,52 @@ struct OverflowTests {
         #expect(onScreen.count * 2 > max)
         #expect(driver.stack.live.isEmpty)
         #expect(driver.stack.overflow == nil)
+    }
+
+    /// Right after a card has left, the next card waiting comes in first, even with a card whose
+    /// time is up still on screen. Whenever a card may drop in, a newer card with the id of one on
+    /// screen may swap in place too, rather than wait for that card to go and come in on its own.
+    @Test func aCardMaySwapWheneverACardMayDropIn() throws {
+        /// Runs x above a and b, with w coming as x is about to leave; returns the first step after that a
+        /// card may drop in, and when a and b started counting down.
+        func run(a: Double, b: Double, at check: Double? = nil) throws -> (ready: Double, from: [Double], driver: Driver) {
+            let driver = Driver(CardStack(settings: StackSettings(max: 4)), metrics: metrics)
+            driver.others = [card("x", seconds: 4), card("a", seconds: a), card("b", seconds: b, id: "build")]
+            var xLeft = false
+            var ready: Double?
+            var from: [Double] = []
+            driver.run(for: 12, before: { time in
+                if !driver.others.contains(where: { $0.title == "w" }),
+                   driver.stack.live.contains(where: { $0.card.title == "x" && $0.remaining < 0.5 })
+                {
+                    driver.others.append(card("w", seconds: 60))
+                }
+                guard xLeft, ready == nil, driver.stack.isReady(at: time) else { return }
+                ready = time
+                if time == check {
+                    let stack = driver.stack
+                    let aIsDue = stack.live.contains { entry in entry.card.title == "a" && entry.remaining <= 0 }
+                    #expect(aIsDue)
+                    #expect(stack.canSwap(at: time))
+                    let newer = card("b2", seconds: 4, id: "build")
+                    guard case .swap(let shown, 0)? = stack.nextAdmission(
+                        adoptable: [newer], swapping: stack.canSwap(at: time), entering: stack.isReady(at: time))
+                    else {
+                        Issue.record("a newer card with the id of one on screen should swap in place")
+                        return
+                    }
+                    #expect(shown.card.title == "b")
+                }
+            }, step: { _, changes in
+                if from.isEmpty, driver.stack.live.count == 3 { from = driver.stack.live.dropFirst().map(\.countdownFrom) }
+                if changes.left.contains(where: { $0.entry.card.title == "x" }) { xLeft = true }
+            })
+            return (try #require(ready), from, driver)
+        }
+        let probe = try run(a: 60, b: 60)
+        // a's time is up just before the stack is at rest again, and b's soon after, so a waits for b.
+        let held = try run(a: probe.ready - 0.2 - probe.from[0], b: probe.ready + 0.1 - probe.from[1], at: probe.ready)
+        #expect(held.ready == probe.ready)
     }
 
     /// With `stack_delay`, the next card drops in that long after the last is fully in, before the

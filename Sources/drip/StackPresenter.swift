@@ -627,7 +627,8 @@ final class StackPresenter: CardPresenting {
                 needsRoom = false
             }
         }
-        let swapping = stack.canSwap(at: time), entering = stack.isReady(at: time, starting: time + lead)
+        let swapping = stack.canSwap(at: time, starting: time + lead)
+        let entering = stack.isReady(at: time, starting: time + lead)
         while let admission = stack.nextAdmission(
             adoptable: others.map(\.card), isReplaced: CardQueue.isReplaced, swapping: swapping, entering: entering)
         {

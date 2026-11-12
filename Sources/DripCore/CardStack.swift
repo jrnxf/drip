@@ -200,24 +200,22 @@ public final class CardStack {
     /// is when a card decided now starts to move, `time` by default; with `stack_delay` it is what
     /// counts, so the next drop starts on the frame the last card's text has faded in.
     public func isReady(at time: Double, starting start: Double? = nil) -> Bool {
-        isStill(at: time, starting: start ?? time)
-            && (leftSinceEntrance || !hasCardDue(within: (start ?? time) - time + Self.entranceSettling))
+        let start = start ?? time
+        return isReady(at: time, starting: start, lookingAhead: start - time + Self.entranceSettling)
     }
 
     /// Whether a newer card with the same id as one on screen may take its place at `time`: as for a
     /// card dropping in, but held back only by a card whose time is already up. A swap takes no new
-    /// place, so it never keeps a card from leaving once its ring is empty.
-    public func canSwap(at time: Double) -> Bool {
-        isStill(at: time, starting: time) && !hasCardDue(within: 0)
+    /// place, so it never keeps a card from leaving once its ring is empty. Whenever a card may drop
+    /// in, a card may swap.
+    public func canSwap(at time: Double, starting start: Double? = nil) -> Bool {
+        isReady(at: time, starting: start ?? time, lookingAhead: 0)
     }
 
-    private func isStill(at time: Double, starting start: Double) -> Bool {
+    private func isReady(at time: Double, starting start: Double, lookingAhead ahead: Double) -> Bool {
         !hovering && entranceSpaced(at: time, starting: start)
             && overflow.map { $0.end <= time && !$0.peeking } ?? true
-    }
-
-    private func hasCardDue(within seconds: Double) -> Bool {
-        entries.contains { $0.isShown && $0.remaining <= seconds && $0.dismissed == nil }
+            && (leftSinceEntrance || !entries.contains { $0.isShown && $0.remaining <= ahead && $0.dismissed == nil })
     }
 
     /// When every spring in the stack has settled, the overflow drop's and what drips into it
