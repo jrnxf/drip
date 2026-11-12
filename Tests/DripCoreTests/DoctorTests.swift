@@ -299,6 +299,33 @@ struct DoctorTests {
         }
     }
 
+    /// The outline comes from DRIP_CONTRAST, then the config, and Increase Contrast turns it on too.
+    @Test func contrastSaysWhereItComesFrom() throws {
+        let off = try Self.report()
+        #expect(!off.settings.contrast)
+        #expect(off.text().contains("  contrast = false\n"))
+
+        let config = try Self.report(config: "contrast = true\n")
+        #expect(config.settings.contrast && !config.settings.contrastFromSystem)
+        #expect(config.text().contains("  contrast = true\n"))
+
+        let environment = try Self.report(config: "contrast = true\n", extra: ["DRIP_CONTRAST": "0"])
+        #expect(!environment.settings.contrast)
+
+        let system = DoctorReport(
+            environment: try Self.environment(), hasGUISession: true, screenLocked: false, increaseContrast: true)
+        #expect(system.settings.contrast && system.settings.contrastFromSystem)
+        #expect(system.text().contains("  contrast = true (Increase Contrast)\n"))
+        #expect(try JSONValue(parsing: system.json)["settings"]?["contrast"] == .bool(true))
+
+        // Set as well, the setting is the reason, not the system.
+        let both = DoctorReport(
+            environment: try Self.environment(extra: ["DRIP_CONTRAST": "1"]), hasGUISession: true,
+            screenLocked: false, increaseContrast: true)
+        #expect(both.settings.contrast && !both.settings.contrastFromSystem)
+        #expect(both.text().contains("  contrast = true\n"))
+    }
+
     /// The keys the contract lists are there every time, with null for a value that is not.
     static let keys = [
         "version", "status", "stops_cards", "shows_cards", "gui_session", "paused", "pause_ends", "screen_locked",
@@ -316,7 +343,9 @@ struct DoctorTests {
         #expect(well["state_directory"]?.members?.map(\.key) == ["path", "writable"])
         #expect(well["settings"]?.members?.map(\.key) == [
             "seconds", "size", "sound", "motion", "stack", "stack_max", "when_focused", "away_after", "history", "debug",
+            "contrast",
         ])
+        #expect(well["settings"]?["contrast"] == .bool(false))
         #expect(well["settings"]?["sound"] == .null)
         #expect(well["settings"]?["seconds"] == .number("4.5"))
 

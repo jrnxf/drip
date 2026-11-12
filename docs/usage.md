@@ -48,7 +48,10 @@ exits 2, or 1 for `drip hook`.
 The size and the motion are settings rather than flags: `size` (`compact`, `regular` or `large`,
 scaling fonts, icon and padding by 0.85, 1.0 or 1.25) and `motion` (`full` drops the card out of
 the notch on its springs and takes it back in, `subtle` only fades, `none` neither; Reduce Motion in System Settings caps it at
-`subtle`) in the [config](config.md), or `DRIP_SIZE` and `DRIP_MOTION`.
+`subtle`) in the [config](config.md), or `DRIP_SIZE` and `DRIP_MOTION`. Increase Contrast in System
+Settings > Accessibility > Display draws a thin white outline inside every card, so its edge shows on
+a dark menu bar or a black wallpaper. `contrast = true` in the config, or `DRIP_CONTRAST=1`, draws it
+too.
 
 | Preset | Icon | Color | Sound |
 | --- | --- | --- | --- |
@@ -314,7 +317,8 @@ drip doctor --json    # the same, as one JSON object, for scripts
 It prints drip's version, whether there is a GUI session, whether drip is paused and whether the
 screen is locked, the config file and every problem and warning in it, the settings a card starts
 from after the `DRIP_*` variables and the config file (a top-level `sound` names the presets the
-config gives a sound of their own, which keep it), and the state directory and whether drip can
+config gives a sound of their own, which keep it, and `contrast = true (Increase Contrast)` says
+the outline is on only because macOS Increase Contrast is on), and the state directory and whether drip can
 write it. Without it drip keeps no history, pause or debug log, but cards still show. Its last lines
 say `cards show now`, or one `stops cards:` line for each thing that keeps cards off the screen: a
 `DRIP_*` variable drip cannot read (every card command exits 2), no GUI session (a card exits 3), a

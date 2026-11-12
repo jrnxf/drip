@@ -39,16 +39,19 @@ public struct Config: Equatable {
     public var debug: Bool?
     /// The most cards the history keeps; 0 keeps none.
     public var history: Int?
+    /// Whether every card has its outline, as Increase Contrast in System Settings gives it.
+    public var contrast: Bool?
     /// Overrides of built-in presets, and custom presets, by name.
     public var presets: [String: PresetOverride]
 
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
-        awayAfter: Double? = nil, debug: Bool? = nil, history: Int? = nil,
+        awayAfter: Double? = nil, debug: Bool? = nil, history: Int? = nil, contrast: Bool? = nil,
         presets: [String: PresetOverride] = [:]
     ) {
         self.debug = debug
+        self.contrast = contrast
         self.history = history
         self.awayAfter = awayAfter
         self.seconds = seconds
@@ -264,6 +267,7 @@ private struct ConfigReader {
         case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
         case "debug": config.debug = try boolean(item, key: key)
         case "history": config.history = try integer(item, key: key, in: Defaults.historyRange)
+        case "contrast": config.contrast = try boolean(item, key: key)
         case "preset": config.presets = try presets(item)
         default: warnUnknown(key, line: item.line)
         }
@@ -459,14 +463,17 @@ public struct EnvironmentSettings: Equatable {
     public var debug: Bool?
     /// The most cards the history keeps, from `DRIP_HISTORY`; 0 keeps none.
     public var history: Int?
+    /// Whether every card has its outline, from `DRIP_CONTRAST`.
+    public var contrast: Bool?
 
     public init(
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
         awayAfter: Double? = nil, sender: String? = nil, debug: Bool? = nil,
-        history: Int? = nil
+        history: Int? = nil, contrast: Bool? = nil
     ) {
         self.debug = debug
+        self.contrast = contrast
         self.history = history
         self.awayAfter = awayAfter
         self.sender = sender
@@ -480,7 +487,7 @@ public struct EnvironmentSettings: Equatable {
     }
 
     /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK, DRIP_STACK_MAX,
-    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_HISTORY and DRIP_DEBUG. Empty
+    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_HISTORY, DRIP_CONTRAST and DRIP_DEBUG. Empty
     /// values are ignored; invalid ones are usage errors. Also notes the app drip was run from, from
     /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
@@ -526,6 +533,7 @@ public struct EnvironmentSettings: Equatable {
         stackMax = try integer("DRIP_STACK_MAX", in: Defaults.stackMaxRange)
         history = try integer("DRIP_HISTORY", in: Defaults.historyRange)
         sound = value("DRIP_SOUND").map(Sound.init(parsing:))
+        contrast = try Self.switch("DRIP_CONTRAST", environment: environment)
         debug = try Self.debug(environment: environment)
         sender = CardActivation.sender(in: environment)
         pane = TerminalPane(environment: environment)

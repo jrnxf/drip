@@ -110,6 +110,13 @@ struct ConfigTests {
         ])
     }
 
+    @Test func contrastIsABoolean() throws {
+        #expect(try ConfigLoader.parse("contrast = true", path: path).config == Config(contrast: true))
+        #expect(try ConfigLoader.parse("contrast = false", path: path).config == Config(contrast: false))
+        #expect(try ConfigLoader.parse("", path: path).config.contrast == nil)
+        assertError("contrast = \"high\"", line: 1, key: "contrast", message: "expected true or false, got a string")
+    }
+
     @Test func wrongTypesNameTheKeyAndLine() {
         assertError("seconds = \"4\"", line: 1, key: "seconds", message: "expected a number, got a string")
         assertError("\nmotion = 1", line: 2, key: "motion", message: "expected a string, got an integer")
@@ -327,10 +334,14 @@ struct PrecedenceTests {
         #expect(try EnvironmentSettings(environment: ["DRIP_DEBUG": "1"]) == EnvironmentSettings(debug: true))
         #expect(try EnvironmentSettings(environment: ["DRIP_DEBUG": "off"]) == EnvironmentSettings(debug: false))
         #expect(try EnvironmentSettings(environment: ["DRIP_DEBUG": ""]) == EnvironmentSettings())
+        #expect(try EnvironmentSettings(environment: ["DRIP_CONTRAST": "1"]) == EnvironmentSettings(contrast: true))
+        #expect(try EnvironmentSettings(environment: ["DRIP_CONTRAST": "0"]) == EnvironmentSettings(contrast: false))
+        #expect(try EnvironmentSettings(environment: ["DRIP_CONTRAST": ""]) == EnvironmentSettings())
         for (name, value) in [("DRIP_SECONDS", "abc"), ("DRIP_SECONDS", "99"), ("DRIP_MOTION", "lots"),
                               ("DRIP_SIZE", "huge"), ("DRIP_STACK", "psuh"), ("DRIP_STACK", "Push"),
                               ("DRIP_STACK_MAX", "0"), ("DRIP_STACK_MAX", "7"), ("DRIP_STACK_MAX", "2.5"),
-                              ("DRIP_STACK_MAX", "many"), ("DRIP_DEBUG", "maybe")] {
+                              ("DRIP_STACK_MAX", "many"), ("DRIP_DEBUG", "maybe"),
+                              ("DRIP_CONTRAST", "hairline")] {
             let error = #expect(throws: UsageError.self) { try EnvironmentSettings(environment: [name: value]) }
             #expect(error?.message.hasPrefix(name) == true)
         }
@@ -365,6 +376,20 @@ struct PrecedenceTests {
         #expect(card.seconds == 2)
         #expect(card.size == .compact)
         #expect(card.sound == .named("Ping"))
+    }
+
+    /// The card carries true or nothing, so a card without the outline reads and writes as before.
+    @Test func contrastComesFromTheEnvironmentThenTheConfig() throws {
+        func contrast(_ config: Config, _ environment: EnvironmentSettings = EnvironmentSettings()) throws -> Bool? {
+            try CardResolver(config: config, environment: environment)
+                .resolve(kind: "ok", title: "t", flags: CardFlags()).contrast
+        }
+        #expect(try contrast(Config()) == nil)
+        #expect(try contrast(Config(contrast: false)) == nil)
+        #expect(try contrast(Config(contrast: true)) == true)
+        #expect(try contrast(Config(), EnvironmentSettings(contrast: true)) == true)
+        #expect(try contrast(Config(contrast: true), EnvironmentSettings(contrast: false)) == nil)
+        #expect(try contrast(Config(contrast: false), EnvironmentSettings(contrast: true)) == true)
     }
 
     @Test func flagsBeatEnvironment() throws {

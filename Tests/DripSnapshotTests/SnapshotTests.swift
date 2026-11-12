@@ -91,6 +91,15 @@ struct SnapshotTests {
         ])
     }
 
+    /// The outline Increase Contrast or the config's contrast gives: on the card in both appearances,
+    /// and on the drop alone while it hangs from the notch.
+    @Test func contrast() throws {
+        let card = ["ok", "Build finished", "--detail", "drip: 42 tests passed in 3.1s", "--contrast"]
+        try assertSnapshots(appearances("ok-two-lines-contrast", card) + [
+            Snapshot(name: "falling-contrast", arguments: card + ["--at", "0.2"]),
+        ])
+    }
+
     /// An agent's card: its app's own icon, never tinted, or its bundled mark, with the state in the
     /// ring. Terminal is on every Mac.
     @Test func agentIcons() throws {
