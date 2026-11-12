@@ -522,6 +522,25 @@ struct StackSettingsTests {
         CardResolver(config: config, environment: try EnvironmentSettings(environment: environment)).stack
     }
 
+    @Test func stackDelayIsASmallNumberOfSecondsInTheConfigAndTheEnvironment() throws {
+        let path = "config.toml"
+        #expect(try ConfigLoader.parse("stack_delay = 0.4", path: path).config.stackDelay == 0.4)
+        #expect(try ConfigLoader.parse("stack_delay = 1", path: path).config.stackDelay == 1)
+        let tooShort = #expect(throws: ConfigError.self) { try ConfigLoader.parse("stack_delay = 0", path: path) }
+        #expect(tooShort?.description == "\(path):1: stack_delay: must be between 0.1 and 5")
+        let text = #expect(throws: ConfigError.self) { try ConfigLoader.parse("stack_delay = \"1\"", path: path) }
+        #expect(text?.description == "\(path):1: stack_delay: expected a number, got a string")
+        #expect(try EnvironmentSettings(environment: ["DRIP_STACK_DELAY": "0.25"]).stackDelay == 0.25)
+        #expect(try EnvironmentSettings(environment: ["DRIP_STACK_DELAY": ""]).stackDelay == nil)
+        #expect(throws: UsageError.self) { try EnvironmentSettings(environment: ["DRIP_STACK_DELAY": "9"]) }
+        // The environment first, then the config; nothing set leaves the stack to settle.
+        let config = Config(stackDelay: 0.5)
+        #expect(StackSettings.delay(EnvironmentSettings(stackDelay: 0.2), config: config) == 0.2)
+        #expect(StackSettings.delay(EnvironmentSettings(), config: config) == 0.5)
+        #expect(StackSettings.delay(EnvironmentSettings(), config: Config()) == nil)
+        #expect(StackSettings.resolved(EnvironmentSettings(), config: config)?.delay == 0.5)
+    }
+
     @Test func stackMaxComesFromTheEnvironmentThenTheConfigThenThree() throws {
         let config = Config(stackMax: 5)
         #expect(try stack([:], Config()) == StackSettings(mode: .chain, max: 3))

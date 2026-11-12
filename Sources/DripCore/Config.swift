@@ -31,6 +31,8 @@ public struct Config: Equatable {
     public var stack: StackSettings.Choice?
     /// The most cards on screen at once.
     public var stackMax: Int?
+    /// The seconds from one card dropping in to the next.
+    public var stackDelay: Double?
     /// What an agent's card does while its terminal is in front.
     public var whenFocused: WhenFocused?
     /// Seconds without the keyboard or mouse after which drip takes you to be away from the screen.
@@ -48,8 +50,9 @@ public struct Config: Equatable {
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
         awayAfter: Double? = nil, debug: Bool? = nil, history: Int? = nil, contrast: Bool? = nil,
-        presets: [String: PresetOverride] = [:]
+        presets: [String: PresetOverride] = [:], stackDelay: Double? = nil
     ) {
+        self.stackDelay = stackDelay
         self.debug = debug
         self.contrast = contrast
         self.history = history
@@ -263,6 +266,7 @@ private struct ConfigReader {
         case "motion": config.motion = try choice(item, key: key, Motion.self)
         case "stack": config.stack = try choice(item, key: key, StackSettings.Choice.self)
         case "stack_max": config.stackMax = try integer(item, key: key, in: Defaults.stackMaxRange)
+        case "stack_delay": config.stackDelay = try seconds(item, key: key, in: Defaults.stackDelayRange)
         case "when_focused": config.whenFocused = try choice(item, key: key, WhenFocused.self)
         case "away_after": config.awayAfter = try seconds(item, key: key, in: Defaults.awayAfterRange)
         case "debug": config.debug = try boolean(item, key: key)
@@ -449,6 +453,8 @@ public struct EnvironmentSettings: Equatable {
     public var stack: StackSettings.Choice?
     /// The most cards on screen at once.
     public var stackMax: Int?
+    /// The seconds from one card dropping in to the next.
+    public var stackDelay: Double?
     /// What an agent's card does while its terminal is in front.
     public var whenFocused: WhenFocused?
     /// Seconds without the keyboard or mouse after which drip takes you to be away from the screen.
@@ -470,8 +476,9 @@ public struct EnvironmentSettings: Equatable {
         seconds: Double? = nil, size: CardSize? = nil, sound: Sound? = nil, motion: Motion? = nil,
         stack: StackSettings.Choice? = nil, stackMax: Int? = nil, whenFocused: WhenFocused? = nil,
         awayAfter: Double? = nil, sender: String? = nil, debug: Bool? = nil,
-        history: Int? = nil, contrast: Bool? = nil
+        history: Int? = nil, contrast: Bool? = nil, stackDelay: Double? = nil
     ) {
+        self.stackDelay = stackDelay
         self.debug = debug
         self.contrast = contrast
         self.history = history
@@ -487,7 +494,7 @@ public struct EnvironmentSettings: Equatable {
     }
 
     /// Reads DRIP_SECONDS, DRIP_SIZE, DRIP_SOUND, DRIP_MOTION, DRIP_STACK, DRIP_STACK_MAX,
-    /// DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_HISTORY, DRIP_CONTRAST and DRIP_DEBUG. Empty
+    /// DRIP_STACK_DELAY, DRIP_WHEN_FOCUSED, DRIP_AWAY_AFTER, DRIP_HISTORY, DRIP_CONTRAST and DRIP_DEBUG. Empty
     /// values are ignored; invalid ones are usage errors. Also notes the app drip was run from, from
     /// `__CFBundleIdentifier`, ignoring a value that is not a bundle identifier.
     public init(environment: [String: String]) throws {
@@ -522,6 +529,7 @@ public struct EnvironmentSettings: Equatable {
             return seconds
         }
         awayAfter = try seconds("DRIP_AWAY_AFTER", in: Defaults.awayAfterRange)
+        stackDelay = try seconds("DRIP_STACK_DELAY", in: Defaults.stackDelayRange)
         func integer(_ name: String, in range: ClosedRange<Int>) throws -> Int? {
             guard let text = value(name) else { return nil }
             guard let number = Int(text), range.contains(number) else {

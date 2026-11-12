@@ -156,12 +156,23 @@ public final class CardStack {
     /// The cards that are not leaving, top to bottom.
     public var live: [Entry] { entries.filter { !$0.isLeaving } }
 
+    /// Whether enough time has passed for the next card to drop in. By default that is the least
+    /// spacing and a stack at rest, which takes a card about a second to settle. With the config's
+    /// `stack_delay` it is that time since the last card, whatever the cards that came in are still
+    /// doing; a card on its way out still has to finish.
+    private func entranceSpaced(at time: Double) -> Bool {
+        guard let delay = settings.delay else {
+            return time - lastEntrance >= Self.entranceSpacing && entries.allSatisfy { $0.animator.end <= time }
+        }
+        return time - lastEntrance >= delay && entries.allSatisfy { !$0.isLeaving || $0.animator.end <= time }
+    }
+
     /// Whether a card may drop in at `time`: one at a time, into a stack at rest, so a new drop
     /// never shoves cards still settling, and never while the pointer is on the stack. The overflow
     /// drop is at rest too, with nothing dripping into it. A card whose time is up leaves first, unless
     /// a card has left since the last came in and another waits: that one comes in first.
     public func isReady(at time: Double) -> Bool {
-        !hovering && time - lastEntrance >= Self.entranceSpacing && entries.allSatisfy { $0.animator.end <= time }
+        !hovering && entranceSpaced(at: time)
             && overflow.map { $0.end <= time && !$0.peeking } ?? true
             && (leftSinceEntrance || !entries.contains { $0.isShown && $0.remaining <= 0 && $0.dismissed == nil })
     }

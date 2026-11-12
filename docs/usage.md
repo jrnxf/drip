@@ -410,7 +410,9 @@ goes back into it the same way.
 
 **Several cards at once.** Cards that come in while one is showing stack below it, up to 3 at
 a time (`stack_max` in the [config](config.md), or `DRIP_STACK_MAX`, 1 to 6); the rest wait their
-turn in a small drop under the last card, which counts them. A card that comes later drips into the
+turn in a small drop under the last card, which counts them. Each card drops in once the stack has
+settled, about a second after the one before; `stack_delay` (or `DRIP_STACK_DELAY`, 0.1 to 5
+seconds) sets that time instead. A card that comes later drips into the
 drop and the count goes up. A card that leaves gathers back into a round drop in place first, then
 rises into the notch or the card above, as in the entrance reversed. As the drop starts to rise,
 it all happens in one motion: the next card grows out of the drop into its place, the other cards

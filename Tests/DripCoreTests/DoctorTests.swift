@@ -342,7 +342,7 @@ struct DoctorTests {
         #expect(well["config"]?.members?.map(\.key) == ["path", "exists", "valid", "ignored", "errors", "warnings"])
         #expect(well["state_directory"]?.members?.map(\.key) == ["path", "writable"])
         #expect(well["settings"]?.members?.map(\.key) == [
-            "seconds", "size", "sound", "motion", "stack", "stack_max", "when_focused", "away_after", "history", "debug",
+            "seconds", "size", "sound", "motion", "stack", "stack_max", "stack_delay", "when_focused", "away_after", "history", "debug",
             "contrast",
         ])
         #expect(well["settings"]?["contrast"] == .bool(false))

@@ -156,6 +156,30 @@ struct OverflowTests {
         #expect(driver.stack.overflow == nil)
     }
 
+    /// With `stack_delay`, the next card drops in that long after the last, before the stack has
+    /// settled; without it, only once the stack has.
+    @Test func theStackDelaySetsTheTimeBetweenTwoCardsDroppingIn() throws {
+        func enters(delay: Double?) -> [Double] {
+            let driver = Driver(
+                CardStack(settings: StackSettings(mode: .chain, max: 6, delay: delay)), metrics: metrics)
+            driver.others = (1...4).map { card("card \($0)", seconds: 30) }
+            var times: [Double] = []
+            var count = 0
+            driver.run(for: 8, step: { time, _ in
+                if driver.stack.live.count != count { count = driver.stack.live.count; times.append(time) }
+            })
+            return times
+        }
+        func gaps(_ times: [Double]) -> [Double] { zip(times.dropFirst(), times).map { $0 - $1 } }
+        // Settled first: about a second between two cards.
+        #expect(gaps(enters(delay: nil)).allSatisfy { $0 > 0.8 })
+        let quick = gaps(enters(delay: 0.4))
+        #expect(quick.count == 3)
+        #expect(quick.allSatisfy { abs($0 - 0.4) < 0.05 })
+        let slow = gaps(enters(delay: 2))
+        #expect(slow.allSatisfy { abs($0 - 2) < 0.05 })
+    }
+
     /// One of this drip's own cards still to come, replaced by a newer drip's card with the same id,
     /// stops counting as the newer card starts: the count stays as it was.
     @Test func aReplacedOwnCardIsNotCounted() throws {
