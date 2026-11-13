@@ -573,7 +573,9 @@ public func dripStackOffer(_ stackHandle: Int32, _ handle: Int32) -> UnsafePoint
 /// wait for you give way to them, as they do to a newer drip waiting for its turn. Replies
 /// `{"entered": [{handle, start, cues, countdownFrom, waits}], "swapped": [{handle, old, time, kept,
 /// newState, inRing, waits}], "stoppedWaiting": [handle], "left": [{handle, cues, time, clicked}],
-/// "gone": [handle], "done": bool}`. `kept` says which of the new card's lines, title then detail,
+/// "gone": [handle], "done": bool}`. `held` lists `{handle, start, cues, countdownFrom}` for cards
+/// already in whose content now fades in later, as they part from a card that grew out of the
+/// overflow drop with them. `kept` says which of the new card's lines, title then detail,
 /// stay as they were, `newState` whether its state changed and `inRing` whether that lands in the
 /// ring, as the app's crossfade reads them. `waits` says the card waits for you, with no countdown,
 /// until it is in `stoppedWaiting`. `done` once nothing is left to show.
@@ -681,6 +683,12 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
             "handOver": [CardStack.handOver.duration, CardStack.handOver.bounce, CardStack.handOver.settlingTime],
         ])
     }
+    let held: [[String: Any]] = changes.held.compactMap { entry in
+        guard !released.contains(where: { $0.release.entry === entry }),
+              let handle = session.islandOf[entry.id], case let .entering(start, entryCues) = entry.phase
+        else { return nil }
+        return ["handle": handle, "start": start, "cues": cues(entryCues), "countdownFrom": entry.countdownFrom]
+    }
     peek(stack, at: session.pointer, time: time)
     let stoppedWaiting = changes.stoppedWaiting.compactMap { session.islandOf[$0.id] }
     let left: [[String: Any]] = changes.left.compactMap { left in
@@ -698,7 +706,7 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
         && stack.overflow == nil
     if done { stacks[stackHandle] = nil }
     return send([
-        "entered": entered, "swapped": swapped, "stoppedWaiting": stoppedWaiting, "left": left, "gone": gone,
+        "entered": entered, "held": held, "swapped": swapped, "stoppedWaiting": stoppedWaiting, "left": left, "gone": gone,
         "done": done, "overflow": stack.overflow.map(overflowState) ?? [String: Any](),
     ])
 }
