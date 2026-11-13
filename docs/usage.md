@@ -414,16 +414,16 @@ turn in a small drop under the last card, which counts them. Each card drops in 
 settled, about a second after the one before; `stack_delay` (or `DRIP_STACK_DELAY`, 0 to 5
 seconds) sets the pause after a card is fully in instead, so 0 is the fastest it goes (about 0.75 s). A card that comes later drips into the
 drop and the count goes up. A card that leaves gathers back into a round drop in place first, then
-rises into the notch or the card above, as in the entrance reversed. As the drop starts to rise,
-it all happens in one motion: the next card grows out of the drop into its place, the other cards
-move up and the count goes down. The drop need not be at rest for that, and when several cards
-leave together, as many cards grow out of it at once. A card leaves the moment its time runs out, whatever the rest of the stack is doing: other cards may
-still drop in, move up or leave, and each drop stays on the card it belongs to as that card moves.
-Cards whose time runs out at the same moment, within two frames, leave together in one motion when
-they are next to each other. A new card drops out of whatever is last in the stack, even a card on
-its way out: it follows that card's drop up and opens in its own place. Once none waits, the drop
-goes back into the last card. With the pointer on the drop, it widens to list the waiting cards'
-titles, newest first.
+rises into the notch or the card above, as in the entrance reversed. As the drop starts to rise, it
+all happens in one motion: the next card grows out of the drop into its place, the other cards move
+up and the count goes down. The drop need not be at rest for that, and when several cards leave
+together, as many cards grow out of it at once. A card leaves the moment its time runs out, whatever
+the rest of the stack is doing: other cards may still drop in, move up or leave, and each drop stays
+on the card it belongs to as that card moves. Cards whose time runs out at the same moment, within
+two frames, leave together in one motion when they are next to each other. A new card drops out of
+whatever is last in the stack, even a card on its way out: it follows that card's drop up and opens
+in its own place. Once none waits, the drop goes back into the last card. With the pointer on the
+drop, it widens to list the waiting cards' titles, newest first.
 A click on the drop does nothing. Whether they stack is `stack` in the config, or `DRIP_STACK`. With `chain`, the default, each new
 card drops out of the bottom of the last one and the oldest goes back into the notch first, the
 others moving up behind it.

@@ -152,14 +152,14 @@ A card whose time is up leaves at that moment, while other cards still drop in, 
   overflow drop is not handed on: it goes, and the new stack forms its own.
 
 `MovingStackTests` flies stacks at 120 Hz and checks these rules on every frame. Each sweep moves
-one moment against another in steps of one frame: a leave against an entrance, the moment a card
-is due against a leave, a leave against the overflow drop as it forms and as a card grows out
-of it, and the moment a moving stack is handed on. A plain `swift test` flies every fifth frame of each sweep, and every frame within two of
-each critical line (`Sweep`). For cards out of the drop at one moment it also traces the picture as
-it is drawn, on every frame: no cut shows on the outline, no two pieces cross on it, no inside
-corner is sharper than a radius of 1.5 points while two capsules overlap, and no content shows on
-two cards that are still joined (`Picture`). `DRIP_FULL_SWEEP=1 swift test` flies every frame, and CI's `test`
-job runs it so.
+one moment against another in steps of one frame: a leave against an entrance, the moment a card is
+due against a leave, a leave against the overflow drop as it forms and as a card grows out of it,
+and the moment a moving stack is handed on. A plain `swift test` flies every fifth frame of each
+sweep, and every frame within two of each critical line (`Sweep`). For cards out of the drop at one
+moment it also traces the picture as it is drawn, on every frame: no cut shows on the outline, no
+two pieces cross on it, no inside corner is sharper than a radius of 1.5 points while two capsules
+overlap, and no content shows on two cards that are still joined (`Picture`).
+`DRIP_FULL_SWEEP=1 swift test` flies every frame, and CI's `test` job runs it so.
 
 ## The live agent check
 
