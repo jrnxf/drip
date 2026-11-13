@@ -678,8 +678,9 @@ extension IslandLayers {
             keyframes("position", frames.map { NSValue(point: CGPoint(x: $0.textEnd, y: middle)) }), forKey: "island")
     }
 
-    /// Fades the content in or out at the cues, counted from `begin`: 180 ms in with a 4-point rise
-    /// for each line of text, 120 ms out.
+    /// Fades the content in or out at the cues, counted from `begin`: 180 ms in for the icon and the
+    /// ring, 250 ms for each line of text, 120 ms out. The text does not move as it fades: it stays
+    /// on the line of the icon and the ring, and the card carries it.
     func fade(_ cues: IslandCues, into visible: Bool, at begin: CFTimeInterval = CACurrentMediaTime()) {
         var parts: [(CALayer, Double?, Bool)] = [
             (icon, metrics.hasIcon ? cues.sides : nil, false), (ring, cues.sides, false),
@@ -700,12 +701,6 @@ extension IslandLayers {
             opacity.toValue = visible ? 1 : 0
             let group = CAAnimationGroup()
             group.animations = [opacity]
-            if visible, isText {
-                let rise = CABasicAnimation(keyPath: "transform.translation.y")
-                rise.fromValue = 4
-                rise.toValue = 0
-                group.animations?.append(rise)
-            }
             group.beginTime = begin + cue
             group.duration = duration
             group.timingFunction = CardPresenters.easeOut

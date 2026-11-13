@@ -3,6 +3,7 @@
 ```sh
 swift build
 swift test            # on Linux, or on a Mac with Xcode
+DRIP_FULL_SWEEP=1 swift test  # with every frame of the stack sweeps, as CI's test job runs them
 scripts/mac-check.sh  # on a Mac nobody works at, such as a VM, with DRIP_LIVE_CHECKS=isolated
 scripts/mac-e2e.sh    # the same, without a person; CI's live job runs it on every push
 scripts/record-demo.sh  # films docs/demo.mp4 and docs/demo.gif on a Mac; needs ffmpeg
@@ -64,32 +65,101 @@ the drop or for looking at its motion after a change.
 
 ### Leaves in a moving stack
 
-A note for later, not a plan. A card whose time is up leaves only from a stack at rest, so it can
-sit with an empty ring for up to about a second: while a card drops in, or while the cards that
-left before it rise and the others close up. Two rules in `CardStack` keep that rare. Cards whose
-time is up within `roundWindow` of each other leave together when they are neighbours, and a card
-does not drop in while a card on screen would run out of time before it had settled
-(`entranceSettling`). It still happens when cards run out as fast as they come in, since a card
-waiting comes in after each leave, and for a card whose time is up just after a round has gone.
+A card whose time is up leaves at that moment, while other cards still drop in, glide or leave.
+`CardStack` has no rest gate. This is how it stays in one piece.
 
-The way to end the wait altogether is to let a leave start while other cards still move. What
-stands in the way is that an animator aims at a snapshot of its anchor: `IslandAnimator.exit` and
-`enter` take a `DropletAnchor`, a fixed place, and work out once when the drop lets go and when it
-is swallowed. With no rest gate a drop rises to where its card was, or a card drops out of one
-that has gone. What that change would have to settle:
+- **Places add up.** A card's middle is a `SpringValue`: a sum of springs. Whatever moves a card is
+  added to everything that hangs from it or goes into it, from the same moment and on the same
+  spring (`CardStack.place`, `IslandAnimator.shift`). A change only ever adds springs that start
+  from rest, so every place and size is continuous, and every velocity too. Nothing is restarted.
+- **A drop is drawn against its card as it is now.** `StackOutline.pieces(at:)` melts each drop into
+  the shape its anchor has in that same frame. `IslandAnimator.init(metrics:under:)` gives a new
+  drop the springs still moving the card above it, and `resting` is where that card is heading.
+- **An anchor that leaves mid-drop.** The card gathers into a round drop in its place, so its
+  bottom edge draws back and the neck of the drop below pinches off early, by itself. That drop
+  lands in its own place, then closes up. `rehang` hands it to the card above only once its neck
+  has gone.
+- **Chains.** A drop still on its way into a card that starts to leave goes into the drop that card
+  gathers into, and the two rise as one (`leave`, `follow`). This nests to any depth.
+- **Nothing goes in view.** A drop is taken away once it is hidden inside the card it ends up in
+  (`container(of:)`), and not while anything is still drawn against it.
+- **Rounds.** Neighbours whose time is up within `roundWindow`, two frames, leave together, once the
+  time of the last is up. Neighbours are cards next to each other on screen: a card on its way out
+  is not between them. Any other card leaves on its own. `rounds` compares countdowns with each
+  other, never with the frame, so the order is the same for the same input.
+- **Cues.** A leave within the next step is planned for its exact moment, so the text fades as the
+  ring is empty. In the Mac app the leave is late only by as much as a tick comes later than the
+  one before it: one frame for a dropped frame. The sound plays with the entrance and does not move.
+- **One horizon.** `CardStack.horizon` says how far a step plans ahead: as long again as the step
+  took, and no further than `longestStep`, three frames of a 60 Hz screen. A step that takes long,
+  after a stall or a sleeping screen, tells nothing about the next one. So a card shows, and takes
+  the pointer, until its time is up, and no card is chosen for a place that is not free yet. The
+  stack keeps its own clock, and a drawing passes no step length. What is decided before
+  `advance`, as a card to grow out of the overflow drop, asks the same horizon, and `advance` then
+  looks at least as far.
+- **The overflow drop.** A card grows out of it the moment its place is free: as the drop of the
+  card leaving starts to rise. `CardStack.releaseMoment` chooses it on the step that reaches that
+  moment, so the card and the stack closing up start as one motion. Every place free at that
+  moment is taken on that step. The drop need not be at rest. The new card starts as the drop: it
+  takes the springs that move the drop and the neck the drop still has
+  (`IslandAnimator.init(metrics:from:)`), and the drop joins it with a new neck (`join`).
+  One hold is left. A card cannot spread while the drop still hangs from the card it forms out
+  of, about 0.35 s after it starts to form, unless that card leaves too. So a card that leaves in
+  the first 0.1 s of the drop holds the next card for at most 0.1 s after the stack closes up.
+- **Cards out of the drop at one moment.** Two places free at one moment give two cards that
+  start at that moment, in one place: the second starts inside the first. They are one shape of
+  liquid that parts in two, and three cards part in three.
+  - The second card is as wide as the first, so its melt runs up the round ends of the first
+    and its sides show beside it. `DropletField.traceTop` then starts the trace above everything
+    the drop changes. The line just inside the anchor is only for a drop under the straight part
+    of its anchor's bottom edge: for a wide drop it would cut the shape, and the cut shows as a
+    step. A third card is drawn against the second as the second is drawn, melted into the first
+    (`DropletField.hosts`), so two melts never cross.
+  - A card that starts inside the card before it keeps the neck it took from the drop for as
+    long as a new one (`IslandAnimator.rejoin`), however long ago the drop joined that card.
+  - Neither card shows its content before the two have parted: the lower one is drawn a third
+    of its blend below the upper one, where the join breaks. `CardStack.part` moves the cues of
+    both, once the step has closed the stack up, and `Changes.held` names them, so a drawing
+    plans their fades again. A card that starts under the card before it, as a drop on its
+    neck, holds nothing.
+  - The two edges that part are straight, so the join opens along its whole width at once, and
+    its corners at the cards' ends close to a point over the last two or three frames. A drop's
+    neck does the same in the middle. No frame before that has a sharp inside corner.
+- **The pointer** starts nothing and stops nothing. No time runs out under it and no gap closes.
+  What is in the air lands: a drop that rises is swallowed, a card that drops in opens.
+- **Pacing.** Only the spacing between entrances holds a card back (`CardStack.isReady`). A card
+  drops out of whatever is last in the stack, a card on its way out included (`CardStack.enter`).
+  The drop takes the springs that move that card at that moment
+  (`IslandAnimator.init(metrics:outOf:at:)`). So it starts hidden inside that card, where it is
+  and as fast as it is, and falls from it into its own place: under the last card that holds one.
+  It starts apart and melts in before it shows.
+  - Out of a capsule that still gathers in its place, it is as out of a card that starts to leave
+    a moment later: the rule above for an anchor that leaves mid-drop. A card due one frame
+    before the leave and one due one frame after it move the same way.
+  - Out of a drop that rises, it moves with the drop. Its neck lets go once it is drawn clear of
+    that drop and of what the drop goes into, so out of a drop that is nearly in, it is as out of
+    the notch or the card above. `StackOutline.pieces(at:)` draws it against that drop as the
+    drop itself is drawn, melted into what it goes into (`DropletField.hosts`).
+  - The two meet at the moment the drop starts to rise, where the stack closes up at once. Each
+    flight is smooth, but a card due one frame before that moment and one due one frame after it
+    take paths up to about 20 points apart for a quarter of a second, and open about a tenth of a
+    second apart.
 
-- A drop that follows its anchor as it moves, and what it does when the anchor leaves mid-drop:
-  letting go early is the likeliest answer.
-- Chains: a card hangs from one that goes into another, so one change replans every card below it.
-- Cues already sent. The ring's drain is a Core Animation animation with a start time, and the
-  sound is scheduled: they would freeze once set, and may then differ a little from the motion.
-- The overflow drop, which hangs from the last card, takes its seeds from it, and times the
-  hand-off on the leaving card holding its place.
-- The pointer, which holds the stack: with no rest gate it can hold cards in mid-air.
-- Pacing. The rest gate is also what keeps six cards readable.
+- **A hand-off.** A stack handed on to a background drip goes with its springs: `HandedMotion` is
+  each card's animator, on a clock that starts at the hand-off, and the card it hangs from. The
+  new stack draws on what the old one drew, whatever each card was doing. A drip that lays a card
+  out another way, or one that predates this, shows the card open in its place instead. The
+  overflow drop is not handed on: it goes, and the new stack forms its own.
 
-Try it in the web engine first: it has no lead time and no Core Animation, so each round is quick
-to judge by eye.
+`MovingStackTests` flies stacks at 120 Hz and checks these rules on every frame. Each sweep moves
+one moment against another in steps of one frame: a leave against an entrance, the moment a card is
+due against a leave, a leave against the overflow drop as it forms and as a card grows out of it,
+and the moment a moving stack is handed on. A plain `swift test` flies every fifth frame of each
+sweep, and every frame within two of each critical line (`Sweep`). For cards out of the drop at one
+moment it also traces the picture as it is drawn, on every frame: no cut shows on the outline, no
+two pieces cross on it, no inside corner is sharper than a radius of 1.5 points while two capsules
+overlap, and no content shows on two cards that are still joined (`Picture`).
+`DRIP_FULL_SWEEP=1 swift test` flies every frame, and CI's `test` job runs it so.
 
 ## The live agent check
 

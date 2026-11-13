@@ -29,7 +29,11 @@ jobs:
           key: swiftpm-${{ runner.os }}-${{ github.repository }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: swiftpm-${{ runner.os }}-${{ github.repository }}-
       - run: swift build --build-tests
+      # Every frame of the stack sweeps in MovingStackTests. A plain `swift test`, as the other
+      # jobs run it, flies every fifth frame and every frame near each critical line.
       - run: swift test --skip-build
+        env:
+          DRIP_FULL_SWEEP: "1"
 
   macos:
     # The release build, the way the Homebrew formula makes it for `brew install --HEAD`.

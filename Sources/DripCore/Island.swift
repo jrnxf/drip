@@ -21,7 +21,7 @@ public enum CardMetrics {
 }
 
 /// The sizes an island is built from.
-public struct IslandMetrics: Equatable, Sendable {
+public struct IslandMetrics: Equatable, Sendable, Codable {
     public var notchWidth: Double
     public var notchHeight: Double
     public var scale: Double
@@ -44,7 +44,7 @@ public struct IslandMetrics: Equatable, Sendable {
     public var fixedPill: PillSize?
 
     /// A capsule's width and height, in points.
-    public struct PillSize: Equatable, Sendable {
+    public struct PillSize: Equatable, Sendable, Codable {
         public var width: Double
         public var height: Double
 
@@ -197,7 +197,7 @@ public struct IslandContentLayout: Equatable, Sendable {
 }
 
 /// When each part of the content fades, in seconds after the shape starts moving.
-public struct IslandCues: Equatable, Sendable {
+public struct IslandCues: Equatable, Sendable, Codable {
     /// The icon and the countdown ring, or the button, at the capsule's two ends.
     public var sides: Double
     /// One cue for each line of the title, and of the detail.
@@ -285,13 +285,16 @@ public enum IslandUpdate {
 
 /// Moves the island through its entrance and exit with springs: a drop forms under the notch, breaks
 /// free on a neck and spreads into a capsule below the menu bar, then is pulled back up into the notch.
-public struct IslandAnimator: Sendable {
+public struct IslandAnimator: Equatable, Sendable, Codable {
     /// The card's sizes; a card replaced in place hands over to the new card's.
     public private(set) var metrics: IslandMetrics
     /// What the drop forms inside: the notch, or the capsule of the card above it in a stack.
     public let anchor: DropletAnchor?
     /// When the drop, gathered round on the way out, starts to rise; nil before `exit`.
     public private(set) var riseTime: Double?
+    /// When the neck of the drop pinches off on the way in, or the neck of the overflow drop to the
+    /// card that grows out of it; nil before `enter` or `join`.
+    public private(set) var letsGo: Double?
     private var dropCenter, pillWidth, pillHeight, progress, blend: SpringValue
     /// The width the content is laid out for: the open capsule's, until a resize springs it along
     /// with the capsule.
@@ -310,25 +313,105 @@ public struct IslandAnimator: Sendable {
         contentWidth = SpringValue(metrics.pillWidth)
     }
 
+    /// A drop that waits in the middle of the card `above` and goes wherever that card goes: it
+    /// takes on the springs still moving that card, so the two move as one until the drop falls, and
+    /// the fall is the same curve from a card that glides as from one at rest. `anchor` is that
+    /// card's capsule where it is heading.
+    public init(metrics: IslandMetrics, under above: IslandAnimator) {
+        self.metrics = metrics
+        anchor = above.resting
+        dropCenter = above.dropCenter
+        pillWidth = SpringValue(metrics.seedSize)
+        pillHeight = SpringValue(metrics.seedSize)
+        progress = SpringValue(0)
+        blend = SpringValue(metrics.blend)
+        contentWidth = SpringValue(metrics.pillWidth)
+    }
+
+    /// A drop that waits in the middle of `leaving`, a card on its way out, at `time`, whether that
+    /// card still gathers in its place or its drop already rises: it takes on the springs moving
+    /// that card at that moment, so it is where the card is, as fast as the card is. A spring planned
+    /// for later, as the rise of a card that still gathers, is that card's alone. It starts apart,
+    /// hidden whole inside that card, and melts into it as it starts to fall: see `enter`.
+    /// `anchor` is that card's open capsule where those springs take it: its place, while it
+    /// gathers there.
+    public init(metrics: IslandMetrics, outOf leaving: IslandAnimator, at time: Double) {
+        self.metrics = metrics
+        dropCenter = leaving.dropCenter.running(at: time)
+        anchor = .open(leaving.metrics, centerY: dropCenter.target)
+        pillWidth = SpringValue(metrics.seedSize)
+        pillHeight = SpringValue(metrics.seedSize)
+        progress = SpringValue(0)
+        blend = SpringValue(0)
+        contentWidth = SpringValue(metrics.pillWidth)
+    }
+
+    /// The open capsule where it is heading, at its card's size: what a drop out of it hangs from
+    /// and a drop into it aims at. A place, not a moment: whatever moves the capsule there moves
+    /// the drop with it.
+    public var resting: DropletAnchor { .open(metrics, centerY: dropCenter.target) }
+
+    /// The same animator on a clock that reads `offset` more at every moment: every spring and
+    /// every moment it keeps is that much later, so it draws the same shape at the same moment on
+    /// the other clock. A stack handed on to another drip goes on from its springs this way.
+    public func shifted(by offset: Double) -> IslandAnimator {
+        var animator = self
+        animator.riseTime = riseTime.map { $0 + offset }
+        animator.letsGo = letsGo.map { $0 + offset }
+        animator.dropCenter = dropCenter.shifted(by: offset)
+        animator.pillWidth = pillWidth.shifted(by: offset)
+        animator.pillHeight = pillHeight.shifted(by: offset)
+        animator.progress = progress.shifted(by: offset)
+        animator.blend = blend.shifted(by: offset)
+        animator.contentWidth = contentWidth.shifted(by: offset)
+        return animator
+    }
+
     /// Starts the entrance at `time` and returns when the content fades in. The capsule settles with
     /// its top at `top`, below the notch unless given.
-    public mutating func enter(at time: Double, top: Double? = nil) -> IslandCues {
+    ///
+    /// A drop made with `init(metrics:outOf:at:)` starts apart, and melts in from `time` on
+    /// `meltIn`. Out of a card that still gathers in its place it then falls as out of a card that
+    /// stays: the neck pinches off at the same moment of the fall, or sooner by itself as that card
+    /// draws back. `rising` is for a drop out of a drop that already rises, with `host` the card
+    /// that drop goes into, nil for the notch. The new drop is drawn against both, and the first
+    /// moves away as it falls. So its neck pinches off where it is drawn a third of the blend below
+    /// both, and not at a moment of the fall: out of a drop far from its host that is soon, and out
+    /// of one that is nearly in, it is as out of the host itself.
+    public mutating func enter(
+        at time: Double, top: Double? = nil, outOf rising: IslandAnimator? = nil, into host: IslandAnimator? = nil
+    ) -> IslandCues {
         let m = metrics
         let anchorBottom = anchor?.bottom ?? m.notchHeight
         // The drop swells under the notch, stretches into a neck as it falls, and pinches off; only
         // then does it spread into the capsule, while the notch pulls its half of the neck back in.
         let fall = Spring(duration: 0.62, bounce: 0.2)
         let center = (top ?? m.pillTop) + m.pillHeight / 2
-        dropCenter.animate(to: center, with: fall, at: time)
         // The notch feeds the drop as it hangs, so the bulb outgrows its neck.
         let feed = Spring(duration: 0.3)
         pillWidth.animate(to: m.dropSize, with: feed, at: time)
         pillHeight.animate(to: m.dropSize, with: feed, at: time)
-        let start = dropCenter.value(at: time)
-        let detached = Self.firstTime(after: time) { t in
-            start + (center - start) * fall.progress(at: t - time) - m.dropSize / 2
-                >= anchorBottom + m.blend / 3
+        // From where the drop waits to where it lands, both as places: a card that still glides
+        // carries the drop it lets fall, so the neck pinches off at the same moment of the fall.
+        let start = dropCenter.target
+        dropCenter.animate(to: center, with: fall, at: time)
+        // A drop that starts apart melts in before it shows.
+        if blend.target < m.blend { blend.animate(to: m.blend, with: Self.meltIn, at: time) }
+        let detached: Double
+        if let rising {
+            let drop = self
+            detached = Self.firstTime(after: time) { t in
+                let above = rising.shape(at: t), into = host?.shape(at: t)
+                let floor = max(above.pillTop + above.pillHeight, into.map { $0.pillTop + $0.pillHeight } ?? m.notchHeight)
+                return drop.shape(at: t).pillTop >= floor + m.blend / 3
+            }
+        } else {
+            detached = Self.firstTime(after: time) { t in
+                start + (center - start) * fall.progress(at: t - time) - m.dropSize / 2
+                    >= anchorBottom + m.blend / 3
+            }
         }
+        letsGo = detached
         blend.animate(to: 0, with: Spring(duration: 0.35), at: detached)
         let grow = Self.grow
         pillWidth.animate(to: m.pillWidth, with: grow, at: detached)
@@ -336,6 +419,9 @@ public struct IslandAnimator: Sendable {
         progress.animate(to: 1, with: grow, at: detached)
         return cues(spreading: grow, from: detached, start: time)
     }
+
+    /// How a drop out of a card on its way out melts into it: full before the drop shows.
+    public static let meltIn = Spring(duration: 0.08)
 
     /// How a drop spreads into its capsule once it has broken free.
     public static let grow = Spring(duration: 0.5, bounce: 0.15)
@@ -356,16 +442,19 @@ public struct IslandAnimator: Sendable {
                 m.detailLines, from: roomy + 0.04 + Double(max(m.titleLines - 1, 0)) * step, step: step))
     }
 
-    /// A drop that starts as `shape`, unopened and apart from anything: a card growing out of the
-    /// overflow drop, where the overflow drop is.
-    public init(metrics: IslandMetrics, from shape: IslandShape) {
+    /// A card that starts as `drop`, the overflow drop it grows out of, unopened: it takes the
+    /// springs that move the drop, and those of the neck the drop still has to the card above it.
+    /// So it is where the drop is, as large, as fast and as melted, whatever the drop is doing, and
+    /// what `spread` adds starts from rest.
+    public init(metrics: IslandMetrics, from drop: IslandAnimator) {
         self.metrics = metrics
         anchor = nil
-        dropCenter = SpringValue(shape.pillTop + shape.pillHeight / 2)
-        pillWidth = SpringValue(shape.pillWidth)
-        pillHeight = SpringValue(shape.pillHeight)
+        dropCenter = drop.dropCenter
+        pillWidth = drop.pillWidth
+        pillHeight = drop.pillHeight
         progress = SpringValue(0)
-        blend = SpringValue(0)
+        blend = drop.blend
+        letsGo = drop.letsGo
         contentWidth = SpringValue(metrics.pillWidth)
     }
 
@@ -398,9 +487,27 @@ public struct IslandAnimator: Sendable {
         pillHeight.animate(to: metrics.pillHeight, with: pop, at: time + 0.06)
     }
 
-    /// Melts the drop into what it touches from `time`, and lets go of it 0.12 s later: the overflow
-    /// drop stays joined to the card growing out of it until the neck between them pinches off.
-    public mutating func melt(at time: Double) {
+    /// Melts the drop into the card that grows out of it from `time`, and lets go of it 0.12 s
+    /// later: the overflow drop stays joined to that card until the neck between them pinches off.
+    /// That neck starts from nothing. The one the drop had before went with the card, which starts
+    /// as the drop: see `init(metrics:from:)`.
+    public mutating func join(at time: Double) {
+        blend = SpringValue(0)
+        melt(from: time)
+    }
+
+    /// For a card that starts as the overflow drop inside the card that grew out of it before:
+    /// keeps the neck it took from the drop, as it is at `time`, for as long as a new one. The
+    /// two are one shape until they part, however long ago the drop joined that card. What the
+    /// neck had planned for later goes, and what this adds starts from rest.
+    public mutating func rejoin(at time: Double) {
+        blend = blend.running(at: time)
+        melt(from: time)
+    }
+
+    /// Melts in full from `time`, and lets go 0.12 s later.
+    private mutating func melt(from time: Double) {
+        letsGo = time + 0.12
         blend.animate(to: metrics.blend, with: Spring(duration: 0.1), at: time)
         blend.animate(to: 0, with: Spring(duration: 0.35), at: time + 0.12)
     }
@@ -412,8 +519,8 @@ public struct IslandAnimator: Sendable {
         let m = metrics
         // The capsule gathers back into a round drop, which only then rises; the notch reaches for it,
         // they merge and the notch swallows it.
-        let shrink = Spring(duration: 0.22)
-        let gather = time + 0.03
+        let shrink = Self.gather
+        let gather = time + Self.gatherDelay
         pillWidth.animate(to: m.dropSize, with: shrink, at: gather)
         pillHeight.animate(to: m.dropSize, with: shrink, at: gather)
         progress.animate(to: 0, with: shrink, at: gather)
@@ -429,10 +536,43 @@ public struct IslandAnimator: Sendable {
         let swallowed = anchor.map { $0.centerY - $0.halfHeight + m.dropSize / 2 + 2 * m.scale }
             ?? m.dropTop + m.dropSize / 2 - m.dropSize
         riseTime = rise
-        dropCenter.animate(to: swallowed, with: Spring(duration: 0.4), at: rise)
-        return IslandCues(
-            sides: 0, title: IslandCues.lines(m.titleLines, from: 0, step: 0),
-            detail: IslandCues.lines(m.detailLines, from: 0, step: 0))
+        dropCenter.animate(to: swallowed, with: Self.rise, at: rise)
+        return exitCues
+    }
+
+    /// When the content fades out on the exit, in seconds after it starts: all of it at once.
+    public var exitCues: IslandCues {
+        IslandCues(
+            sides: 0, title: IslandCues.lines(metrics.titleLines, from: 0, step: 0),
+            detail: IslandCues.lines(metrics.detailLines, from: 0, step: 0))
+    }
+
+    /// How a card on its way out gathers into a round drop, and how long after its exit starts.
+    public static let gather = Spring(duration: 0.22)
+    public static let gatherDelay = 0.03
+    /// How the gathered drop rises into what swallows it.
+    public static let rise = Spring(duration: 0.4)
+
+    /// Springs `change` further than wherever the capsule's middle is heading, from `time`: what
+    /// moves the card it hangs from, or the card it goes into, moves it too.
+    public mutating func shift(by change: Double, at time: Double, with spring: Spring) {
+        dropCenter.shift(by: change, with: spring, at: time)
+    }
+
+    /// Where the capsule's middle is heading.
+    public var targetCenter: Double { dropCenter.target }
+
+    /// Lets the melt go from `time`, as fast as a drop rises, or from when this drop starts to rise
+    /// if that is later: a drop that goes into another drop becomes one with it, and two round
+    /// drops in one place have nothing left to bridge.
+    public mutating func merge(at time: Double) {
+        blend.animate(to: 0, with: Self.rise, at: max(time, riseTime ?? time))
+    }
+
+    /// Whether the drop still melts into what it hangs from or goes into at `time`.
+    public func melts(at time: Double) -> Bool {
+        // A drop on its way in hangs until its neck pinches off, however little it melts yet.
+        blend.value(at: time) > 0.01 || (letsGo.map { time < $0 } ?? false)
     }
 
     /// Moves the open capsule so its top is at `top`, starting at `time`: a card in a stack closing
@@ -446,8 +586,11 @@ public struct IslandAnimator: Sendable {
 
     /// Springs the open capsule from its card's size to `metrics`, a new card's, starting at `time`,
     /// with its top where it is heading. The icon and the ring ride the capsule's ends, and the text
-    /// column widens or narrows with it.
-    public mutating func resize(to metrics: IslandMetrics, at time: Double, with spring: Spring = IslandUpdate.resize) {
+    /// column widens or narrows with it. Returns when these springs have settled.
+    @discardableResult
+    public mutating func resize(
+        to metrics: IslandMetrics, at time: Double, with spring: Spring = IslandUpdate.resize
+    ) -> Double {
         let top = targetTop
         self.metrics = metrics
         // The center moves half as far as the bottom, on the same spring, so the top holds still.
@@ -455,6 +598,7 @@ public struct IslandAnimator: Sendable {
         pillWidth.animate(to: metrics.pillWidth, with: spring, at: time)
         pillHeight.animate(to: metrics.pillHeight, with: spring, at: time)
         contentWidth.animate(to: metrics.pillWidth, with: spring, at: time)
+        return time + spring.settlingTime
     }
 
     /// Where the capsule's top is heading.
@@ -480,6 +624,7 @@ public struct IslandAnimator: Sendable {
         blend.jump(to: 0)
         progress.jump(to: 1)
         contentWidth.jump(to: m.pillWidth)
+        letsGo = nil
     }
 
     /// When every spring has settled.

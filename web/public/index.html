@@ -852,6 +852,10 @@ class Stage {
       if (entered.fromDrop) card.dropGhost = { count: entered.fromDrop, at: entered.start, handOver: entered.handOver, up: true };
       st.newest = card; announce(card); this.emit("begin", card);
     }
+    for (const held of changes.held ?? []) {
+      const card = st.cards.get(held.handle);
+      if (card) Object.assign(card, { start: held.start, cues: held.cues, visible: held.countdownFrom - held.start });
+    }
     for (const swapped of changes.swapped ?? []) {
       const card = st.cards.get(swapped.handle), old = st.cards.get(swapped.old);
       const newIcon = JSON.stringify(old.card.icon) !== JSON.stringify(card.card.icon) || old.accent !== card.accent;

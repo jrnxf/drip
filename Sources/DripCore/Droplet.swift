@@ -12,7 +12,7 @@ import Foundation
 
 /// What a drop grows out of and goes back into: the notch, or the capsule of the card above it in a
 /// stack. A rounded box centered on x = 0.
-public struct DropletAnchor: Equatable, Sendable {
+public struct DropletAnchor: Equatable, Sendable, Codable {
     public var centerY: Double
     public var halfWidth: Double
     public var halfHeight: Double
@@ -39,37 +39,93 @@ public struct DropletAnchor: Equatable, Sendable {
             halfHeight: shape.pillHeight / 2, radius: shape.pillRadius(metrics))
     }
 
+    /// A card's open capsule, at the full size of `metrics`, with its middle at `centerY`.
+    public static func open(_ metrics: IslandMetrics, centerY: Double) -> DropletAnchor {
+        DropletAnchor(
+            centerY: centerY, halfWidth: metrics.pillWidth / 2, halfHeight: metrics.pillHeight / 2,
+            radius: min(metrics.pillWidth / 2, metrics.pillHeight / 2, metrics.pillCornerRadius))
+    }
+
     public var bottom: Double { centerY + halfHeight }
 }
 
 /// The anchor and the drop as one field, negative inside.
 public struct DropletField: Sendable {
+    /// What an anchor that is itself a drop is melted into, and how strongly what hangs from this
+    /// melts into it.
+    public struct Host: Equatable, Sendable {
+        public var anchor: DropletAnchor
+        public var blend: Double
+
+        public init(anchor: DropletAnchor, blend: Double) {
+            self.anchor = anchor
+            self.blend = blend
+        }
+    }
+
     public let metrics: IslandMetrics
     public let shape: IslandShape
     public let anchor: DropletAnchor
+    /// For an anchor that is a drop on its way out: what it goes into, outermost first, so the drop
+    /// is drawn against its anchor as the anchor itself is drawn. The last one's `blend` is how
+    /// strongly the anchor melts into it. Empty for the notch or a card that stays.
+    public let hosts: [Host]
     /// Where tracing the outline starts: just inside the anchor, whose own shape covers the cut, for a
-    /// drop below it; above the drop for one that falls into the anchor from above.
+    /// drop below it; above the drop for one that falls into the anchor from above. With `hosts`,
+    /// above everything the drop changes: over that line the field is its anchor's own.
+    ///
+    /// The line just inside the anchor holds only while the melt stays under the straight part of
+    /// the anchor's bottom edge. A drop as wide as its anchor, as a card that grows out of the
+    /// overflow drop beside another, melts into the anchor's round ends, and its own sides show
+    /// beside the anchor above that line. A cut there would show as a step. So the trace then
+    /// starts above everything the drop changes too.
     public let traceTop: Double
 
-    public init(metrics: IslandMetrics, shape: IslandShape, anchor: DropletAnchor? = nil, traceTop: Double? = nil) {
+    public init(
+        metrics: IslandMetrics, shape: IslandShape, anchor: DropletAnchor? = nil, hosts: [Host] = [],
+        traceTop: Double? = nil
+    ) {
         self.metrics = metrics
         self.shape = shape
         let anchor = anchor ?? .notch(metrics)
         self.anchor = anchor
-        self.traceTop = traceTop ?? anchor.bottom - 4 * metrics.scale
+        self.hosts = hosts
+        let inside = anchor.bottom - 4 * metrics.scale
+        let above = shape.pillTop - shape.blend - 1
+        self.traceTop = traceTop
+            ?? (hosts.isEmpty ? (Self.spills(shape, over: anchor) ? min(inside, above) : inside) : above)
+    }
+
+    /// Whether the melt of `shape` reaches past the straight part of the bottom edge of `anchor`,
+    /// into its round ends: the drop is about as wide as its anchor, or wider.
+    public static func spills(_ shape: IslandShape, over anchor: DropletAnchor) -> Bool {
+        let straight = anchor.halfWidth - min(anchor.radius, anchor.halfWidth, anchor.halfHeight)
+        return shape.pillWidth / 2 + shape.blend > straight
     }
 
     /// Whether the drop is close enough to its anchor for the two to melt together. Otherwise the
     /// drop is a plain capsule, hidden behind the anchor or floating free of it.
     public var touchesNotch: Bool {
         let top = shape.pillTop, bottom = shape.pillTop + shape.pillHeight
-        return shape.blend > 0.01 && top < anchor.bottom + shape.blend && bottom > anchor.bottom - shape.blend
+        return shape.blend > 0.01 && ([anchor] + hosts.map(\.anchor)).contains { anchor in
+            top < anchor.bottom + shape.blend && bottom > anchor.bottom - shape.blend
+        }
     }
 
     public func value(x: Double, y: Double) -> Double {
-        let notch = Self.roundedBox(
-            x: x, y: y, centerX: 0, centerY: anchor.centerY, halfWidth: anchor.halfWidth,
-            halfHeight: anchor.halfHeight, radius: anchor.radius)
+        let box = { (anchor: DropletAnchor) in
+            Self.roundedBox(
+                x: x, y: y, centerX: 0, centerY: anchor.centerY, halfWidth: anchor.halfWidth,
+                halfHeight: anchor.halfHeight, radius: anchor.radius)
+        }
+        var notch: Double
+        if let outermost = hosts.first {
+            notch = box(outermost.anchor)
+            for (host, into) in zip(hosts.dropFirst(), hosts) { notch = Self.smoothMin(notch, box(host.anchor), blend: into.blend) }
+            notch = Self.smoothMin(notch, box(anchor), blend: hosts[hosts.count - 1].blend)
+        } else {
+            notch = box(anchor)
+        }
         let halfWidth = shape.pillWidth / 2, halfHeight = shape.pillHeight / 2
         let drop = Self.roundedBox(
             x: x, y: y, centerX: 0, centerY: shape.pillTop + halfHeight, halfWidth: halfWidth,
