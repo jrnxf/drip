@@ -504,7 +504,6 @@ final class StackSession {
     /// The islands of the cards that gave way and wait to come back, in `CardStack.tucked`'s order:
     /// the page keeps them.
     var tucked: [Int32] = []
-    var clock = 0.0
     /// Where the pointer last was on the stack, nil while it is off it.
     var pointer: IslandPoint?
 
@@ -567,7 +566,7 @@ public func dripStackOffer(_ stackHandle: Int32, _ handle: Int32) -> UnsafePoint
     return send(["taken": true, "dropped": dropped])
 }
 
-/// Moves the stack's clock to `time`, as the app's stack does every tick. When the stack is at rest
+/// Moves the stack's clock to `time`, as the app's stack does every tick. When a card may come in
 /// it takes in a later command's card, first one that shows in place of a card with the same id,
 /// then its own next card. Then it counts down, sends cards off and closes the gaps. `othersWaiting`
 /// is 1 while a later command's cards wait for the stack to finish, such as a question: cards that
@@ -583,8 +582,6 @@ public func dripStackOffer(_ stackHandle: Int32, _ handle: Int32) -> UnsafePoint
 public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting: Int32) -> UnsafePointer<UInt8> {
     guard let session = stacks[stackHandle] else { return send(["done": true]) }
     let stack = session.stack
-    let elapsed = max(time - session.clock, 0)
-    session.clock = time
     var entered: [[String: Any]] = []
     var swapped: [[String: Any]] = []
     func enter(_ handle: Int32, own: Bool) {
@@ -602,11 +599,12 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
     func adoptable() -> [(handle: Int32, island: Island)] {
         session.adoptable.compactMap { handle in islands[handle].map { (handle, $0) } }
     }
-    // One change at a time, into a stack at rest, as CardStack.nextAdmission decides.
-    let swapping = stack.canSwap(at: time), entering = stack.isReady(at: time)
-    admit: while true {
+    // One change at a time, as CardStack.nextAdmission decides, while a card may come in: checked
+    // once, so a card that swaps in place does not hold back the next.
+    let ready = stack.isReady(at: time)
+    admit: while ready {
         let offered = adoptable()
-        switch stack.nextAdmission(adoptable: offered.map(\.island.card), swapping: swapping, entering: entering) {
+        switch stack.nextAdmission(adoptable: offered.map(\.island.card)) {
         case let .swap(shown, index):
             let (handle, island) = offered[index]
             guard let old = session.islandOf[shown.id], let before = islands[old] else { break admit }
@@ -640,8 +638,9 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
             break admit
         }
     }
-    func release() {
-        guard stack.canRelease(at: time) else { return }
+    var released: [(handle: Int32, release: CardStack.Release)] = []
+    /// Grows the next card waiting out of the overflow drop. Returns whether one came out.
+    func release() -> Bool {
         let offered = adoptable()
         var next: (handle: Int32, own: Bool)?
         switch stack.nextRelease(adoptable: offered.map(\.island.card)) {
@@ -656,29 +655,32 @@ public func dripStackStep(_ stackHandle: Int32, _ time: Double, _ othersWaiting:
         case .swap, .skipOwn, nil:
             break
         }
-        if let next, let island = islands[next.handle],
-           let release = stack.release(island.card, metrics: island.animator.metrics, own: next.own, at: time)
-        {
-            session.islandOf[release.entry.id] = next.handle
-            if case let .entering(start, entryCues) = release.entry.phase {
-                entered.append([
-                    "handle": next.handle, "start": start, "cues": cues(entryCues),
-                    "countdownFrom": release.entry.countdownFrom, "waits": release.entry.isWaiting,
-                    "fromDrop": release.last ? release.count : 0,
-                    "handOver": [CardStack.handOver.duration, CardStack.handOver.bounce, CardStack.handOver.settlingTime],
-                ])
-            }
-        }
+        guard let next, let island = islands[next.handle],
+              let release = stack.release(island.card, metrics: island.animator.metrics, own: next.own, decided: time, at: time)
+        else { return false }
+        session.islandOf[release.entry.id] = next.handle
+        released.append((next.handle, release))
+        return true
     }
-    release()
+    // Every card with a place free on this step grows out of the drop, from the moment the drops
+    // of the cards leaving start to rise.
+    while stack.canRelease(at: time), release() {}
     // Later commands' cards still offered want room, and those the stack did not take want it to
     // finish; cards that wait for you give way to them.
     let changes = stack.advance(
-        to: time, elapsed: elapsed, lead: 0, needsRoom: !session.adoptable.isEmpty, othersWaiting: othersWaiting != 0,
+        to: time, lead: 0, needsRoom: !session.adoptable.isEmpty, othersWaiting: othersWaiting != 0,
         queued: session.offered)
-    // A card leaving makes room for the next card waiting in the overflow
-    // drop, which grows out of it from the same moment.
-    if !changes.left.isEmpty { release() }
+    // Told after the step: cards that grow out of the drop as one shape show their content once
+    // they have parted, and the step says when (`Changes.held`).
+    for (handle, release) in released {
+        guard case let .entering(start, entryCues) = release.entry.phase else { continue }
+        entered.append([
+            "handle": handle, "start": start, "cues": cues(entryCues),
+            "countdownFrom": release.entry.countdownFrom, "waits": release.entry.isWaiting,
+            "fromDrop": release.last ? release.count : 0,
+            "handOver": [CardStack.handOver.duration, CardStack.handOver.bounce, CardStack.handOver.settlingTime],
+        ])
+    }
     peek(stack, at: session.pointer, time: time)
     let stoppedWaiting = changes.stoppedWaiting.compactMap { session.islandOf[$0.id] }
     let left: [[String: Any]] = changes.left.compactMap { left in

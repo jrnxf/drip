@@ -71,8 +71,8 @@ public struct SpringMotion: Equatable, Sendable, Codable {
 
 /// A value that springs towards each new target. A new target adds a spring on top of the ones still
 /// running instead of restarting, so the value keeps its velocity through an interruption.
-public struct SpringValue: Equatable, Sendable {
-    private struct Part: Equatable, Sendable {
+public struct SpringValue: Equatable, Sendable, Codable {
+    private struct Part: Equatable, Sendable, Codable {
         var change: Double
         var spring: Spring
         var start: Double
@@ -98,7 +98,29 @@ public struct SpringValue: Equatable, Sendable {
 
     /// Springs from wherever the value is heading towards `target`, starting at `time`.
     public mutating func animate(to target: Double, with spring: Spring, at time: Double) {
-        parts.append(Part(change: target - self.target, spring: spring, start: time, settled: spring.settlingTime))
+        shift(by: target - self.target, with: spring, at: time)
+    }
+
+    /// Springs `change` further than wherever the value is heading, starting at `time`: what moves
+    /// one value moves another with it when both are given the same shift.
+    public mutating func shift(by change: Double, with spring: Spring, at time: Double) {
+        parts.append(Part(change: change, spring: spring, start: time, settled: spring.settlingTime))
+    }
+
+    /// The value with only the springs that have started by `time`: it moves as this one does until
+    /// a spring planned for later starts, and then stays behind.
+    public func running(at time: Double) -> SpringValue {
+        var value = self
+        value.parts.removeAll { $0.start > time }
+        return value
+    }
+
+    /// The same value on a clock that reads `offset` more at every moment: each spring starts
+    /// that much later, so it is where this one is, as fast, at the same moment on the other clock.
+    public func shifted(by offset: Double) -> SpringValue {
+        var value = self
+        for index in value.parts.indices { value.parts[index].start += offset }
+        return value
     }
 
     /// Jumps to `value` with no motion.

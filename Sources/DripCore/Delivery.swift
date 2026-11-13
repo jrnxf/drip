@@ -188,10 +188,14 @@ public struct HandedCard: Equatable, Sendable, Codable {
     public var leaving: Double?
     /// The springs still taking its top there, as it glides into a gap; none at rest.
     public var glide: [SpringMotion]
+    /// Every spring that moves it and what it hangs from, so it is drawn on exactly as it was,
+    /// whatever it was doing. Nil from a drip that predates it, and for a card made by hand: the
+    /// card then shows open at `top`, gliding on as `glide` says, and leaves from there.
+    public var motion: HandedMotion?
 
     public init(
         card: Card, top: Double, remaining: Double, isWaiting: Bool, leaving: Double? = nil,
-        glide: [SpringMotion] = []
+        glide: [SpringMotion] = [], motion: HandedMotion? = nil
     ) {
         self.card = card
         self.top = top
@@ -199,6 +203,7 @@ public struct HandedCard: Equatable, Sendable, Codable {
         self.isWaiting = isWaiting
         self.leaving = leaving
         self.glide = glide
+        self.motion = motion
     }
 
     /// Where its capsule's top is drawn.
@@ -210,11 +215,59 @@ public struct HandedCard: Equatable, Sendable, Codable {
     /// on its glide.
     public func aged(by age: Double) -> HandedCard {
         var card = self
-        card.remaining = max(remaining - age, 0)
+        // A countdown still to start counts only from when it does.
+        card.remaining = max(remaining - max(age - (motion?.countsIn ?? 0), 0), 0)
+        card.motion = motion?.aged(by: age)
         card.leaving = leaving.map { $0 + age }
         card.glide = glide.map { SpringMotion(change: $0.change, spring: $0.spring, elapsed: $0.elapsed + age) }
             .filter { $0.elapsed < $0.spring.settlingTime }
         return card
+    }
+}
+
+/// How a card handed on moves: its springs, and what it needs to go on as it was. Every moment is
+/// in seconds after the moment the card is as it is: when it was handed on, or `age` later once
+/// `aged`. A moment before that is negative.
+public struct HandedMotion: Equatable, Sendable, Codable {
+    /// A card still coming in: when its drop started to fall, and when its content fades in after
+    /// that.
+    public struct Entrance: Equatable, Sendable, Codable {
+        public var start: Double
+        public var cues: IslandCues
+    }
+
+    /// Its springs.
+    public var animator: IslandAnimator
+    /// The card it hangs from or goes into, as how many cards above it that card is in the cards
+    /// handed on; nil for the notch.
+    public var anchor: Int?
+    /// Set while it still comes in.
+    public var entrance: Entrance?
+    /// The top of the place it holds in the stack.
+    public var place: Double
+    /// For a card on its way out that still holds its place: when its drop starts to rise.
+    public var rises: Double?
+    /// How long until its countdown starts; 0 once it has.
+    public var countsIn: Double
+    /// When the springs of its own coming in settle; nil when they have.
+    public var restsAt: Double?
+    /// Whether it grew out of the overflow drop, and whether it dropped out of a card on its way
+    /// out.
+    public var outOfDrop: Bool
+    public var outOfLeaving: Bool
+    /// Whether it was taken away while it still came in, by a click on its button or not: it goes
+    /// once it is in.
+    public var dismissed: Bool?
+
+    /// The same `age` seconds on.
+    func aged(by age: Double) -> HandedMotion {
+        var motion = self
+        motion.animator = animator.shifted(by: -age)
+        motion.entrance?.start -= age
+        motion.rises = rises.map { $0 - age }
+        motion.countsIn = max(countsIn - age, 0)
+        motion.restsAt = restsAt.map { $0 - age }
+        return motion
     }
 }
 

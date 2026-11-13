@@ -74,7 +74,6 @@ final class StackPresenter: CardPresenting {
     /// How long after it is decided a change starts moving: `minimumLead`, or longer when sampling
     /// the springs took longer than that last time, as in a debug build or on a busy Mac.
     private var lead = minimumLead
-    private var lastTick: Double = 0
     private var lastAdoptionCheck = -Double.infinity
     /// When the stack last looked for dismissals and a pause.
     private var lastRequestCheck = -Double.infinity
@@ -402,19 +401,20 @@ final class StackPresenter: CardPresenting {
     }
 
     /// Grows the next card waiting out of the overflow drop, decided at `decided`: this drip's own
-    /// first, then the oldest newer drip's that does not show in place of a card on screen.
-    private func release(decided: Double) {
+    /// first, then the oldest newer drip's that does not show in place of a card on screen. Returns
+    /// whether a card waiting came out of the drop or was dropped from it, so another may follow.
+    private func release(decided: Double) -> Bool {
         let card: Card
         let own: Bool
         switch stack.nextRelease(adoptable: others.map(\.card), isReplaced: CardQueue.isReplaced) {
         case .own:
-            guard let next = stack.nextOwn() else { return }
+            guard let next = stack.nextOwn() else { return false }
             card = next
             own = true
         case .skipOwn:
             // Replaced since it was queued: the drop's count goes down instead.
             neverShown(stack.dropWaiting(at: 0), as: .replaced)
-            return
+            return true
         case let .enter(index):
             let found = others.remove(at: index)
             CardQueue.adopt(index: found.index, in: found.ticket)
@@ -424,20 +424,22 @@ final class StackPresenter: CardPresenting {
             own = false
         case .tucked:
             // A card that gave way comes back once the cards that needed its place have had theirs.
-            guard let tucked = stack.nextTucked() else { return }
+            guard let tucked = stack.nextTucked() else { return false }
             card = tucked.card
             own = tucked.own
         case .swap, nil:
-            return
+            return false
         }
         let layers = makeLayers(for: card)
-        guard let release = stack.release(card, metrics: layers.metrics, own: own, at: decided + lead) else { return }
+        guard let release = stack.release(card, metrics: layers.metrics, own: own, decided: decided, at: decided + lead)
+        else { return false }
         if release.last, let overflowLayers, case let .entering(start, _) = release.entry.phase {
             // The drop itself spreads into the card, and its last number rolls out over it.
             spreadInto = (release.entry.id, start + CardStack.handOver.duration)
             overflowLayers.rollOut(from: release.count, at: started + start, up: true)
         }
         show(release.entry, layers: layers, decided: decided)
+        return true
     }
 
     /// Draws `entry`, which `layers` lay out, as it drops in or grows out of the overflow drop,
@@ -472,9 +474,10 @@ final class StackPresenter: CardPresenting {
         updateAccessibility()
     }
 
-    /// Shows the cards another drip's stack handed on where they were, as they were: no drop, no
-    /// sound and no announcement, each counting down what it had left, and one that was leaving as
-    /// far into it, all as they are by now. Then tells that drip, so its stack can go.
+    /// Shows the cards another drip's stack handed on where they were, as they were: no sound and
+    /// no announcement, each moving on as it moved, counting down what it had left, one that was
+    /// still coming in as far in, and one that was leaving as far into it, all as they are by now.
+    /// Then tells that drip, so its stack can go.
     private func resumeHanded(_ handOff: StackHandOff) {
         let decided = now
         var resumed: [(entry: CardStack.Entry, exit: IslandCues?, layers: IslandLayers)] = []
@@ -492,6 +495,16 @@ final class StackPresenter: CardPresenting {
         handed = nil
         replan(from: decided)
         for (entry, exit, layers) in resumed {
+            if case let .entering(start, cues) = entry.phase {
+                // Still coming in: its content fades in on its cues, as far in as it was.
+                layers.fade(cues, into: true, at: started + start)
+                if entry.isWaiting {
+                    layers.hold(pinging: true, at: started + entry.countdownFrom)
+                } else {
+                    layers.drain(over: entry.card.seconds, at: started + entry.countdownFrom)
+                }
+                continue
+            }
             layers.showContent()
             if let exit, let leaving = entry.exit {
                 layers.fade(exit, into: false, at: started + leaving.time)
@@ -592,7 +605,7 @@ final class StackPresenter: CardPresenting {
                     // A stack that takes no cards in still lets a newer card with the same id take
                     // the place of its own on screen, and its cards that wait give way to any drip
                     // waiting for its turn, as a drip that shows one card at a time does.
-                    if stack.canSwap(at: time) { replaceOwn() }
+                    if stack.isReady(at: time) { replaceOwn() }
                     othersWaiting = stack.live.contains(where: \.isWaiting)
                         && CardQueue.othersWait(except: Set(stack.live.compactMap(\.card.id)), adopts: false)
                 }
@@ -627,59 +640,68 @@ final class StackPresenter: CardPresenting {
                 needsRoom = false
             }
         }
-        let swapping = stack.canSwap(at: time, starting: time + lead)
-        let entering = stack.isReady(at: time, starting: time + lead)
-        while let admission = stack.nextAdmission(
-            adoptable: others.map(\.card), isReplaced: CardQueue.isReplaced, swapping: swapping, entering: entering)
-        {
-            switch admission {
-            case let .swap(shown, index):
-                // A newer card with the same id as one on screen takes its place there.
-                let found = others.remove(at: index)
-                CardQueue.adopt(index: found.index, in: found.ticket)
-                CardQueue.supersede(with: found.card, from: found.ticket)
-                // This drip's own card ends here, however the card that takes its place goes.
-                if shown.own { note(.replaced, for: shown) }
-                swap(shown, for: found.card)
-            case let .enter(index):
-                let found = others.remove(at: index)
-                CardQueue.adopt(index: found.index, in: found.ticket)
-                CardQueue.supersede(with: found.card, from: found.ticket)
-                if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
-                enter(found.card, own: false)
-                return
-            case .own:
-                if let card = stack.nextOwn() { enter(card, own: true) }
-                return
-            case .skipOwn:
-                neverShown(stack.dropWaiting(at: 0), as: .replaced)
-                return
-            case .tucked:
-                if let tucked = stack.nextTucked() { enter(tucked.card, own: tucked.own) }
-                return
+        if stack.isReady(at: time, starting: time + lead) {
+            while let admission = stack.nextAdmission(adoptable: others.map(\.card), isReplaced: CardQueue.isReplaced) {
+                switch admission {
+                case let .swap(shown, index):
+                    // A newer card with the same id as one on screen takes its place there.
+                    let found = others.remove(at: index)
+                    CardQueue.adopt(index: found.index, in: found.ticket)
+                    CardQueue.supersede(with: found.card, from: found.ticket)
+                    // This drip's own card ends here, however the card that takes its place goes.
+                    if shown.own { note(.replaced, for: shown) }
+                    swap(shown, for: found.card)
+                case let .enter(index):
+                    let found = others.remove(at: index)
+                    CardQueue.adopt(index: found.index, in: found.ticket)
+                    CardQueue.supersede(with: found.card, from: found.ticket)
+                    if adopting { BackgroundWatchdog.extend(by: found.card.duration + 60) }
+                    enter(found.card, own: false)
+                    return
+                case .own:
+                    if let card = stack.nextOwn() { enter(card, own: true) }
+                    return
+                case .skipOwn:
+                    neverShown(stack.dropWaiting(at: 0), as: .replaced)
+                    return
+                case .tucked:
+                    if let tucked = stack.nextTucked() { enter(tucked.card, own: tucked.own) }
+                    return
+                }
             }
         }
-        if stack.canRelease(at: time) { release(decided: time) }
+        // Every card with a place free on this step grows out of the overflow drop, from the moment
+        // the drops of the cards leaving start to rise, so they and the count move as one.
+        while stack.canRelease(at: time, starting: time + lead), release(decided: time) {}
     }
 
     // MARK: Every tick
 
     private func tick() {
         let time = now
-        let elapsed = max(time - lastTick, 0)
-        lastTick = time
         // The cards move under a pointer at rest too.
         gate?.update()
         updateHover()
         admit()
 
         let changes = stack.advance(
-            to: time, elapsed: elapsed, lead: lead, needsRoom: needsRoom, othersWaiting: othersWaiting,
+            to: time, lead: lead, needsRoom: needsRoom, othersWaiting: othersWaiting,
             queued: others.map(\.card), replaced: replacedOwn)
         for entry in changes.stoppedWaiting {
             guard let layers = drawings[entry.id]?.layers else { continue }
             layers.drain(over: entry.card.seconds, at: started + entry.countdownFrom)
             if hovering { IslandLayers.pause(layers.ringProgress, paused: true) }
+        }
+        // Two cards that grow out of the overflow drop as one shape show their content once they
+        // have parted: planned again, before any of it shows.
+        for entry in changes.held {
+            guard let layers = drawings[entry.id]?.layers, case let .entering(start, cues) = entry.phase else { continue }
+            layers.fade(cues, into: true, at: started + start)
+            if entry.isWaiting {
+                layers.hold(pinging: true, at: started + entry.countdownFrom)
+            } else {
+                layers.drain(over: entry.card.seconds, at: started + entry.countdownFrom)
+            }
         }
         for left in changes.left {
             if left.entry.own, left.entry.card.goesUnanswered(clicked: left.clicked) { CardActions.missed = true }
@@ -689,9 +711,6 @@ final class StackPresenter: CardPresenting {
             drawings[left.entry.id]?.layers.showPointer(nil)
             drawings[left.entry.id]?.layers.fade(left.cues, into: false, at: started + left.time)
         }
-        // A card leaving makes room for the next card waiting in the overflow drop, which grows out
-        // of it from the same moment, so the two and the count move as one.
-        if !changes.left.isEmpty, stack.canRelease(at: time) { release(decided: time) }
         if !changes.gone.isEmpty {
             let kept = Set(stack.entries.map(\.id) + stack.tucked.map(\.entry))
             arrivals = arrivals.filter { kept.contains($0.key) }
