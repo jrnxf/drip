@@ -1294,7 +1294,7 @@ struct MovingStackTests {
         var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
         func random() -> Double {
             seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-            return Double(seed >> 11) / Double(1 << 53)
+            return Double(seed >> 11) / Double(UInt64(1) << 53)
         }
         for round in 0..<40 {
             let count = 4 + Int(random() * 5)
@@ -1468,7 +1468,7 @@ struct MovingStackTests {
         var seed: UInt64 = 0xD1B5_4A32_D192_ED03
         func random() -> Double {
             seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-            return Double(seed >> 11) / Double(1 << 53)
+            return Double(seed >> 11) / Double(UInt64(1) << 53)
         }
         var outOfLeaving = 0
         for round in 0..<40 {
