@@ -302,13 +302,16 @@ enum Agent: String, CaseIterable {
         }
     }
 
-    /// What the agent's screen shows when the account's quota is used up: Gemini CLI stops at a
-    /// "Usage limit reached" dialog (Keep trying / Stop) and waits for a key. A 429 it shows while it
-    /// retries on its own is no such stop.
-    var quotaScreen: String? {
+    /// What the agent's screen shows when the account's quota is used up, and what to say about it:
+    /// Gemini CLI stops at a "Usage limit reached" dialog (Keep trying / Stop), and Codex at its own
+    /// spend-cap dialog ("You hit your spend cap set by the owner of your workspace", with the same
+    /// "Usage limit reached" wording and a prompt to request a limit increase); either waits for a key,
+    /// and no hook comes while it does. A 429 either shows while it retries on its own is no such stop.
+    var quota: (screen: String, reason: String, fix: String)? {
         switch self {
-        case .gemini: return #"(?i)usage limit reached"#
-        case .claude, .codex: return nil
+        case .gemini: return (#"(?i)usage limit reached"#, geminiQuotaReason, geminiQuotaFix)
+        case .codex: return (#"(?i)(spend cap|usage limit reached)"#, codexQuotaReason, codexQuotaFix)
+        case .claude: return nil
         }
     }
 
@@ -675,6 +678,10 @@ let geminiQuotaWords = #"(?i)(\b(code|status)\W{0,3}429\b|RESOURCE_EXHAUSTED|Ter
 let geminiQuotaReason = "Gemini API quota used up"
 let geminiQuotaFix = "turn on billing for the key in AI Studio, or wait for the daily reset"
 
+/// The same for Codex's workspace spend cap, which stops a session the same way a quota does.
+let codexQuotaReason = "Codex hit its workspace spend cap"
+let codexQuotaFix = "ask the workspace owner to raise the spend cap, or wait for it to reset"
+
 func isGeminiQuota(_ text: String) -> Bool {
     text.range(of: geminiQuotaWords, options: .regularExpression) != nil
 }
@@ -913,12 +920,12 @@ final class Session {
     /// the session is `stopped`: the dialog waits for a key, and no hook comes while it does.
     func quotaShown() -> Bool {
         if stopped != nil { return true }
-        guard let words = agent.quotaScreen, Date().timeIntervalSince(lastLook) >= 2 else { return false }
+        guard let quota = agent.quota, Date().timeIntervalSince(lastLook) >= 2 else { return false }
         lastLook = Date()
         let shown = screen()
-        guard shown.range(of: words, options: .regularExpression) != nil else { return false }
+        guard shown.range(of: quota.screen, options: .regularExpression) != nil else { return false }
         keepScreen("the agent stopped at a quota dialog")
-        stopped = .needsLogin(reason: geminiQuotaReason, fix: geminiQuotaFix)
+        stopped = .needsLogin(reason: quota.reason, fix: quota.fix)
         say("  \(agent.name) stopped at its usage limit dialog")
         return true
     }
