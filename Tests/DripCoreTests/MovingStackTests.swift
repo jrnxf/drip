@@ -1,6 +1,7 @@
 @testable import DripCore // to read each card's place and the moment its countdown starts
 #if os(WASI)
 import FoundationEssentials
+import WASILibc
 #else
 import Foundation
 #endif
@@ -47,6 +48,12 @@ enum Sweep {
     ) rethrows {
         for (index, offset) in offsets(range, near: lines, part: part).enumerated() { try fly(offset, index == 0) }
     }
+}
+
+/// A number cut to so many places, for messages. WebAssembly has no `String(format:)`.
+private func fixed(_ value: Double, _ places: Int) -> String {
+    let scale = (0..<places).reduce(1.0) { scale, _ in scale * 10 }
+    return "\((value * scale).rounded() / scale)"
 }
 
 /// A stack flown frame by frame at 120 Hz, as a drawing runs one, with every rule of a moving stack
@@ -145,7 +152,7 @@ final class Flight {
     }
 
     private func fail(_ message: String) {
-        if issues.count < 12 { issues.append(String(format: "%.4f: ", time) + message) }
+        if issues.count < 12 { issues.append("\(fixed(time, 4)): " + message) }
     }
 
     /// Grows this drip's next card out of the overflow drop, when one may. Returns whether one
@@ -1142,7 +1149,7 @@ struct MovingStackTests {
                 let overlap = nearest.map { $0.1.pillTop < $0.0.pillTop + $0.0.pillHeight } ?? false
                 if overlap, corner.radius < sharpestJoined {
                     sharpestJoined = corner.radius
-                    place = String(format: "%.4f at (%.1f, %.1f)", time, corner.x, corner.y)
+                    place = "\(fixed(time, 4)) at (\(fixed(corner.x, 1)), \(fixed(corner.y, 1)))"
                 }
             }
             let label = "\(split) at \(moment)"

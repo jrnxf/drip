@@ -66,7 +66,6 @@ struct OverflowTests {
         ) {
             let layout = cardMetrics ?? { _ in self.metrics }
             let until = time + seconds
-            var last = time - 1.0 / 60
             while time < until {
                 before(time)
                 if stack.isReady(at: time) {
@@ -88,7 +87,6 @@ struct OverflowTests {
                 while release(layout) {}
                 let changes = stack.advance(to: time, lead: 0, queued: others, replaced: replaced)
                 step(time, changes)
-                last = time
                 time += 1.0 / 60
             }
         }

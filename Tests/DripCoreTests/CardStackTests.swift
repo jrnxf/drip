@@ -391,13 +391,11 @@ struct CardStackTests {
         var time = phase
         func drive(_ stack: CardStack, until: Double, each: (Double, CardStack.Changes) -> Void = { _, _ in }) {
             time = phase
-            var last = phase
             while time < until {
                 if stack.isReady(at: time), let next = stack.nextOwn() {
                     stack.enter(next, metrics: metrics, own: true, decided: time, at: time)
                 }
                 each(time, stack.advance(to: time, lead: 0))
-                last = time
                 time += step
             }
         }
@@ -468,9 +466,10 @@ struct CardStackTests {
     @Test func cardsThatLeaveTogetherAreNeighbours() {
         for (first, third) in [(10.0, 10.0), (10.0, 10.012), (10.012, 10.0)] {
             let (_, left) = leaves(["a", "b", "c"], ends: [first, 13, third])
+            let apart: [(titles: [String], time: Double)] = [(["a"], first), (["c"], third), (["b"], 13)]
             let expected: [(titles: [String], time: Double)] = first == third
                 ? [(["a", "c"], first), (["b"], 13)]
-                : [(["a"], first), (["c"], third), (["b"], 13)].sorted { $0.time < $1.time }
+                : apart.sorted(by: { $0.time < $1.time })
             #expect(left.map(\.titles) == expected.map(\.titles), "\(first) \(third)")
             #expect(zip(left, expected).allSatisfy { abs($0.time - $1.time) < 1e-9 }, "\(first) \(third)")
         }
