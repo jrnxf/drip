@@ -813,12 +813,13 @@ class Stage {
   }
   // A count on the drop `since` it changed from `from`: the old number rolls out one way and fades,
   // the new one rolls in from the other and lands with a small pop, `up` or down as the engine says.
-  // As a card grows out of the drop, both roll with that card on its `handOver` spring and
-  // crossfade, with no pop (OverflowLayers.roll).
+  // As a card grows out of the drop, both roll with that card on its `handOver` spring with no pop,
+  // the old one fading out quickly and the new one fading in just after (OverflowLayers.roll).
+  // The fade times are CardStack.handOverCountOut, handOverCountDelay and handOverCountIn.
   paintCount(count, from, since, cy, s, alpha, handOver = null, up = true) {
     if (alpha <= 0.001) return;
     const { ctx } = this, dist = 11 * s, dir = up ? 1 : -1;
-    const span = handOver ? handOver[2] : 0.22, fade = handOver ? 0.25 : 0.12;
+    const span = handOver ? handOver[2] : 0.22, fade = handOver ? 0.05 : 0.12;
     const roll = handOver ? drip.spring(handOver[0], handOver[1], Math.max(since, 0)) : easeOut(clamp01(since / 0.22));
     ctx.font = fonts[2](s); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff";
     if (since < span && from > 0 && from !== count) {
@@ -827,7 +828,7 @@ class Stage {
     }
     if (count > 0) {
       const pop = !handOver && since < 1 ? lerp(UPDATE.popScale, 1, drip.spring(UPDATE.pop[0], UPDATE.pop[1], since)) : 1;
-      ctx.save(); ctx.globalAlpha = alpha * (since < span ? (handOver ? easeOut(clamp01(since / fade)) : roll) : 1);
+      ctx.save(); ctx.globalAlpha = alpha * (since < span ? (handOver ? easeOut(clamp01((since - 0.06) / 0.19)) : roll) : 1);
       ctx.translate(0, cy + 0.5 + (since < span ? dir * dist * (1 - roll) : 0)); ctx.scale(pop, pop);
       ctx.fillText(String(count), 0, 0); ctx.restore();
     }

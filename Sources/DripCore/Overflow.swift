@@ -226,6 +226,13 @@ extension CardStack {
     /// How long before the overflow drop has spread its count fades in, as it rounds out under the
     /// last card rather than after.
     public static let countLead = 0.2
+    /// As a card grows out of the overflow drop, the drop's old number fades out over this, quick, so
+    /// it is gone before the new one shows: the two are never seen one over the other while the
+    /// spring carries them.
+    public static let handOverCountOut = 0.05
+    /// How long after the change starts the new number starts to fade in, and how long it takes.
+    public static let handOverCountDelay = 0.06
+    public static let handOverCountIn = 0.19
 
     /// When the overflow drop forming from `start`, with `cues`, fades its count in: seconds after
     /// `start`.
