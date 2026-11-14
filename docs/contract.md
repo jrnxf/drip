@@ -13,14 +13,17 @@ version. Everything else can change in any release.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching. |
-| 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). `drip doctor`: something stops cards now (it says what), and neither 2 nor 4 applies. Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
-| 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. `drip doctor` exits 2 for a bad `DRIP_*` variable, whatever else it finds. `drip hook` never exits 2. |
-| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. On a Mac, `drip doctor` exits 1, unless 2 or 4 applies. |
-| 4 | `drip doctor`: the config file is invalid, and no `DRIP_*` variable is bad (that is 2). No card command exits 4: a bad config warns on stderr and drip uses the defaults for the bad keys. |
-| 5 | drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not. |
+| 0 | The card was shown, or handed off to be shown. A question was answered yes. |
+| 1 | A question was answered no, or drip could not do its work, such as write its state directory. |
+| 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. |
+| 3 | No GUI session, for example over ssh. |
+| 4 | `drip doctor` only: the config file is invalid. A card command warns on stderr instead, and uses the defaults for the bad keys. |
+| 5 | A `--yes` question went without a click on its buttons. A card with an `--open` button asks nothing, so it exits 0 with `--wait`, clicked or not. |
 
-`drip run` exits with the wrapped command's exit code instead, 127 when it is not found.
+- `drip run` exits with the wrapped command's exit code instead, 127 when it is not found.
+- `drip hook` exits 0 without a GUI session and 1 for any failure, never 2 or more.
+- `drip watching` exits 0 when you are watching, 1 when you are not or drip cannot tell (it says why on stderr), and 2 for a usage error.
+- `drip doctor` exits 2 for a bad `DRIP_*` variable, else 4 for an invalid config file, else 1 when something stops cards now (it says what), else 0.
 
 [Exit codes](usage.md#exit-codes) shows the same table, and says when `drip run` and `--wait`
 exit.
@@ -31,7 +34,7 @@ what each means. drip prints the word only when it exits 0, and prints nothing e
 errors and warnings stay on stderr. The exit codes stay as the table above gives them. A new word
 comes only with a break.
 
-**`drip history --json`.** One JSON object per line, oldest first: `time` (ISO 8601), `missed`
+**`drip history --json`.** One JSON object per line, oldest first, for the last 20 cards, or every card with `--all`: `time` (ISO 8601), `missed`
 (true or false) and `card`. `card` writes each setting the way its flag takes it, and leaves out
 `detail`, `button`, `open`, `id` and `activate` when the card had none. New keys can come in any
 release, so ignore keys you do not know. [Missed cards and
@@ -74,8 +77,8 @@ characters. It leaves the rest out.
 These are drip's own, and can change in any release without notice:
 
 - the queue that `drip-remote-hook` writes on another machine (`remote.jsonl`) and its line format,
-  and the script that `drip remote-hook` prints;
+  and the script that `drip follow --hook-script` prints;
 - the history file (`history.jsonl`), held cards (`held.jsonl`) and how drip stores a card in them:
-  read the history with `drip history --json`;
+  read the history with `drip history --all --json`;
 - the other state files next to them, and the format of the [debug log](troubleshooting.md#debug-log);
 - `drip __background`, the process that shows the cards, and how other drips hand cards to it.

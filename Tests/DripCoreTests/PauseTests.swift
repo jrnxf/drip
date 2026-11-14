@@ -8,13 +8,16 @@ import Testing
 
 /// `drip pause`: its durations, what it says, and the end time every drip reads.
 final class PauseTests {
-    @Test func durationsInMinutesAndHours() {
+    @Test func durationsInSecondsMinutesAndHours() {
+        #expect(DripPause.duration("90s") == 90)
+        #expect(DripPause.duration("1m30s") == 90)
+        #expect(DripPause.duration("1h30m15s") == 5415)
         #expect(DripPause.duration("30m") == 1800)
         #expect(DripPause.duration("2h") == 7200)
         #expect(DripPause.duration("1h30m") == 5400)
         #expect(DripPause.duration("90m") == 5400)
         #expect(DripPause.duration("2H") == 7200)
-        for text in ["", "30", "m", "h30", "30s", "1d", "30m1h", "1h1h", "1.5h", "-30m", "30 m", "0m", "0h0m"] {
+        for text in ["", "30", "m", "h30", "1d", "30m1h", "30s1m", "1s1h", "1h1h", "1s1s", "0s", "1.5h", "-30m", "30 m", "0m", "0h0m"] {
             #expect(DripPause.duration(text) == nil, "\(text)")
         }
     }
@@ -100,6 +103,21 @@ final class PauseTests {
         try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
         try "soon\n".write(toFile: root + "/pause", atomically: true, encoding: .utf8)
         #expect(DripPause(path: root + "/pause").end() == nil)
+    }
+
+    /// `drip pause` always runs from now: alone it pauses for an hour, in place of a pause that is
+    /// running, and never only says how long is left.
+    @Test func pauseAloneSetsANewEnd() throws {
+        let environment = ["XDG_STATE_HOME": root + "/state"]
+        let pause = DripPause(environment: environment)
+        #expect(try DripProcess.run(["pause", "5m"], environment: environment).status == 0)
+        let short = try #require(pause.end())
+        #expect(short.timeIntervalSinceNow < 6 * 60)
+        let outcome = try DripProcess.run(["pause"], environment: environment)
+        #expect(outcome.status == 0)
+        #expect(outcome.output.contains("(1h left)"), "\(outcome.output)")
+        let long = try #require(pause.end())
+        #expect(long.timeIntervalSinceNow > 59 * 60)
     }
     #endif
 }

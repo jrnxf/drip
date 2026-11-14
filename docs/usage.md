@@ -3,16 +3,17 @@
 The full reference. `drip --help` lists the same options, and `drip help <subcommand>` one subcommand's.
 
 ```
-drip [KIND] [TITLE] [options]
-drip run [options] [--] <command> [args...]
-drip hook claude|codex|gemini [options] [payload]
-drip watching [--pane ID] [--app BUNDLE-ID]
-drip remote-hook
+drip [<kind>] [<title>] [options]
+drip run [options] [--] <command> [<args>...]
+drip hook claude|codex|gemini [options] [<payload>]
+drip watching [--pane <id>] [--app <bundle-id>]
 drip follow <ssh-target> [options]
-drip history [--missed] [-n N | --all] [--json | --replay] [--clear]
+drip follow --hook-script
+drip history [--missed] [-n <n> | --all] [--json | --replay]
+drip history --clear
 drip debug [--clear]
-drip dismiss [--id ID]
-drip pause [DURATION]
+drip dismiss [--id <id>]
+drip pause [<duration>]
 drip resume
 drip doctor [--json]
 drip --version | --help
@@ -26,20 +27,20 @@ exits 2, or 1 for `drip hook`.
 
 | Part | Behavior | Default |
 | --- | --- | --- |
-| `KIND` | A preset, which sets only the card's look, its icon, color and sound: `ok`, `warn`, `fail`, `info`, or a custom preset from the config file. When the first argument is not a preset and no title follows it, it is the title; followed by a title, it is an unknown preset and exits 2, saying how to quote a title of several words. | `info` |
-| `TITLE` | The bold text, up to 2 lines. Required unless stdin provides it. | none |
-| `-d`, `--detail TEXT` | The gray text under the title, up to 3 lines. | none |
-| `-s`, `--seconds N` | Time fully visible, excluding fades: 0.5 to 60. A card that stays or a question given a time counts it down instead of waiting. | 4.5 |
-| `--sound NAME\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. Unknown names print a warning and play nothing. | the preset's |
-| `--icon SYMBOL\|PATH\|app:ID\|mark:NAME\|none` | An SF Symbol name; a path to an image, such as a `.png`, `.pdf` or `.icns` file, drawn as it is; `app:` and an app's bundle identifier, such as `app:com.openai.chat`, for that app's own icon; or `mark:claude`, `mark:codex` or `mark:gemini` for an agent's mark that drip bundles. An icon that cannot load falls back to the preset's with a warning. See [Icons](#icons). | the preset's |
-| `--color HEX\|NAME` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
-| `--open URL\|PATH` | Adds a button that opens a URL or a file, a relative path from the directory drip runs in; see [Buttons](#buttons). Empty, as `--open "$CI_URL"` without a URL, it adds no button and warns. | none |
-| `--button LABEL` | The `--open` button's label, up to 24 characters. Without `--open` it is a usage error. | `Open` |
-| `--yes LABEL` | Asks a question with a yes button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if no button was. The card waits for its answer, whatever its look, unless it is given a time. Not for `drip run` or `drip hook`, which exit 2 or 1 instead, as nothing reads their answer. See [Buttons](#buttons). | none |
-| `--no LABEL` | With `--yes`, a no button of this label to its left: drip exits 1 if it was clicked. | none |
-| `--id ID` | Names what the card is about, up to 200 characters; see [Replacing cards](#replacing-cards). | none |
-| `--activate BUNDLE-ID\|none` | The app a click on the card brings forward, such as `com.apple.Terminal`; see [Clicks](#clicks). | the app drip was run from |
-| `--on-click CMD` | A click on the card also runs `CMD`, with `/bin/sh -c`, and the card as one line of JSON on stdin; see [Clicks](#clicks). | none |
+| `<kind>` | A preset, which sets only the card's look, its icon, color and sound: `ok`, `warn`, `fail`, `info`, or a custom preset from the config file. When the first argument is not a preset and no title follows it, it is the title; followed by a title, it is an unknown preset and exits 2, saying how to quote a title of several words. | `info` |
+| `<title>` | The bold text, up to 2 lines. Required unless stdin provides it. | none |
+| `-d`, `--detail <text>` | The gray text under the title, up to 3 lines. | none |
+| `-s`, `--seconds <n>` | Time fully visible, excluding fades: 0.5 to 60. A card that stays or a question given a time counts it down instead of waiting. | 4.5 |
+| `--sound <name>\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. Unknown names print a warning and play nothing. | the preset's |
+| `--icon <symbol>\|<path>\|app:<id>\|mark:<name>\|none` | An SF Symbol name; a path to an image, such as a `.png`, `.pdf` or `.icns` file, drawn as it is; `app:` and an app's bundle identifier, such as `app:com.openai.chat`, for that app's own icon; or `mark:claude`, `mark:codex` or `mark:gemini` for an agent's mark that drip bundles. An icon that cannot load falls back to the preset's with a warning. See [Icons](#icons). | the preset's |
+| `--color <hex>\|<name>` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
+| `--open <url>\|<path>` | Adds a button that opens a URL or a file, a relative path from the directory drip runs in; see [Buttons](#buttons). Empty, as `--open "$CI_URL"` without a URL, it adds no button and warns. | none |
+| `--button <label>` | The `--open` button's label, up to 24 characters. Without `--open` it is a usage error. | `Open` |
+| `--yes <label>` | Asks a question with a yes button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if no button was. The card waits for its answer, whatever its look, unless it is given a time. Not for `drip run` or `drip hook`, which exit 2 or 1 instead, as nothing reads their answer. See [Buttons](#buttons). | none |
+| `--no <label>` | With `--yes`, a no button of this label to its left: drip exits 1 if it was clicked. | none |
+| `--id <id>` | Names what the card is about, up to 200 characters; see [Replacing cards](#replacing-cards). | none |
+| `--activate <bundle-id>\|none` | The app a click on the card brings forward, such as `com.apple.Terminal`; see [Clicks](#clicks). | the app drip was run from |
+| `--on-click <command>` | A click on the card also runs `<command>`, with `/bin/sh -c`, and the card as one line of JSON on stdin; see [Clicks](#clicks). | none |
 | `--stay` | Keeps the card on screen until it is clicked, a newer card with the same `--id` replaces it, or 10 minutes pass, without holding the script: drip still returns at once. Works with any look; see Cards that wait below. | off |
 | `--wait` | Wait until the card has gone before exiting. | off |
 | `--result` | Waits as `--wait` does, then prints how the card ended on stdout: `activate`, `dismiss`, `timeout` or `replaced`. Not with `--yes`, and not for `drip run` or `drip hook`. See [How a card ended](#how-a-card-ended). | off |
@@ -216,7 +217,7 @@ card that brings an app forward shows an arrow where its ring was. A click on th
 right-click, Control-click or Option-click anywhere on the card, takes it away and brings nothing
 forward; a question goes unanswered, as if it timed out. `drip dismiss` takes every card on
 screen, and every card still waiting its turn, away the same way; `drip dismiss --id deploy` only
-those with that id; `drip clear` is the same command. Bind it to a key in Shortcuts, Raycast or skhd
+those with that id. Bind it to a key in Shortcuts, Raycast or skhd
 to clear the notch from the keyboard. VoiceOver offers each card's Open and Dismiss as its actions.
 
 ## Missed cards and history
@@ -244,8 +245,8 @@ drip history                  # the last 20 cards, newest first, as they showed
 drip history -n 50            # the last 50
 drip history --all            # every kept card
 drip history --missed         # only those that came up while the screen was locked or drip was paused
-drip history --json           # every card, oldest first, one JSON object per line, for scripts
-drip history --missed --replay   # show the missed cards again
+drip history --all --json     # every card, oldest first, one JSON object per line, for scripts
+drip history --missed --replay   # show the last 20 missed cards again
 drip history --clear          # delete every kept card
 ```
 
@@ -267,7 +268,7 @@ The lines are the ones the card wrapped to, measured as the card was recorded, s
 message lists as the few lines you saw, not as all of it. Entries recorded by an earlier drip, or
 whose recorded lines drip cannot read, are wrapped from their text the same way, by the width of an average character instead of measured.
 Color is for a terminal and off when `NO_COLOR` is set and not empty; the layout is the same without it. `--json`
-and `--replay` take every card in full, unless `-n` limits them. A `--json` line
+and `--replay` take the same cards in full, oldest first: the last 20, unless `-n` or `--all` says how many. A `--json` line
 writes each setting the way its flag takes it, and leaves out `detail`, `button`, `open`, `id` and
 `activate` when the card had none:
 
@@ -290,14 +291,14 @@ pause. A drip that waits for its card, with `--wait` or a `--yes` question, wait
 the pause, and says so.
 
 ```sh
-drip pause            # an hour; when drip is paused already, how long is left
-drip pause 30m        # minutes or hours: 30m, 2h, 1h30m, up to 24h
+drip pause            # an hour from now
+drip pause 30m        # seconds, minutes or hours: 90s, 30m, 1h30m, up to 24h
 drip resume           # end the pause now, and show what it held
 ```
 
-`drip pause` alone does not change a running pause: it says how long is left. To extend or shorten
-a running pause, pass a duration, such as `drip pause 1h`: it sets a new end from now, sooner or
-later, in place of the old one. A pause always ends on its own; there is no pause without an end.
+A pause always runs from now. To extend or shorten a running pause, run `drip pause` again: it sets
+a new end from now, sooner or later, in place of the old one. `drip doctor` says how long is left.
+A pause always ends on its own; there is no pause without an end.
 It is kept as its end time in `$XDG_STATE_HOME/drip/pause`, or `~/.local/state/drip/pause`, so it
 holds across drips and restarts, and no drip keeps running for it but the one holding the cards.
 While drip is paused, every drip run in a terminal prints a reminder to stderr, such as `drip is
@@ -446,14 +447,17 @@ runs at once, and the cards still in the stack play out without it.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching. |
-| 1 | A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). `drip doctor`: something stops cards now (it says what), and neither 2 nor 4 applies. Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure. |
-| 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. `drip doctor` exits 2 for a bad `DRIP_*` variable, whatever else it finds. `drip hook` never exits 2. |
-| 3 | No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. On a Mac, `drip doctor` exits 1, unless 2 or 4 applies. |
-| 4 | `drip doctor`: the config file is invalid, and no `DRIP_*` variable is bad (that is 2). No card command exits 4: a bad config warns on stderr and drip uses the defaults for the bad keys. |
-| 5 | drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not. |
+| 0 | The card was shown, or handed off to be shown. A question was answered yes. |
+| 1 | A question was answered no, or drip could not do its work, such as write its state directory. |
+| 2 | Usage error: a mistake in the command line or a `DRIP_*` variable. |
+| 3 | No GUI session, for example over ssh. |
+| 4 | `drip doctor` only: the config file is invalid. A card command warns on stderr instead, and uses the defaults for the bad keys. |
+| 5 | A `--yes` question went without a click on its buttons. A card with an `--open` button asks nothing, so it exits 0 with `--wait`, clicked or not. |
 
-`drip run` exits with the wrapped command's exit code instead, 127 when it is not found.
+- `drip run` exits with the wrapped command's exit code instead, 127 when it is not found.
+- `drip hook` exits 0 without a GUI session and 1 for any failure, never 2 or more.
+- `drip watching` exits 0 when you are watching, 1 when you are not or drip cannot tell (it says why on stderr), and 2 for a usage error.
+- `drip doctor` exits 2 for a bad `DRIP_*` variable, else 4 for an invalid config file, else 1 when something stops cards now (it says what), else 0.
 
 Without `--wait`, 0 means the card was handed off to be shown. `drip run` exits as soon as the
 command ends, once its card has gone with `--wait`, or once a `--yes` question is answered or goes

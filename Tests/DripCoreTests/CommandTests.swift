@@ -44,7 +44,7 @@ struct CommandTests {
 
     /// `drip help run` shows run's help, as `drip run --help` does.
     @Test func helpForASubcommand() {
-        for name in ["run", "hook", "remote-hook", "history", "pause", "resume", "doctor", "show"] {
+        for name in ["run", "hook", "follow", "history", "pause", "resume", "doctor", "show"] {
             guard case let .exit(status, help) = CommandLineParser.parse(["help", name]),
                   case let .exit(_, flag) = CommandLineParser.parse([name, "--help"]),
                   case let .exit(_, short) = CommandLineParser.parse([name, "-h"])
@@ -191,7 +191,7 @@ struct CommandTests {
             (["run"], "drip run --help"), (["run", "--nope", "make"], "drip run --help"),
             (["run", "--version"], "drip run --help"),
             (["hook"], "drip hook --help"), (["hook", "cursor"], "drip hook --help"),
-            (["remote-hook", "extra"], "drip remote-hook --help"),
+            (["follow", "--hook-script", "extra"], "drip follow --help"),
             (["history", "--json", "--replay"], "drip history --help"),
         ]
         for (arguments, help) in mistakes {
@@ -310,7 +310,7 @@ struct CommandTests {
         guard case let .invocation(.hook(plain)) = CommandLineParser.parse(["hook", "claude"]) else { Issue.record(); return }
         #expect(plain.policy == AgentHook.Policy())
         guard case let .invocation(.hook(all)) = CommandLineParser.parse(
-            ["hook", "claude", "--approve", "--min-turn", "30", "--only", "needs-you", "--seconds", "3"])
+            ["hook", "claude", "--approve", "--min-turn", "30", "--needs-you-only", "--seconds", "3"])
         else { Issue.record(); return }
         #expect(all.policy == AgentHook.Policy(approve: true, minTurn: 30, only: .needsYou))
         guard case let .invocation(.hook(fraction)) = CommandLineParser.parse(["hook", "codex", "--min-turn", "7.5"])
@@ -318,7 +318,10 @@ struct CommandTests {
         #expect(fraction.policy.minTurn == 7.5)
         // A hook's mistakes exit 1: Claude Code reads 2 as "block".
         for arguments in [["hook", "claude", "--min-turn", "soon"], ["hook", "claude", "--min-turn", "601"],
-                          ["hook", "claude", "--min-turn", "-1"], ["hook", "claude", "--only", "everything"]] {
+                          ["hook", "claude", "--min-turn", "-1"], ["hook", "claude", "--only", "needs-you"],
+                          // An agent's card has its own text, id and time on screen.
+                          ["hook", "claude", "--stay"], ["hook", "claude", "--wait"], ["hook", "claude", "--id", "a"],
+                          ["hook", "claude", "-d", "x"], ["hook", "claude", "--open", "https://example.com"]] {
             guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
             #expect(status == ExitStatus.hookFailed, "\(arguments)")
         }
@@ -339,17 +342,25 @@ struct CommandTests {
         }
     }
 
-    @Test func remoteHookTakesNothing() throws {
-        guard case .invocation(.remoteHook) = CommandLineParser.parse(["remote-hook"]) else { Issue.record(); return }
-        for arguments in [["remote-hook", "--print"], ["remote-hook", "claude"]] {
+    /// `drip follow --hook-script` prints the same script for every machine, so it takes nothing
+    /// else, and `drip remote-hook`, its old name, says where it went.
+    @Test func hookScriptTakesNothingElse() throws {
+        guard case let .invocation(.follow(command)) = CommandLineParser.parse(["follow", "--hook-script"]) else {
+            Issue.record(); return
+        }
+        #expect(command.hookScript && command.target == nil)
+        for arguments in [["follow", "--hook-script", "devbox"], ["follow", "--hook-script", "--launchd"],
+                          ["follow", "--hook-script", "--max-age", "5m"], ["remote-hook"]] {
             guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
             #expect(status == ExitStatus.usage, "\(arguments)")
         }
+        guard case let .exit(_, message) = CommandLineParser.parse(["remote-hook"]) else { Issue.record(); return }
+        #expect(message.contains("did you mean 'drip follow --hook-script'?"), "\(message)")
     }
 
     /// drip setup is gone: the word is no subcommand.
     @Test func setupIsNoSubcommand() {
-        if case .invocation(.remoteHook) = CommandLineParser.parse(["setup", "zsh"]) { Issue.record() }
+        if case .invocation(.follow) = CommandLineParser.parse(["setup", "zsh"]) { Issue.record() }
         guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
         #expect(!help.contains("drip setup"), "\(help)")
     }
@@ -390,19 +401,21 @@ struct CommandTests {
     }
 
     @Test func pauseCommand() throws {
-        #expect(try pause([]).seconds == nil)
+        #expect(try pause([]).seconds == DripPause.defaultDuration)
         #expect(try pause(["30m"]).seconds == 1800)
+        #expect(try pause(["90s"]).seconds == 90)
+        #expect(try pause(["1h30m15s"]).seconds == 5415)
         #expect(try pause(["2h"]).seconds == 7200)
         #expect(try pause(["1h30m"]).seconds == 5400)
         #expect(try pause(["24h"]).seconds == 86400)
-        for arguments in [["30"], ["soon"], ["0m"], ["25h"], ["off"], ["status"], ["forever"], ["30m", "extra"], ["--for", "30m"]] {
+        for arguments in [["30"], ["soon"], ["0m"], ["0s"], ["30s1m"], ["1m1m"], ["25h"], ["off"], ["status"], ["forever"], ["30m", "extra"], ["--for", "30m"]] {
             assertUsageError(["pause"] + arguments)
         }
         guard case let .exit(status, message) = CommandLineParser.parse(["pause", "30"]) else {
             Issue.record(); return
         }
         #expect(status == ExitStatus.usage)
-        #expect(message == "drip: '30' is not a duration: give minutes or hours, as in 30m, 2h or 1h30m\n"
+        #expect(message == "drip: '30' is not a duration: give seconds, minutes or hours, as in 90s, 30m or 1h30m\n"
             + "See 'drip pause --help'.")
         guard case let .exit(_, tooLong) = CommandLineParser.parse(["pause", "25h"]) else { Issue.record(); return }
         #expect(tooLong == "drip: a pause lasts at most 24h\nSee 'drip pause --help'.")
@@ -428,9 +441,11 @@ struct CommandTests {
         #expect(version == dripVersion)
     }
 
-    /// drip run rejects --version, so its help does not offer it; drip's own help does.
-    @Test func runHelpDoesNotOfferVersion() {
-        for arguments in [["run", "--help"], ["help", "run"]] {
+    /// Only drip's own help offers --version: ArgumentParser lists it for every subcommand.
+    @Test func onlyTheRootHelpOffersVersion() {
+        let subcommands = ["show", "run", "hook", "watching", "follow", "history", "debug", "dismiss",
+                           "pause", "resume", "doctor"]
+        for arguments in subcommands.map({ [$0, "--help"] }) + [["help", "run"], ["help", "history"], ["ok", "--help"]] {
             guard case let .exit(status, help) = CommandLineParser.parse(arguments) else {
                 Issue.record("\(arguments) did not exit"); continue
             }
@@ -442,25 +457,45 @@ struct CommandTests {
         #expect(root.contains("--version"))
     }
 
+    /// A subcommand typed wrong is a usage error that names it, not a card titled with the typo.
+    @Test func aMistypedSubcommandIsNotACard() {
+        for (word, name) in [("histroy", "history"), ("dismis", "dismiss"), ("docter", "doctor"), ("paus", "pause"),
+                             ("resumee", "resume"), ("urn", "run"), ("hoko", "hook"), ("watchin", "watching")] {
+            guard case let .exit(status, message) = CommandLineParser.parse([word]) else {
+                Issue.record("drip \(word) parsed as a card"); continue
+            }
+            #expect(status == ExitStatus.usage, "\(word)")
+            #expect(message.contains("unknown subcommand '\(word)': did you mean 'drip \(name)'?"), "\(message)")
+            #expect(message.contains("drip info \(word)"), "\(message)")
+        }
+        // With options too: nothing shows.
+        guard case .exit = CommandLineParser.parse(["dismis", "--id", "deploy"]) else { Issue.record(); return }
+    }
+
+    /// A word near a short subcommand's name, a title of more words, and anything after `drip show`,
+    /// a kind or `--` is a card as it ever was.
+    @Test func otherWordsAreStillCards() {
+        for arguments in [["sun"], ["ran"], ["slow"], ["done"], ["test"], ["histroy", "repeats"], ["show", "histroy"],
+                          ["info", "histroy"], ["--", "histroy"], ["build finished"]] {
+            guard case .invocation(.show) = CommandLineParser.parse(arguments) else {
+                Issue.record("\(arguments) is not a card"); continue
+            }
+        }
+    }
+
     /// The usage first, then examples, the card options, the subcommands and the exit codes.
     @Test func helpListsTheSubcommandsAndHidesRender() throws {
         guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
-        #expect(help.hasPrefix("OVERVIEW: Show a brief card at the notch on macOS.\n\nUSAGE: drip [KIND] [TITLE] [options]"), "\(help)")
-        #expect(help.contains("drip run [options] [--] <command> [args...]"), "\(help)")
-        #expect(help.contains("drip hook claude|codex|gemini [options]"), "\(help)")
+        #expect(help.hasPrefix("OVERVIEW: Show a brief card at the notch on macOS.\n\nUSAGE: drip [<kind>] [<title>] [options]\n       drip <subcommand> [options]\n"), "\(help)")
         #expect(!help.contains("snippet-file"), "\(help)")
-        #expect(help.contains("drip remote-hook"), "\(help)")
+        #expect(help.contains("drip follow --hook-script"), "\(help)")
         #expect(!help.contains("__finished"), "\(help)")
-        #expect(help.contains("drip follow <ssh-target> [options]"), "\(help)")
-        #expect(help.contains("drip history [--missed] [-n N | --all] [--json | --replay]"), "\(help)")
-        #expect(help.contains("drip pause [DURATION]"), "\(help)")
-        #expect(help.contains("drip resume"), "\(help)")
         let order = ["USAGE:", "EXAMPLES:", "ARGUMENTS:", "OPTIONS:", "SUBCOMMANDS:", "EXIT CODES:"].map {
             help.firstRange(of: "\n\($0)")?.lowerBound
         }
         #expect(order.allSatisfy { $0 != nil }, "\(help)")
         #expect(order.compactMap { $0 } == order.compactMap { $0 }.sorted(), "\(help)")
-        for subcommand in ["run", "hook", "remote-hook", "history", "pause", "resume", "doctor"] {
+        for subcommand in ["run", "hook", "watching", "follow", "history", "debug", "dismiss", "pause", "resume", "doctor"] {
             #expect(help.contains("\n  \(subcommand) "), "\(subcommand)")
         }
         #expect(help.contains("--seconds"), "\(help)")

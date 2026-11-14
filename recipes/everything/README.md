@@ -218,4 +218,4 @@ File: `~/.gemini/settings.json`
 To switch to another recipe, replace drip's `hooks` entries with that recipe's. Every handler must run `drip hook <agent>`.
 ## Change it
 
-Add `--only needs-you` to a `drip hook` command to skip its done card.
+Add `--needs-you-only` to a `drip hook` command to skip its done card.

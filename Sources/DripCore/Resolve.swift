@@ -77,7 +77,7 @@ public struct CardResolver {
     /// whatever Increase Contrast says.
     public var contrast: Bool { environment.contrast ?? config.contrast ?? false }
 
-    /// Resolves `drip [KIND] [TITLE] [options]` into a card.
+    /// Resolves `drip [<kind>] [<title>] [options]` into a card.
     ///
     /// The first positional is the kind when it names a preset; otherwise it is the title and the
     /// kind is `info`. When there is no title, `standardInput` is read for the title and, unless
@@ -95,7 +95,7 @@ public struct CardResolver {
             if detail == nil { detail = lines.detail }
         }
         guard let title = CardText.line(title) else {
-            throw UsageError("missing TITLE: pass it as an argument or on stdin")
+            throw UsageError("missing the title: pass it as an argument or on stdin")
         }
         return card(preset: preset, title: title, detail: detail, flags: flags)
     }

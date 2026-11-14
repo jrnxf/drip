@@ -152,14 +152,14 @@ struct RemoteEventTests {
     }
 
     @Test func remoteHookPrintsTheRemoteHook() throws {
-        guard case .invocation(.remoteHook) = CommandLineParser.parse(["remote-hook"]) else {
-            Issue.record(); return
-        }
+        guard case let .invocation(.follow(command)) = CommandLineParser.parse(["follow", "--hook-script"]),
+              command.hookScript
+        else { Issue.record(); return }
         // The hook script takes the flags a recipe writes after the agent.
         #expect(RemoteHook.script.contains("--min-turn"))
         #expect(!RemoteHook.script.contains("drip setup"))
         // No options: the hooks come from a recipe, written by hand.
-        for arguments in [["remote-hook", "s.json"], ["remote-hook", "--remote"]] {
+        for arguments in [["follow", "--hook-script", "s.json"], ["follow", "--hook-script", "--remote"]] {
             guard case let .exit(status, _) = CommandLineParser.parse(arguments) else { Issue.record("\(arguments)"); continue }
             #expect(status == ExitStatus.usage, "\(arguments)")
         }
@@ -376,16 +376,16 @@ struct RemoteFollowTests {
         #expect(Set(left).isSubset(of: ["remote.jsonl", "remote.jsonl.lock"]))
     }
 
-    /// `--min-turn` and `--only` ride the queue line for `drip follow` to apply. `--approve` does not,
+    /// `--min-turn` and `--needs-you-only` ride the queue line for `drip follow` to apply. `--approve` does not,
     /// and a word the hook does not know is not taken for the payload.
     @Test func theHookQueuesItsFlagsAsAFilter() throws {
         let stop = #"{"session_id":"s1","cwd":"/home/user/api","hook_event_name":"Stop"}"#
-        try hook(["claude", "--min-turn", "30", "--only", "needs-you", "--approve"], stdin: stop)
+        try hook(["claude", "--min-turn", "30", "--needs-you-only", "--approve"], stdin: stop)
         try hook(["claude", "--approve", "--min-turn", "7.5"], stdin: stop)
         // The flags may follow the payload argument too, as Codex's notify passes it first.
-        try hook(["codex", "--only", "needs-you", #"{"type":"agent-turn-complete","thread-id":"t1"}"#])
+        try hook(["codex", "--needs-you-only", #"{"type":"agent-turn-complete","thread-id":"t1"}"#])
         // Values that are not numbers or not known are left out, not queued as they are.
-        try hook(["claude", "--min-turn", "$(id)", "--only", "everything"], stdin: stop)
+        try hook(["claude", "--min-turn", "$(id)", "--everything"], stdin: stop)
         try hook(["claude"], stdin: stop)
         let events = try queueLines().map { try RemoteEvent(line: $0) }
         #expect(events.map(\.policy) == [
@@ -939,7 +939,7 @@ struct RemoteDecisionTests {
         #expect(throws: UsageError.self) { try card(remote(Self.stop, environment: ["DRIP_HOOK": "maybe"]), local()) }
     }
 
-    /// Which cards show under `--only needs-you` does not depend on the event naming a session.
+    /// Which cards show under `--needs-you-only` does not depend on the event naming a session.
     @Test(arguments: [
         (#"{"cwd":"/home/user/api","hook_event_name":"Stop"}"#, false),
         (#"{"session_id":"","cwd":"/home/user/api","hook_event_name":"Stop"}"#, false),

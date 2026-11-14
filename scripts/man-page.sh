@@ -10,7 +10,7 @@
 #
 # The page comes from swift-argument-parser's generate-manual, run on the binary itself, so it
 # documents what the binary does. Two things drip --help leaves out are also left out here: the
-# top-level subcommands the binary marks hidden, and drip run's --version, which drip run rejects.
+# top-level subcommands the binary marks hidden, and --version under each subcommand, which only drip's own help offers.
 # The date is the commit's, so a rebuild of the same commit gives the same page.
 set -eu
 
@@ -74,9 +74,8 @@ awk -v names="$names" '
   hiding && /^\.El/ { if (depth > 0) { depth--; next } hiding = 0 }
   hiding && /^\.It/ && depth == 0 { hiding = 0 }
   hiding { next }
-  /^\.It Em run$/ { in_run = 1 }
-  /^\.It Em / && !/^\.It Em run$/ { in_run = 0 }
-  in_run && /^\.It Fl -version$/ { dropping = 1; next }
+  /^\.It Em / { in_sub = 1 }
+  in_sub && /^\.It Fl -version$/ { dropping = 1; next }
   dropping && /^\.(It|El)/ { dropping = 0 }
   dropping { next }
   /^\.Ex -std$/ {
@@ -97,8 +96,12 @@ for name in $names; do
     exit 1
   fi
 done
-if awk '/^\.It Em run$/ { r = 1; next } /^\.It Em / { r = 0 } r && /^\.It Fl -version$/ { f = 1 } END { exit !f }' "$out/drip.1"; then
-  echo "scripts/man-page.sh: drip.1 still lists --version under drip run" >&2
+if awk '/^\.It Em / { r = 1; next } r && /^\.It Fl -version$/ { f = 1 } END { exit !f }' "$out/drip.1"; then
+  echo "scripts/man-page.sh: drip.1 still lists --version under a subcommand" >&2
+  exit 1
+fi
+if ! grep -qx '\.It Fl -version' "$out/drip.1"; then
+  echo "scripts/man-page.sh: drip.1 no longer lists --version for drip itself" >&2
   exit 1
 fi
 grep -qx '\.Dt DRIP 1' "$out/drip.1"

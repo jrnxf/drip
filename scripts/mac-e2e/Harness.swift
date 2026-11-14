@@ -320,7 +320,7 @@ struct Recorded {
 }
 
 func history() -> [Recorded] {
-    dripRun(["history", "--json"]).out.split(separator: "\n").compactMap { line in
+    dripRun(["history", "--all", "--json"]).out.split(separator: "\n").compactMap { line in
         guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
               let card = object["card"] as? [String: Any]
         else { return nil }

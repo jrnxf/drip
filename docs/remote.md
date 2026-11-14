@@ -1,7 +1,7 @@
 # Agents on another machine
 
 An agent on a Linux box you reach over ssh, with no screen and no drip there, raises its cards on
-your Mac by the same rules as one on the Mac: `DRIP_HOOK`, `--min-turn`, `--only`,
+your Mac by the same rules as one on the Mac: `DRIP_HOOK`, `--min-turn`, `--needs-you-only`,
 `when_focused` and the rest of the [config](config.md). Its hooks run `drip-remote-hook`, a small
 POSIX sh script that appends each event to a queue file there, and `drip follow` on the Mac reads
 that queue over ssh and shows each event's card as `drip hook` would. The Mac connects out to the
@@ -10,13 +10,13 @@ machine; nothing connects in.
 1. On the Mac, save the hook on the machine, here `devbox`, in a folder on its `PATH`:
 
    ```sh
-   drip remote-hook | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
+   drip follow --hook-script | ssh devbox 'mkdir -p ~/.local/bin && cat > ~/.local/bin/drip-remote-hook && chmod +x ~/.local/bin/drip-remote-hook'
    ```
 
 2. Add the hooks that run it to the agent's settings on the machine. Take a [recipe](../recipes/README.md)'s
    snippet, such as [permission-cards](../recipes/permission-cards/), and write `drip-remote-hook claude`
    in place of `drip hook claude` in each command; likewise `codex` and `gemini`. `--min-turn` and
-   `--only needs-you` go through the queue, and `drip follow` applies them. `--approve` does not.
+   `--needs-you-only` go through the queue, and `drip follow` applies them. `--approve` does not.
 
 3. On the Mac, follow the machine, by any name `ssh` takes, a `Host` from `~/.ssh/config` too:
 

@@ -21,7 +21,7 @@ public enum RemoteHook {
     /// which only a click's `--on-click` command reads.
     public static let sessionVariables = ["DRIP_HOOK", "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_ENTRYPOINT"]
 
-    /// `drip-remote-hook`, as `drip remote-hook` prints it: POSIX sh, for a machine without drip.
+    /// `drip-remote-hook`, as `drip follow --hook-script` prints it: POSIX sh, for a machine without drip.
     /// It never fails or holds up the agent's turn: it prints nothing and exits 0 whatever happens.
     public static var script: String {
         let variables = sessionVariables.map { "\"\($0)\":\"%s\"" }.joined(separator: ",")
@@ -29,9 +29,9 @@ public enum RemoteHook {
         return #"""
             #!/bin/sh
             # drip-remote-hook: queues a coding agent's hook event for `drip follow` on a Mac.
-            # Printed by `drip remote-hook`. The agent's hooks run it as `drip hook` runs on a Mac:
+            # Printed by `drip follow --hook-script`. The agent's hooks run it as `drip hook` runs on a Mac:
             #
-            #   drip-remote-hook claude|codex|gemini [--min-turn SECONDS] [--only needs-you] [payload]
+            #   drip-remote-hook claude|codex|gemini [--min-turn <seconds>] [--needs-you-only] [<payload>]
             #
             # with the hook's JSON on stdin, or as an argument, as Codex's notify passes it. It appends
             # one line to $DRIP_QUEUE, or \#(defaultQueue),
@@ -51,7 +51,7 @@ public enum RemoteHook {
                 while [ $# -gt 0 ]; do
                     case $1 in
                         --min-turn) [ $# -ge 2 ] || return 1; min_turn=$(printf '%s' "$2" | tr -cd '0-9.' | cut -c 1-8); shift 2 ;;
-                        --only) [ $# -ge 2 ] || return 1; [ "$2" = needs-you ] && only=$2; shift 2 ;;
+                        --needs-you-only) only=needs-you; shift ;;
                         --approve) shift ;;
                         -*) shift ;;
                         *) payload_arg=1; payload=$1; break ;;
@@ -170,7 +170,7 @@ public enum RemoteHook {
             for word in "$@"; do
                 if [ "$skip" -eq 1 ]; then skip=0; continue; fi
                 case $word in
-                    --min-turn | --only) skip=1 ;;
+                    --min-turn) skip=1 ;;
                     --approve | -*) ;;
                     *) argument=1; break ;;
                 esac
@@ -217,7 +217,7 @@ extension AgentHook {
 /// One event in the remote machine's queue, as `drip-remote-hook` writes it: a JSON object on one
 /// line with `drip` (the format, 1), `time` (seconds since 1970, on the remote clock), `agent`,
 /// `machine`, `env` (the session's variables, `RemoteHook.sessionVariables`), `forward` (the
-/// variables `DRIP_FORWARD_ENV` names), `filter` (the hook's `--min-turn` and `--only`) and
+/// variables `DRIP_FORWARD_ENV` names), `filter` (the hook's `--min-turn` and `--needs-you-only`) and
 /// `payload` (the hook's JSON). drip reads nothing else from
 /// it: a click's command, and what a button opens, come only from this Mac.
 public struct RemoteEvent: Equatable, Sendable {
@@ -228,7 +228,7 @@ public struct RemoteEvent: Equatable, Sendable {
     public var environment: [String: String]
     /// The variables `DRIP_FORWARD_ENV` named in the session, which only a click's command reads.
     public var forwarded: [String: String]
-    /// What the hook's flags asked: `--min-turn` and `--only`. Never `approve`.
+    /// What the hook's flags asked: `--min-turn` and `--needs-you-only`. Never `approve`.
     public var policy: AgentHook.Policy
     /// The hook's JSON.
     public var payload: String
