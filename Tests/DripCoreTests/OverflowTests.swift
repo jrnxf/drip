@@ -1097,4 +1097,11 @@ struct OverflowTests {
         #expect(leftSteps == [["a", "b"]])
         #expect(driver.stack.live.map(\.card.title) == ["c"])
     }
+
+    /// As a card grows out of the drop, the old number is gone before the new one starts to show, so
+    /// the two are never read one over the other, and the new one is in long before the spring rests.
+    @Test func handOverCountNeverShowsTwoNumbers() {
+        #expect(CardStack.handOverCountOut <= CardStack.handOverCountDelay)
+        #expect(CardStack.handOverCountDelay + CardStack.handOverCountIn < CardStack.handOver.settlingTime)
+    }
 }

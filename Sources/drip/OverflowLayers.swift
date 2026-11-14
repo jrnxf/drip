@@ -6,8 +6,8 @@ import QuartzCore
 /// The overflow drop's count and, with the pointer on the drop, the titles of the cards waiting,
 /// clipped to the drop as the stack draws it. The count rolls to its new number as it changes, the
 /// old one out one way and the new one in from the other, landing with a small pop, or, as a card
-/// grows out of the drop, rolling with that card on its spring, up or down as it grows; the titles
-/// crossfade with the count. The stack draws the drop's black shape with the rest of its outline.
+/// grows out of the drop, rolling with that card on its spring, up or down as it grows, the old
+/// number gone before the new one shows; the titles crossfade with the count. The stack draws the drop's black shape with the rest of its outline.
 ///
 /// The root layer is flipped, as an island's is, so y grows down from the top of the screen; x is
 /// offset so the notch's center is the layer's center.
@@ -38,8 +38,6 @@ final class OverflowLayers {
     /// How long the roll takes, and the old number's fade out.
     static let rollDuration = 0.22
     static let rollFade = 0.12
-    /// How long the two numbers crossfade as they roll with a card growing out of the drop.
-    static let handOverFade = 0.25
 
     /// The count's font at regular size, as the button's.
     static func makeCountFont(scale: CGFloat) -> NSFont { .systemFont(ofSize: 12.5 * scale, weight: .semibold) }
@@ -201,8 +199,9 @@ final class OverflowLayers {
 
     /// The old number rolls out one way and fades, and the new one rolls in from the other and lands
     /// with a small pop, `up` or down as `CardStack.Overflow.rollsUp` says. `handingOver`, as a card
-    /// grows out of the drop, both roll with that card on its spring and crossfade, with no pop. At 0
-    /// only the old one rolls out.
+    /// grows out of the drop, both roll with that card on its spring with no pop, the old one fading
+    /// out quickly and the new one fading in just after, so the two never show one over the other.
+    /// At 0 only the old one rolls out.
     private func roll(from old: Int, to new: Int, at begin: CFTimeInterval, handingOver: Bool = false, up: Bool) {
         let direction: CGFloat = up ? 1 : -1
         let distance = CGFloat(Self.rollDistance) * sizeScale * direction
@@ -214,7 +213,7 @@ final class OverflowLayers {
         if old > 0 {
             if (previous.string as? NSAttributedString)?.string != String(old) { previous.string = count(old) }
             move(previous, from: 0, to: -distance, at: begin, on: handOver)
-            fade(previous, from: 1, to: 0, over: handingOver ? Self.handOverFade : Self.rollFade, at: begin)
+            fade(previous, from: 1, to: 0, over: handingOver ? CardStack.handOverCountOut : Self.rollFade, at: begin)
         }
         guard new > 0 else {
             current.opacity = 0
@@ -222,8 +221,11 @@ final class OverflowLayers {
         }
         current.string = count(new)
         move(current, from: distance, to: 0, at: begin, on: handOver)
-        fade(current, from: 0, to: 1, over: handingOver ? Self.handOverFade : Self.rollDuration, at: begin)
-        guard !handingOver else { return }
+        guard !handingOver else {
+            fade(current, from: 0, to: 1, over: CardStack.handOverCountIn, at: begin + CardStack.handOverCountDelay)
+            return
+        }
+        fade(current, from: 0, to: 1, over: Self.rollDuration, at: begin)
         let landing = CASpringAnimation(keyPath: "transform.scale")
         let spring = IslandUpdate.pop
         landing.mass = 1
