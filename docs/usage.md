@@ -27,20 +27,20 @@ exits 2, or 1 for `drip hook`.
 
 | Part | Behavior | Default |
 | --- | --- | --- |
-| `KIND` | A preset, which sets only the card's look, its icon, color and sound: `ok`, `warn`, `fail`, `info`, or a custom preset from the config file. When the first argument is not a preset and no title follows it, it is the title; followed by a title, it is an unknown preset and exits 2, saying how to quote a title of several words. | `info` |
-| `TITLE` | The bold text, up to 2 lines. Required unless stdin provides it. | none |
-| `-d`, `--detail TEXT` | The gray text under the title, up to 3 lines. | none |
-| `-s`, `--seconds N` | Time fully visible, excluding fades: 0.5 to 60. A card that stays or a question given a time counts it down instead of waiting. | 4.5 |
-| `--sound NAME\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. Unknown names print a warning and play nothing. | the preset's |
-| `--icon SYMBOL\|PATH\|app:ID\|mark:NAME\|none` | An SF Symbol name; a path to an image, such as a `.png`, `.pdf` or `.icns` file, drawn as it is; `app:` and an app's bundle identifier, such as `app:com.openai.chat`, for that app's own icon; or `mark:claude`, `mark:codex` or `mark:gemini` for an agent's mark that drip bundles. An icon that cannot load falls back to the preset's with a warning. See [Icons](#icons). | the preset's |
-| `--color HEX\|NAME` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
-| `--open URL\|PATH` | Adds a button that opens a URL or a file, a relative path from the directory drip runs in; see [Buttons](#buttons). Empty, as `--open "$CI_URL"` without a URL, it adds no button and warns. | none |
-| `--button LABEL` | The `--open` button's label, up to 24 characters. Without `--open` it is a usage error. | `Open` |
-| `--yes LABEL` | Asks a question with a yes button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if no button was. The card waits for its answer, whatever its look, unless it is given a time. Not for `drip run` or `drip hook`, which exit 2 or 1 instead, as nothing reads their answer. See [Buttons](#buttons). | none |
-| `--no LABEL` | With `--yes`, a no button of this label to its left: drip exits 1 if it was clicked. | none |
+| `<kind>` | A preset, which sets only the card's look, its icon, color and sound: `ok`, `warn`, `fail`, `info`, or a custom preset from the config file. When the first argument is not a preset and no title follows it, it is the title; followed by a title, it is an unknown preset and exits 2, saying how to quote a title of several words. | `info` |
+| `<title>` | The bold text, up to 2 lines. Required unless stdin provides it. | none |
+| `-d`, `--detail <text>` | The gray text under the title, up to 3 lines. | none |
+| `-s`, `--seconds <n>` | Time fully visible, excluding fades: 0.5 to 60. A card that stays or a question given a time counts it down instead of waiting. | 4.5 |
+| `--sound <name>\|none` | A sound from /System/Library/Sounds, a path to an .aiff or .wav file, or `none`. Unknown names print a warning and play nothing. | the preset's |
+| `--icon <symbol>\|<path>\|app:<id>\|mark:<name>\|none` | An SF Symbol name; a path to an image, such as a `.png`, `.pdf` or `.icns` file, drawn as it is; `app:` and an app's bundle identifier, such as `app:com.openai.chat`, for that app's own icon; or `mark:claude`, `mark:codex` or `mark:gemini` for an agent's mark that drip bundles. An icon that cannot load falls back to the preset's with a warning. See [Icons](#icons). | the preset's |
+| `--color <hex>\|<name>` | `#rrggbb`, or `green`, `orange`, `red`, `blue`, `purple`, `pink`, `yellow` or `gray`. | the preset's |
+| `--open <url>\|<path>` | Adds a button that opens a URL or a file, a relative path from the directory drip runs in; see [Buttons](#buttons). Empty, as `--open "$CI_URL"` without a URL, it adds no button and warns. | none |
+| `--button <label>` | The `--open` button's label, up to 24 characters. Without `--open` it is a usage error. | `Open` |
+| `--yes <label>` | Asks a question with a yes button of this label, up to 24 characters: drip waits for the card, then exits 0 if the button was clicked and 5 if no button was. The card waits for its answer, whatever its look, unless it is given a time. Not for `drip run` or `drip hook`, which exit 2 or 1 instead, as nothing reads their answer. See [Buttons](#buttons). | none |
+| `--no <label>` | With `--yes`, a no button of this label to its left: drip exits 1 if it was clicked. | none |
 | `--id <id>` | Names what the card is about, up to 200 characters; see [Replacing cards](#replacing-cards). | none |
-| `--activate BUNDLE-ID\|none` | The app a click on the card brings forward, such as `com.apple.Terminal`; see [Clicks](#clicks). | the app drip was run from |
-| `--on-click CMD` | A click on the card also runs `CMD`, with `/bin/sh -c`, and the card as one line of JSON on stdin; see [Clicks](#clicks). | none |
+| `--activate <bundle-id>\|none` | The app a click on the card brings forward, such as `com.apple.Terminal`; see [Clicks](#clicks). | the app drip was run from |
+| `--on-click <command>` | A click on the card also runs `<command>`, with `/bin/sh -c`, and the card as one line of JSON on stdin; see [Clicks](#clicks). | none |
 | `--stay` | Keeps the card on screen until it is clicked, a newer card with the same `--id` replaces it, or 10 minutes pass, without holding the script: drip still returns at once. Works with any look; see Cards that wait below. | off |
 | `--wait` | Wait until the card has gone before exiting. | off |
 | `--result` | Waits as `--wait` does, then prints how the card ended on stdout: `activate`, `dismiss`, `timeout` or `replaced`. Not with `--yes`, and not for `drip run` or `drip hook`. See [How a card ended](#how-a-card-ended). | off |
