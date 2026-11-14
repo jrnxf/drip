@@ -1124,7 +1124,7 @@ public enum CommandLineParser {
         if problem.hasSuffix(".") { problem.removeLast() }
         problem = problem.prefix(1).lowercased() + problem.dropFirst()
         // ArgumentParser's own words for a value it cannot read: say what to give instead.
-        problem = problem.replacingOccurrences(of: ". Please provide one of ", with: ": give one of ")
+        problem = problem.replacing(". Please provide one of ", with: ": give one of ")
         if let hint = valueHints.first(where: { problem.hasSuffix("is invalid for '\($0.option)'") })?.hint {
             problem += ": give \(hint)"
         }
