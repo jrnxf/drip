@@ -1,222 +1,121 @@
-/* The home page's styles, compiled by Tailwind CSS (build.sh) and inlined into index.html.
-   Preflight is left out: the site sets its own base styles (base.css), so nothing resets what the
-   browser already draws. Spacing is in pixels (p-22 is 22px), as the design is. */
-@layer theme, base, components, utilities;
+/* The home page's styles, compiled by Tailwind CSS (build.sh) and inlined into index.html. The page
+   is plain HTML with its own classes, so it takes only base.css (the fonts, the tokens and the base
+   styles) and no utilities. Light only: a calm paper page with one orange. */
+@layer theme, base, components;
 @import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities) source(none);
 @import "./base.css";
-@source "../public/index.html";
 
-/* The hardware: parts with their own light and shadow, and the parts the script builds. */
-@layer components {
-  /* The theme's two-position slide switch. */
-  .slide { display: flex; align-items: center; gap: 9px; border: 0; background: none; padding: 0; cursor: pointer; }
-  .slide .track { position: relative; flex: none; width: 44px; height: 20px; border-radius: 5px; background: var(--color-body-2); box-shadow: inset 0 1px 3px var(--color-shade); border: 1px solid var(--color-edge); }
-  .slide .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 14px; border-radius: 3px; background: var(--color-key); box-shadow: 0 1px 0 var(--color-edge), 0 2px 4px var(--color-shade); transition: transform .25s var(--ease-out), background .2s; }
-  .slide[aria-checked="true"] .track::after { transform: translateX(20px); }
+:root, :root[data-theme] {
+  color-scheme: light;
+  --color-bg: #f3f2ee; --color-ink: #151515; --color-ink-2: #4a4a46; --color-ink-3: #6a6a64; --color-rule: #d6d5cf;
+  --color-card: #fff; --color-orange-ink: #c43a00; --color-focus: var(--color-orange);
+}
+::selection { background: #ffd2bd; color: var(--color-ink); }
+:focus-visible { outline: 2px solid var(--color-orange); outline-offset: 2px; }
 
-  /* ---------- hero ---------- */
-  .hero {
-    display: grid; grid-template-columns: minmax(300px, .7fr) minmax(0, 1.38fr); grid-template-areas: "intro device" "specs device";
-    grid-template-rows: auto auto; column-gap: 56px; align-items: start; align-content: center; padding: 8px 0 40px; min-height: calc(100svh - 58px);
-  }
-  .intro { grid-area: intro; align-self: end; }
-  .hero .specs { grid-area: specs; }
-  .devwrap { grid-area: device; align-self: center; }
-  .plate { margin-top: 26px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; background: var(--color-body); border: 1px solid var(--color-edge); box-shadow: inset 0 1px 0 var(--color-lip); }
-  .plate code { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .copy-btn { flex: none; border: 0; padding: 6px 10px; border-radius: 5px; background: var(--color-orange); color: #111; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; box-shadow: 0 2px 0 var(--color-orange-lo); }
-  .copy-btn:active { transform: translateY(2px); box-shadow: none; }
-  .specs { margin: 26px 0 0; padding: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 18px; }
-  .specs dt { font: 500 10.5px/1.6 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); }
-  .specs dd { margin: 0; font: 400 12px/1.6 var(--font-mono); }
-  .specs dd code { font-size: inherit; }
+.page { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+.lbl { font: 500 12px/1.2 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-ink-3); }
+h1 { text-wrap: balance; font: 200 clamp(42px, 5.6vw, 76px)/.98 var(--font-sans); font-stretch: 125%; letter-spacing: -.035em; margin: 0; }
+h1 .dot { color: var(--color-orange); }
+h2 { font: 200 clamp(30px, 3.4vw, 46px)/1.05 var(--font-sans); font-stretch: 125%; letter-spacing: -.03em; margin: 0 0 18px; text-wrap: balance; }
+.lede { color: var(--color-ink-2); font-size: 18px; margin: 18px 0 0; max-width: 46ch; text-wrap: pretty; }
+.sub { color: var(--color-ink-2); margin: 0; max-width: 40ch; text-wrap: pretty; }
 
-  /* ---------- the device ---------- */
-  /* Room under the device for the paper hanging out of it (--paper-h). Paper that printing feeds
-     out further hangs over what is below it, so nothing on the page moves as it grows; cut it
-     shorter to see what it covers. */
-  .devwrap { --paper-h: 220px; --pad: 22px; position: relative; padding: 0 0 calc(var(--paper-h) - 5px - var(--pad) + 30px); }
-  .device, .module {
-    position: relative; border-radius: 26px; padding: var(--pad, 22px); background: linear-gradient(180deg, var(--color-body), var(--color-body-2));
-    border: 1px solid var(--color-edge); box-shadow: inset 0 1px 0 var(--color-lip), 0 1px 0 var(--color-edge), 0 30px 60px -30px var(--color-shade), 0 12px 24px -16px var(--color-shade);
-  }
-  :root[data-theme="dark"] .device, :root[data-theme="dark"] .module { box-shadow: inset 0 1px 0 var(--color-lip), 0 30px 60px -30px #000, 0 12px 24px -16px #000; }
-  .screw { position: absolute; width: 11px; height: 11px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, var(--color-key), var(--color-key-2)); box-shadow: inset 0 0 0 1px var(--color-edge); }
-  .screw::after { content: ""; position: absolute; left: 2px; right: 2px; top: 5px; height: 1px; background: var(--color-ink-3); transform: rotate(var(--r, 30deg)); }
-  .screw.a { top: 9px; left: 9px; } .screw.b { top: 9px; right: 9px; --r: -20deg; } .screw.c { bottom: 9px; left: 9px; --r: 70deg; } .screw.d { bottom: 9px; right: 9px; --r: 10deg; }
-  .devgrid { --disp: 300px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
-  .display {
-    position: relative; height: 300px; border-radius: 10px; overflow: hidden;
-    background: linear-gradient(var(--color-lcd-grid) 1px, transparent 1px) 0 0 / 3px 3px, linear-gradient(90deg, var(--color-lcd-grid) 1px, transparent 1px) 0 0 / 3px 3px, var(--color-lcd);
-    box-shadow: inset 0 2px 6px rgba(0,0,0,.35), 0 0 0 4px var(--color-body-2), 0 0 0 5px var(--color-edge);
-  }
-  .devgrid .display { height: var(--disp); }
-  .display .stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
-  /* The display's own print, scaled with the notch so it keeps clear of it. */
-  .display .glyphs { position: absolute; inset: 0 0 auto 0; height: 32px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px; font: 500 10px/1 var(--font-mono); letter-spacing: .08em; color: var(--color-lcd-ink); opacity: .7; width: calc(100% / var(--fit, 1)); transform: scale(var(--fit, 1)); transform-origin: 0 0; }
-  /* The hero's command status, beside DRIP: running or waiting with its time, then how it ended. */
-  .glyphs .run { flex: none; display: none; align-items: center; gap: 7px; margin: 0 auto 0 12px; text-transform: uppercase; opacity: .8; font-variant-numeric: tabular-nums; }
-  .glyphs .run.on { display: inline-flex; }
-  .glyphs .run .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-  .glyphs .run.going .dot { animation: blinkdot .8s steps(2, jump-none) infinite; }
-  .glyphs .run.ok .dot { background: #30d158; box-shadow: 0 0 6px #30d158; }
-  .glyphs .run.bad .dot { background: #ff453a; box-shadow: 0 0 6px #ff453a; }
-  @keyframes blinkdot { 0% { opacity: 1; } 100% { opacity: .15; } }
-  /* What a hovered or focused key would run, along the display's foot. */
-  .dispnote { position: absolute; left: 12px; right: 12px; bottom: 10px; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none;
-    font: 500 10.5px/1.4 var(--font-mono); letter-spacing: .04em; color: var(--color-lcd-ink); opacity: 0; transform: translateY(3px); transition: opacity .15s, transform .15s var(--ease-out); }
-  .dispnote.on { opacity: .8; transform: none; }
-  .dispnote .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dispnote .hint { flex: none; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; padding: 4px 6px 3px; border-radius: 4px; border: 1px solid currentColor; }
-  /* What a display shows until drip's engine draws in it, and all a reader without JavaScript gets. */
-  .still { position: absolute; inset: 32px 0 0; margin: 0; display: grid; place-content: center; gap: 8px; padding: 0 16px; text-align: center; font: 500 10.5px/1.5 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-lcd-ink); opacity: .7; }
-  .still code { text-transform: none; letter-spacing: 0; font-size: 11.5px; overflow-wrap: anywhere; }
-  .loading { position: absolute; inset: auto 0 0; padding: 0 16px 14px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-lcd-ink); }
-  /* Paper: the install receipt, and what each printer prints. A head and a bold rule, entries
-     between dashed rules, and an end torn off along its perforation or cut with scissors (tear()
-     and cutEnd() in the script draw it). */
-  .paper { position: relative; filter: drop-shadow(0 1px 1px rgba(0,0,0,.18)) drop-shadow(0 8px 12px var(--color-shade)); }
-  .slip { position: relative; background: var(--color-paper); color: var(--color-paper-ink); }
-  .slip .head { flex: none; display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--color-paper-ink); font: 600 10.5px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
-  /* A printer: a slot in the device, and the paper it feeds out over the device's edge. Each entry
-     is printed at the slot and the whole paper steps out a line at a time, so the newest entry is
-     nearest the slot and the paper's head, printed first, is at its far end. The paper is clipped
-     at the slot, so print still inside the printer is out of sight. Drag the scissors across the
-     paper to cut it shorter. --paper-len is its length (the script sets it, and stacks the
-     printers so higher paper hangs in front). */
-  .printer { position: relative; z-index: 2; height: 10px; }
-  .device > .printer { max-width: 620px; margin: 20px auto 0; }
-  .slot { position: relative; z-index: 1; height: 10px; border-radius: 5px; background: #0d0d0d; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--color-lip); }
-  .printer .paper { position: absolute; top: 5px; left: 10px; right: 10px; height: var(--paper-len, var(--paper-h)); transform-origin: 50% 0; clip-path: polygon(-80px 0, calc(100% + 80px) 0, calc(100% + 80px) calc(100% + 80px), -80px calc(100% + 80px)); }
-  /* The slot's shadow on the paper stays at the slot as the paper feeds through it. */
-  .printer .paper::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 12px; z-index: 1; background: linear-gradient(rgba(0,0,0,.16), transparent); pointer-events: none; }
-  .printer .slip { height: 100%; display: flex; flex-direction: column; padding: 16px 18px 10px; }
-  .printer .head { padding: 10px 0 4px; border-bottom: 0; border-top: 2px solid var(--color-paper-ink); }
-  .printer .stamp { font: 400 10px/1.5 var(--font-mono); opacity: .6; }
-  /* The paper is as long as what is printed on it, so print stops only where the paper was cut. */
-  .log { flex: 1; min-height: 0; overflow: hidden; }
-  /* The scissors work over the paper and a little past its sides, so a cut can start in the air and
-     come in across an edge. A sideways drag cuts; a vertical one still scrolls the page. */
-  .cutter { position: absolute; top: 0; bottom: 0; left: -30px; right: -30px; z-index: 1; touch-action: pan-y; }
-  .slit { position: absolute; top: 0; left: 0; z-index: 1; overflow: visible; pointer-events: none; }
-  .slit path { fill: none; stroke: rgba(0,0,0,.62); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-  .slit.fade { transition: opacity .35s; opacity: 0; }
-  .cut-tip { position: absolute; left: 50%; z-index: 2; transform: translate(-50%, -150%); padding: 6px 9px; border-radius: 5px; background: var(--color-ink); color: var(--color-bg); font: 500 10px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .2s; }
-  .cut-tip.on { opacity: 1; }
-  /* What is cut off falls in a layer of its own over the page; on a touch, the scissors are drawn
-     there too, above the finger, since there is no cursor. */
-  .fallen { position: fixed; z-index: 30; pointer-events: none; transform-origin: 0 0; will-change: transform, opacity; }
-  .fallen .paper { inset: 0; }
-  .touch-scissors { position: fixed; z-index: 31; width: 44px; height: 44px; pointer-events: none; opacity: 0; transition: opacity .15s; }
-  .touch-scissors.on { opacity: 1; }
-  .entry { padding: 10px 0; font: 400 11.5px/1.6 var(--font-mono); }
-  /* Thermal ink sits a little into the paper. */
-  .printer .entry, .printer .end { text-shadow: 0 0 .5px currentColor; }
-  .entry + .entry { border-top: 1px dashed rgba(0,0,0,.22); }
-  .entry > div { white-space: pre-wrap; overflow-wrap: break-word; }
-  /* A command wraps under itself, clear of its prompt. */
-  .entry .cmd { padding-left: 2ch; text-indent: -2ch; }
-  .entry .c { opacity: .55; }
-  .entry .flag { white-space: nowrap; }
-  .entry .out { font-size: 10.5px; opacity: .62; }
-  .entry .out.err { opacity: 1; text-decoration: underline wavy; text-underline-offset: 2px; }
-  /* The keys: short keycaps under silkscreened group labels, each with its flag or name and a
-     hint. A key is never narrower than its text, so a narrow device wraps whole groups instead. */
-  .keys { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .keys .krow { display: flex; flex-wrap: wrap; gap: 12px 16px; min-width: 0; }
-  .keys .kgroup { display: grid; grid-template-rows: auto 1fr; gap: 6px; min-width: max-content; flex: var(--n) 1 0; }
-  .keys .kkeys { display: flex; flex-wrap: nowrap; gap: 8px; min-width: 0; }
-  .keys .grp { display: flex; align-items: center; gap: 8px; font: 500 9.5px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--color-ink-3); white-space: nowrap; min-width: 0; }
-  .keys .grp::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: .45; }
-  .key {
-    position: relative; flex: 1 1 0; min-width: max-content; height: 50px; border-radius: 8px; border: 1px solid var(--color-edge); cursor: pointer; padding: 0 22px 0 10px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
-    background: linear-gradient(180deg, var(--color-key), var(--color-key-2)); color: var(--color-key-ink); text-align: left;
-    box-shadow: 0 4px 0 var(--color-key-floor), 0 9px 14px -7px var(--color-shade), inset 0 1px 0 var(--color-lip), inset 0 -2px 0 rgba(0,0,0,.22); transition: transform .08s, box-shadow .08s;
-  }
-  .key:active { transform: translateY(4px); box-shadow: 0 0 0 var(--color-key-floor), 0 2px 4px -2px var(--color-shade), inset 0 1px 0 var(--color-lip), inset 0 -1px 0 rgba(0,0,0,.22); }
-  .key .led { position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--c) 30%, var(--color-key-2)); box-shadow: inset 0 1px 1px rgba(0,0,0,.3); transition: background .15s, box-shadow .15s; }
-  .key.running .led { background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px var(--c); }
-  /* The LED blinks while the key's command runs, and stays lit while its cards show. */
-  .key.running.exec .led { animation: blinkled .5s steps(2, jump-none) infinite; }
-  @keyframes blinkled { 0% { background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px var(--c); } 100% { background: color-mix(in srgb, var(--c) 30%, var(--color-key-2)); box-shadow: inset 0 1px 1px rgba(0,0,0,.3); } }
-  .key .face { display: grid; gap: 3px; min-width: 0; }
-  .key b { display: block; font: 600 10px/1.1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
-  .key small { display: block; font: 400 9px/1.2 var(--font-mono); color: var(--color-ink-3); white-space: nowrap; }
-  :root[data-theme="light"] .key small { color: #6b6b66; }
-  /* Callouts, as on an exploded drawing. */
-  /* The callouts sit in a row over the device, clear of the paper; where they do not fit in one,
-     they wrap to another. */
-  .callouts { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 7px; }
-  .callout { display: flex; align-items: center; gap: 8px; font: 500 10px/1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); white-space: nowrap; }
-  .callout::before { content: attr(data-n); display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid currentColor; font-size: 9px; letter-spacing: 0; }
-  .callout:first-child, .callout:last-child { flex-grow: 1; }
-  .callout:last-child { justify-content: flex-end; }
-  .callout i { display: block; height: 1px; background: currentColor; flex: 1 0 8px; max-width: var(--w, 40px); }
+/* ---------- the top bar ---------- */
+nav.top { display: flex; align-items: center; gap: 22px; height: 60px; }
+nav.top .sp { flex: 1; }
+nav.top a { text-decoration: none; font: 500 12px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-ink-3); }
+nav.top a:hover { color: var(--color-ink); }
+nav.top .brand { display: flex; color: var(--color-ink); }
+nav.top .lockup { display: block; height: 30px; width: auto; }
 
-  /* What it does: the module's LCD line: the command running, typed, and under it
-     the step and what came back. Every command it runs is laid out unseen behind it (.ghost), so
-     it keeps the height of the longest as it plays. */
-  .readout { flex: 1; min-width: 0; align-self: stretch; display: grid; padding: 8px 11px 7px; border-radius: 7px; background: var(--color-lcd); box-shadow: inset 0 2px 4px rgba(0,0,0,.3), 0 0 0 3px var(--color-body-2), 0 0 0 4px var(--color-edge); color: var(--color-lcd-ink); }
-  .readout > *, .readout .ghost > * { grid-area: 1 / 1; min-width: 0; }
-  .readout .ghost { display: grid; visibility: hidden; }
-  .readout .live { display: flex; flex-direction: column; }
-  .readout .cmd { font: 500 11.5px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: break-word; padding-left: 2ch; text-indent: -2ch; }
-  .readout .p, .readout .c { opacity: .62; }
-  .readout .flag, .readout .note { white-space: nowrap; }
-  .readout .stat { margin-top: 3px; font: 500 9.5px/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .readout .live .stat { margin-top: auto; padding-top: 3px; }
-  .caret { display: inline-block; width: .55em; height: 1.05em; margin-left: 1px; vertical-align: -.18em; background: currentColor; animation: blink 1.06s steps(1, end) infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .caret, .glyphs .run.going .dot, .key.running.exec .led { animation: none; } }
-  .bigbtn { flex: none; width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--color-orange-lo); background: radial-gradient(circle at 40% 35%, var(--color-orange-hi), var(--color-orange)); box-shadow: 0 4px 0 var(--color-orange-lo), 0 8px 14px -6px var(--color-shade); cursor: pointer; display: grid; place-items: center; color: #111; font: 700 10px/1 var(--font-mono); letter-spacing: .08em; transition: transform .08s, box-shadow .08s; }
-  .bigbtn:active { transform: translateY(4px); box-shadow: 0 0 0 var(--color-orange-lo); }
+.hero { padding: 64px 0 24px; max-width: 760px; }
 
-  /* Spec sheet: the stack module and the table. */
-  table.spec { width: 100%; border-collapse: collapse; margin-top: 26px; }
-  table.spec th, table.spec td { text-align: left; padding: 9px 0; border-top: 1px solid var(--color-rule); vertical-align: top; }
-  table.spec th { width: 30%; padding-right: 16px; font: 500 10.5px/1.6 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); }
-  table.spec td { font: 400 12px/1.6 var(--font-mono); }
-  table.spec td code { font-size: inherit; }
-  .module.stackmod { --paper-h: 224px; padding-bottom: 22px; margin-bottom: calc(var(--paper-h) - 27px); }
-  /* Tall enough for three cards at the notch's own size, so its fixed scale stays at 1. */
-  .stackmod .display { height: 272px; }
-  .stackmod .row { display: flex; align-items: center; gap: 18px; margin-top: 18px; }
-  .stackmod .printer { margin-top: 20px; }
+/* ---------- copyable commands ---------- */
+.plate { display: inline-flex; align-items: center; gap: 12px; margin-top: 24px; padding: 9px 10px 9px 14px; border-radius: 9px; background: var(--color-card); border: 1px solid var(--color-rule); max-width: 100%; }
+.plate code { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.copy { flex: none; border: 0; padding: 7px 10px; border-radius: 6px; background: var(--color-orange); color: #111; font: 600 12px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
 
-  /* How this page works: three columns of a parts list. */
-  .parts h3 { margin: 0; padding-bottom: 10px; border-bottom: 2px solid var(--color-ink); display: flex; align-items: center; gap: 10px; font: 600 11px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
-  .parts h3 i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
-  .parts ul { list-style: none; margin: 0; padding: 0; }
-  .parts li { padding: 9px 0; border-bottom: 1px solid var(--color-rule); font: 400 12px/1.6 var(--font-mono); }
-  .parts li code { font-size: inherit; }
+/* ---------- the story: rows on the left, the laptop on the right ---------- */
+.story { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 64px; padding: 24px 0 96px; }
+/* Once it sticks, the laptop sits in the middle of the view. Before that it starts level with the first row. */
+.sticky { position: sticky; top: max(24px, calc(50vh - var(--lh, 440px) / 2)); align-self: start; }
+.rows { position: relative; }
+.row { position: relative; padding: 28px 0 28px 28px; border-left: 2px solid var(--color-rule); min-height: 30vh; display: flex; flex-direction: column; justify-content: center; cursor: pointer; }
+.row:first-of-type { min-height: 0; justify-content: flex-start; padding-top: 8px; }
+/* The beam: one short orange stretch of the line, beside the row that plays. */
+.beam { position: absolute; left: 0; top: 0; width: 2px; height: 56px; background: var(--color-orange); transition: transform .6s cubic-bezier(.2, .7, .2, 1), opacity .3s; opacity: 0; pointer-events: none; z-index: 1; }
+.row h2 { font: 500 26px/1.15 var(--font-sans); font-stretch: 115%; letter-spacing: -.015em; margin: 0 0 10px; color: var(--color-ink-3); transition: color .25s; }
+.row.on h2 { color: var(--color-ink); }
+.row p { margin: 0 0 16px; color: var(--color-ink-2); font-size: 16px; max-width: 42ch; }
+.row pre { margin: 0; font: 400 12px/1.7 var(--font-mono); background: var(--color-card); border: 1px solid var(--color-rule); border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: break-word; max-width: 52ch; transition: opacity .25s; }
+.row:not(.on) pre { opacity: .6; }
+.row pre .p { color: var(--color-orange-ink); user-select: none; }
+.row pre .c { color: var(--color-ink-3); }
+.row pre .f { white-space: nowrap; }
+.row .again { margin-top: 12px; align-self: flex-start; background: none; border: 0; padding: 0; font: 500 12px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-ink-2); cursor: pointer; visibility: hidden; }
+.row.on .again { visibility: visible; }
+.row .again:hover { color: var(--color-ink); }
+.try { display: flex; gap: 8px; margin-top: 4px; max-width: 52ch; }
+.try input { flex: 1; min-width: 0; font: 400 12.5px/1 var(--font-mono); padding: 11px 12px; border: 1px solid var(--color-rule); border-radius: 8px; background: var(--color-card); color: var(--color-ink); }
+.try input:focus { outline: 2px solid var(--color-orange); outline-offset: 1px; }
+.try button { border: 0; border-radius: 8px; padding: 0 16px; background: var(--color-ink); color: #fff; font: 600 12px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chips button { border: 1px solid var(--color-rule); background: transparent; border-radius: 999px; padding: 6px 11px; font: 400 12px/1 var(--font-mono); color: var(--color-ink-2); cursor: pointer; }
+.chips button:hover { border-color: var(--color-ink-3); color: var(--color-ink); }
 
-  /* Install: a receipt from the printer. */
-  .receipt .slip { padding: 22px 22px 34px; }
-  .receipt .cmd { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px dashed rgba(0,0,0,.22); }
-  .receipt .cmd code { flex: 1; min-width: 0; font-size: 12.5px; overflow-wrap: anywhere; }
-  .receipt .cmd .c { opacity: .68; }
-  .receipt .tot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-top: 14px; font: 500 10.5px/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
-  .keycap { display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--color-edge); background: linear-gradient(180deg, var(--color-key), var(--color-key-2)); box-shadow: 0 3px 0 var(--color-key-floor); text-decoration: none; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-key-ink); }
-  .keycap:active { transform: translateY(3px); box-shadow: none; }
+/* ---------- the laptop: a space black MacBook ---------- */
+.lid { background: #0b0b0c; padding: 11px 11px 16px; border-radius: 20px 20px 6px 6px; box-shadow: inset 0 0 0 1px #2a2a2d, 0 0 0 1.5px #3a3b3f; }
+.deck { position: relative; height: 15px; margin: 0 -4%; background: linear-gradient(#5a5b60, #36373b 55%, #1f2023); border-radius: 2px 2px 16px 16px / 2px 2px 12px 12px; }
+.deck::before { content: ""; position: absolute; left: 50%; top: 0; width: 16%; height: 6px; transform: translateX(-50%); background: linear-gradient(#202124, #3a3b3f); border-radius: 0 0 8px 8px; }
 
-  @media (width <= 1100px) {
-    .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "device" "specs"; grid-template-rows: auto; row-gap: 8px; min-height: 0; padding-top: 24px; }
-    .devwrap { padding-top: 12px; padding-bottom: calc(var(--paper-h) - 5px - var(--pad) + 8px); }
-    .callouts { display: none; }
-  }
-  @media (width <= 760px) {
-    .devwrap { --pad: 14px; --paper-h: 200px; }
-    .device { border-radius: 20px; }
-    .device > .screw { display: none; }
-    .devgrid { --disp: 220px; gap: 14px; }
-    .keys .kgroup { flex-basis: 100%; min-width: 0; }
-    .keys .kgroup.pair { flex-basis: calc(50% - 8px); }
-    .keys .kkeys { flex-wrap: wrap; }
-    /* Beside a phone's notch there is only room for the status's dot and time. */
-    .glyphs:has(.run.on) > :first-child, .glyphs .run .w { display: none; }
-    .glyphs .run { margin-left: 0; }
-    .stackmod .display { height: 216px; }
-    .module { padding: 16px; border-radius: 20px; }
-  }
+/* The screen: a desktop under hills at dusk. The engine's canvas draws the notch and the cards. */
+.screen { position: relative; overflow: hidden; aspect-ratio: 1.54; border-radius: 9px 9px 2px 2px; background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 600' preserveAspectRatio='xMidYMid slice'><defs><linearGradient id='s' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23f7d9b9'/><stop offset='1' stop-color='%23f2b28c'/></linearGradient></defs><rect width='1200' height='600' fill='url(%23s)'/><circle cx='860' cy='250' r='70' fill='%23fff3e0' opacity='.8'/><path d='M0 330 C200 260 380 300 560 280 S900 220 1200 290 V600 H0Z' fill='%23d98f6f'/><path d='M0 400 C220 340 420 390 640 360 S1000 330 1200 380 V600 H0Z' fill='%23a95d55'/><path d='M0 470 C260 430 480 480 700 450 S1040 430 1200 470 V600 H0Z' fill='%236e3a4a'/><path d='M0 540 C300 510 600 560 900 530 S1100 520 1200 540 V600 H0Z' fill='%23402333'/></svg>") center/cover; }
+.screen .menubar { position: absolute; inset: 0 0 auto 0; height: calc(32px * var(--fit, 1)); display: flex; align-items: center; justify-content: space-between; padding: 0 calc(16px * var(--fit, 1)); font: 500 calc(12.5px * var(--fit, 1))/1 var(--font-sys); color: rgba(255, 255, 255, .92); background: rgba(0, 0, 0, .22); }
+.screen .menubar svg { fill: rgba(255, 255, 255, .92); }
+.screen .menubar .apple { width: calc(13px * var(--fit, 1)); height: calc(16px * var(--fit, 1)); }
+.screen .menubar .r { display: flex; align-items: center; gap: calc(14px * var(--fit, 1)); }
+.screen .menubar .r svg { height: calc(12px * var(--fit, 1)); width: auto; }
+.screen .menubar .wifi path { fill: none; stroke: rgba(255, 255, 255, .92); stroke-width: 2.1; stroke-linecap: round; }
+.screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; }
+.screen .loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 16px; text-align: center; font: 500 12px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: #fff; }
+
+/* ---------- setup and the details: a heading on the left, ruled rows on the right ---------- */
+.band { border-top: 1px solid var(--color-rule); padding: 56px 0 72px; display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 56px; align-items: start; }
+.steps { list-style: none; margin: 0; padding: 0; }
+.steps li { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 20px; padding: 16px 0 18px; border-top: 1px solid var(--color-rule); }
+.steps h3 { font: 500 17px/1.4 var(--font-sans); margin: 0; }
+.steps p { margin: 0 0 12px; color: var(--color-ink-2); font-size: 16px; }
+.steps li:last-child p { margin: 0; }
+.steps .plate { margin-top: 0; }
+.spec { width: 100%; border-collapse: collapse; font-size: 15px; }
+.spec th { text-align: left; font: 500 12px/1.5 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-ink-3); padding: 10px 20px 10px 0; vertical-align: top; white-space: nowrap; border-top: 1px solid var(--color-rule); width: 1%; }
+.spec td { padding: 9px 0; color: var(--color-ink-2); border-top: 1px solid var(--color-rule); }
+.spec td code { color: var(--color-ink); white-space: nowrap; }
+
+/* ---------- the footer ---------- */
+footer { border-top: 1px solid var(--color-rule); padding: 22px 0 48px; display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; align-items: baseline; }
+footer a { color: var(--color-ink); }
+footer .guides { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px; font-size: 14px; }
+footer .guides a { text-decoration: none; color: var(--color-ink-2); }
+footer .guides a:hover { color: var(--color-ink); text-decoration: underline; }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (width <= 900px) {
+  .hero { padding-top: 40px; }
+  .story { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 8px; }
+  .sticky { top: 0; z-index: 5; padding: 8px 0 0; background: var(--color-bg); order: -1; }
+  .row { min-height: 0; padding: 28px 0 28px 18px; }
+  .row h2 { font-size: 22px; }
+  .band { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .steps li { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+}
+@media (width <= 760px) {
+  .page { padding: 0 16px; }
+  nav.top a.opt { display: none; }
+  .deck { margin: 0 -10px; }
+  footer { flex-direction: column; gap: 22px; }
+  footer .guides { flex-direction: column; gap: 14px; font-size: 16px; }
+  footer .guides .lbl { margin-bottom: 2px; }
 }

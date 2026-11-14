@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -21,8 +21,7 @@
 <meta name="twitter:description" content="Free, open-source macOS CLI. One command shows a native card from the MacBook notch when a build, deploy, test or Claude Code session finishes or needs you.">
 <meta name="twitter:image" content="https://drip.jrnxf.co/og.png">
 <meta name="twitter:image:alt" content="drip's logo beside the words Notifications that work your way.">
-<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#d9d9d5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#f3f2ee">
 <!-- The mark: the notch, two beads and a falling drop (masters in docs/logo). favicon.ico holds a
      dedicated small-size drawing; favicon.svg turns the notch cream in a dark browser. -->
 <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
@@ -49,227 +48,52 @@
   "sameAs": ["https://github.com/jrnxf/drip"]
 }
 </script>
-<script>
-  // The theme before the first paint: ?theme=, then the visitor's last choice, then the system's.
-  (() => {
-    const ok = (v) => (v === "dark" || v === "light" ? v : null);
-    let saved = null;
-    try { saved = localStorage.getItem("drip-theme"); } catch {}
-    document.documentElement.dataset.theme = ok(new URLSearchParams(location.search).get("theme")) ?? ok(saved)
-      ?? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
-  })();
-</script>
 <!-- site.css: build.sh puts the compiled styles here. -->
 </head>
 <body>
-<div class="mx-auto max-w-[1480px] px-36 narrow:px-16">
-  <header class="flex h-58 items-center gap-22 narrow:gap-16">
-    <a class="block text-ink" href="#top" aria-label="drip, back to top"><svg class="block h-24 w-auto" viewBox="40 40 710.89 240" aria-hidden="true"><title>drip lockup, light</title><g transform="translate(40 40)"><g transform="scale(1.11)"><path d="M0 0H224V24A14 14 0 0 1 210 38H166.9A12 12 0 0 0 158.6 58.67A24 24 0 1 1 125.4 58.67A12 12 0 0 0 117.1 38H92.15A10 10 0 0 0 82.81 51.57A18 18 0 1 1 49.19 51.57A10 10 0 0 0 39.85 38H14A14 14 0 0 1 0 24Z" fill="currentColor"/><path d="M119 139A23 23 0 1 1 165 139A23 23 0 1 1 119 139Z" fill="#FF4F00"/></g><g transform="translate(308.89 0)"><path d="M0 120A61 61 0 1 1 122 120A61 61 0 1 1 0 120ZM28 120A33 33 0 1 0 94 120A33 33 0 1 0 28 120ZM94 0H122V180H94ZM146 60H174V180H146ZM146 122A62 62 0 0 1 208 59V87A34 34 0 0 0 174 122ZM226 60H254V180H226ZM280 60H308V240H280ZM280 120A61 61 0 1 1 402 120A61 61 0 1 1 280 120ZM308 120A33 33 0 1 0 374 120A33 33 0 1 0 308 120Z" fill="currentColor"/><path d="M224 28A16 16 0 1 1 256 28A16 16 0 1 1 224 28Z" fill="currentColor"/></g></g></svg>
-</a><span class="lbl narrow:hidden">for macOS</span>
-    <span class="flex-1"></span>
-    <nav class="flex gap-22 narrow:hidden" aria-label="Sections"><a class="lbl no-underline hover:text-ink" href="#features">features</a><a class="lbl no-underline hover:text-ink" href="#sheet">spec sheet</a><a class="lbl no-underline hover:text-ink" href="#install">install</a><a class="lbl no-underline hover:text-ink" href="https://github.com/jrnxf/drip">source</a></nav>
-    <button type="button" class="slide" id="theme" role="switch" aria-checked="true" aria-label="light dark: dark theme"><span class="lbl" aria-hidden="true">light</span> <span class="track"></span> <span class="lbl" aria-hidden="true">dark</span></button>
-  </header>
-
+<div class="page">
+  <nav class="top"><a class="brand" href="#top" aria-label="drip, back to top"><svg class="lockup" viewBox="40 40 710.89 240" aria-hidden="true"><title>drip lockup, light</title><g transform="translate(40 40)"><g transform="scale(1.11)"><path d="M0 0H224V24A14 14 0 0 1 210 38H166.9A12 12 0 0 0 158.6 58.67A24 24 0 1 1 125.4 58.67A12 12 0 0 0 117.1 38H92.15A10 10 0 0 0 82.81 51.57A18 18 0 1 1 49.19 51.57A10 10 0 0 0 39.85 38H14A14 14 0 0 1 0 24Z" fill="currentColor"/><path d="M119 139A23 23 0 1 1 165 139A23 23 0 1 1 119 139Z" fill="#FF4F00"/></g><g transform="translate(308.89 0)"><path d="M0 120A61 61 0 1 1 122 120A61 61 0 1 1 0 120ZM28 120A33 33 0 1 0 94 120A33 33 0 1 0 28 120ZM94 0H122V180H94ZM146 60H174V180H146ZM146 122A62 62 0 0 1 208 59V87A34 34 0 0 0 174 122ZM226 60H254V180H226ZM280 60H308V240H280ZM280 120A61 61 0 1 1 402 120A61 61 0 1 1 280 120ZM308 120A33 33 0 1 0 374 120A33 33 0 1 0 308 120Z" fill="currentColor"/><path d="M224 28A16 16 0 1 1 256 28A16 16 0 1 1 224 28Z" fill="currentColor"/></g></g></svg></a><span class="sp"></span><a class="opt" href="#setup">setup</a><a class="opt" href="#spec">details</a><a href="https://github.com/jrnxf/drip">github</a></nav>
   <main id="top">
-    <section class="hero" aria-label="drip">
-      <div class="intro">
-        <div class="mb-18 flex flex-wrap gap-14"><span class="type-tag border border-ink bg-ink px-7 py-4 text-bg">drip</span><span class="type-tag border border-ink px-7 py-4">macOS 13+</span><span class="type-tag border border-ink px-7 py-4">MIT</span></div>
-        <h1 class="type-hero m-0">drip more. <b class="whitespace-nowrap">ship more.</b></h1>
-        <p class="mt-22 mb-0 max-w-[40ch] text-[18px] text-ink-2 narrow:text-[17px] [&_b]:text-ink">drip is a free, open-source command-line tool for macOS that shows <b>a native card from your MacBook's notch</b> when a build, deploy, test run or coding agent (Claude Code, Codex, Gemini CLI) finishes or needs you. It is not Notification Center, so it needs no Notifications permission.</p>
-        <div class="plate"><code>brew install jrnxf/tap/drip</code><button type="button" class="copy-btn" data-copy="brew install jrnxf/tap/drip" aria-label="Copy the install command">copy</button></div>
-      </div>
-      <dl class="specs">
-        <dt>runs from</dt><dd>your shell, scripts, git hooks, agent hooks</dd>
-        <dt>shows</dt><dd>a card from the notch, or from the top edge of a screen without one</dd>
-        <dt>returns</dt><dd>at once; <code>--wait</code> holds until the card has gone</dd>
-        <dt>engine</dt><dd>DripCore, in Swift; WebAssembly on this page</dd>
-      </dl>
+  <section class="hero">
+    <h1>Notifications that work your way<span class="dot">.</span></h1>
+    <p class="lede">Small, scriptable cards that drip from your Mac’s notch. Connect them to your tools and control what deserves your attention.</p>
+    <div class="plate"><code>brew install jrnxf/tap/drip</code><button class="copy" type="button" data-copy="brew install jrnxf/tap/drip" aria-label="Copy the install command">copy</button></div>
+  </section>
 
-      <div class="devwrap">
-        <div class="callouts" aria-hidden="true">
-          <span class="callout" data-n="1">display: DripCore, as WebAssembly<i style="--w:60px"></i></span>
-          <span class="callout" data-n="2">keys: what each one does</span>
-          <span class="callout" data-n="3"><i style="--w:40px"></i>printer: what ran</span>
-        </div>
-        <div class="device">
-          <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
-          <div class="devgrid">
-            <div class="display" id="hero-screen" role="img" aria-label="A display where drip's cards drop out of the notch">
-              <div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="run" id="run-stat"><span class="dot"></span><span class="w"></span><span class="t"></span></span><span class="clock"></span></div>
-              <canvas class="stage-canvas"></canvas>
-              <p class="still"><code>$ drip ok &quot;Build finished&quot; -d &quot;make test: 246 passed in 3.2s&quot;</code>a green card from the notch: Build finished</p>
-              <div class="loading" id="loading">loading drip's engine</div>
-              <div class="dispnote" id="dispnote" aria-hidden="true"><span class="t"></span><span class="hint">press to run</span></div>
-            </div>
-          </div>
-          <div class="keys" id="keys" role="group" aria-label="Examples"></div>
-          <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>what ran</span></div><div class="log" id="hero-tape" aria-live="polite"></div></div></div></div>
-        </div>
-      </div>
-    </section>
+  <section class="story" aria-label="What drip does, played by its engine">
+    <div class="rows" id="rows"></div>
+    <div class="sticky">
+      <div class="device"><div class="lid"><div class="screen" id="screen"></div></div><div class="deck"></div></div>
+    </div>
+  </section>
 
-    <section class="border-t border-t-rule pt-48 pb-70 narrow:pt-40 narrow:pb-56" id="features">
-      <div class="lbl">01 / what it does</div>
-      <h2 class="type-title mt-10 mx-0 mb-18">what it <b>does:</b> notch alerts for any command</h2>
-      <p class="m-0 max-w-[52ch] text-ink-2">Each module below runs the same engine as the one above. It plays once when it scrolls into view; press PLAY to run it again.</p>
-      <div class="mt-36 grid grid-cols-3 gap-x-28 gap-y-40 compact:grid-cols-2 narrow:grid-cols-[minmax(0,1fr)]" id="feature-grid">
-        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
-          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
-            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Wrap a command"><div class="glyphs" aria-hidden="true"><span>RUN</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip run make test</code>a green card: make test finished, and how long it took</p></div>
-            <div class="mt-14 flex flex-1 items-center gap-14">
-              <div class="readout"></div>
-              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Wrap a command">PLAY</button>
-            </div>
-          </div>
-          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">01</span><span class="t">Wrap a command</span></h3>
-          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink"><code>drip run</code> runs it, times it and shows how it went: green on exit 0, red with the exit code otherwise. drip then exits with the command's status.</p>
-        </article>
-        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
-          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
-            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Hear from coding agents"><div class="glyphs" aria-hidden="true"><span>HOOK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip hook claude</code>my-app needs you, then my-app is done</p></div>
-            <div class="mt-14 flex flex-1 items-center gap-14">
-              <div class="readout"></div>
-              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Hear from coding agents">PLAY</button>
-            </div>
-          </div>
-          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">02</span><span class="t">Hear from coding agents</span></h3>
-          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink">A hook snippet from a recipe you pick points the agent's hooks at drip. A card names the project and what the agent needs, then says when it has finished.</p>
-        </article>
-        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
-          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
-            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Update in place"><div class="glyphs" aria-hidden="true"><span>--ID</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok &quot;Deployed&quot; --id deploy</code>the Deploying card turns into Deployed</p></div>
-            <div class="mt-14 flex flex-1 items-center gap-14">
-              <div class="readout"></div>
-              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Update in place">PLAY</button>
-            </div>
-          </div>
-          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">03</span><span class="t">Update in place</span></h3>
-          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink">Cards with the same <code>--id</code> replace each other. When the older card is on screen, it springs to the new card's size instead of queueing a second one.</p>
-        </article>
-        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
-          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
-            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Ask, then act"><div class="glyphs" aria-hidden="true"><span>ASK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok &quot;Merge drip #23?&quot; --yes Merge --no Later</code>a card with Merge and Later buttons</p></div>
-            <div class="mt-14 flex flex-1 items-center gap-14">
-              <div class="readout"></div>
-              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Ask, then act">PLAY</button>
-            </div>
-          </div>
-          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">04</span><span class="t">Ask, then act</span></h3>
-          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink"><code>--yes</code> and <code>--no</code> ask a question and wait for the answer. drip exits 0 on yes and 1 on no, so <code>&amp;&amp;</code> runs the next step only on yes. Answer it here.</p>
-        </article>
-        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
-          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
-            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Pipe text in"><div class="glyphs" aria-hidden="true"><span>STDIN</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ git log -1 --format=&#x27;%s%n%an&#x27; | drip ok</code>the last commit's subject and author</p></div>
-            <div class="mt-14 flex flex-1 items-center gap-14">
-              <div class="readout"></div>
-              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Pipe text in">PLAY</button>
-            </div>
-          </div>
-          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">05</span><span class="t">Pipe text in</span></h3>
-          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink">With no title, drip reads stdin: the first line is the title and the rest is the detail. That suits git hooks and cron jobs.</p>
-        </article>
-        <article class="feature grid grid-rows-subgrid gap-y-0 [grid-row:span_3]">
-          <div class="module mb-18 flex flex-col rounded-[20px] p-16">
-            <div class="display h-190 flex-none" role="img" aria-label="A display that plays: Your own presets"><div class="glyphs" aria-hidden="true"><span>PRESET</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip deploy &quot;Shipped to prod&quot;</code>a card in the deploy preset's icon and color</p></div>
-            <div class="mt-14 flex flex-1 items-center gap-14">
-              <div class="readout"></div>
-              <button type="button" class="bigbtn size-50 text-[9.5px]" aria-label="Play: Your own presets">PLAY</button>
-            </div>
-          </div>
-          <h3 class="type-feature mt-0 mx-0 mb-6 flex items-baseline gap-12"><span class="type-num text-ink-3">06</span><span class="t">Your own presets</span></h3>
-          <p class="m-0 text-[15px] text-ink-2 [&_code]:text-ink">Icons, colors, sounds and timing go in <code>~/.config/drip/config.toml</code>. This module defines a <code>deploy</code> preset.</p>
-        </article>
-      </div>
-    </section>
+  <section class="band" id="setup">
+    <div><h2>Running in a minute.</h2><p class="sub">A prebuilt binary for Apple silicon and Intel. No Xcode.</p></div>
+    <ol class="steps">
+      <li><h3>Install</h3><div><div class="plate"><code>brew install jrnxf/tap/drip</code><button class="copy" type="button" data-copy="brew install jrnxf/tap/drip" aria-label="Copy the install command">copy</button></div></div></li>
+      <li><h3>Send a card</h3><div><p>No permission prompt. drip draws its own card, not a Notification Center banner.</p><div class="plate"><code>drip ok "hello"</code><button class="copy" type="button" data-copy='drip ok "hello"' aria-label="Copy the first command">copy</button></div></div></li>
+      <li><h3>Pick a recipe</h3><div><p>Snippets to copy and adapt: <a href="https://github.com/jrnxf/drip/tree/main/recipes/zsh-slow-commands">slow shell commands</a>, <a href="https://github.com/jrnxf/drip/tree/main/recipes/permission-cards">coding-agent permission cards</a>, or <a href="https://github.com/jrnxf/drip/tree/main/recipes">all recipes</a>.</p></div></li>
+    </ol>
+  </section>
 
-    <section class="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] gap-56 [align-items:start] border-t border-t-rule pt-48 pb-70 compact:grid-cols-[minmax(0,1fr)] compact:gap-36 narrow:pt-40 narrow:pb-56" id="sheet">
-      <div>
-        <div class="lbl">02 / spec sheet</div>
-        <h2 class="type-title mt-10 mx-0 mb-18">up to <b>three alerts at once.</b></h2>
-        <p class="m-0 max-w-[46ch] text-ink-2">Cards that arrive while one shows stack below it: each new card drops out of the last one. Cards whose time is up together leave together. Cards past the most it shows wait in a drop under the last card, which counts them and lists them under the pointer; each grows out of it as room opens. This module runs DripCore's <code>CardStack</code>: press PLAY.</p>
-        <table class="spec">
-          <tr><th scope="row">kinds</th><td>ok, warn, fail, info, and presets from your config: the kind is the look</td></tr>
-          <tr><th scope="row">text</th><td>a title of up to 2 lines and a detail of up to 3, wrapped by the engine; a card is at most 640 pt wide</td></tr>
-          <tr><th scope="row">time</th><td>4.5 s by default; <code>--seconds</code> takes 0.5 to 60; <code>--stay</code> keeps a card until it is clicked</td></tr>
-          <tr><th scope="row">buttons</th><td><code>--open</code> opens a URL or a file; <code>--yes</code> and <code>--no</code> ask, then exit 0 on yes, 1 on no and 5 without an answer</td></tr>
-          <tr><th scope="row">icons</th><td>SF Symbols, image files, app icons, and marks for Claude, Codex and Gemini</td></tr>
-          <tr><th scope="row">agents</th><td>a recipe's hook snippet, added to the agent's own settings</td></tr>
-          <tr><th scope="row">replace</th><td><code>--id</code>: a newer card with the same id takes the older one's place</td></tr>
-          <tr><th scope="row">dismiss</th><td>a click brings the sender forward; the × on hover, a right-click or <code>drip dismiss</code> takes a card away without that</td></tr>
-          <tr><th scope="row">history</th><td><code>drip history</code> lists past cards; <code>--missed</code>, the ones held while the screen was locked</td></tr>
-        </table>
-      </div>
-      <div class="module stackmod">
-        <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
-        <div class="display" id="stack-screen" role="img" aria-label="A display where drip stacks five cards"><div class="glyphs" aria-hidden="true"><span>STACK</span><span class="clock"></span></div><canvas class="stage-canvas"></canvas><p class="still"><code>$ drip ok; drip warn; drip fail; drip info; drip ok</code>three cards stack under the notch, and a drop under them counts the two waiting for room</p></div>
-        <div class="row">
-          <span style="flex:1"></span>
-          <button type="button" class="bigbtn" id="stack-play" aria-label="Play five cards">PLAY</button>
-        </div>
-        <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>stack</span></div><div class="log" id="stack-tape"></div></div></div></div>
-      </div>
-    </section>
-
-    <section class="border-t border-t-rule pt-48 pb-70 narrow:pt-40 narrow:pb-56" id="engine">
-      <div class="lbl">03 / how this page works</div>
-      <h2 class="type-title mt-10 mx-0 mb-18">how this <b>page works.</b></h2>
-      <p class="m-0 max-w-[52ch] text-ink-2">DripCore, drip's engine, is compiled from the same Swift sources to WebAssembly and loaded by this page. It parses each command line, resolves the card, wraps the text and runs the springs that drop it out of the notch. The page paints what it computes.</p>
-      <div class="parts mt-36 grid grid-cols-3 gap-28 narrow:grid-cols-[minmax(0,1fr)]">
-        <div><h3><i style="--c:#30d158"></i>real drip</h3><ul>
-          <li>The command line, parsed by swift-argument-parser, with drip's own errors and <code>--help</code></li>
-          <li>Presets, flags and your <code>config.toml</code></li>
-          <li><code>drip run</code>'s title and timing, and <code>drip hook</code>'s reading of the payload</li>
-          <li>Text wrapping, sizes, springs, and the outline of the drop, traced by marching squares</li>
-          <li>Stacks of up to three cards, each dropped out of the last, and cards replaced in place: DripCore's <code>CardStack</code> places and times them</li>
-        </ul></div>
-        <div><h3><i style="--c:#0a84ff"></i>drawn by this page</h3><ul>
-          <li>The paint: simple icons stand in for SF Symbols</li>
-          <li>The text, in your browser's system font</li>
-          <li>The commands <code>drip run</code> wraps: they only pretend to run, and drip times them</li>
-          <li>The crossfade when a card is replaced in place, on drip's own timings</li>
-          <li>No sound</li>
-          <li>A click on a card only takes it away: there is no terminal behind it to bring forward</li>
-        </ul></div>
-        <div><h3><i style="--c:#ff9f0a"></i>only on a Mac</h3><ul>
-          <li>History and missed cards</li>
-          <li>App icons and image files as icons</li>
-          <li>The system sounds</li>
-        </ul></div>
-      </div>
-    </section>
-
-    <section class="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] gap-56 [align-items:start] border-t border-t-rule pt-48 pb-70 compact:grid-cols-[minmax(0,1fr)] compact:gap-36 narrow:pt-40 narrow:pb-56" id="install">
-      <div>
-        <div class="lbl">04 / install</div>
-        <h2 class="type-title mt-10 mx-0 mb-18">install <b>on macOS.</b></h2>
-        <p class="m-0 max-w-[52ch] text-ink-2">Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs. Nothing compiles, and Xcode is not needed. The README covers building from source.</p>
-        <div class="mt-26 flex flex-wrap gap-12"><a class="keycap" href="https://github.com/jrnxf/drip">source on GitHub</a><a class="keycap" href="https://github.com/jrnxf/drip#usage">usage</a></div>
-      </div>
-      <div class="paper receipt"><div class="slip">
-        <div class="head"><span>drip</span><span>install</span></div>
-        <div class="cmd"><code><span class="c">$ </span>brew install jrnxf/tap/drip</code><button type="button" class="copy-btn" data-copy="brew install jrnxf/tap/drip" aria-label="Copy: brew install jrnxf/tap/drip">copy</button></div>
-        <div class="cmd"><code><span class="c">$ </span>drip ok "drip works"</code><button type="button" class="copy-btn" data-copy='drip ok "drip works"' aria-label='Copy: drip ok "drip works"'>copy</button></div>
-        <div class="cmd"><code><span class="c">$ </span>drip run make test   <span class="c"># wrap any command</span></code><button type="button" class="copy-btn" data-copy="drip run make test" aria-label="Copy: drip run make test">copy</button></div>
-        <div class="tot"><span>macOS 13 or newer</span><span>notch optional</span><span>MIT</span></div>
-      </div></div>
-    </section>
+  <section class="band" id="spec">
+    <div><h2>Small, and it stays out of the way.</h2><p class="sub">macOS 13 or newer. A notch is optional: without one, cards come from the top edge. Cards wait while the screen is locked.</p></div>
+    <table class="spec">
+      <tr><th>kinds</th><td>ok, warn, fail, info, and presets from your config</td></tr>
+      <tr><th>text</th><td>a title of up to 2 lines and a detail of up to 3. Pipe text in and the first line is the title</td></tr>
+      <tr><th>time</th><td>4.5 s by default. <code>--seconds</code> takes 0.5 to 60. <code>--stay</code> keeps it until clicked</td></tr>
+      <tr><th>buttons</th><td><code>--open</code> opens a URL or a file. <code>--yes</code> / <code>--no</code> ask, then exit 0 or 1</td></tr>
+      <tr><th>agents</th><td>Claude Code, Codex and Gemini CLI, through a recipe's hook</td></tr>
+      <tr><th>quiet</th><td><code>drip pause 30m</code> for a meeting. <code>drip history --missed</code> for what you missed</td></tr>
+    </table>
+  </section>
   </main>
-
-  <footer class="flex flex-wrap justify-between gap-x-24 gap-y-10 border-t border-t-rule pt-22 pb-50">
-    <span class="lbl">drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you · MIT</span>
-    <span class="lbl">guides: <a class="text-ink" href="/claude-code-notifications">Claude Code notifications</a> · <a class="text-ink" href="/notify-when-command-finishes">alert when a command finishes</a> · <a class="text-ink" href="/vs">drip vs terminal-notifier</a></span>
-    <span class="lbl">the cards on this page are drawn by drip's engine · <a class="text-ink" href="https://github.com/jrnxf/drip">source</a> · see also <a class="text-ink" href="https://okfs.jrnxf.co">okfs</a></span>
-  </footer>
+  <footer><div class="lbl">MIT · <a href="https://github.com/jrnxf/drip">source on GitHub</a></div><nav class="guides" aria-label="Guides"><span class="lbl">guides</span><a href="/claude-code-notifications">Claude Code notifications</a><a href="/notify-when-command-finishes">Alert when a command finishes</a><a href="/vs">drip vs terminal-notifier</a></nav></footer>
+  <div id="announce" class="sr" aria-live="polite"></div>
 </div>
-<div class="absolute h-1 w-1 overflow-hidden whitespace-nowrap [clip:rect(0_0_0_0)]" aria-live="polite" id="announce"></div>
-
 <script type="module">
 import { loadDrip } from "./drip-engine.js";
-
-// The engine, named by its content when the site is built (web/build.sh).
 const WASM = "__DRIP_WASM__";
-
 // ===== Measuring and painting =====
 // The cards are macOS UI, so their text is measured and painted in the system font, not the page's.
 const FONT = getComputedStyle(document.documentElement).getPropertyValue("--font-sys");
@@ -903,358 +727,6 @@ class Stage {
 const announcer = document.getElementById("announce");
 function announce(card) { announcer.textContent = `drip card: ${card.card.title}${card.card.detail ? ". " + card.card.detail : ""}`; }
 
-// ===== Printers =====
-// Each prints on its paper: an entry per command, with what it printed under it. Like a receipt,
-// an entry is printed once its command is done (exec() says so with done()): it is inked at the
-// slot, and the paper steps out a line at a time, as a thermal printer's motor feeds it, so the
-// entry comes out of the slot and the older ones go down with the paper. Past `max` entries the
-// oldest go. The paper's head and the time it was put in are at its far end, printed first.
-// A run (the hero's) prints its command at once instead, and what the command printed under it,
-// all together, once it is done.
-const LINE = 18.4; // an entry's line on the paper, in CSS pixels
-class Term {
-  constructor(log, { max = 40 } = {}) {
-    this.log = log; this.max = max; this.entry = null; this.held = false;
-    this.feed = document.createElement("div"); log.append(this.feed);
-    this.end = document.createElement("div"); this.end.className = "end";
-    this.stamp = document.createElement("div"); this.stamp.className = "stamp";
-    this.end.append(log.parentElement.querySelector(".head"), this.stamp);
-    this.printing = Promise.resolve(); this.sheet = 0;
-    this.fresh();
-    this.paper = new Paper(log, this.feed);
-  }
-  open() { this.flush(); const entry = document.createElement("div"); entry.className = "entry"; this.entry = entry; return entry; }
-  line(entry, cls, text) { const div = document.createElement("div"); div.className = cls; div.append(text); entry.append(div); return div; }
-  // Output that comes while a command runs waits for the command; any other is printed at once.
-  print(text, cls = "") {
-    const entry = this.entry ?? this.open();
-    for (const part of String(text).split("\n")) this.line(entry, `out ${cls}`, part);
-    if (!this.held) this.flush();
-  }
-  echo(command) {
-    this.command(this.open(), command);
-    this.held = true;
-  }
-  // A flag such as --stay stays whole, rather than breaking after its dashes.
-  command(entry, command) {
-    const p = document.createElement("span"); p.className = "c"; p.textContent = "$ ";
-    const div = this.line(entry, "cmd", p);
-    for (const part of command.split(/(\s+)/)) {
-      if (!/^--?\w/.test(part)) { div.append(part); continue; }
-      const flag = document.createElement("span"); flag.className = "flag"; flag.textContent = part; div.append(flag);
-    }
-  }
-  // A command printed the moment it runs, in an entry of its own, so runs can overlap. Returns
-  // where exec() prints: what the command prints is held, and added under it at once when it is
-  // done, without the paper feeding, so the lines above it stay where they are.
-  run(command) {
-    const entry = document.createElement("div"), sheet = this.sheet, held = [];
-    entry.className = "entry";
-    this.command(entry, command);
-    this.printing = this.printing.then(() => sheet === this.sheet && this.feedOut(entry));
-    return {
-      print: (text, cls = "") => { for (const part of String(text).split("\n")) held.push([`out ${cls}`, part]); },
-      done: () => { this.printing = this.printing.then(() => { if (sheet === this.sheet) for (const [cls, part] of held) this.line(entry, cls, part); }); },
-    };
-  }
-  done() { this.flush(); }
-  // Entries print one after another, each once the paper has finished feeding out the one before.
-  flush() {
-    const entry = this.entry, sheet = this.sheet;
-    this.entry = null; this.held = false;
-    if (entry) this.printing = this.printing.then(() => sheet === this.sheet && this.feedOut(entry));
-  }
-  async feedOut(entry) {
-    const before = this.feed.offsetHeight;
-    this.feed.prepend(entry);
-    const fed = this.feed.offsetHeight - before;
-    const entries = this.feed.querySelectorAll(":scope > .entry");
-    for (let i = this.max; i < entries.length; i++) entries[i].remove();
-    if (reduceMotion.matches || fed <= 0) return;
-    // The whole paper starts back in the slot by what was printed, and steps out a line at a time.
-    const lines = Math.min(12, Math.max(1, Math.round(fed / LINE))), frames = [];
-    for (let i = 0; i <= lines; i++) frames.push({ offset: i / lines, transform: `translateY(${(-fed + (fed * i) / lines).toFixed(2)}px)`, easing: "cubic-bezier(.3, .7, .3, 1)" });
-    this.feeding = this.paper.slip.animate(frames, { duration: 60 + lines * 75 });
-    await this.feeding.finished.catch(() => {});
-    this.feeding = null;
-  }
-  // A new scene starts on fresh paper: nothing on it yet but its head, and when it was put in.
-  clear() {
-    this.sheet++; this.feeding?.cancel(); this.printing = Promise.resolve(); this.entry = null; this.held = false;
-    this.fresh();
-    this.paper.reset();
-  }
-  fresh() {
-    const now = new Date();
-    this.stamp.textContent = `${now.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" })} · ${now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-    this.feed.replaceChildren(this.end);
-  }
-}
-
-// ===== Readouts =====
-// A feature module's LCD line types the command it runs, and the row under it counts the steps and
-// shows what came back: the latest output, then the exit status. It shows one command at a time, so
-// a module's commands read in the order they run.
-class Readout {
-  constructor(box, steps) {
-    this.steps = steps; this.at = -1;
-    const ghost = document.createElement("div"); ghost.className = "ghost"; ghost.setAttribute("aria-hidden", "true");
-    for (const step of steps) {
-      const block = document.createElement("div"), cmd = this.line();
-      for (const [text, cls] of this.parts(step)) cmd.append(this.span(text, cls));
-      block.append(cmd, this.stat("x")); ghost.append(block);
-    }
-    this.live = document.createElement("div"); this.live.className = "live";
-    box.append(ghost, this.live);
-    this.clear();
-  }
-  line() { const div = document.createElement("div"); div.className = "cmd"; return div; }
-  span(text, cls) { const span = document.createElement("span"); if (cls) span.className = cls; span.textContent = text; return span; }
-  stat(text) { const div = document.createElement("div"); div.className = "stat"; div.textContent = text; return div; }
-  // The prompt, the command with each flag kept whole, and what the step is, in plain words.
-  parts(step) {
-    const parts = [["› ", "p"]];
-    for (const part of (step.shown ?? step.line).split(/(\s+)/)) if (part) parts.push([part, /^--?\w/.test(part) ? "flag" : ""]);
-    // The label wraps whole, under the command.
-    if (step.note) parts.push(["  ", ""], [`# ${step.note}`, "c note"]);
-    return parts;
-  }
-  get step() { return this.steps.length > 1 ? `step ${this.at + 1} of ${this.steps.length}` : ""; }
-  show(...parts) {
-    this.status.textContent = [this.step, ...parts].filter(Boolean).join(" · ");
-    if (!reduceMotion.matches) this.status.animate([{ opacity: 0.15 }, { opacity: 0.7 }], { duration: 150, easing: "steps(2, end)" });
-  }
-  clear() {
-    this.at = -1;
-    this.cmd = this.line(); this.cmd.append(this.span("› ", "p"), this.span("", "caret"));
-    this.status = this.stat("ready · press play");
-    this.live.replaceChildren(this.cmd, this.status);
-  }
-  // Types the step's command a character at a time; false once `alive` says the play has stopped.
-  async type(step, alive) {
-    this.at = this.steps.indexOf(step);
-    const caret = this.span("", "caret");
-    this.cmd.replaceChildren(caret);
-    this.show(this.step ? "" : "typing");
-    for (const [text, cls] of this.parts(step)) {
-      const span = this.span(reduceMotion.matches ? text : "", cls); caret.before(span);
-      if (reduceMotion.matches) continue;
-      for (const ch of text) { span.textContent += ch; await sleep(ch === " " ? 39 : 26); if (!alive()) return false; }
-    }
-    this.show("running");
-    return true;
-  }
-  print(text) { const last = String(text).split("\n").at(-1); if (last.trim()) this.show(last.trim()); }
-  waiting() { this.show("waiting for an answer"); }
-  echo() {}
-  done() {}
-  result(status, seconds) { this.show(`exit ${status}`, seconds >= 0.5 ? `${seconds.toFixed(1)} s` : ""); }
-}
-
-// ===== Paper =====
-// A printer's paper is as long as its print: each entry feeds it further out, over whatever is
-// below it, and nothing on the page moves. Drag the scissors across it and it is cut there; what
-// was under the cut falls away, and later print feeds the cut end out from where it was.
-const PAPER_TAIL = 20; // blank paper between the last line and the end, in CSS pixels
-const CUT_STEP = 2; // a cut's edge is sampled every 2 px across the paper
-const scissors = scissorCursors();
-class Paper {
-  constructor(log, feed) {
-    this.log = log; this.feed = feed;
-    this.printer = log.closest(".printer"); this.paper = log.closest(".paper"); this.slip = log.closest(".slip");
-    // Paper hangs over what is below it, a printer's displays and slot included, so a printer
-    // higher on the page is in front of one further down. All stay under the falling pieces.
-    const printers = document.querySelectorAll(".printer:not(.fallen)");
-    printers.forEach((printer, i) => { printer.style.zIndex = 5 + printers.length - i; });
-    this.cut = null; // the paper's length once it has been cut; null while it has its starting end
-    this.length = 0; this.fed = 0; this.width = 0;
-    this.slit = document.createElementNS("http://www.w3.org/2000/svg", "svg"); this.slit.classList.add("slit");
-    this.slit.append(document.createElementNS("http://www.w3.org/2000/svg", "path"));
-    this.slip.append(this.slit);
-    this.cutter = document.createElement("div"); this.cutter.className = "cutter"; this.cutter.setAttribute("aria-hidden", "true");
-    this.cutter.style.cursor = scissors.openR;
-    this.paper.append(this.cutter);
-    this.bindScissors();
-    // A change of width only rewraps what is printed, so only growth at the same width is new print.
-    new ResizeObserver(() => {
-      const height = this.feed.offsetHeight, width = this.feed.offsetWidth;
-      const fed = width === this.width ? height - this.fed : 0;
-      this.fed = height; this.width = width;
-      this.measure(fed);
-    }).observe(this.feed);
-  }
-  // Sets the paper's length from what is printed on it; `fed` is how much more print there is.
-  measure(fed) {
-    if (this.cut !== null && fed > 0) this.cut += fed;
-    this.length = this.cut ?? Math.ceil(this.log.offsetTop + this.feed.offsetHeight + PAPER_TAIL);
-    this.paper.style.setProperty("--paper-len", `${this.length}px`);
-  }
-  // A new scene starts on fresh paper, torn as it was.
-  reset() {
-    this.cut = null; this.fed = 0;
-    uncut(this.slip);
-    this.measure(0);
-  }
-
-  bindScissors() {
-    const cutter = this.cutter;
-    let drag = null;
-    const local = (e) => { const r = this.slip.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    // The cut stays clear of the slot, so there is always paper out of it to print on.
-    const top = () => this.log.offsetTop + 6;
-    const finish = (complete) => {
-      if (!drag) return;
-      const d = drag; drag = null; touchScissors();
-      cutter.style.cursor = d.dir < 0 ? scissors.openL : scissors.openR;
-      if (complete) return this.cutAlong(this.edgeOf(d.points, top()), d.dir < 0 ? -1 : 1);
-      this.slit.classList.add("fade");
-      // A click, or a stroke that stopped short: say how the scissors work.
-      this.tip(d.points.at(-1)[1]);
-    };
-    cutter.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0 || this.length < top() + 12) return;
-      const [x, y] = local(e), w = this.slip.offsetWidth;
-      try { cutter.setPointerCapture(e.pointerId); } catch {}
-      drag = { points: [[x, y]], left: x <= 2, right: x >= w - 2, travel: 0, dir: 0, last: [e.clientX, e.clientY] };
-      this.slit.classList.remove("fade"); this.slit.firstChild.setAttribute("d", "");
-      if (e.pointerType === "touch") touchScissors(e.clientX, e.clientY, true);
-    });
-    cutter.addEventListener("pointermove", (e) => {
-      if (!drag) return;
-      const [x, y] = local(e), w = this.slip.offsetWidth;
-      const dx = e.clientX - drag.last[0];
-      drag.travel += Math.hypot(dx, e.clientY - drag.last[1]); drag.last = [e.clientX, e.clientY];
-      if (Math.abs(dx) > 0.5) drag.dir = 0.7 * drag.dir + 0.3 * Math.sign(dx);
-      drag.points.push([x, Math.min(Math.max(y, top()), this.length - 1)]);
-      if (x <= 2) drag.left = true;
-      if (x >= w - 2) drag.right = true;
-      // The blades close and open as they go, a bite every 14 px, facing the way the stroke runs.
-      const shut = Math.floor(drag.travel / 14) % 2 === 1;
-      cutter.style.cursor = scissors[`${shut ? "shut" : "open"}${drag.dir < 0 ? "L" : "R"}`];
-      if (e.pointerType === "touch") touchScissors(e.clientX, e.clientY, !shut);
-      this.slit.firstChild.setAttribute("d", drag.points.map(([px, py], i) => `${i ? "L" : "M"}${Math.min(Math.max(px, 0), w).toFixed(1)} ${py.toFixed(1)}`).join(""));
-      // The piece goes the moment the scissors clear the far edge.
-      if (drag.left && drag.right) finish(true);
-    });
-    cutter.addEventListener("pointerup", () => finish(false));
-    cutter.addEventListener("pointercancel", () => finish(false));
-  }
-  tip(y) {
-    if (!this.tipEl) { this.tipEl = document.createElement("div"); this.tipEl.className = "cut-tip"; this.tipEl.textContent = "drag across to cut"; this.cutter.append(this.tipEl); }
-    // Clear of the slot, where the paper is clipped.
-    this.tipEl.style.top = `${Math.max(y, 40)}px`; this.tipEl.classList.add("on");
-    clearTimeout(this.tipTimer); this.tipTimer = setTimeout(() => this.tipEl.classList.remove("on"), 1400);
-  }
-  // The stroke becomes the edge: its height at each column across the paper, the latest pass
-  // winning, gaps filled from their neighbours, and lightly smoothed, so it reads as a cut.
-  edgeOf(points, top) {
-    const w = this.slip.offsetWidth, cols = Math.floor(w / CUT_STEP) + 1, ys = new Array(cols).fill(null);
-    for (let i = 1; i < points.length; i++) {
-      const [x0, y0] = points[i - 1], [x1, y1] = points[i];
-      const from = Math.max(0, Math.ceil(Math.min(x0, x1) / CUT_STEP)), to = Math.min(cols - 1, Math.floor(Math.max(x0, x1) / CUT_STEP));
-      for (let c = from; c <= to; c++) ys[c] = x1 === x0 ? y1 : y0 + ((y1 - y0) * (c * CUT_STEP - x0)) / (x1 - x0);
-    }
-    let last = ys.find((y) => y !== null) ?? points[0][1];
-    for (let c = 0; c < cols; c++) ys[c] === null ? (ys[c] = last) : (last = ys[c]);
-    return ys.map((_, c) => {
-      let sum = 0, n = 0;
-      for (let j = Math.max(0, c - 2); j <= Math.min(cols - 1, c + 2); j++) { sum += ys[j]; n++; }
-      return Math.min(Math.max(sum / n, top), this.length - 1);
-    });
-  }
-  // Cuts the paper along `ys`: below it becomes a piece that falls, above it keeps the cut as its
-  // end. `dir` is the way the scissors went, and the piece hangs on last where they came out.
-  cutAlong(ys, dir) {
-    for (const animation of this.paper.getAnimations({ subtree: true })) animation.finish();
-    const w = this.slip.offsetWidth, length = this.length, r = this.slip.getBoundingClientRect();
-    const top = Math.min(...ys), bottom = Math.max(...ys);
-    // A copy of the paper, in a printer of its own so it keeps the paper's look, clipped to below the cut.
-    const piece = document.createElement("div"); piece.className = "printer fallen"; piece.setAttribute("aria-hidden", "true");
-    Object.assign(piece.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${w}px`, height: `${length}px` });
-    const paper = this.paper.cloneNode(true);
-    paper.querySelectorAll(".cutter, .slit").forEach((el) => el.remove());
-    paper.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
-    paper.removeAttribute("aria-live"); paper.querySelectorAll("[aria-live]").forEach((el) => el.removeAttribute("aria-live"));
-    paper.style.height = `${length}px`;
-    paper.querySelector(".slip").style.padding = getComputedStyle(this.slip).padding;
-    piece.append(paper);
-    const edge = ys.map((y, i) => `${Math.min(i * CUT_STEP, w).toFixed(1)}px ${y.toFixed(1)}px`).join(", ");
-    piece.style.clipPath = `polygon(-60px ${ys[0].toFixed(1)}px, ${edge}, ${w + 60}px ${ys.at(-1).toFixed(1)}px, ${w + 60}px ${length + 80}px, -60px ${length + 80}px)`;
-    document.body.append(piece);
-    // The paper left in the printer ends at the cut, and what was printed wholly below it is gone.
-    this.cut = Math.ceil(bottom);
-    for (const entry of [...this.feed.children]) if (entry.offsetTop >= bottom) entry.remove();
-    cutEnd(this.slip, { ys, width: w, top: top - 1 });
-    this.slit.firstChild.setAttribute("d", "");
-    this.measure(0);
-    if (reduceMotion.matches) { piece.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).finished.then(() => piece.remove()); return; }
-    // Let go of, the paper in the printer swings a little.
-    this.paper.animate([{ transform: "none" }, { transform: `rotate(${-dir * 0.8}deg)` }, { transform: `rotate(${dir * 0.45}deg)` }, { transform: `rotate(${-dir * 0.2}deg)` }, { transform: "none" }], { duration: 900, easing: "ease-out" });
-    fall(piece, { width: w, height: length - top, hingeX: dir < 0 ? 0 : w, hingeY: dir < 0 ? ys[0] : ys.at(-1), dir });
-  }
-}
-
-// Paper falls slowly and flutters: a short piece drifts and turns more than a long one, which
-// drops nearly straight. It first swings down off the point it hung on last.
-function fall(el, { width, height, hingeX, hingeY, dir }) {
-  const light = Math.min(1.6, Math.max(0.25, 160 / Math.max(height, 40)));
-  const terminal = 520 + 520 / light, omega = 4 + Math.random() * 2.5, phase = Math.random() * Math.PI * 2;
-  const torque = Math.sign(width / 2 - hingeX) || 1, top = parseFloat(el.style.top);
-  let x = 0, y = 0, vx = -dir * (30 + 50 * light), vy = 30, angle = 0, spin = 0, t = 0, last = performance.now();
-  el.style.transformOrigin = `${hingeX}px ${hingeY}px`;
-  const tick = (now) => {
-    const dt = Math.min(0.033, (now - last) / 1000); last = now; t += dt;
-    if (t < 0.12) { spin += torque * 260 * dt; angle += spin * dt; }
-    else {
-      vy = Math.min(terminal, vy + 1500 * dt); vx *= 0.985;
-      spin = spin * 0.96 + Math.cos(t * omega + phase) * 220 * light * dt;
-      angle += spin * dt;
-      x += (vx + Math.sin(t * omega + phase) * 90 * light) * dt; y += vy * dt;
-    }
-    const fade = Math.min(1, Math.max(0, (t - 0.8) / 0.7));
-    el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${angle.toFixed(2)}deg)`;
-    el.style.opacity = String(1 - fade);
-    if (fade < 1 && top + y < innerHeight + 40) requestAnimationFrame(tick); else el.remove();
-  };
-  requestAnimationFrame(tick);
-}
-
-// Scissors for the cursor: blades along the cut, orange finger rings, open and shut, facing
-// right and left. The hotspot is the throat between the blades, where paper is cut.
-function scissorsSVG(open, flip) {
-  const tip = open ? 5.2 : 0.6, ring = open ? 6.4 : 5.4;
-  const rings = [[5.5, 16 - ring], [5.5, 16 + ring]], tips = [[30.5, 16 + tip], [30.5, 16 - tip]];
-  // Each ring drives the opposite blade through the pivot.
-  const blade = ([rx, ry], [tx, ty]) => `M${rx + 2.6} ${ry + (ry < 16 ? 2.4 : -2.4)}L16 16L${tx} ${ty}`;
-  let body = "";
-  for (const [stroke, width] of [["#111", 4.2], ["#d8d8d2", 2.2]]) for (let i = 0; i < 2; i++) body += `<path d="${blade(rings[i], tips[i])}" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
-  for (const [stroke, width] of [["#111", 4.2], ["#ff4f00", 2.2]]) for (const [cx, cy] of rings) body += `<circle cx="${cx}" cy="${cy}" r="3.4" stroke="${stroke}" stroke-width="${width}" fill="none"/>`;
-  body += `<circle cx="16" cy="16" r="1.5" fill="#111"/>`;
-  return flip ? `<g transform="translate(32 0) scale(-1 1)">${body}</g>` : body;
-}
-function scissorCursors() {
-  const cursors = {}, throat = 23;
-  for (const open of [true, false]) for (const flip of [false, true]) {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">${scissorsSVG(open, flip)}</svg>`;
-    cursors[`${open ? "open" : "shut"}${flip ? "L" : "R"}`] = `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${flip ? 32 - throat : throat} 16, crosshair`;
-  }
-  return cursors;
-}
-// A touch has no cursor: the scissors are drawn up and to the left of the finger instead, where
-// the finger cannot hide them. With no point given they go.
-let touchScissorsEl = null;
-function touchScissors(x, y, open) {
-  if (x === undefined) { touchScissorsEl?.classList.remove("on"); return; }
-  if (!touchScissorsEl) {
-    touchScissorsEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    touchScissorsEl.setAttribute("viewBox", "0 0 32 32"); touchScissorsEl.setAttribute("aria-hidden", "true");
-    touchScissorsEl.classList.add("touch-scissors"); document.body.append(touchScissorsEl);
-  }
-  touchScissorsEl.innerHTML = scissorsSVG(open, false);
-  touchScissorsEl.style.left = `${x - 50}px`; touchScissorsEl.style.top = `${y - 62}px`;
-  touchScissorsEl.classList.add("on");
-}
-
 // Splits a command line as a POSIX shell would, quotes and backslashes included: `;` and `&&`
 // separate commands and `|` separates a pipeline's stages.
 function parseLine(line) {
@@ -1393,327 +865,125 @@ async function execOne(stages, term, stage, config, alive) {
   return reply.status ?? 0;
 }
 
-// ===== The hero: the device's display, printer and keys =====
-const heroScreen = document.getElementById("hero-screen");
-const heroTerm = new Term(document.getElementById("hero-tape"), { max: 80 });
-const narrow = matchMedia("(width <= 760px)");
-// The notch and the cards at their real size, smaller only when the display is too narrow for them.
-const hero = new Stage(heroScreen, { term: heroTerm, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 600)) });
-const stages = [hero];
-
-// Five drips at once: three stack, and the other two queue in a drop under the last one.
-const STACK_LINES = [
-  `drip ok "Build finished" -d "make test: 246 passed in 3.2s"`,
-  `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"`,
-  `drip fail "Deploy failed" -d "staging: health check timed out"`,
-  `drip info "Backup done" -d "412 files, 3.1 GB to the NAS"`,
-  `drip ok "Release 1.4 is out" -d "14 files changed"`,
-];
-// The keys: one example each, with the LED in the color of the card it shows, its group, the hint
-// printed under its name, and what the display says when it is hovered or focused before a press.
-const CHIPS = [
-  { key: "ok", name: "a success card", color: "#30d158", line: `drip ok "Build finished" -d "make test: 246 passed in 3.2s"`, group: "cards", hint: "success", says: "a green card: Build finished" },
-  { key: "fail", name: "a failure card", color: "#ff453a", line: `drip fail "Deploy failed" -d "staging: health check timed out after 30s"`, group: "cards", hint: "failure", says: "a red card: Deploy failed" },
-  { key: "warn", name: "a warning card", color: "#ff9f0a", line: `drip warn "Disk almost full" -d "12 GB left on Macintosh HD"`, group: "cards", hint: "warning", says: "an orange card: Disk almost full" },
-  { key: "run", name: "drip run npm test", color: "#8e8e93", line: `drip run npm test`, group: "watch", hint: "wraps a command", says: "runs npm test, then a card with how it went" },
-  { key: "agent", name: "Claude needs you, then is done", color: "#0a84ff", line: `drip hook claude '{"hook_event_name":"PermissionRequest","cwd":"/work/my-app","session_id":"s1","tool_name":"Bash","tool_input":{"command":"npm test"},"tool_use_id":"toolu_1"}'; sleep 2.6; drip hook claude '{"hook_event_name":"Stop","cwd":"/work/my-app","session_id":"s1","last_assistant_message":"All 246 tests pass. Pushed fix/notch."}'`, group: "watch", hint: "agent hook", says: "Claude Code asks for permission, then says it is done" },
-  { key: "--id", name: "a card replaced in place", color: "#0a84ff", line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy; sleep 1.6; drip ok "Deployed" -d "api 1.4.2 is live" --id deploy`, group: "more", hint: "updates in place", says: "--id: Deploying turns into Deployed in the same card" },
-  { key: "--open", name: "a card with a button", color: "#5e5ce6", line: `drip ok "Release 1.4 is out" --button "View" --open https://github.com/jrnxf/drip`, group: "behavior", hint: "adds a button", says: "--open: a card with a View button that opens a link" },
-  { key: "preset", name: "your own preset", color: "#a78bfa", line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"`, group: "more", hint: "your own look", says: "a deploy preset from config.toml: its own icon and color" },
-  { key: "stack", name: "five cards at once", color: "#d0d0cc", line: STACK_LINES.join("; "), group: "more", hint: "3 at once", says: "five drips at once: three stack, the other two queue in a drop under them" },
-  { key: "--yes", name: "a question with yes and no buttons", color: "#ff9f0a", line: `drip warn "Deploy to prod?" -d "api 1.4.2" --yes Deploy --no Cancel && ./deploy.sh`, group: "behavior", hint: "yes / no buttons", says: "--yes / --no: asks Deploy or Cancel, and waits for your click" },
-  { key: "--stay", name: "a card that stays until clicked", color: "#ff453a", line: `drip fail "Deploy failed" -d "rolled back to v1.3.9" --stay`, group: "behavior", hint: "stays until clicked", says: "--stay: a red card that stays until you click it" },
-];
-// The keys' groups, in two rows.
-const KEYROWS = [["cards", "watch"], ["behavior", "more"]];
-
-
-// How many of the keys' commands are running; each key counts its own in `runs`.
-let running = 0, latest = 0;
-const runStat = document.getElementById("run-stat"), runWord = runStat.querySelector(".w"), runTime = runStat.querySelector(".t");
-// Runs a key's line, even while others run. The paper prints it at once; the display counts the
-// latest run's time, then says how it ended, and the key's LED blinks until its command returns.
-async function runHero(line, { fromUser = true } = {}) {
-  if (fromUser) stopAttract();
-  const run = ++latest; running++;
-  unpreview();
-  // The key whose example this is lights until the cards have gone, whoever pressed it.
-  const key = keyFor.get(line);
-  for (const k of keysBox.querySelectorAll(".running")) if (!k.runs) k.classList.remove("running");
-  if (key) { key.runs = (key.runs ?? 0) + 1; key.classList.add("running", "exec"); }
-  const started = performance.now(), seconds = () => (performance.now() - started) / 1000;
-  const out = heroTerm.run(line);
-  // A question holds the command until it is answered, and the display says so.
-  let waiting = false;
-  out.waiting = () => { waiting = true; };
-  runStat.className = "run on going"; clearTimeout(runStat.fade);
-  const show = () => { if (run === latest) { runWord.textContent = waiting ? "waiting for you" : "running"; runTime.textContent = `${seconds().toFixed(1)}s`; } };
-  show();
-  const tick = setInterval(show, 100);
-  let status = 0;
-  try { status = await exec(line, out, hero, { echo: false }); } finally {
-    clearInterval(tick); running--;
-    if (run === latest) {
-      runStat.className = `run on ${status ? "bad" : "ok"}`;
-      runWord.textContent = `exit ${status} ·`; runTime.textContent = `${seconds().toFixed(1)}s`;
-      runStat.fade = setTimeout(() => { runStat.className = "run"; }, 2600);
-    }
-    if (key && !--key.runs) {
-      key.classList.remove("exec");
-      (async () => { while (hero.busy && !key.runs) await sleep(150); if (!key.runs) key.classList.remove("running"); })();
-    }
-  }
-}
-
-// Hovering or focusing a key says on the display what it would run.
-const dispNote = document.getElementById("dispnote"), dispText = dispNote.querySelector(".t");
-function preview(chip) {
-  if (running || !drip) return;
-  dispText.textContent = chip.says; dispNote.classList.add("on");
-}
-function unpreview() { dispNote.classList.remove("on"); }
-
-const keyFor = new Map();
-const keysBox = document.getElementById("keys");
-const groupBox = new Map();
-for (const row of KEYROWS) {
-  const r = document.createElement("div"); r.className = "krow";
-  for (const name of row) {
-    const n = CHIPS.filter((chip) => chip.group === name).length;
-    const g = document.createElement("div"); g.className = `kgroup${n === 2 ? " pair" : ""}`; g.style.setProperty("--n", n);
-    g.innerHTML = `<span class="grp" aria-hidden="true"></span><div class="kkeys"></div>`;
-    g.querySelector(".grp").textContent = name;
-    r.append(g); groupBox.set(name, g.querySelector(".kkeys"));
-  }
-  keysBox.append(r);
-}
-for (const chip of CHIPS) {
-  const b = document.createElement("button");
-  b.type = "button"; b.className = "key"; b.title = chip.line; b.style.setProperty("--c", chip.color);
-  b.setAttribute("aria-label", `${chip.key}: ${chip.name}`);
-  b.innerHTML = `<span class="led"></span><span class="face"><b></b><small></small></span>`;
-  b.querySelector("b").textContent = chip.key; b.querySelector("small").textContent = chip.hint;
-  b.addEventListener("pointerenter", () => preview(chip));
-  b.addEventListener("focus", () => preview(chip));
-  b.addEventListener("pointerleave", unpreview);
-  b.addEventListener("blur", unpreview);
-  b.addEventListener("click", () => { if (drip) runHero(chip.line); });
-  groupBox.get(chip.group).append(b); keyFor.set(chip.line, b);
-}
-
-// ===== What it does: six modules, each its own display on the same engine =====
-// Each scene plays in the card at the same place in #feature-grid.
+// ===== The page: a laptop that runs the engine, and rows that play on it =====
+// A terminal without paper: the rows show the commands, so what drip prints goes nowhere.
+class LineTerm { echo() {} print() {} done() {} waiting() {} clear() {} }
+const allStages = [];
+function makeStage(screen, opts = {}) { const s = new Stage(screen, opts); allStages.push(s); return s; }
+const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const CLAUDE = (event, extra) => JSON.stringify({ hook_event_name: event, cwd: "/work/my-app", session_id: "s1", ...extra });
+// The features, as real drip command lines that DripCore runs.
 const FEATURES = [
-  { // 01 Wrap a command
-    steps: [{ line: `drip run make test` }],
-  },
-  { // 02 Hear from coding agents
-    steps: [
-      // The two hooks a recipe adds, in the order they fire: Notification, then Stop.
-      { shown: "drip hook claude", note: "Claude needs you", line: `drip hook claude '${CLAUDE("PermissionRequest", { tool_name: "Bash", tool_input: { command: "npm test" }, tool_use_id: "toolu_1" })}'` },
+  { key: "run", tab: "wrap a command", title: "Wrap a command", text: "drip runs it, times it and shows how it went: green on exit 0, red with the exit code otherwise.",
+    shown: "drip run make test", steps: [{ line: "drip run make test" }] },
+  { key: "agent", tab: "coding agents", title: "Hear from coding agents", text: "A hook from a recipe names the project and what the agent needs, then says when it has finished.",
+    shown: "drip hook claude", steps: [
+      { line: `drip hook claude '${CLAUDE("PermissionRequest", { tool_name: "Bash", tool_input: { command: "npm test" }, tool_use_id: "toolu_1" })}'`, shown: "drip hook claude   # Claude asks to run npm test" },
       { sleep: 2.6 },
-      { shown: "drip hook claude", note: "Claude is done", line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'` },
-    ],
-  },
-  { // 03 Update in place
-    steps: [{ line: `drip info "Deploying" -d "api 1.4.2 to production" --id deploy` }, { sleep: 2 }, { line: `drip ok "Deployed" -d "api 1.4.2 is live" --id deploy` }],
-  },
-  { // 04 Ask, then act
-    steps: [{ shown: `drip ok "Merge drip #23?" --yes Merge --no Later && gh pr merge 23`, line: `drip ok "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23` }],
-  },
-  { // 05 Pipe text in
-    steps: [{ line: `git log -1 --format='%s%n%an' | drip ok` }],
-  },
-  { // 06 Your own presets
-    config: CONFIG,
-    steps: [{ line: `drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"` }],
-  },
+      { line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'`, shown: "drip hook claude   # Claude has finished" }] },
+  { key: "id", tab: "update in place", title: "Update in place", text: "Cards with the same --id replace each other. The card on screen springs to the new card's size.",
+    shown: 'drip ok "Deployed" --id deploy', steps: [{ line: 'drip info "Deploying" -d "api 1.4.2 to production" --id deploy' }, { sleep: 2 }, { line: 'drip ok "Deployed" -d "api 1.4.2 is live" --id deploy' }] },
+  { key: "ask", tab: "ask, then act", title: "Ask, then act", text: "--yes and --no wait for a click. drip exits 0 on yes, so && runs the next step only then. Answer it here.",
+    shown: 'drip ok "Merge drip #23?" --yes Merge --no Later && gh pr merge 23', steps: [{ line: 'drip ok "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23' }] },
+  { key: "preset", tab: "your presets", title: "Your own presets", text: "Icons, colors, sounds and timing go in ~/.config/drip/config.toml. Here, a deploy preset.",
+    shown: 'drip deploy "Shipped to prod"', config: CONFIG, steps: [{ line: 'drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"' }] },
+  { key: "stack", tab: "three at once", title: "Three at once", text: "Cards that arrive together stack, each out of the last. Past three, they wait in a drop that counts them.",
+    shown: "drip ok; drip warn; drip fail; drip info; drip ok", steps: [
+      'drip ok "Build finished" -d "make test: 246 passed in 3.2s"', 'drip warn "Disk almost full" -d "12 GB left on Macintosh HD"',
+      'drip fail "Deploy failed" -d "staging: health check timed out"', 'drip info "Backup done" -d "412 files, 3.1 GB"', 'drip ok "Release 1.4 is out" -d "14 files changed"',
+    ].flatMap((line) => [{ line, gap: 0.12 }]) },
 ];
-// The cards are in the page itself, so readers without JavaScript get them too; this adds the scenes.
-const cards = document.querySelectorAll("#feature-grid .feature");
-FEATURES.forEach((feature, i) => {
-  const card = cards[i];
-  const screen = card.querySelector(".display");
-  const commands = feature.steps.filter((step) => step.line);
-  const term = new Readout(card.querySelector(".readout"), commands);
-  const stage = new Stage(screen, { term, zoom: () => 1, holds: 1 });
-  stages.push(stage);
-  // Each press starts the scene over: the screen and the readout clear, and the play before it stops.
-  let run = 0, played = false;
-  const play = async () => {
-    if (!drip) return;
+
+// Plays a feature on a stage. A new play stops the one before it. Resolves when its commands are done.
+function player(stage, term) {
+  let run = 0;
+  return async function play(feature) {
     const mine = ++run, alive = () => mine === run;
-    played = true; stage.reset(); term.clear();
+    stage.reset(); term.clear?.();
     for (const step of feature.steps) {
-      if (step.sleep) { await sleep(step.sleep * 1000); if (!alive()) return; continue; }
-      if (!(await term.type(step, alive))) return;
-      const started = performance.now();
-      const status = await exec(step.line, term, stage, { config: feature.config ?? "", echo: false, alive });
-      if (!alive()) return;
-      term.result(status, (performance.now() - started) / 1000);
+      if (!alive()) return false;
+      if (step.sleep) { await sleep(step.sleep * 1000); continue; }
+      await exec(step.line, term, stage, { config: feature.config ?? "", shown: step.shown ?? step.line, alive });
+      if (step.gap) await sleep(step.gap * 1000);
     }
+    return alive();
   };
-  card.querySelector(".bigbtn").addEventListener("click", play);
-  new IntersectionObserver(([entry]) => {
-    if (entry.intersectionRatio > 0.6 && !played && !reduceMotion.matches && drip) play();
-  }, { threshold: [0, 0.6] }).observe(screen);
-  stage.autoplay = () => { const r = screen.getBoundingClientRect(); if (!played && !reduceMotion.matches && r.top < innerHeight * 0.8 && r.bottom > 0) play(); };
+}
+
+
+const APPLE = `<svg class="apple" viewBox="0 0 814 1000" aria-hidden="true"><path d="M788 341c-6 4-108 62-108 190 0 148 130 200 134 202-1 3-21 72-69 142-43 61-88 122-156 122s-86-40-164-40c-77 0-104 41-167 41s-106-57-156-127C44 789 0 668 0 553c0-184 120-282 238-282 63 0 115 41 155 41 38 0 97-44 168-44 27 0 124 3 188 73zM554 170c29-35 51-84 51-133 0-7-1-14-2-19-48 2-105 32-140 72-27 31-53 80-53 130 0 8 1 15 2 18 3 1 9 2 14 2 43 0 97-29 128-70z"/></svg>`;
+const WIFI = `<svg class="wifi" viewBox="0 0 20 15" aria-hidden="true"><path d="M2.2 5.4a11 11 0 0 1 15.6 0M5.3 8.6a6.6 6.6 0 0 1 9.4 0"/><circle cx="10" cy="12.3" r="1.7"/></svg>`;
+const BATT = `<svg viewBox="0 0 30 14" aria-hidden="true"><path d="M3 0h21a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H3a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3zm0 1.3A1.7 1.7 0 0 0 1.3 3v8A1.7 1.7 0 0 0 3 12.7h21a1.7 1.7 0 0 0 1.7-1.7V3A1.7 1.7 0 0 0 24 1.3zM3 3h17v8H3zM28 4.5h.6a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H28z"/></svg>`;
+
+const screen = document.getElementById("screen");
+screen.innerHTML = `<div class="menubar">${APPLE}<span class="r">${WIFI}${BATT}<span class="clock"></span></span></div><canvas class="stage-canvas"></canvas><div class="loading" id="loading">loading drip's engine</div>`;
+
+const term = new LineTerm();
+const stage = makeStage(screen, { term, zoom: (W) => Math.min(1, W / 560) });
+const play = player(stage, term), rows = document.getElementById("rows");
+
+// The story: the shared features, in an order that builds up, plus one that opens a file.
+const order = ["run", "id", "agent", "ask", "preset", "stack"];
+const story = order.map((k) => FEATURES.find((f) => f.key === k));
+story.splice(2, 0, { key: "open", title: "Open something from it", text: "--open puts a button on the card. A click opens a URL, a file or an app.",
+  shown: 'drip ok "Report ready" --open ./report.html --button "View report"',
+  steps: [{ line: 'drip ok "Report ready" -d "coverage 91%, 3 files changed" --open ./report.html --button "View report"', shown: 'drip ok "Report ready" --open ./report.html --button "View report"' }] });
+const pretty = { stack: 'drip ok   "Build finished"\ndrip warn "Disk almost full"\ndrip fail "Deploy failed"\ndrip info "Backup done"\ndrip ok   "Release 1.4 is out"',
+  agent: '# in ~/.claude/settings.json, from a recipe\ndrip hook claude', preset: '# ~/.config/drip/config.toml\n[preset.deploy]\nicon = "paperplane.fill"\n\ndrip deploy "Shipped to prod"' };
+story.forEach((f, n) => {
+  const r = document.createElement("div"); r.className = "row"; r.tabIndex = 0;
+  const cmd = (pretty[f.key] ?? f.shown).split("\n").map((l) => l.startsWith("#") || !l ? `<span class="c">${esc(l)}</span>` : f.key === "preset" && !l.startsWith("drip") ? esc(l) : `<span class="p">$ </span>${esc(l).replace(/(--?[\w-]+)/g, '<span class="f">$1</span>')}`).join("\n");
+  r.innerHTML = `<h2>${f.title}</h2><p>${esc(f.text)}</p><pre>${cmd}</pre><button class="again" type="button">play again</button>`;
+  r.onclick = (e) => { if (!e.target.closest("pre")) { clearTimeout(wait); go(n, true); } };
+  r.onkeydown = (e) => { if (e.key === "Enter") go(n, true); };
+  rows.append(r);
 });
+// The last row: your own command.
+const mine = document.createElement("div"); mine.className = "row"; mine.id = "yours";
+mine.innerHTML = `<h2>Your turn</h2><p>Type any drip command. It runs in the same engine as the app.</p>
+  <form class="try" id="try"><input id="line" spellcheck="false" autocomplete="off" aria-label="A drip command" value='drip ok "Hello from drip"'><button>run</button></form>
+  <div class="chips">${['drip warn "Low battery" -d "8% left"', 'drip fail "CI failed" --stay', 'drip info "Lunch?" --yes Sure --no Later'].map((c) => `<button type="button" data-c='${esc(c)}'>${esc(c)}</button>`).join("")}</div>`;
+rows.append(mine);
+const line = mine.querySelector("#line");
+let custom = 0;
+async function runMine() { custom++; active = story.length; mark(); stage.reset(); term.clear(); await exec(line.value.trim(), term, stage, { config: "", alive: () => true }); }
+mine.querySelector("#try").onsubmit = (e) => { e.preventDefault(); runMine(); };
+mine.querySelectorAll(".chips button").forEach((b) => b.onclick = () => { line.value = b.dataset.c; runMine(); });
 
-// ===== Spec sheet: the engine's stack, on a display of its own =====
-const stackScreen = document.getElementById("stack-screen");
-const stackTerm = new Term(document.getElementById("stack-tape"), { max: 8 });
-const stackStage = new Stage(stackScreen, { term: stackTerm, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 640)) });
-stages.push(stackStage);
-let stackRun = 0, stackPlayed = false;
-async function playStack() {
-  if (!drip) return;
-  stackPlayed = true;
-  const run = ++stackRun, alive = () => run === stackRun;
-  stackStage.reset(); stackTerm.clear();
-  for (const line of STACK_LINES) {
-    if (!alive()) return;
-    await exec(line, stackTerm, stackStage, { config: "", shown: line.replace(/ -d .*/, ""), alive });
-    await sleep(120);
-  }
+let active = -1, ready = false;
+const list = () => [...rows.querySelectorAll(":scope > .row")];
+const mark = () => { list().forEach((r, k) => r.classList.toggle("on", k === active)); placeBeam(); };
+function go(n, force) {
+  if (!ready || (n === active && !force)) return;
+  active = n; mark();
+  if (n === story.length) { if (!custom) runMine(); return; }
+  play(story[n]);
 }
-document.getElementById("stack-play").addEventListener("click", () => playStack());
-new IntersectionObserver(([entry]) => {
-  if (entry.intersectionRatio > 0.6 && !stackPlayed && !reduceMotion.matches && drip) playStack();
-}, { threshold: [0, 0.6] }).observe(stackScreen);
-stackStage.autoplay = () => {
-  const rect = stackScreen.getBoundingClientRect();
-  if (!stackPlayed && !reduceMotion.matches && rect.top < innerHeight * 0.8 && rect.bottom > 0) playStack();
-};
-stackTerm.print("press PLAY to print five cards", "dim");
-
-// Until the visitor does something, the hero plays a few cards by itself.
-const ATTRACT = [CHIPS[4].line, CHIPS[5].line, CHIPS[8].line, CHIPS[1].line, CHIPS[3].line, CHIPS[6].line, CHIPS[10].line, CHIPS[0].line];
-let attractOn = true, attractTimer = 0, attractIndex = 0;
-function stopAttract() { attractOn = false; clearTimeout(attractTimer); }
-function scheduleAttract(delay) {
-  clearTimeout(attractTimer);
-  if (!attractOn || reduceMotion.matches) return;
-  attractTimer = setTimeout(async () => {
-    if (!attractOn) return;
-    if (running || hero.busy || !hero.visible || document.hidden) { scheduleAttract(1200); return; }
-    await runHero(ATTRACT[attractIndex++ % ATTRACT.length], { fromUser: false });
-    scheduleAttract(2600);
-  }, delay);
+const beam = document.createElement("i"); beam.className = "beam"; rows.prepend(beam);
+function placeBeam() { const r = list()[active]; if (!r) return; beam.style.opacity = 1; beam.style.transform = `translateY(${r.offsetTop + r.offsetHeight / 2 - 28}px)`; }
+let wait = 0, ticking = false;
+// The active row is the one nearest the middle of the view, read on every scroll frame, so no row is skipped.
+// The screen plays it only once it stays active for a moment, so a fast scroll does not start every row.
+function pick() {
+  ticking = false; if (!ready) return;
+  const mid = innerHeight / 2; let best = 0, d = Infinity;
+  list().forEach((r, k) => { const b = r.getBoundingClientRect(), x = Math.abs((b.top + b.bottom) / 2 - mid); if (x < d) { d = x; best = k; } });
+  if (best === active) return;
+  active = best; mark(); clearTimeout(wait); wait = setTimeout(() => go(best, true), 160);
 }
-hero.on((kind) => { if (kind === "end" && attractOn) scheduleAttract(1800); });
-
-// ===== One animation loop for every stage =====
-let lastNow = performance.now();
-function loop(now) {
-  const dt = (now - lastNow) / 1000; lastNow = now;
-  for (const stage of stages) if (stage.visible) stage.step(now, dt);
-  requestAnimationFrame(loop);
-}
-
-// ===== Theme =====
-// The head's script has set it before the first paint; the switch flips it and remembers.
-const root = document.documentElement, themeSwitch = document.getElementById("theme");
-function setTheme(theme, remember = true) {
-  root.dataset.theme = theme; themeSwitch.setAttribute("aria-checked", String(theme === "dark"));
-  if (remember) { try { localStorage.setItem("drip-theme", theme); } catch {} }
-}
-setTheme(root.dataset.theme, false);
-themeSwitch.addEventListener("click", () => setTheme(root.dataset.theme === "dark" ? "light" : "dark"));
-
-// Receipt paper torn off along its perforation: a row of punched holes just above the edge, and
-// under it a fine tear, slightly ragged, with loose fibres. The edge is an SVG mask for the slip's
-// own width, so it stays crisp at any zoom, and each slip has its own seed, so no two tear alike.
-// Paper cut with the scissors ends at the cut instead (cutEnd), until a new scene tears it fresh.
-const TEAR = 16; // the height of the torn band at the bottom of a slip, in CSS pixels
-const ends = new WeakMap(); // each slip's end: its tear's seed, and the cut it has, if any
-function tear(slip, seed) {
-  ends.set(slip, { seed, cut: null, drawn: null });
-  new ResizeObserver(() => drawEnd(slip)).observe(slip);
-}
-function cutEnd(slip, cut) { ends.get(slip).cut = cut; drawEnd(slip); }
-function uncut(slip) { const end = ends.get(slip); if (end?.cut) { end.cut = null; drawEnd(slip); } }
-// The mask: the slip down to a band at its bottom, and the band drawn as the edge. The band is
-// anchored to the bottom, so the edge rides down with the paper as it feeds out.
-function setEnd(slip, w, band, d) {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${band}' viewBox='0 0 ${w} ${band}'><path fill-rule='evenodd' d='${d}'/></svg>`;
-  const mask = { image: `linear-gradient(#000 0 0), url("data:image/svg+xml,${encodeURIComponent(svg)}")`, size: `100% calc(100% - ${band - 1}px), 100% ${band}px`, position: "top, bottom", repeat: "no-repeat" };
-  for (const [key, value] of Object.entries(mask)) { slip.style.setProperty(`mask-${key}`, value); slip.style.setProperty(`-webkit-mask-${key}`, value); }
-}
-function drawEnd(slip) {
-  const end = ends.get(slip), w = Math.round(slip.offsetWidth);
-  // Only a new width or a new cut changes an end; the paper feeding out does not.
-  if (!w || (end.drawn?.w === w && end.drawn.cut === end.cut)) return;
-  end.drawn = { w, cut: end.cut };
-  if (!end.cut) return setEnd(slip, w, TEAR, torn(w, end.seed));
-  // A cut, stretched to the slip's width if it has changed since.
-  const n = (v) => +v.toFixed(2);
-  const { ys, width, top } = end.cut, step = (CUT_STEP * w) / width;
-  const points = ys.map((y, i) => [Math.min(i * step, w), y - top]).reverse();
-  setEnd(slip, w, Math.ceil(Math.max(...ys) - top) + 1, `M0 0H${w}L${w} ${n(ys.at(-1) - top)}` + points.map(([x, y]) => `L${n(x)} ${n(y)}`).join("") + "Z");
-}
-function torn(w, seed) {
-  let state = Math.imul(seed, 2654435761) >>> 0;
-  const rand = () => (state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296;
-  const n = (v) => +v.toFixed(2);
-  // The tear wanders a little about its line, in two slow waves and a fine jitter.
-  const waves = [[18 + rand() * 30, rand() * 7, 0.55], [5 + rand() * 6, rand() * 7, 0.3]];
-  const line = TEAR - 5;
-  const at = (x) => line + waves.reduce((sum, [length, phase, size]) => sum + size * Math.sin(x / length + phase), 0) + (rand() - 0.5) * 0.8;
-  const edge = [];
-  for (let x = 0; x < w; x += 0.8 + rand() * 1.4) {
-    const y = at(x), fibre = rand();
-    if (fibre < 0.06) edge.push([x, y], [x + 0.3, y + 1.2 + rand() * 2.2], [x + 0.6, y]); // a loose fibre
-    else if (fibre < 0.1) edge.push([x, y - 0.6 - rand() * 0.9]); // a little bite
-    else edge.push([x, y]);
-  }
-  edge.push([w, at(w)]);
-  let d = `M0 0H${w}` + edge.reverse().map(([x, y]) => `L${n(Math.min(x, w))} ${n(y)}`).join("") + "Z";
-  // The perforation: holes on a steady pitch, as a machine punches them.
-  const pitch = 7.5, r = 1.4, cy = line - 5.5;
-  for (let x = pitch / 2 + rand() * pitch; x < w - r; x += pitch) d += `M${n(x - r)} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
-  return d;
-}
-document.querySelectorAll(".slip").forEach((slip, i) => tear(slip, i + 7));
-
-// Copy buttons, with a fallback for file:// pages where the clipboard API is off.
-for (const b of document.querySelectorAll("[data-copy]")) {
-  b.addEventListener("click", async () => {
-    const text = b.dataset.copy;
-    try { await navigator.clipboard.writeText(text); }
-    catch { const area = document.createElement("textarea"); area.value = text; document.body.append(area); area.select(); document.execCommand("copy"); area.remove(); }
-    b.textContent = "copied"; clearTimeout(b.timer); b.timer = setTimeout(() => { b.textContent = "copy"; }, 1400);
-  });
-}
-
-function tick() { const text = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); for (const c of document.querySelectorAll(".clock")) c.textContent = text; }
-tick(); setInterval(tick, 10000);
-for (const s of stages) { s.resize(); s.refit(); }
-requestAnimationFrame((now) => { lastNow = now; requestAnimationFrame(loop); });
-
-// For screenshots and the curious: drive the hero from the console.
-window.__drip = {
-  run: (line) => runHero(line, { fromUser: false }), freeze: (t) => { hero.frozen = t; }, thaw: () => { hero.frozen = null; },
-  reset: () => hero.reset(), stopAttract, stages, setTheme, playStack,
-  // The cards a stage's stack shows, top to bottom: 0 the hero, 1-6 the features, 7 the stack module.
-  stack: (i = 0) => {
-    const st = stages[i].stack;
-    return st?.frames?.map(({ handle, frame }) => {
-      const card = st.cards.get(handle);
-      return { title: card?.card.title, top: Math.round(frame.pillTop), leaving: !!card?.exitCues, traced: frame.touchesNotch, swapping: !!card?.swap };
-    }) ?? null;
-  },
-};
-
-// ===== Load the engine =====
-// Compiles the engine as it downloads; a server that sends it with another type than
+addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimationFrame(pick); } }, { passive: true });
+addEventListener("resize", placeBeam);
+const sticky = document.querySelector(".sticky");
+new ResizeObserver(() => sticky.style.setProperty("--lh", sticky.offsetHeight + "px")).observe(sticky);
+// The menu bar clock: the visitor's own time.
+function clock() { const t = () => { screen.querySelector(".clock").textContent = new Date().toLocaleTimeString([], { weekday: "short", hour: "numeric", minute: "2-digit" }); }; t(); setInterval(t, 15000); }
+clock();
+// Compiles the engine as it downloads. A server that sends it with another type than
 // application/wasm gets it compiled from its bytes instead.
 async function compileEngine() {
   const url = new URL(WASM, location.href).href;
-  try {
-    return await WebAssembly.compileStreaming(fetch(url));
-  } catch (error) {
+  try { return await WebAssembly.compileStreaming(fetch(url)); }
+  catch (error) {
     console.warn("streaming compile failed, compiling from the bytes:", error);
     const response = await fetch(url);
     if (!response.ok) throw new Error(`${WASM}: HTTP ${response.status}`);
@@ -1721,26 +991,24 @@ async function compileEngine() {
   }
 }
 try {
-  const t0 = performance.now();
-  const module = await compileEngine();
-  const t1 = performance.now();
-  drip = await loadDrip(module, measure);
+  drip = await loadDrip(await compileEngine(), measure);
   reference = drip.command({ args: ["ok", "Build finished", "-d", "make test: 246 passed in 3.2s"], env: {}, config: "", notch }).deliveries[0].cards[0];
   drip.release(reference.handle);
-  for (const s of stages) s.refit();
-  const t2 = performance.now();
-  const timing = performance.getEntriesByName(new URL(WASM, location.href).href).at(-1);
-  window.__dripLoad = { download: t1 - t0, start: t2 - t1, transferSize: timing?.transferSize, decodedBodySize: timing?.decodedBodySize };
+  for (const s of allStages) { s.resize(); s.refit(); }
+  let last = performance.now();
+  const loop = (now) => { const dt = (now - last) / 1000; last = now; for (const s of allStages) if (s.visible) s.step(now, dt); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
   document.getElementById("loading").remove();
-  for (const still of document.querySelectorAll(".still")) still.remove();
-  heroTerm.print(`drip ${drip.version}, compiled to WebAssembly, started in ${Math.round(t2 - t0)} ms.`, "dim");
-  for (const s of stages) s.autoplay?.();
-  if (new URLSearchParams(location.search).get("attract") === "0") stopAttract();
-  await runHero(CHIPS[0].line, { fromUser: false });
+  ready = true; pick(); clearTimeout(wait); go(Math.max(active, 0), true);
 } catch (error) {
   document.getElementById("loading").textContent = "drip's engine did not load: " + error.message;
   console.error(error);
 }
+// Copy buttons.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".copy"); if (!b) return;
+  navigator.clipboard?.writeText(b.dataset.copy || ""); b.textContent = "copied"; setTimeout(() => b.textContent = "copy", 1200);
+});
 </script>
 </body>
 </html>
