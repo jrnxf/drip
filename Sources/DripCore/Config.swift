@@ -144,8 +144,10 @@ public enum ConfigLoader {
         let subcommands = DripCommand.configuration.subcommands.flatMap { command in
             [command.configuration.commandName].compactMap { $0 } + command.configuration.aliases
         }
-        // Names with no subcommand yet: `help` and `version` are the flags' words, the rest are planned.
+        // Names with no subcommand yet: `help` and `version` are the flags' words, the rest are planned
+        // or were a subcommand's name once.
         let kept = ["help", "version", "config", "completion", "completions", "test"]
+            + CommandLineParser.formerSubcommands.keys
         // The internal subcommands start with underscores, which no preset name can.
         return Set((subcommands + kept).filter { !$0.hasPrefix("_") })
     }()

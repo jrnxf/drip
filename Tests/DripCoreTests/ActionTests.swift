@@ -141,8 +141,8 @@ struct ActionTests {
                 #expect(status == (prefix == ["run"] ? ExitStatus.usage : ExitStatus.hookFailed), "\(arguments)")
                 #expect(message.contains("takes no --"), "\(message)")
             }
-            guard case .invocation = CommandLineParser.parse(prefix + ["--stay"] + (prefix == ["run"] ? ["make"] : ["{}"]))
-            else { Issue.record("\(prefix) --stay did not parse"); continue }
+            guard case .invocation = CommandLineParser.parse(prefix + ["--quiet"] + (prefix == ["run"] ? ["make"] : ["{}"]))
+            else { Issue.record("\(prefix) --quiet did not parse"); continue }
         }
     }
 

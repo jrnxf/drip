@@ -61,8 +61,8 @@ public struct DripPause {
         }
     }
 
-    /// A duration as `drip pause` takes it, in seconds: whole minutes and hours, such as `30m`,
-    /// `2h` or `1h30m`. Nil for anything else.
+    /// A duration as `drip pause` and `--max-age` take it, in seconds: whole seconds, minutes and
+    /// hours, such as `90s`, `30m` or `1h30m`. Nil for anything else: a number alone has no unit.
     public static func duration(_ text: String) -> Double? {
         var total = 0.0
         var digits = ""
@@ -72,13 +72,14 @@ public struct DripPause {
                 digits.append(character)
                 continue
             }
-            // Each unit once, hours before minutes, each after its number.
-            guard let value = Double(digits), !units.contains(character), !(character == "h" && units.contains("m"))
+            // Each unit once, hours before minutes before seconds, each after its number.
+            guard let value = Double(digits), let order = "hms".firstIndex(of: character),
+                  units.allSatisfy({ "hms".firstIndex(of: $0)! < order })
             else { return nil }
             switch character {
             case "h": total += value * 3600
             case "m": total += value * 60
-            default: return nil
+            default: total += value
             }
             units.insert(character)
             digits = ""

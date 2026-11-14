@@ -232,7 +232,6 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
             return cards([card], wait: command.flags.wait, extra: ["status": Int32(run["status"] ?? 0)])
         } catch { return failure(error) }
     case let .invocation(.hook(command)):
-        warnings += command.options.warnings
         var flags = command.flags
         do {
             guard let payload = command.payload ?? input["stdin"] as? String else {
@@ -252,11 +251,10 @@ public func dripCommand(_ pointer: UnsafePointer<UInt8>, _ length: Int32) -> Uns
         } catch {
             return failure(error, status: ExitStatus.hookFailed, subcommand: HookCommand.configuration.commandName)
         }
-    case .invocation(.remoteHook):
-        return send(["exit": ExitStatus.shown, "message": RemoteHook.script])
     case .invocation(.watching):
         return send(["exit": ExitStatus.cannotTell, "message": "drip: watching looks at your Mac's screen, not this page"])
-    case .invocation(.follow):
+    case let .invocation(.follow(command)):
+        if command.hookScript { return send(["exit": ExitStatus.shown, "message": RemoteHook.script]) }
         return send(["exit": ExitStatus.failed, "message": "drip: drip follow reads another machine over ssh from your Mac, not from this page"])
     case let .invocation(.dismiss(command)):
         // The page takes its own cards away, those with the id when one is given.

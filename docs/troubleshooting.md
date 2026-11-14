@@ -74,7 +74,7 @@ A line is `time process event decision key=value ...`. `process` is `hook`, `fol
 - the agent (`claude`, `codex` or `gemini`), the machine it ran on, the card's kind (`ok`, `warn`, ...)
   and whether it waits for you;
 - the first 8 characters of the session id;
-- the settings that decided: `when_focused`, `away_after`, `--min-turn`, `--only`, and `DRIP_HOOK`;
+- the settings that decided: `when_focused`, `away_after`, `--min-turn`, `--needs-you-only`, and `DRIP_HOOK`;
 - what drip noticed: the bundle identifier of the frontmost app and of the app a click brings
   forward, seconds since the keyboard or mouse was last used (both on every card line, `unknown`
   when drip did not ask, and the frontmost `none` when no app is in front), `topmost_visible`, the

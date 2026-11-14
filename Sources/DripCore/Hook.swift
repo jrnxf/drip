@@ -230,7 +230,7 @@ public enum AgentHook {
     }
 
     /// Whether the done card `event` is left out, under `policy`: it needs nobody under
-    /// `only needs-you`, and a turn shorter than `minTurn` seconds, from `turnStarted` to `now`, likely
+    /// `--needs-you-only`, and a turn shorter than `minTurn` seconds, from `turnStarted` to `now`, likely
     /// ended while you still had it in mind. A card that needs you, or says the turn failed, always
     /// goes on.
     public static func skipsDone(_ event: Event, policy: Policy, turnStarted: Double?, now: Double) -> Bool {

@@ -9,7 +9,7 @@ struct HelpTests {
         "--detail": ["x"], "-d": ["x"], "--seconds": ["3"], "-s": ["3"], "--sound": ["none"], "--icon": ["none"],
         "--color": ["red"], "--open": ["https://example.com"], "--button": ["Go", "--open", "https://example.com"],
         "--yes": ["Go"], "--no": ["Stop", "--yes", "Go"], "--id": ["a"], "--activate": ["com.apple.Terminal"],
-        "--on-click": ["true"], "--min-turn": ["5"], "--only": ["needs-you"], "--pane": ["%1"],
+        "--on-click": ["true"], "--min-turn": ["5"], "--pane": ["%1"],
         "--app": ["com.apple.Terminal"], "--max-age": ["1h"], "--queue": ["/home/user/queue"], "-n": ["5"],
     ]
 
@@ -38,7 +38,8 @@ struct HelpTests {
         switch name {
         case "hook": return ["hook", "claude", option] + value
         case "run": return ["run", option] + value + ["true"]
-        case "follow": return ["follow", "host", option] + value
+        // --hook-script prints the same script for every machine, so it takes no machine.
+        case "follow": return option == "--hook-script" ? ["follow", option] : ["follow", "host", option] + value
         default: return [name, option] + value
         }
     }

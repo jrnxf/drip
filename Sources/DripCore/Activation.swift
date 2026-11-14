@@ -31,6 +31,13 @@ public enum CardActivation {
             !component.isEmpty && component.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
         }
     }
+
+    /// Whether `text` is a bundle identifier as someone types one for `--activate` or `--app`: it
+    /// also has a dot, as `com.apple.Terminal` does, so an app's name or a mistyped word is an error
+    /// instead of a click that brings nothing forward.
+    public static func isTypedBundleIdentifier(_ text: String) -> Bool {
+        isBundleIdentifier(text) && text.contains(".")
+    }
 }
 
 /// The tmux pane drip runs in: a click on the card selects it once the terminal is in front, so

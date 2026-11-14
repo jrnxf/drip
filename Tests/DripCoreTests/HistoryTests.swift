@@ -591,6 +591,20 @@ final class HistoryTests {
         #expect(summary.kind == "fail")
     }
 
+    /// The listing, `--json` and `--replay` take the same cards: the last 20, unless `-n` or `--all`
+    /// says how many.
+    @Test func everyModeTakesTheLastCardsByDefault() throws {
+        let environment = ["XDG_STATE_HOME": try scratch()]
+        try CardHistory(environment: environment).record((1...25).map { card("card \($0)") }, missed: false, at: Date())
+        func lines(_ arguments: [String]) throws -> [Substring] {
+            try DripProcess.run(["history", "--json"] + arguments, environment: environment).output.split(separator: "\n")
+        }
+        #expect(try lines([]).count == HistoryListing.defaultCount)
+        #expect(try lines([]).last?.contains("card 25") == true)
+        #expect(try lines(["-n", "3"]).count == 3)
+        #expect(try lines(["--all"]).count == 25)
+    }
+
     private func card(_ title: String, kind: String = "info") -> Card {
         let preset = Preset.builtIn.first { $0.name == kind } ?? Preset(
             name: kind, icon: .symbol("paperplane.fill"), color: .system(.purple), sound: .named("Submarine"))

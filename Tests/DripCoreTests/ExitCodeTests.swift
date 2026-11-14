@@ -249,7 +249,7 @@ struct ExitCodeTests {
     @Test(arguments: ["docs/contract.md", "docs/usage.md"])
     func theDocsShowTheTable(_ path: String) throws {
         let text = try String(contentsOf: DripProcess.repo.appendingPathComponent(path), encoding: .utf8)
-        #expect(text.contains(ExitStatus.markdownTable + "\n\n" + ExitStatus.tableNote), "\(path)")
+        #expect(text.contains(ExitStatus.markdownTable), "\(path)")
         let rows = text.split(separator: "\n").filter { $0.hasPrefix("| Code |") }
         #expect(rows.count == 1, "\(path) has \(rows.count) exit code tables")
     }

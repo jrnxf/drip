@@ -1,7 +1,7 @@
 import DripCore
 import Testing
 
-/// `drip dismiss`, and its alias `drip clear`.
+/// `drip dismiss`, and `drip clear`, the name it once also had.
 struct DismissTests {
     private func dismissal(_ arguments: [String]) -> DismissCommand? {
         guard case let .invocation(.dismiss(command)) = CommandLineParser.parse(arguments) else { return nil }
@@ -14,7 +14,6 @@ struct DismissTests {
         #expect(dismissal(["dismiss", "--id", "claude:abc"])?.id == "claude:abc")
         // An id that starts with a dash is still the id.
         #expect(dismissal(["dismiss", "--id", "--wait"])?.id == "--wait")
-        #expect(dismissal(["clear", "--id", "deploy"])?.id == "deploy")
     }
 
     @Test func aBadIDIsAUsageError() {
@@ -24,6 +23,19 @@ struct DismissTests {
                 continue
             }
             #expect(status == ExitStatus.usage, "\(arguments)")
+        }
+    }
+
+    /// `drip clear` reads too much like `drip history --clear`, so it is no longer a command: it
+    /// names the one that is, and never shows a card titled clear.
+    @Test func clearNamesDismiss() {
+        for arguments in [["clear"], ["clear", "--id", "deploy"]] {
+            guard case let .exit(status, message) = CommandLineParser.parse(arguments) else {
+                Issue.record("\(arguments) parsed")
+                continue
+            }
+            #expect(status == ExitStatus.usage, "\(arguments)")
+            #expect(message.contains("did you mean 'drip dismiss'?"), "\(message)")
         }
     }
 
@@ -40,6 +52,6 @@ struct DismissTests {
             Issue.record("no help")
             return
         }
-        #expect(help.contains("drip dismiss [--id ID]"))
+        #expect(help.contains("\n  dismiss "))
     }
 }

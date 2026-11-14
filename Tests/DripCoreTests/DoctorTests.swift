@@ -384,7 +384,7 @@ struct DoctorTests {
         let troubleshooting = try Self.doc("docs/troubleshooting.md")
         #expect(troubleshooting.contains("## Run drip doctor first"))
         #expect(troubleshooting.contains("It exits 2 for a bad `DRIP_*` variable, else 4 when the config file is invalid, else 1 when something stops cards, else 0."))
-        guard case let .exit(_, help) = CommandLineParser.parse(["--help"]) else { Issue.record(); return }
+        guard case let .exit(_, help) = CommandLineParser.parse(["doctor", "--help"]) else { Issue.record(); return }
         #expect(help.contains("drip doctor [--json]"), "\(help)")
     }
 }

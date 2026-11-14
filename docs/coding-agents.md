@@ -37,8 +37,8 @@ For a machine that has no drip, write `drip-remote-hook claude` in place of `dri
 ## drip hook
 
 `drip hook claude`, `drip hook codex` or `drip hook gemini` is what the hooks run, with the hook's
-JSON on stdin, or as an argument, as Codex's older `notify` passes it. Card options such as `--icon`
-or `--seconds` work as usual. A payload it does not know prints an error.
+JSON on stdin, or as an argument, as Codex's older `notify` passes it. The options for a card's look and click work as usual:
+`--seconds`, `--sound`, `--icon`, `--color`, `--activate` and `--on-click`. The card's text, id and time on screen are the agent's. A payload it does not know prints an error.
 
 What each event does:
 
@@ -74,11 +74,11 @@ agent's Markdown out of the card.
 | Flag | What it does |
 | --- | --- |
 | `--approve` | The permission card for a short, single-line ASCII shell command shows the command, has Allow and Deny, and a click is the agent's answer. All other requests are asked in the terminal. Claude Code and Codex only, and local only |
-| `--min-turn SECONDS` | No done card for a turn shorter than this, counted from the prompt you sent. 0 to 600. Cards that need you always show |
-| `--only needs-you` | Only the cards that need you: a permission, a question, an error. No done card |
-| `--on-click CMD` | A command to run on a click. See [recipes](../recipes/README.md) |
+| `--min-turn <seconds>` | No done card for a turn shorter than this, counted from the prompt you sent. 0 to 600. Cards that need you always show |
+| `--needs-you-only` | Only the cards that need you: a permission, a question, an error. No done card |
+| `--on-click <command>` | A command to run on a click. See [recipes](../recipes/README.md) |
 
-`--min-turn` and `--only` go through the [remote queue](remote.md), so `drip follow` applies them
+`--min-turn` and `--needs-you-only` go through the [remote queue](remote.md), so `drip follow` applies them
 to a card from another machine. `--approve` does not: drip answers only for an agent on this Mac.
 
 ### --approve
@@ -190,7 +190,7 @@ when it is done.
 ## drip watching
 
 ```sh
-drip watching [--pane ID] [--app BUNDLE-ID]
+drip watching [--pane <id>] [--app <bundle-id>]
 ```
 
 Says by its exit status whether you are watching a terminal now. It uses the detection that

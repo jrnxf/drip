@@ -121,8 +121,6 @@ struct DripCLI {
         case let .invocation(.hook(command)):
             DebugLog.process = .hook
             return hook(command)
-        case .invocation(.remoteHook):
-            return remoteHook()
         case let .invocation(.watching(command)):
             return watching(command)
         case let .invocation(.finished(command)):
@@ -178,7 +176,6 @@ struct DripCLI {
     private func hook(_ command: HookCommand) -> Int32 {
         let flags = command.flags
         let console = Console(quiet: flags.quiet)
-        console.warnAbout(command.options)
         let status: Int32
         let resolved = ResolvedSettings()
         do {
@@ -238,8 +235,12 @@ struct DripCLI {
     }
 
     /// Shows the cards of agents on another machine until stopped, or prints the launchd agent that
-    /// runs it.
+    /// runs it, or the hook script for the other machine.
     private func follow(_ command: FollowCommand) -> Int32 {
+        if command.hookScript {
+            print(RemoteHook.script, terminator: "")
+            return ExitStatus.shown
+        }
         let console = Console()
         let environment = ProcessInfo.processInfo.environment
         let target = command.target ?? ""
@@ -394,12 +395,6 @@ struct DripCLI {
         return answer.status
     }
 
-    /// Prints the hook script for another machine.
-    private func remoteHook() -> Int32 {
-        print(RemoteHook.script, terminator: "")
-        return ExitStatus.shown
-    }
-
     /// Everything that can fail is checked here, before the cards are handed off. `settings` are
     /// what the caller's resolver gave: how many cards the history keeps and how the cards stack, so
     /// the drip that shows them never reads the config again. `record` is false for cards shown
@@ -519,12 +514,11 @@ struct DripCLI {
                 return ExitStatus.shown
             } catch {
                 console.error("cannot clear the history: \(error)")
-                // Not a usage mistake: the file could not be changed, so 1 and not ExitStatus.usage.
-                return 1
+                return ExitStatus.failed
             }
         }
-        // The listing is the last cards; JSON and replay are all of them, unless -n limits them.
-        let count = command.all ? nil : command.number ?? (command.json || command.replay ? nil : HistoryListing.defaultCount)
+        // The last cards, however they are printed or shown, unless -n or --all says how many.
+        let count = command.all ? nil : command.number ?? HistoryListing.defaultCount
         let entries = HistoryListing.newest(
             HistoryListing.select(CardHistory(environment: environment).entries(), missed: command.missed), count: count)
         if command.replay {
@@ -549,19 +543,13 @@ struct DripCLI {
         return ExitStatus.shown
     }
 
-    /// Pauses drip for `seconds`, or, without them, says how long is left of the pause, pausing for
-    /// an hour when there is none.
-    private func pause(_ seconds: Double?) -> Int32 {
+    /// Pauses drip for `seconds` from now, in place of any pause that is running.
+    private func pause(_ seconds: Double) -> Int32 {
         let pause = DripPause(environment: ProcessInfo.processInfo.environment)
         let now = Date()
         do {
-            let end: Date
-            if seconds == nil, let current = pause.end(now: now) {
-                end = current
-            } else {
-                end = now.addingTimeInterval(seconds ?? DripPause.defaultDuration)
-                try pause.pause(until: end)
-            }
+            let end = now.addingTimeInterval(seconds)
+            try pause.pause(until: end)
             print(DripPause.status(end: end, now: now) + ". drip resume ends it now.")
             return ExitStatus.shown
         } catch {

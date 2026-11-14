@@ -31,6 +31,22 @@ struct ActivationTests {
         }
     }
 
+    /// A bundle identifier typed for --activate or --app also has a dot.
+    @Test func typedBundleIdentifiersHaveADot() {
+        #expect(CardActivation.isTypedBundleIdentifier("com.apple.Terminal"))
+        for bad in ["Terminal", "foo", "", "com."] {
+            #expect(!CardActivation.isTypedBundleIdentifier(bad), "\(bad)")
+        }
+        for arguments in [["ok", "x", "--activate", "foo"], ["watching", "--app", "Terminal"],
+                          ["follow", "devbox", "--activate", "ghostty"]] {
+            guard case let .exit(status, _) = CommandLineParser.parse(arguments) else {
+                Issue.record("\(arguments) parsed"); continue
+            }
+            #expect(status == ExitStatus.usage, "\(arguments)")
+        }
+        guard case .invocation = CommandLineParser.parse(["ok", "x", "--activate", "none"]) else { Issue.record(); return }
+    }
+
     @Test func theEnvironmentNotesTheSender() throws {
         #expect(try EnvironmentSettings(environment: ["__CFBundleIdentifier": "com.apple.Terminal"]).sender
             == "com.apple.Terminal")

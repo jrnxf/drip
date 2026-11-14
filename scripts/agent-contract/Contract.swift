@@ -842,7 +842,7 @@ struct Shown {
 }
 
 func history(_ world: World) -> [Shown] {
-    run([world.drip, "history", "--json"], environment: world.environment, timeout: 30).out
+    run([world.drip, "history", "--all", "--json"], environment: world.environment, timeout: 30).out
         .split(separator: "\n").compactMap { line in
             guard let entry = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any],
                   let card = entry["card"] as? [String: Any]

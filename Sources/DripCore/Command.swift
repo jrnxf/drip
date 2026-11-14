@@ -52,22 +52,28 @@ public enum ExitStatus {
     }
 
     /// The exit codes scripts can rely on, as `drip --help`, docs/contract.md and docs/usage.md
-    /// list them, word for word. A test holds the docs to it.
+    /// list them, word for word, with `notes` after them. A test holds the docs to it.
     public static let table: [Row] = [
-        Row(code: shown, meaning: "The card was shown, or handed off to be shown without `--wait`. A question was answered yes. `drip watching`: you are watching."),
-        Row(code: failed, meaning: "A question was answered no. `drip watching`: you are not watching, or drip cannot tell (it says why on stderr). `drip doctor`: something stops cards now (it says what), and neither 2 nor 4 applies. Any other command: drip could not do its work, such as write its state directory. `drip hook` exits 1 for any failure."),
-        Row(code: usage, meaning: "Usage error: a mistake in the command line or a `DRIP_*` variable. `drip doctor` exits 2 for a bad `DRIP_*` variable, whatever else it finds. `drip hook` never exits 2."),
-        Row(code: noGUISession, meaning: "No GUI session, for example over ssh. `drip hook` exits 0 then, and `drip watching` 1. On a Mac, `drip doctor` exits 1, unless 2 or 4 applies."),
-        Row(code: invalidConfig, meaning: "`drip doctor`: the config file is invalid, and no `DRIP_*` variable is bad (that is 2). No card command exits 4: a bad config warns on stderr and drip uses the defaults for the bad keys."),
-        Row(code: notClicked, meaning: "drip asked a `--yes` question and waited, but no button was clicked. Only a question exits 5: a card with an `--open` button exits 0 with `--wait`, clicked or not."),
+        Row(code: shown, meaning: "The card was shown, or handed off to be shown. A question was answered yes."),
+        Row(code: failed, meaning: "A question was answered no, or drip could not do its work, such as write its state directory."),
+        Row(code: usage, meaning: "Usage error: a mistake in the command line or a `DRIP_*` variable."),
+        Row(code: noGUISession, meaning: "No GUI session, for example over ssh."),
+        Row(code: invalidConfig, meaning: "`drip doctor` only: the config file is invalid. A card command warns on stderr instead, and uses the defaults for the bad keys."),
+        Row(code: notClicked, meaning: "A `--yes` question went without a click on its buttons. A card with an `--open` button asks nothing, so it exits 0 with `--wait`, clicked or not."),
     ]
 
-    /// What follows the table.
-    public static let tableNote = "`drip run` exits with the wrapped command's exit code instead, 127 when it is not found."
+    /// What follows the table: the commands whose codes read differently, one line each.
+    public static let notes: [String] = [
+        "`drip run` exits with the wrapped command's exit code instead, 127 when it is not found.",
+        "`drip hook` exits 0 without a GUI session and 1 for any failure, never 2 or more.",
+        "`drip watching` exits 0 when you are watching, 1 when you are not or drip cannot tell (it says why on stderr), and 2 for a usage error.",
+        "`drip doctor` exits 2 for a bad `DRIP_*` variable, else 4 for an invalid config file, else 1 when something stops cards now (it says what), else 0.",
+    ]
 
     /// The table as the docs show it.
     public static var markdownTable: String {
-        (["| Code | Meaning |", "| --- | --- |"] + table.map { "| \($0.code) | \($0.meaning) |" })
+        (["| Code | Meaning |", "| --- | --- |"] + table.map { "| \($0.code) | \($0.meaning) |" } + [""]
+            + notes.map { "- \($0)" })
             .joined(separator: "\n")
     }
 
@@ -75,7 +81,7 @@ public enum ExitStatus {
     /// sections above it: each meaning hangs under its first line.
     static func helpTable(width: Int) -> String {
         let rows = table.map { wrap(plain($0.meaning), first: "  \($0.code)  ", rest: "     ", width: width) }
-        return (["EXIT CODES:"] + rows + [wrap(plain(tableNote), first: "  ", rest: "  ", width: width)])
+        return (["EXIT CODES:"] + rows + notes.map { wrap(plain($0), first: "  ", rest: "  ", width: width) })
             .joined(separator: "\n")
     }
 
@@ -181,13 +187,9 @@ public struct QuestionOptions: ParsableArguments {
     }
 }
 
-/// Options shared by every command that shows a card. ArgumentParser lists the values of an option
-/// that has a fixed set, so its help does not.
-public struct CardOptions: ParsableArguments {
-    @Option(name: .shortAndLong, help: ArgumentHelp(
-        "The gray text under the title, up to 3 lines.", valueName: "text"))
-    var detail: String?
-
+/// How a card looks and sounds, which every command that shows a card takes. ArgumentParser lists
+/// the values of an option that has a fixed set, so its help does not.
+public struct LookOptions: ParsableArguments {
     @Option(name: .shortAndLong, help: ArgumentHelp(
         "Seconds fully visible, excluding fades: 0.5 to 60. A card that waits for a click counts it down instead of waiting. (default: 4.5)",
         valueName: "n"))
@@ -208,6 +210,51 @@ public struct CardOptions: ParsableArguments {
         valueName: "hex|name"))
     var color: CardColor?
 
+    public init() {}
+
+    public func validate() throws {
+        if let seconds, !Defaults.secondsRange.contains(seconds) {
+            throw ValidationError("--seconds must be between 0.5 and 60")
+        }
+        if let problem = icon?.problem {
+            throw ValidationError("--icon: \(problem)")
+        }
+    }
+}
+
+/// What a click on a card does, which every command that shows a card takes.
+public struct ClickOptions: ParsableArguments {
+    @Option(help: ArgumentHelp(
+        "The app a click on the card brings forward, or none. (default: the app drip was run from)",
+        valueName: "bundle-id|none"))
+    var activate: String?
+
+    @Option(name: .customLong("on-click"), help: ArgumentHelp(
+        "A shell command a click on the card runs, after it brings --activate forward. It reads the card on stdin as one line of JSON.",
+        valueName: "command"))
+    var onClick: String?
+
+    public init() {}
+
+    public func validate() throws {
+        if let activate, activate != CardActivation.none, !CardActivation.isTypedBundleIdentifier(activate) {
+            throw ValidationError("--activate: '\(activate)' is not a bundle identifier such as com.apple.Terminal")
+        }
+        if let onClick, onClick.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw ValidationError("--on-click needs a command")
+        }
+    }
+}
+
+/// The options of `drip [<kind>] [<title>]` and `drip run`: the card's text, button and time on
+/// screen, with its look and its click. The groups sit where the help lists their options.
+public struct CardOptions: ParsableArguments {
+    @Option(name: .shortAndLong, help: ArgumentHelp(
+        "The gray text under the title, up to 3 lines.", valueName: "text"))
+    var detail: String?
+
+    @OptionGroup var look: LookOptions
+
     @Option(help: ArgumentHelp(
         "Add a button that opens this URL or path. Hovering holds the card.", valueName: "url|path"))
     var open: String?
@@ -220,15 +267,7 @@ public struct CardOptions: ParsableArguments {
         valueName: "id"))
     var id: String?
 
-    @Option(help: ArgumentHelp(
-        "The app a click on the card brings forward, or none. (default: the app drip was run from)",
-        valueName: "bundle-id|none"))
-    var activate: String?
-
-    @Option(name: .customLong("on-click"), help: ArgumentHelp(
-        "A shell command a click on the card runs, after it brings --activate forward. It reads the card on stdin as one line of JSON.",
-        valueName: "command"))
-    var onClick: String?
+    @OptionGroup var click: ClickOptions
 
     @Flag(help: "Keep the card on screen until it is clicked, a newer card with the same --id replaces it, or 10 minutes pass. drip still returns at once.")
     var stay = false
@@ -242,9 +281,6 @@ public struct CardOptions: ParsableArguments {
     public init() {}
 
     public func validate() throws {
-        if let seconds, !Defaults.secondsRange.contains(seconds) {
-            throw ValidationError("--seconds must be between 0.5 and 60")
-        }
         if let open, let separator = open.range(of: "://") {
             // A URL needs a scheme such as https before its "://"; a path never contains one.
             let scheme = open[..<separator.lowerBound]
@@ -255,15 +291,6 @@ public struct CardOptions: ParsableArguments {
         }
         if let id, id.trimmingCharacters(in: .whitespaces).isEmpty || id.count > Defaults.idLimit {
             throw ValidationError("--id needs 1 to \(Defaults.idLimit) characters")
-        }
-        if let problem = icon?.problem {
-            throw ValidationError("--icon: \(problem)")
-        }
-        if let activate, activate != CardActivation.none, !CardActivation.isBundleIdentifier(activate) {
-            throw ValidationError("--activate: '\(activate)' is not a bundle identifier such as com.apple.Terminal")
-        }
-        if let onClick, onClick.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            throw ValidationError("--on-click needs a command")
         }
     }
 
@@ -278,10 +305,10 @@ public struct CardOptions: ParsableArguments {
         // --button names the --open button, and an empty --open has none.
         let label = open == nil ? yes : target == nil ? nil : button
         return CardFlags(
-            detail: detail, seconds: seconds, sound: sound,
-            icon: icon.map { $0.resolved(from: directory) }, color: color, stay: stay, wait: wait, quiet: quiet,
-            open: target, button: label, decline: open == nil ? no : nil, id: id, activate: activate,
-            onClick: onClick)
+            detail: detail, seconds: look.seconds, sound: look.sound,
+            icon: look.icon.map { $0.resolved(from: directory) }, color: look.color, stay: stay, wait: wait, quiet: quiet,
+            open: target, button: label, decline: open == nil ? no : nil, id: id, activate: click.activate,
+            onClick: click.onClick)
     }
 
     /// Throws when `--button` has no `--open` to name or no label. A command that is `asking` can ask
@@ -378,22 +405,12 @@ public struct DripCommand: ParsableCommand {
         commandName: "drip",
         abstract: "Show a brief card at the notch on macOS.",
         usage: """
-            drip [KIND] [TITLE] [options]
-            drip run [options] [--] <command> [args...]
-            drip hook claude|codex|gemini [options] [payload]
-            drip remote-hook
-            drip watching [--pane ID] [--app BUNDLE-ID]
-            drip follow <ssh-target> [options]
-            drip history [--missed] [-n N | --all] [--json | --replay] [--clear]
-            drip debug [--clear]
-            drip dismiss [--id ID]
-            drip pause [DURATION]
-            drip resume
-            drip doctor [--json]
+            drip [<kind>] [<title>] [options]
+            drip <subcommand> [options]
             """,
         version: dripVersion,
         subcommands: [
-            ShowCommand.self, RunCommand.self, HookCommand.self, RemoteHookCommand.self, WatchingCommand.self, FollowCommand.self,
+            ShowCommand.self, RunCommand.self, HookCommand.self, WatchingCommand.self, FollowCommand.self,
             HistoryCommand.self, DebugCommand.self, DismissCommand.self, PauseCommand.self, ResumeCommand.self, DoctorCommand.self,
             RenderCommand.self, BackgroundCommand.self, FinishedCommand.self,
         ],
@@ -414,7 +431,7 @@ public struct DripCommand: ParsableCommand {
           drip info "my-app needs you" --stay --icon app:com.openai.chat
           drip ok "tests passed" --on-click 'jq -r .title >>~/clicked.log'
           drip watching --pane "$TMUX_PANE" || drip ok "tests passed"
-          drip remote-hook | ssh devbox 'cat > ~/bin/drip-remote-hook'
+          drip follow --hook-script | ssh devbox 'cat > ~/bin/drip-remote-hook'
           drip follow devbox
           drip dismiss
           drip pause 30m
@@ -423,13 +440,13 @@ public struct DripCommand: ParsableCommand {
     public init() {}
 }
 
-/// `drip [KIND] [TITLE] [options]`, which `drip show` names: what drip does when the first word
+/// `drip [<kind>] [<title>] [options]`, which `drip show` names: what drip does when the first word
 /// names no subcommand.
 public struct ShowCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "show",
         abstract: "Show a card.",
-        usage: "drip [KIND] [TITLE] [options]"
+        usage: "drip [<kind>] [<title>] [options]"
     )
 
     @Argument(help: ArgumentHelp(
@@ -474,12 +491,12 @@ public struct ShowCommand: ParsableCommand {
     }
 }
 
-/// `drip run [options] [--] <command> [args...]`
+/// `drip run [options] [--] <command> [<args>...]`
 public struct RunCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "run",
         abstract: "Run a command, then show ok or fail with how long it took.",
-        usage: "drip run [options] [--] <command> [args...]",
+        usage: "drip run [options] [--] <command> [<args>...]",
         discussion: """
             drip's options come first; the command starts at the first argument that is not one, or \
             after --. Exits with the command's exit code.
@@ -519,29 +536,24 @@ public struct RunCommand: ParsableCommand {
     }
 }
 
-/// `drip hook claude|codex|gemini [options] [payload]`: shows a card from a coding agent's hook.
+/// `drip hook claude|codex|gemini [options] [<payload>]`: shows a card from a coding agent's hook.
 public struct HookCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "hook",
         abstract: "Show a card from a Claude Code, Codex or Gemini CLI hook.",
-        usage: "drip hook claude|codex|gemini [--approve] [--min-turn SECONDS] [--only needs-you] [options] [payload]",
+        usage: "drip hook claude|codex|gemini [options] [<payload>]",
         discussion: """
-            The payload is the hook's JSON, on stdin as hooks pass it, or an argument as Codex's older \
-            notify does. The card names the project and whether the agent needs you, is done or \
-            stopped on an error, and each session's card replaces its last. A card that says the \
-            agent needs you goes once you answer in the terminal: the hooks that report a tool ran or \
-            a prompt was sent take it away and show nothing. Which events run drip hook is yours to \
-            choose, in the agent's settings: a recipe shows the hooks to add. Without a \
-            GUI session, as over ssh, drip shows nothing and exits 0, and so it does for a session \
-            nobody attends, such as claude -p, and wherever DRIP_HOOK=off; DRIP_HOOK=on shows cards \
-            even then, and DRIP_HOOK=attention shows only the cards that need you or report an \
-            error, not the done cards. With --approve, the card \
-            that asks for Claude Code's or Codex's permission has Allow and Deny, and drip prints a \
-            click as the agent's answer; nothing clicked in 9 minutes prints nothing, and the \
-            terminal asks. With --min-turn, a done card shows only for a turn that ran that many \
-            seconds or more. With --only needs-you, the done cards never show, but still take away \
-            the card the session waits on. Any failure exits 1, since an agent reads some other \
-            codes as "block".
+            The card names the project and whether the agent needs you, is done or stopped on an \
+            error, and each session's card replaces its last. A card that says the agent needs you \
+            goes once you answer in the terminal: the hooks that report a tool ran or a prompt was \
+            sent take it away and show nothing. Which events run drip hook is yours to choose, in \
+            the agent's settings: a recipe shows the hooks to add.
+
+            drip shows nothing and exits 0 without a GUI session, as over ssh, for a session nobody \
+            attends, such as claude -p, and wherever DRIP_HOOK=off. DRIP_HOOK=on shows cards even \
+            for a session nobody attends, and DRIP_HOOK=attention shows only the cards that need \
+            you or report an error. Any failure exits 1, since an agent reads some other codes as \
+            "block".
             """
     )
 
@@ -554,33 +566,46 @@ public struct HookCommand: ParsableCommand {
         agentName ?? .claude
     }
 
-    @Argument(help: ArgumentHelp("The hook's JSON. Read from stdin when absent.", valueName: "payload"))
+    @Argument(help: ArgumentHelp(
+        "The hook's JSON, as Codex's older notify passes it. Read from stdin, as hooks pass it, when absent.",
+        valueName: "payload"))
     public var payload: String?
 
-    @Flag(help: "Give the card for a permission Allow and Deny buttons, and print a click as the agent's answer.")
+    @Flag(help: "Give the card that asks for Claude Code's or Codex's permission Allow and Deny buttons, and print a click as the agent's answer. Nothing clicked in 9 minutes prints nothing, and the terminal asks.")
     public var approve = false
 
     @Option(name: .customLong("min-turn"), help: ArgumentHelp(
         "Show a done card only when the turn ran at least this many seconds.", valueName: "seconds"))
     var minTurnText: String?
 
-    @Option(help: ArgumentHelp("Show only the cards that need you: a permission, a question or an error.", valueName: "needs-you"))
-    var only: AgentHook.Policy.Only?
+    @Flag(name: .customLong("needs-you-only"), help: "Show only the cards that need you: a permission, a question or an error. A done card never shows, but still takes away the card its session waits on.")
+    var needsYouOnly = false
 
-    @OptionGroup public var options: CardOptions
+    @OptionGroup var look: LookOptions
+
+    @OptionGroup var click: ClickOptions
+
+    @Flag(help: "Never print warnings.")
+    var quiet = false
 
     /// What the flags ask of the hook.
     public var policy: AgentHook.Policy {
-        AgentHook.Policy(approve: approve, minTurn: minTurnText.flatMap(Double.init) ?? 0, only: only)
+        AgentHook.Policy(
+            approve: approve, minTurn: minTurnText.flatMap(Double.init) ?? 0, only: needsYouOnly ? .needsYou : nil)
     }
 
     public init() {}
 
-    /// The card options.
-    public var flags: CardFlags { options.flags(yes: nil, no: nil) }
+    /// The card options: an agent's card has its own text, id and time on screen, so the hook takes
+    /// only the look and the click.
+    public var flags: CardFlags {
+        CardFlags(
+            seconds: look.seconds, sound: look.sound,
+            icon: look.icon.map { $0.resolved(from: FileManager.default.currentDirectoryPath) }, color: look.color,
+            quiet: quiet, activate: click.activate, onClick: click.onClick)
+    }
 
     public func validate() throws {
-        try options.validateButton(asking: false)
         if agentName == nil {
             throw ValidationError("missing the agent: drip hook claude, drip hook codex or drip hook gemini")
         }
@@ -595,36 +620,19 @@ public struct HookCommand: ParsableCommand {
     }
 }
 
-/// `drip remote-hook`: prints the hook script for agents on another machine.
-public struct RemoteHookCommand: ParsableCommand {
-    public static let configuration = CommandConfiguration(
-        commandName: "remote-hook",
-        abstract: "Print the drip-remote-hook script for a machine without drip.",
-        usage: "drip remote-hook",
-        discussion: """
-            drip remote-hook prints drip-remote-hook, a shell script to save on a machine whose \
-            agent drip follow shows the cards of. drip does not edit a coding agent's settings: \
-            a recipe shows the hooks to add.
-            """
-    )
-
-    public init() {}
-}
-
-/// `drip watching [--pane ID] [--app BUNDLE-ID]`: says by its exit status whether you are watching a terminal.
+/// `drip watching [--pane <id>] [--app <bundle-id>]`: says by its exit status whether you are watching a terminal.
 public struct WatchingCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "watching",
         abstract: "Tell by the exit status whether you are watching a terminal now.",
-        usage: "drip watching [--pane ID] [--app BUNDLE-ID]",
+        usage: "drip watching [--pane <id>] [--app <bundle-id>]",
         discussion: """
             Exits 0 when you are likely watching: the terminal is in front and you used the keyboard or \
-            mouse within away_after seconds, and with --pane, that tmux pane is the one showing. \
+            mouse within away_after seconds, and with a pane, that tmux pane is the one showing. \
             Exits 1 when you are not, and also when drip cannot tell, such as without a pane or app to \
             look at or without a GUI session: it then says why on stderr. \
-            It exits 2 only for a usage error. It is what drip's own cards ask before they show. The \
-            pane and app default to the tmux pane and the app drip runs in. Use it to keep a recipe \
-            quiet while you watch: drip watching || drip ok "tests passed"
+            It exits 2 only for a usage error. It is what drip's own cards ask before they show. Use \
+            it to keep a recipe quiet while you watch: drip watching || drip ok "tests passed"
             """
     )
 
@@ -641,7 +649,7 @@ public struct WatchingCommand: ParsableCommand {
         if let pane, !TerminalPane.isPaneID(pane, prefix: "%") {
             throw ValidationError("--pane: '\(pane)' is not a tmux pane id such as %3")
         }
-        if let app, !CardActivation.isBundleIdentifier(app) {
+        if let app, !CardActivation.isTypedBundleIdentifier(app) {
             throw ValidationError("--app: '\(app)' is not a bundle identifier such as com.apple.Terminal")
         }
     }
@@ -684,14 +692,17 @@ public struct FollowCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "follow",
         abstract: "Show the cards of coding agents on another machine, over ssh.",
-        usage: "drip follow <ssh-target> [--max-age <duration>] [--activate <bundle-id>] [--on-click <command>] [--queue <path>] [--launchd]",
+        usage: """
+            drip follow <ssh-target> [options]
+            drip follow --hook-script
+            """,
         discussion: """
             Reads the events that drip-remote-hook queues on the machine, over ssh with no prompts, and \
             shows each one's card as drip hook would on this Mac, by the same config and DRIP_HOOK. \
             It runs until stopped, reconnecting when the connection drops, and takes up after the last \
-            event it handled. Events older than --max-age when they arrive, as after the Mac slept, \
-            show no card, but still take away the cards they would. drip remote-hook prints the hook; --launchd prints a launchd agent that keeps \
-            drip follow running.
+            event it handled. An event too old to show, as after the Mac slept, still takes away the \
+            cards it would. drip does not edit a coding agent's settings on either machine: a recipe \
+            shows the hooks to add.
             """
     )
 
@@ -702,7 +713,7 @@ public struct FollowCommand: ParsableCommand {
     public var target: String?
 
     @Option(name: .customLong("max-age"), help: ArgumentHelp(
-        "Show no card for events older than this when they arrive: minutes or hours, such as 5m or 1h. (default: 5m)",
+        "Show no card for events older than this when they arrive: seconds, minutes or hours, such as 90s, 5m or 1h. (default: 5m)",
         valueName: "duration"))
     var maxAgeText: String?
 
@@ -724,6 +735,9 @@ public struct FollowCommand: ParsableCommand {
     @Flag(help: "Print a launchd agent that runs this drip follow at login and keeps it running, instead of running it.")
     public var launchd = false
 
+    @Flag(name: .customLong("hook-script"), help: "Print drip-remote-hook, the shell script an agent's hooks run on a machine without drip, instead of following one. It takes no machine and no other option.")
+    public var hookScript = false
+
     /// Seconds an event may be old when it arrives.
     public var maxAge: Double {
         maxAgeText.flatMap(DripPause.duration) ?? Self.defaultMaxAge
@@ -732,6 +746,12 @@ public struct FollowCommand: ParsableCommand {
     public init() {}
 
     public func validate() throws {
+        if hookScript {
+            if target != nil || maxAgeText != nil || activate != nil || onClick != nil || queue != nil || launchd {
+                throw ValidationError("--hook-script prints the same script for every machine, so it takes nothing else")
+            }
+            return
+        }
         guard let target else {
             throw ValidationError("missing the machine, as ssh takes it: drip follow devbox")
         }
@@ -741,9 +761,9 @@ public struct FollowCommand: ParsableCommand {
             throw ValidationError("'\(target)' is not an ssh target such as devbox or user@devbox")
         }
         if let maxAgeText, DripPause.duration(maxAgeText) == nil {
-            throw ValidationError("--max-age: '\(maxAgeText)' is not a duration: give minutes or hours, as in 5m or 1h")
+            throw ValidationError("--max-age: '\(maxAgeText)' is not a duration: give seconds, minutes or hours, as in 90s, 5m or 1h")
         }
-        if let activate, activate != CardActivation.none, !CardActivation.isBundleIdentifier(activate) {
+        if let activate, activate != CardActivation.none, !CardActivation.isTypedBundleIdentifier(activate) {
             throw ValidationError("--activate: '\(activate)' is not a bundle identifier such as com.apple.Terminal")
         }
         if let onClick, onClick.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -755,21 +775,23 @@ public struct FollowCommand: ParsableCommand {
     }
 }
 
-/// `drip history [--missed] [-n N | --all] [--json | --replay] [--clear]`: lists or shows again the cards in the history.
+/// `drip history [--missed] [-n <n> | --all] [--json | --replay]`: lists or shows again the cards in the history.
 public struct HistoryCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "history",
         abstract: "List the cards in the history, or show them again.",
-        usage: "drip history [--missed] [-n N | --all] [--json | --replay] [--clear]",
+        usage: """
+            drip history [--missed] [-n <n> | --all] [--json | --replay]
+            drip history --clear
+            """,
         discussion: """
-            Lists the last \(HistoryListing.defaultCount) cards in the history, newest first, as the card showed \
-            them: when it came up, its title and the lines of detail on screen, with "missed" after the \
-            title of those that came up while the screen was locked or drip was paused. -n lists more or \
-            fewer, --all every one. Color is for a terminal, and off when NO_COLOR is set and not empty. --json and \
-            --replay take every card, oldest first, in full, unless -n limits them. The history is \
-            $XDG_STATE_HOME/drip/history.jsonl, or ~/.local/state/drip/history.jsonl, and keeps up to \
-            \(Defaults.history) cards by default. history in the config, or DRIP_HISTORY, sets how many, \
-            and 0 stops recording. --clear deletes every card in it.
+            Lists the cards newest first, as the card showed them: when it came up, its title and the \
+            lines of detail on screen, with "missed" after the title of those that came up while the \
+            screen was locked or drip was paused. Color is for a terminal, and off when NO_COLOR is \
+            set and not empty. --json and --replay take the same cards oldest first, in full. \
+            The history is $XDG_STATE_HOME/drip/history.jsonl, or ~/.local/state/drip/history.jsonl, \
+            and keeps up to \(Defaults.history) cards by default. history in the config, or \
+            DRIP_HISTORY, sets how many, and 0 stops recording.
             """
     )
 
@@ -779,10 +801,11 @@ public struct HistoryCommand: ParsableCommand {
     @Flag(help: "Only cards that came up while the screen was locked or drip was paused.")
     public var missed = false
 
-    @Option(name: .short, help: ArgumentHelp("List the last N cards.", valueName: "n"))
+    @Option(name: .short, help: ArgumentHelp(
+        "Take the last n cards. (default: \(HistoryListing.defaultCount))", valueName: "n"))
     public var number: Int?
 
-    @Flag(help: "List every card in the history.")
+    @Flag(help: "Take every card in the history.")
     public var all = false
 
     @Flag(help: "Print each card as one flat line of JSON, for scripts.")
@@ -815,8 +838,7 @@ public struct DebugCommand: ParsableCommand {
             decision about an agent's card, with what drip knew when it decided, and for each click: \
             never a card's title or detail, a prompt, a tool's input, a command or a path from an \
             agent. It is $XDG_STATE_HOME/drip/debug.log, or ~/.local/state/drip/debug.log, readable \
-            only by you, and keeps about the last 1 MB. drip debug prints it; \
-            --clear empties it.
+            only by you, and keeps about the last 1 MB.
             """
     )
 
@@ -826,19 +848,17 @@ public struct DebugCommand: ParsableCommand {
     public init() {}
 }
 
-/// `drip dismiss [--id ID]`: takes cards away without bringing anything forward.
+/// `drip dismiss [--id <id>]`: takes cards away without bringing anything forward.
 public struct DismissCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "dismiss",
         abstract: "Take the cards on screen away, without bringing anything forward.",
-        usage: "drip dismiss [--id ID]",
+        usage: "drip dismiss [--id <id>]",
         discussion: """
             Takes away every card on screen, and every card still waiting its turn, as a right-click on \
-            each would: nothing comes forward, and a question goes unanswered. With --id, only the \
-            cards with that id. A card that comes after is shown as usual. Bind it to a key in \
+            each would: nothing comes forward, and a question goes unanswered. A card that comes after is shown as usual. Bind it to a key in \
             Shortcuts, Raycast or skhd to clear the notch from the keyboard.
-            """,
-        aliases: ["clear"]
+            """
     )
 
     @Option(name: .customLong("id"), help: ArgumentHelp("Only the cards with this --id.", valueName: "id"))
@@ -853,32 +873,30 @@ public struct DismissCommand: ParsableCommand {
     }
 }
 
-/// `drip pause [DURATION]`: holds cards for a while, as while the screen is locked.
+/// `drip pause [<duration>]`: holds cards for a while, as while the screen is locked.
 public struct PauseCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "pause",
         abstract: "Hold cards for a while, then show what came up.",
-        usage: "drip pause [DURATION]",
+        usage: "drip pause [<duration>]",
         discussion: """
             Until the pause ends, cards are held as they are while the screen is locked: then the \
             last five play back newest first, any older ones as one card, and drip history --missed \
             lists them. \
-            A drip that waits for its card, with --wait or a --yes question, waits for the end. drip \
-            pause alone pauses for 1h, or says how long is left when drip is paused already. To \
-            extend or shorten a running pause, pass a duration, such as drip pause 1h: it sets a new \
-            end from now. The pause holds for every drip, ends on its own, and lasts at \
-            most 24h. drip resume ends it now.
+            A drip that waits for its card, with --wait or a --yes question, waits for the end. \
+            A pause always runs from now, so drip pause extends or shortens one that is running. It \
+            holds for every drip, ends on its own, and lasts at most 24h. drip resume ends it now, \
+            and drip doctor says how long is left.
             """
     )
 
-    /// How long to pause for, in seconds, from now, replacing any pause; nil to say how long is left
-    /// of the pause, or to pause for `DripPause.defaultDuration` when there is none.
-    public var seconds: Double? {
-        argument.flatMap(DripPause.duration)
+    /// How long to pause for, in seconds, from now, replacing any pause.
+    public var seconds: Double {
+        argument.flatMap(DripPause.duration) ?? DripPause.defaultDuration
     }
 
     @Argument(help: ArgumentHelp(
-        "How long to pause: minutes or hours, such as 30m, 2h or 1h30m. (default: 1h, or the time left when paused)",
+        "How long to pause, from now: seconds, minutes or hours, such as 90s, 30m or 1h30m. (default: 1h)",
         valueName: "duration"))
     var argument: String?
 
@@ -887,7 +905,7 @@ public struct PauseCommand: ParsableCommand {
     public func validate() throws {
         guard let argument else { return }
         guard let seconds = DripPause.duration(argument) else {
-            throw ValidationError("'\(argument)' is not a duration: give minutes or hours, as in 30m, 2h or 1h30m")
+            throw ValidationError("'\(argument)' is not a duration: give seconds, minutes or hours, as in 90s, 30m or 1h30m")
         }
         if seconds > DripPause.longest {
             throw ValidationError("a pause lasts at most 24h")
@@ -917,7 +935,7 @@ public struct DoctorCommand: ParsableCommand {
             screen is locked, the config file and every problem in it, the settings drip uses, and \
             the state directory. It changes nothing. Exits 2 for a usage error, in its arguments or a \
             DRIP_* variable, else 4 when the config file is invalid, else 1 when something stops cards \
-            now (it says what), else 0. --json prints the same as one JSON object.
+            now (it says what), else 0.
             """
     )
 
@@ -927,7 +945,7 @@ public struct DoctorCommand: ParsableCommand {
     public init() {}
 }
 
-/// `drip __render --out card.png [KIND] [TITLE] [options]`: draws a card offscreen into a PNG.
+/// `drip __render --out card.png [<kind>] [<title>] [options]`: draws a card offscreen into a PNG.
 /// Hidden from help; used by the snapshot tests, which also set the size, motion and outline,
 /// settings the other commands take only from the config and the environment.
 public struct RenderCommand: ParsableCommand {
@@ -938,7 +956,7 @@ public struct RenderCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "__render",
         abstract: "Draw a card offscreen into a PNG at 2x.",
-        usage: "drip __render --out <file.png> [KIND] [TITLE] [options]",
+        usage: "drip __render --out <file.png> [<kind>] [<title>] [options]",
         shouldDisplay: false
     )
 
@@ -1002,7 +1020,6 @@ public enum Invocation {
     case show(ShowCommand)
     case run(RunCommand)
     case hook(HookCommand)
-    case remoteHook(RemoteHookCommand)
     case watching(WatchingCommand)
     case finished(FinishedCommand)
     case follow(FollowCommand)
@@ -1043,10 +1060,13 @@ public enum CommandLineParser {
         do {
             var command = try DripCommand.parseAsRoot(attached)
             switch command {
-            case let command as ShowCommand: return .invocation(.show(command))
+            case let command as ShowCommand:
+                if let problem = mistypedSubcommand(command, arguments: arguments) {
+                    return .exit(status: ExitStatus.usage, message: usageMessage(problem))
+                }
+                return .invocation(.show(command))
             case let command as RunCommand: return .invocation(.run(command))
             case let command as HookCommand: return .invocation(.hook(command))
-            case is RemoteHookCommand: return .invocation(.remoteHook(RemoteHookCommand()))
             case let command as WatchingCommand: return .invocation(.watching(command))
             case let command as FinishedCommand: return .invocation(.finished(command))
             case let command as FollowCommand: return .invocation(.follow(command))
@@ -1073,14 +1093,17 @@ public enum CommandLineParser {
     private static func failure(_ error: Error, arguments: [String]) -> ParseResult {
         let message = DripCommand.message(for: error)
         if DripCommand.exitCode(for: error) == .success {
-            var text = message == DripCommand.helpMessage() ? rootHelp : message
-            if message == DripCommand.helpMessage(for: RunCommand.self) {
-                // drip run takes --version as the start of its command and rejects it, so its help
-                // does not offer the flag ArgumentParser lists for every subcommand.
-                text = text.split(separator: "\n", omittingEmptySubsequences: false)
-                    .filter { !$0.hasPrefix("  --version ") }.joined(separator: "\n")
+            guard message != DripCommand.helpMessage() else {
+                return .exit(status: ExitStatus.shown, message: HelpSections(rootHelp).usageFirst ?? rootHelp)
             }
-            return .exit(status: ExitStatus.shown, message: HelpSections(text).usageFirst ?? text)
+            // Not help: the version, or a completion script.
+            guard let help = HelpSections(message).usageFirst else {
+                return .exit(status: ExitStatus.shown, message: message)
+            }
+            // ArgumentParser lists --version for every subcommand; only drip's own help offers it.
+            let text = help.split(separator: "\n", omittingEmptySubsequences: false)
+                .filter { !$0.hasPrefix("  --version ") }.joined(separator: "\n")
+            return .exit(status: ExitStatus.shown, message: text)
         }
         let subcommand = DripCommand.configuration.subcommands
             .first { $0.configuration.shouldDisplay && $0.configuration.commandName == arguments.first }
@@ -1100,7 +1123,55 @@ public enum CommandLineParser {
         }
         if problem.hasSuffix(".") { problem.removeLast() }
         problem = problem.prefix(1).lowercased() + problem.dropFirst()
+        // ArgumentParser's own words for a value it cannot read: say what to give instead.
+        problem = problem.replacingOccurrences(of: ". Please provide one of ", with: ": give one of ")
+        if let hint = valueHints.first(where: { problem.hasSuffix("is invalid for '\($0.option)'") })?.hint {
+            problem += ": give \(hint)"
+        }
         return .exit(status: status, message: usageMessage(problem, subcommand: subcommand))
+    }
+
+    /// What to give an option whose value ArgumentParser cannot read, by the option as its error names it.
+    private static let valueHints: [(option: String, hint: String)] = [
+        ("--color <hex|name>", "#rrggbb, or green, orange, red, blue, purple, pink, yellow or gray"),
+        ("-s <n>", "a number of seconds from 0.5 to 60"), ("--seconds <n>", "a number of seconds from 0.5 to 60"),
+        ("-n <n>", "a number of cards, 1 or more"),
+    ]
+
+    /// Names drip once had for a subcommand, and the subcommand each one is now.
+    static let formerSubcommands = ["clear": "dismiss", "remote-hook": "follow --hook-script"]
+
+    /// What to say when the one word of `drip <word>` is likely a subcommand typed wrong, such as
+    /// `drip histroy`, or a name a subcommand once had: a card titled with it is never what was
+    /// meant. `drip show <word>` and `drip info <word>` still show the card.
+    private static func mistypedSubcommand(_ command: ShowCommand, arguments: [String]) -> String? {
+        guard let word = command.kind, command.title == nil, command.rest.isEmpty,
+              arguments.first != ShowCommand.configuration.commandName, !arguments.contains("--")
+        else { return nil }
+        let names = DripCommand.configuration.subcommands
+            .filter { $0.configuration.shouldDisplay }.compactMap { $0.configuration.commandName }
+        guard let name = formerSubcommands[word] ?? names.first(where: { isTypo(word, of: $0) }) else { return nil }
+        return "unknown subcommand '\(word)': did you mean 'drip \(name)'? To show a card titled \"\(word)\", "
+            + "use: drip info \(word)"
+    }
+
+    /// Whether `word` is `name` typed wrong: two letters next to each other swapped, or, for a name
+    /// of five letters or more, one letter wrong, missing or added. A short name such as run is one
+    /// letter from too many words (sun, ran) to say.
+    static func isTypo(_ word: String, of name: String) -> Bool {
+        let word = Array(word), name = Array(name)
+        guard word != name, abs(word.count - name.count) <= 1 else { return false }
+        if word.count == name.count {
+            let wrong = word.indices.filter { word[$0] != name[$0] }
+            if wrong.count == 2, wrong[1] == wrong[0] + 1, word[wrong[0]] == name[wrong[1]], word[wrong[1]] == name[wrong[0]] {
+                return true
+            }
+            return name.count >= 5 && wrong.count == 1
+        }
+        guard name.count >= 5 else { return false }
+        let (long, short) = word.count > name.count ? (word, name) : (name, word)
+        let first = short.indices.first { long[$0] != short[$0] } ?? short.count
+        return Array(long[(first + 1)...]) == Array(short[first...])
     }
 
     /// What is wrong with the words after `drip help`, if anything: it takes at most one, a
@@ -1111,6 +1182,8 @@ public enum CommandLineParser {
             [command.configuration.commandName].compactMap { $0 } + command.configuration.aliases
         })
         guard let word = words.first else { return nil }
+        // `drip help help` is the help.
+        if word == "help", words.count == 1 { return nil }
         if !names.contains(word) { return "unknown subcommand '\(word)'" }
         return words.dropFirst().first.map { "help takes one subcommand, not also '\($0)'" }
     }
