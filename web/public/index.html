@@ -930,25 +930,14 @@ story.splice(2, 0, { key: "open", title: "Open something from it", text: "--open
   steps: [{ line: 'drip ok "Report ready" -d "coverage 91%, 3 files changed" --open ./report.html --button "View report"', shown: 'drip ok "Report ready" --open ./report.html --button "View report"' }] });
 const pretty = { stack: 'drip ok   "Build finished"\ndrip warn "Disk almost full"\ndrip fail "Deploy failed"\ndrip info "Backup done"\ndrip ok   "Release 1.4 is out"',
   agent: '# in ~/.claude/settings.json, from a recipe\ndrip hook claude', preset: '# ~/.config/drip/config.toml\n[preset.deploy]\nicon = "paperplane.fill"\n\ndrip deploy "Shipped to prod"' };
+const command = (text, key) => text.split("\n").map((l) => l.startsWith("#") || !l ? `<span class="c">${esc(l)}</span>` : key === "preset" && !l.startsWith("drip") ? esc(l) : `<span class="p">$ </span>${esc(l).replace(/(--?[\w-]+)/g, '<span class="f">$1</span>')}`).join("\n");
 story.forEach((f, n) => {
   const r = document.createElement("div"); r.className = "row"; r.tabIndex = 0;
-  const cmd = (pretty[f.key] ?? f.shown).split("\n").map((l) => l.startsWith("#") || !l ? `<span class="c">${esc(l)}</span>` : f.key === "preset" && !l.startsWith("drip") ? esc(l) : `<span class="p">$ </span>${esc(l).replace(/(--?[\w-]+)/g, '<span class="f">$1</span>')}`).join("\n");
-  r.innerHTML = `<h2>${f.title}</h2><p>${esc(f.text)}</p><pre>${cmd}</pre><button class="again" type="button">play again</button>`;
-  r.onclick = (e) => { if (!e.target.closest("pre")) { clearTimeout(wait); go(n, true); } };
+  r.innerHTML = `<h2>${f.title}</h2><p>${esc(f.text)}</p><pre>${command(pretty[f.key] ?? f.shown, f.key)}</pre><button class="again" type="button">play again</button>`;
+  r.onclick = (e) => { if (!e.target.closest("pre")) { clearTimeout(wait); slideTo(n); lightDots(n); go(n, true); } };
   r.onkeydown = (e) => { if (e.key === "Enter") go(n, true); };
   rows.append(r);
 });
-// The last row: your own command.
-const mine = document.createElement("div"); mine.className = "row"; mine.id = "yours";
-mine.innerHTML = `<h2>Your turn</h2><p>Type any drip command. It runs in the same engine as the app.</p>
-  <form class="try" id="try"><input id="line" spellcheck="false" autocomplete="off" aria-label="A drip command" value='drip ok "Hello from drip"'><button>run</button></form>
-  <div class="chips">${['drip warn "Low battery" -d "8% left"', 'drip fail "CI failed" --stay', 'drip info "Lunch?" --yes Sure --no Later'].map((c) => `<button type="button" data-c='${esc(c)}'>${esc(c)}</button>`).join("")}</div>`;
-rows.append(mine);
-const line = mine.querySelector("#line");
-let custom = 0;
-async function runMine() { custom++; active = story.length; mark(); stage.reset(); term.clear(); await exec(line.value.trim(), term, stage, { config: "", alive: () => true }); }
-mine.querySelector("#try").onsubmit = (e) => { e.preventDefault(); runMine(); };
-mine.querySelectorAll(".chips button").forEach((b) => b.onclick = () => { line.value = b.dataset.c; runMine(); });
 
 let active = -1, ready = false;
 const list = () => [...rows.querySelectorAll(":scope > .row")];
@@ -956,7 +945,6 @@ const mark = () => { list().forEach((r, k) => r.classList.toggle("on", k === act
 function go(n, force) {
   if (!ready || (n === active && !force)) return;
   active = n; mark();
-  if (n === story.length) { if (!custom) runMine(); return; }
   play(story[n]);
 }
 const beam = document.createElement("i"); beam.className = "beam"; rows.prepend(beam);
@@ -965,7 +953,7 @@ let wait = 0, ticking = false;
 // The active row is the one nearest the middle of the view, read on every scroll frame, so no row is skipped.
 // The screen plays it only once it stays active for a moment, so a fast scroll does not start every row.
 function pick() {
-  ticking = false; if (!ready) return;
+  ticking = false; if (!ready || narrow.matches) return;
   const mid = innerHeight / 2; let best = 0, d = Infinity;
   list().forEach((r, k) => { const b = r.getBoundingClientRect(), x = Math.abs((b.top + b.bottom) / 2 - mid); if (x < d) { d = x; best = k; } });
   if (best === active) return;
@@ -973,6 +961,37 @@ function pick() {
 }
 addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimationFrame(pick); } }, { passive: true });
 addEventListener("resize", placeBeam);
+// Narrow: the rows are cards to swipe under the laptop, and the card in view plays. Dots show where you are.
+const narrow = matchMedia("(width <= 900px)");
+const dots = document.createElement("div"); dots.className = "dots";
+dots.innerHTML = list().map((r) => `<button type="button" aria-label="${esc(r.querySelector("h2").textContent)}"></button>`).join("");
+rows.before(dots);
+const inset = () => parseFloat(getComputedStyle(rows).paddingLeft);
+const restOf = (n) => list()[n].offsetLeft - inset();
+// A tap on a dot or a card slides straight to it, so the cards it passes on the way do not play.
+let gliding = false;
+function slideTo(n, behavior = "smooth") { if (!narrow.matches) return; gliding = true; rows.scrollTo({ left: restOf(n), behavior }); }
+function inView() {
+  let best = 0, d = Infinity;
+  list().forEach((r, k) => { const x = Math.abs(r.offsetLeft - inset() - rows.scrollLeft); if (x < d) { d = x; best = k; } });
+  return best;
+}
+function lightDots(n) { [...dots.children].forEach((b, k) => b.classList.toggle("on", k === n)); }
+// The screen changes as soon as a swipe leaves the card in view, to the next card in that direction,
+// not when the swipe comes to rest. A swipe that turns back changes it back. Where it rests decides at the end.
+let settling = 0, last = 0;
+rows.addEventListener("scroll", () => {
+  if (!narrow.matches) return;
+  const x = rows.scrollLeft, dir = Math.sign(x - last); last = x;
+  if (!gliding && ready && active >= 0 && dir && (x - restOf(active)) * dir > 12) {
+    const next = Math.min(Math.max(active + dir, 0), story.length - 1);
+    if (next !== active) { lightDots(next); go(next); }
+  }
+  clearTimeout(settling); settling = setTimeout(() => { gliding = false; const n = inView(); lightDots(n); if (ready) go(n); }, 160);
+}, { passive: true });
+[...dots.children].forEach((b, k) => b.onclick = () => { slideTo(k); lightDots(k); go(k); });
+narrow.addEventListener("change", () => { if (!ready) return; if (narrow.matches) { slideTo(Math.max(active, 0), "instant"); lightDots(active); } else pick(); });
+lightDots(0);
 const sticky = document.querySelector(".sticky");
 new ResizeObserver(() => sticky.style.setProperty("--lh", sticky.offsetHeight + "px")).observe(sticky);
 // The menu bar clock: the visitor's own time.
@@ -999,7 +1018,7 @@ try {
   const loop = (now) => { const dt = (now - last) / 1000; last = now; for (const s of allStages) if (s.visible) s.step(now, dt); requestAnimationFrame(loop); };
   requestAnimationFrame(loop);
   document.getElementById("loading").remove();
-  ready = true; pick(); clearTimeout(wait); go(Math.max(active, 0), true);
+  ready = true; if (narrow.matches) go(inView(), true); else { pick(); clearTimeout(wait); go(Math.max(active, 0), true); }
 } catch (error) {
   document.getElementById("loading").textContent = "drip's engine did not load: " + error.message;
   console.error(error);
