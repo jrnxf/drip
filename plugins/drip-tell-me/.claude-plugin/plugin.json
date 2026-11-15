@@ -1,5 +1,5 @@
 {
-  "name": "tell-me",
+  "name": "drip-tell-me",
   "description": "Teaches Claude drip's commands, so you can say \"tell me with drip when this is done\". No hooks.",
   "author": {
     "name": "jrnxf",

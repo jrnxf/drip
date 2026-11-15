@@ -34,7 +34,7 @@ found". Guard the command in the snippet:
 `command -v drip >/dev/null && drip hook claude || true`.
 
 In Claude Code, you can install a notify recipe as a plugin instead of a paste:
-`/plugin marketplace add jrnxf/drip`, then `/plugin install permission-cards@drip`. The plugin has
+`/plugin marketplace add jrnxf/drip`, then `/plugin install drip-permission-cards@drip`. The plugin has
 the recipe's hooks, with this guard on each command. Claude Code runs a plugin's hooks next to the
 hooks in your settings file, so remove a pasted snippet before you install its plugin, or every card
 shows twice. Install one notify plugin, not two. Codex and Gemini CLI have no plugins: paste the

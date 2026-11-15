@@ -16,13 +16,13 @@ In Claude Code, run these two commands, then pick a scope:
 
 ```text
 /plugin marketplace add jrnxf/drip
-/plugin install long-turns@drip
+/plugin install drip-long-turns@drip
 ```
 
 The plugin needs drip from Homebrew: `brew install jrnxf/tap/drip`. On a machine without drip, its
 hooks do nothing. If you pasted this recipe's snippet before, delete it from your settings file, or
 every card shows twice. Use one notify plugin, not two. To remove the plugin, run
-`/plugin uninstall long-turns@drip`.
+`/plugin uninstall drip-long-turns@drip`.
 
 Codex and Gemini CLI have no plugin. For them, and to paste the snippet in Claude Code instead, use
 the steps below.

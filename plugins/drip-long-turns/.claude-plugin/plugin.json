@@ -1,11 +1,11 @@
 {
-  "name": "permission-cards",
-  "description": "A drip card when Claude Code needs you: a permission, or a question. Nothing else.",
+  "name": "drip-long-turns",
+  "description": "As everything, but no done card for a turn under 30 seconds.",
   "author": {
     "name": "jrnxf",
     "url": "https://github.com/jrnxf"
   },
-  "homepage": "https://github.com/jrnxf/drip/tree/main/recipes/permission-cards",
+  "homepage": "https://github.com/jrnxf/drip/tree/main/recipes/long-turns",
   "repository": "https://github.com/jrnxf/drip",
   "license": "MIT",
   "keywords": [

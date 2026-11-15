@@ -7,28 +7,28 @@
   },
   "plugins": [
     {
-      "name": "permission-cards",
-      "source": "./plugins/permission-cards"
+      "name": "drip-permission-cards",
+      "source": "./plugins/drip-permission-cards"
     },
     {
-      "name": "attention",
-      "source": "./plugins/attention"
+      "name": "drip-attention",
+      "source": "./plugins/drip-attention"
     },
     {
-      "name": "everything",
-      "source": "./plugins/everything"
+      "name": "drip-everything",
+      "source": "./plugins/drip-everything"
     },
     {
-      "name": "long-turns",
-      "source": "./plugins/long-turns"
+      "name": "drip-long-turns",
+      "source": "./plugins/drip-long-turns"
     },
     {
-      "name": "approve-from-card",
-      "source": "./plugins/approve-from-card"
+      "name": "drip-approve-from-card",
+      "source": "./plugins/drip-approve-from-card"
     },
     {
-      "name": "tell-me",
-      "source": "./plugins/tell-me"
+      "name": "drip-tell-me",
+      "source": "./plugins/drip-tell-me"
     }
   ]
 }

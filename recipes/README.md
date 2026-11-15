@@ -9,10 +9,11 @@ Most recipes are a hook snippet for Claude Code, Codex and Gemini CLI. Each READ
 in full, says which file it goes in, and says how to merge it by hand.
 
 In Claude Code, each notify recipe is also a plugin, with the same hooks. Run
-`/plugin marketplace add jrnxf/drip`, then `/plugin install permission-cards@drip`, or the name of
-another recipe. Install one notify plugin, not two, and not the plugin and the snippet together, or
-every card shows twice. A `tell-me` plugin teaches Claude the drip commands, so you can ask for a
-card. It has no hooks. Codex and Gemini CLI have no plugins: paste the snippet.
+`/plugin marketplace add jrnxf/drip`, then `/plugin install drip-permission-cards@drip`, or `drip-`
+and the name of another recipe. Install one notify plugin, not two, and not the plugin and the
+snippet together, or every card shows twice. A `drip-tell-me` plugin teaches Claude the drip
+commands, so you can ask for a card. It has no hooks. Codex and Gemini CLI have no plugins: paste
+the snippet.
 
 ## Notify when
 

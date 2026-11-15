@@ -1,11 +1,11 @@
 {
-  "name": "approve-from-card",
-  "description": "As permission-cards, with Allow and Deny on the card for a short shell command.",
+  "name": "drip-permission-cards",
+  "description": "A drip card when Claude Code needs you: a permission, or a question. Nothing else.",
   "author": {
     "name": "jrnxf",
     "url": "https://github.com/jrnxf"
   },
-  "homepage": "https://github.com/jrnxf/drip/tree/main/recipes/approve-from-card",
+  "homepage": "https://github.com/jrnxf/drip/tree/main/recipes/permission-cards",
   "repository": "https://github.com/jrnxf/drip",
   "license": "MIT",
   "keywords": [

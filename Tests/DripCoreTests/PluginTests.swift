@@ -13,8 +13,12 @@ struct PluginTests {
     static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent()
 
-    /// The plugins: one per notify recipe, and `tell-me`, a skill with no hooks.
-    static let names = Recipes.names + ["tell-me"]
+    /// The plugins: one per notify recipe, and `drip-tell-me`, a skill with no hooks. Each name starts
+    /// with `drip-`, so it says whose it is in a list of installed plugins.
+    static let names = Recipes.names.map(plugin) + ["drip-tell-me"]
+
+    /// The plugin of a recipe.
+    static func plugin(_ recipe: String) -> String { "drip-\(recipe)" }
 
     static func json(_ path: String) throws -> JSONValue {
         try JSONValue(parsing: String(contentsOf: root.appendingPathComponent(path), encoding: .utf8))
@@ -76,13 +80,13 @@ struct PluginTests {
     /// with only the guard around each command.
     @Test(arguments: Recipes.names)
     func everyPluginHasTheHooksOfItsRecipe(name: String) throws {
-        let hooks = try #require(try Self.json("plugins/\(name)/hooks/hooks.json")["hooks"])
+        let hooks = try #require(try Self.json("plugins/\(Self.plugin(name))/hooks/hooks.json")["hooks"])
         let recipe = JSONValue.object(try Recipes.events(name, .claude))
-        #expect(hooks == Self.guarding(recipe), "plugins/\(name)/hooks/hooks.json differs from the recipe's Claude Code snippet")
+        #expect(hooks == Self.guarding(recipe), "plugins/\(Self.plugin(name))/hooks/hooks.json differs from the recipe's Claude Code snippet")
     }
 
     @Test func theSkillPluginHasNoHooks() {
-        let hooks = Self.root.appendingPathComponent("plugins/tell-me/hooks").path
+        let hooks = Self.root.appendingPathComponent("plugins/drip-tell-me/hooks").path
         #expect(!FileManager.default.fileExists(atPath: hooks))
     }
 }
