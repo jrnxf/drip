@@ -71,6 +71,8 @@ Install drip with Homebrew (brew install jrnxf/tap/drip) and add the permission-
 For a shared settings file, use `command -v drip >/dev/null && drip hook claude || true` as the command. It is silent on a machine without drip, so a settings file shared across machines is safe.
 More recipes, such as a done card for every turn, are in the [recipe catalog](recipes/README.md).
 
+To let your agent send cards itself, add the [drip skill](skills/drip/SKILL.md): `npx skills add jrnxf/drip`. Then say "tell me with drip when the tests are done". It adds no hooks.
+
 ## Make it yours
 
 Set the size, stacking and reusable presets in `~/.config/drip/config.toml`. Every key is optional.
