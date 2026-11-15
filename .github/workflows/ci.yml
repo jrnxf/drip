@@ -122,8 +122,9 @@ jobs:
       - run: .build/release/drip --version
 
   wasm:
-    # DripCore compiled to WebAssembly, as the web page runs it, with its tests under wasmtime, so
-    # a change that breaks the page's engine fails here. Cloudflare's Workers Builds builds the page.
+    # DripCore compiled to WebAssembly, as the web page runs it, with its tests under wasmtime, and
+    # the DripWeb product built as web/build.sh builds it, so a change that breaks the page's
+    # engine fails here. Cloudflare's Workers Builds builds the page.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     # The Wasm SDK must match the compiler exactly: web/tools.sh pins both.
@@ -131,4 +132,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: apt-get update && apt-get install -y --no-install-recommends curl ca-certificates xz-utils
+      # The Wasm SDK and wasmtime that web/tools.sh and web/test.sh download. Their versions are in
+      # those two files, so the key follows them. A stalled download from swift.org fails the job.
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/drip/web-tools
+          key: web-tools-${{ runner.os }}-${{ hashFiles('web/tools.sh', 'web/test.sh') }}
       - run: web/test.sh

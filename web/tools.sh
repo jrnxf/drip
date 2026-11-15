@@ -148,3 +148,14 @@ install_sdk() {
 if ! has_sdk; then
     locked install_sdk
 fi
+
+# Compiles the DripWeb product, the engine the page runs, to WebAssembly, and sets $engine_bin to
+# the directory holding DripWeb.wasm. build.sh ships it and test.sh builds it too, so a change that
+# breaks the engine's bridge (web/engine) fails the tests, not just the deploy.
+compile_engine() {
+    # DripWeb is only part of the package for a Wasm build.
+    set -- -c release --package-path "$root" --scratch-path "$root/.build/web" \
+        --swift-sdks-path "$sdks" --swift-sdk "$sdk" --product DripWeb
+    DRIP_WEB=1 swift build "$@"
+    engine_bin=$(DRIP_WEB=1 swift build "$@" --show-bin-path)
+}

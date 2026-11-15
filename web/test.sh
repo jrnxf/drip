@@ -29,3 +29,6 @@ scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 "$wasmtime" run -W max-wasm-stack=8388608 --dir "$scratch::/tmp" --env TMPDIR=/tmp/ --env HOME=/tmp \
     "$bin/DripCoreTests-test-runner.wasm" --testing-library swift-testing
+
+# The page's engine must compile and link too: the same build build.sh ships.
+compile_engine
