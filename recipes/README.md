@@ -2,10 +2,17 @@
 
 drip gives you building blocks: cards, `drip hook`, `drip watching`, `--on-click`. A recipe decides
 when to notify. Recipes are examples. Read one, copy the part you want, and change it. Nothing is
-installed for you, and no recipe is built into the drip binary.
+installed until you choose to install a plugin or paste a snippet, and no recipe is built into the
+drip binary.
 
 Most recipes are a hook snippet for Claude Code, Codex and Gemini CLI. Each README has the snippet
 in full, says which file it goes in, and says how to merge it by hand.
+
+In Claude Code, each notify recipe is also a plugin, with the same hooks. Run
+`/plugin marketplace add jrnxf/drip`, then `/plugin install permission-cards@drip`, or the name of
+another recipe. Install one notify plugin, not two, and not the plugin and the snippet together, or
+every card shows twice. A `tell-me` plugin teaches Claude the drip commands, so you can ask for a
+card. It has no hooks. Codex and Gemini CLI have no plugins: paste the snippet.
 
 ## Notify when
 

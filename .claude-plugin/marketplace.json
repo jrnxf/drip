@@ -1,0 +1,34 @@
+{
+  "name": "drip",
+  "description": "drip's Claude Code recipes as plugins: cards from the MacBook notch when the agent needs you. Each needs drip from Homebrew: brew install jrnxf/tap/drip",
+  "owner": {
+    "name": "jrnxf",
+    "url": "https://github.com/jrnxf"
+  },
+  "plugins": [
+    {
+      "name": "permission-cards",
+      "source": "./plugins/permission-cards"
+    },
+    {
+      "name": "attention",
+      "source": "./plugins/attention"
+    },
+    {
+      "name": "everything",
+      "source": "./plugins/everything"
+    },
+    {
+      "name": "long-turns",
+      "source": "./plugins/long-turns"
+    },
+    {
+      "name": "approve-from-card",
+      "source": "./plugins/approve-from-card"
+    },
+    {
+      "name": "tell-me",
+      "source": "./plugins/tell-me"
+    }
+  ]
+}

@@ -2,15 +2,17 @@
 
 drip shows a card for a coding agent: Claude Code, Codex or Gemini CLI, from the notch, with no
 Notifications permission. drip gives the helpers. A [recipe](../recipes/README.md) decides when to
-notify. Nothing is installed until you pick a recipe, and no recipe is built into drip.
+notify. Nothing is installed until you choose to install a plugin or paste a snippet, and no
+recipe is built into drip.
 
 This page is the reference for the helpers. For the policy, read the recipes: they say what shows
 a card, for whom, and how to change it.
 
 ## Hook snippets
 
-drip has no hook set of its own and no installer. A [recipe](../recipes/README.md) is a snippet you
-add to the agent's settings by hand, and it is the whole policy:
+drip has no hook set of its own, and the drip binary installs nothing. A
+[recipe](../recipes/README.md) is a snippet you add to the agent's settings by hand, and it is the
+whole policy:
 
 | Agent | Settings file |
 | --- | --- |
@@ -30,6 +32,13 @@ notification, set Local notifications to disabled in its `/config`.
 A settings file shared with machines without drip makes each hook fail there with "command not
 found". Guard the command in the snippet:
 `command -v drip >/dev/null && drip hook claude || true`.
+
+In Claude Code, you can install a notify recipe as a plugin instead of a paste:
+`/plugin marketplace add jrnxf/drip`, then `/plugin install permission-cards@drip`. The plugin has
+the recipe's hooks, with this guard on each command. Claude Code runs a plugin's hooks next to the
+hooks in your settings file, so remove a pasted snippet before you install its plugin, or every card
+shows twice. Install one notify plugin, not two. Codex and Gemini CLI have no plugins: paste the
+snippet.
 
 For a machine that has no drip, write `drip-remote-hook claude` in place of `drip hook claude`. See
 [remote.md](remote.md).

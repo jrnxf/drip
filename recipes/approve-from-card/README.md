@@ -26,6 +26,23 @@ the card has been still for 0.4 seconds.
 A card that comes up while the screen is locked or `drip pause` holds cards only tells. So does one
 from [another machine](../../docs/remote.md): `--approve` is local only.
 
+## Install as a Claude Code plugin
+
+In Claude Code, run these two commands, then pick a scope:
+
+```text
+/plugin marketplace add jrnxf/drip
+/plugin install approve-from-card@drip
+```
+
+The plugin needs drip from Homebrew: `brew install jrnxf/tap/drip`. On a machine without drip, its
+hooks do nothing. If you pasted this recipe's snippet before, delete it from your settings file, or
+every card shows twice. Use one notify plugin, not two. To remove the plugin, run
+`/plugin uninstall approve-from-card@drip`.
+
+Codex and Gemini CLI have no plugin. For them, and to paste the snippet in Claude Code instead, use
+the steps below.
+
 ## Install
 
 Add the `hooks` entry for your agent to its settings file. If the file has a `hooks` entry already, merge the events by hand and keep your own hooks. If it does not exist, create it with this content.

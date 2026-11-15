@@ -1,0 +1,17 @@
+{
+  "name": "long-turns",
+  "description": "As everything, but no done card for a turn under 30 seconds.",
+  "author": {
+    "name": "jrnxf",
+    "url": "https://github.com/jrnxf"
+  },
+  "homepage": "https://github.com/jrnxf/drip/tree/main/recipes/long-turns",
+  "repository": "https://github.com/jrnxf/drip",
+  "license": "MIT",
+  "keywords": [
+    "drip",
+    "notifications",
+    "notch",
+    "hooks"
+  ]
+}

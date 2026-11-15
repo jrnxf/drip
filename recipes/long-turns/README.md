@@ -10,6 +10,23 @@ The done and failure hooks run `drip hook <agent> --min-turn 30`. drip counts fr
 sent, which `UserPromptSubmit` records. Cards that need you always show. For an agent on another
 machine, `drip follow` applies the same filter.
 
+## Install as a Claude Code plugin
+
+In Claude Code, run these two commands, then pick a scope:
+
+```text
+/plugin marketplace add jrnxf/drip
+/plugin install long-turns@drip
+```
+
+The plugin needs drip from Homebrew: `brew install jrnxf/tap/drip`. On a machine without drip, its
+hooks do nothing. If you pasted this recipe's snippet before, delete it from your settings file, or
+every card shows twice. Use one notify plugin, not two. To remove the plugin, run
+`/plugin uninstall long-turns@drip`.
+
+Codex and Gemini CLI have no plugin. For them, and to paste the snippet in Claude Code instead, use
+the steps below.
+
 ## Install
 
 Add the `hooks` entry for your agent to its settings file. If the file has a `hooks` entry already, merge the events by hand and keep your own hooks. If it does not exist, create it with this content.

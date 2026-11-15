@@ -9,6 +9,23 @@ For: people who want to know when a turn dies, as with a rate limit or an outage
 [permission-cards](../permission-cards/) plus Claude's `StopFailure`, which shows a `fail` card
 with the error. Codex and Gemini have no such event, so their snippets match permission-cards.
 
+## Install as a Claude Code plugin
+
+In Claude Code, run these two commands, then pick a scope:
+
+```text
+/plugin marketplace add jrnxf/drip
+/plugin install attention@drip
+```
+
+The plugin needs drip from Homebrew: `brew install jrnxf/tap/drip`. On a machine without drip, its
+hooks do nothing. If you pasted this recipe's snippet before, delete it from your settings file, or
+every card shows twice. Use one notify plugin, not two. To remove the plugin, run
+`/plugin uninstall attention@drip`.
+
+Codex and Gemini CLI have no plugin. For them, and to paste the snippet in Claude Code instead, use
+the steps below.
+
 ## Install
 
 Add the `hooks` entry for your agent to its settings file. If the file has a `hooks` entry already, merge the events by hand and keep your own hooks. If it does not exist, create it with this content.

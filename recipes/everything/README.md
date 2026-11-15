@@ -9,6 +9,23 @@ For: one or two sessions at a time. With many sessions the done cards add up: us
 [attention](../attention/) plus `Stop` (Gemini: `AfterAgent`). The done card shows the last thing the
 agent wrote and replaces the waiting card of the session in place.
 
+## Install as a Claude Code plugin
+
+In Claude Code, run these two commands, then pick a scope:
+
+```text
+/plugin marketplace add jrnxf/drip
+/plugin install everything@drip
+```
+
+The plugin needs drip from Homebrew: `brew install jrnxf/tap/drip`. On a machine without drip, its
+hooks do nothing. If you pasted this recipe's snippet before, delete it from your settings file, or
+every card shows twice. Use one notify plugin, not two. To remove the plugin, run
+`/plugin uninstall everything@drip`.
+
+Codex and Gemini CLI have no plugin. For them, and to paste the snippet in Claude Code instead, use
+the steps below.
+
 ## Install
 
 Add the `hooks` entry for your agent to its settings file. If the file has a `hooks` entry already, merge the events by hand and keep your own hooks. If it does not exist, create it with this content.
