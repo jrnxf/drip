@@ -53,6 +53,20 @@ struct RecipeTests {
         }
     }
 
+    /// team is permission-cards for a committed project file: the same events and commands, each one guarded.
+    @Test func theTeamRecipeIsPermissionCardsWithAGuardOnEachCommand() throws {
+        for agent in AgentHook.Agent.allCases {
+            let team = try Recipes.events("team", agent)
+            #expect(team.map(\.key) == (try Recipes.events("permission-cards", agent).map(\.key)), "\(agent)")
+            #expect(try Recipes.commands("team", agent) == (try Recipes.commands("permission-cards", agent)), "\(agent)")
+            for event in team {
+                for command in Recipes.rawCommands(in: event.value) {
+                    #expect(command == "command -v drip >/dev/null && drip hook \(agent.rawValue) || true", "\(agent) \(event.key)")
+                }
+            }
+        }
+    }
+
     @Test func theRecipeFlagsAreOnTheCommandsTheyChange() throws {
         let approve = try Recipes.commands("approve-from-card", .claude)
         #expect(approve["PermissionRequest"] == "drip hook claude --approve")

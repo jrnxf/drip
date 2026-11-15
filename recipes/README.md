@@ -16,6 +16,7 @@ in full, says which file it goes in, and says how to merge it by hand.
 | [everything](everything/) | Also a done card for every turn |
 | [long-turns](long-turns/) | As everything, but no done card for a turn under 30 seconds |
 | [approve-from-card](approve-from-card/) | permission-cards, with Allow and Deny on the card |
+| [team](team/) | permission-cards in a project's committed settings, silent for a teammate without drip |
 | [orchestrator](orchestrator/) | Many sessions at once: cards from the one you talk to, not its workers (no snippet) |
 
 ## Clicks and other tools

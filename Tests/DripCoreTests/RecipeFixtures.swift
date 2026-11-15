@@ -8,7 +8,7 @@ import Foundation
 /// The hook snippets in the repo's `recipes/<name>/README.md` files, which the tests hold up against
 /// what drip's hooks do. A recipe README has one fenced JSON block per agent.
 enum Recipes {
-    static let names = ["permission-cards", "attention", "everything", "long-turns", "approve-from-card"]
+    static let names = ["permission-cards", "attention", "everything", "long-turns", "approve-from-card", "team"]
 
     static let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().appendingPathComponent("recipes")
@@ -41,10 +41,22 @@ enum Recipes {
         throw RecipeError.missing("\(name) has no snippet for \(agent.rawValue)")
     }
 
-    /// The command of each handler in an event's groups.
-    static func commands(in groups: JSONValue) -> [String] {
+    /// The guard a shared settings file puts around each command, so a machine without drip runs nothing.
+    static let guardPrefix = "command -v drip >/dev/null && "
+    static let guardSuffix = " || true"
+
+    /// The command of each handler in an event's groups, as the file has it.
+    static func rawCommands(in groups: JSONValue) -> [String] {
         (groups.elements ?? []).flatMap { group in
             (group["hooks"]?.elements ?? []).compactMap { $0["command"]?.string }
+        }
+    }
+
+    /// The command of each handler in an event's groups, with the shared-file guard taken off.
+    static func commands(in groups: JSONValue) -> [String] {
+        rawCommands(in: groups).map { command in
+            guard command.hasPrefix(guardPrefix), command.hasSuffix(guardSuffix) else { return command }
+            return String(command.dropFirst(guardPrefix.count).dropLast(guardSuffix.count))
         }
     }
 
