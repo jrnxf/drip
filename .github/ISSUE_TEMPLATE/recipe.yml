@@ -1,0 +1,30 @@
+name: Recipe idea
+description: A tool, terminal or agent that drip could notify for.
+labels: ["recipe"]
+body:
+  - type: input
+    id: tool
+    attributes:
+      label: Which tool or terminal
+      description: The name of the tool or terminal, and its version if you know it.
+    validations:
+      required: true
+  - type: textarea
+    id: trigger
+    attributes:
+      label: What should trigger a card
+      description: The moment that should show a card. For example, a command that ends, or a question the tool asks.
+    validations:
+      required: true
+  - type: textarea
+    id: click
+    attributes:
+      label: What a click should do
+      description: For example, focus a window or run a command. Leave it empty if a click should do nothing.
+  - type: input
+    id: docs
+    attributes:
+      label: Link to the tool's hook or notification docs
+      placeholder: https://example.com/docs/hooks
+    validations:
+      required: true

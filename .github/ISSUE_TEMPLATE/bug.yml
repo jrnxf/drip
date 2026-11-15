@@ -1,0 +1,61 @@
+name: Bug report
+description: Something drip did wrong. Run drip doctor first.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Run `drip doctor --json` and paste its output below. Check it for your user name and folder paths, and remove them.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw. Say whether a card showed, or did not, and when.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: The exact command
+      description: The command you ran, as you typed it. Remove private names and paths.
+      placeholder: drip hook claude
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of drip doctor --json
+      render: json
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: for example 26.1
+    validations:
+      required: true
+  - type: input
+    id: drip-version
+    attributes:
+      label: drip version
+      description: The output of drip --version.
+      placeholder: for example 0.1.0-pre.1
+    validations:
+      required: true
+  - type: dropdown
+    id: notch
+    attributes:
+      label: Does the screen have a notch?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+    validations:
+      required: true
