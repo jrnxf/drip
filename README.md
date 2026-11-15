@@ -29,7 +29,7 @@ brew install jrnxf/tap/drip
 drip ok "hello"
 ```
 
-Requires macOS 13 or newer. Homebrew installs a prebuilt binary for Apple silicon and Intel, with no Xcode needed.
+Requires macOS 13 or newer. Tested on macOS 15 and 26. Homebrew installs a prebuilt binary for Apple silicon and Intel, with no Xcode needed.
 No Notifications permission: drip draws its own card. On a Mac without a notch, the card grows out of the top edge of the screen.
 See [installation](docs/install.md) for source builds and uninstall instructions.
 
