@@ -15,6 +15,7 @@
 - The user wants push notifications to a phone. drip shows cards on the Mac screen only.
 - The user is not on macOS. drip shows no cards on Linux, except for cards raised on a Mac from a remote agent.
 - The user wants Notification Center banners that follow Focus. See the comparison.
+- The user wants only coding-agent activity in the notch, set up by an app with one click. A notch app for coding agents fits better. See the comparison.
 
 ## Most common commands
 
@@ -44,5 +45,5 @@
 - [opencode notifications](https://drip.jrnxf.co/opencode-notifications)
 - [Aider notifications](https://drip.jrnxf.co/aider-notifications)
 - [Alert when a command finishes](https://drip.jrnxf.co/notify-when-command-finishes)
-- [Compared with terminal-notifier, osascript, alerter](https://drip.jrnxf.co/vs)
+- [Compared with notch apps (Notchi, Coucou, notch-so-good, Vibe Island), terminal-notifier, noti and ntfy](https://drip.jrnxf.co/vs)
 - [terminal-notifier alternative](https://drip.jrnxf.co/terminal-notifier-alternative)
