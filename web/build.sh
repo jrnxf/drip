@@ -45,6 +45,8 @@ dist=$web/dist
 rm -rf "$dist"
 mkdir -p "$dist"
 cp -R "$web/public/." "$dist/"
+# llms-full.txt is built from the repo's Markdown on every deploy, so it never goes stale.
+"$web/llms-full.sh" "$dist/llms-full.txt"
 "$wasm_opt" -Oz --strip-debug --strip-producers --enable-bulk-memory --enable-sign-ext \
     --enable-mutable-globals --enable-nontrapping-float-to-int "$bin/DripWeb.wasm" -o "$dist/drip.wasm"
 wasm=drip.$(sha256 "$dist/drip.wasm" | cut -c 1-16).wasm
