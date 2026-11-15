@@ -152,15 +152,13 @@ curl -d "build finished" ntfy.sh/mytopic                        # ntfy</code></p
           <tr><th scope="row">Licence and price</th><td>MIT</td><td>GPL-3.0, free and open source</td><td>code MIT, name and art all rights reserved; app price not stated</td><td>MIT; price not stated</td><td>closed; $19.99 for one Mac, one time, with a free trial</td></tr>
           <tr><th scope="row">Minimum macOS</th><td>13</td><td>15.0</td><td>15</td><td>14</td><td>not stated</td></tr>
           <tr><th scope="row">Needs a notch</th><td>no; the top edge of the screen instead</td><td>yes, "MacBook with notch"</td><td>no; a small bar without a notch</td><td>no; an island below the menu bar</td><td>no; a floating bar</td></tr>
-          <tr><th scope="row">Notifications permission</th><td>none for a card</td><td>not stated</td><td>not stated for the Mac app</td><td>not stated</td><td>not stated</td></tr>
           <tr><th scope="row">Sets up agent hooks</th><td>no; recipes are snippets you paste</td><td>yes, on first launch</td><td>yes, with an Install hooks button that shows the diff</td><td>yes</td><td>"auto-configures" supported tools; how is not stated</td></tr>
           <tr><th scope="row">Agents</th><td>Claude Code, Codex and Gemini CLI with recipes; other tools through <code>drip run</code> or their own hooks</td><td>Claude Code and Codex</td><td>Claude Code, Cursor, Codex, Gemini CLI and more</td><td>Claude Code and Codex; Gemini CLI is watch only (beta)</td><td>30 listed, among them Claude Code, Codex, Gemini CLI and Cursor</td></tr>
           <tr><th scope="row">Allow and Deny</th><td>optional, with the approve-from-card recipe: Claude Code and Codex, short one-line shell commands only</td><td>not stated</td><td>yes for Claude Code and Codex</td><td>yes, with "This session" and "Always allow"</td><td>yes for Claude Code</td></tr>
-          <tr><th scope="row">Any shell command</th><td><code>drip run</code></td><td>not stated</td><td>not stated</td><td>not stated</td><td>not stated</td></tr>
-          <tr><th scope="row">Documented exit codes</th><td>yes</td><td>not stated</td><td>not stated</td><td>not stated</td><td>not stated</td></tr>
-          <tr><th scope="row">Follows Focus</th><td>no</td><td>not stated</td><td>not stated for agent alerts</td><td>not stated</td><td>not stated</td></tr>
+          <tr><th scope="row">Scripting</th><td><code>drip run</code> for any command, documented exit codes</td><td>not stated</td><td>not stated</td><td>not stated</td><td>not stated</td></tr>
         </tbody>
       </table></div>
+      <p>drip's Notifications permission and Focus behaviour are in the first table.</p>
       <h3>Command notifiers and hook helpers</h3>
       <div class="wide"><table>
         <thead><tr><th scope="col"></th><th scope="col">drip</th><th scope="col"><a href="https://codeberg.org/roble/noti">noti</a></th><th scope="col"><a href="https://ntfy.sh">ntfy</a></th><th scope="col"><a href="https://github.com/foxytanuki/ccnotify">ccnotify</a></th></tr></thead>
@@ -173,7 +171,6 @@ curl -d "build finished" ntfy.sh/mytopic                        # ntfy</code></p
           <tr><th scope="row">Agents</th><td>Claude Code, Codex, Gemini CLI</td><td>not stated</td><td>not stated</td><td>Claude Code</td></tr>
           <tr><th scope="row">Allow and Deny</th><td>optional, as above</td><td>not stated</td><td>not stated; action buttons are <code>view</code>, <code>broadcast</code>, <code>http</code> and <code>copy</code></td><td>not stated</td></tr>
           <tr><th scope="row">Any shell command</th><td><code>drip run</code></td><td>yes: put <code>noti</code> before or after a command</td><td>yes: send with <code>curl</code> or its CLI</td><td>not stated</td></tr>
-          <tr><th scope="row">Documented exit codes</th><td>yes</td><td>not stated</td><td>not stated</td><td>not stated</td></tr>
         </tbody>
       </table></div>
       <p>noti moved to Codeberg, and its GitHub repository has been archived since 1 May 2026.</p>

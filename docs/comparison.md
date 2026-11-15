@@ -27,13 +27,12 @@ Checked on Sunday 15 November 2026. These projects change, so check the source b
 | Licence and price | MIT | GPL-3.0, free and open source | code MIT, name and art all rights reserved; app price not stated | MIT; price not stated | closed; $19.99 for one Mac, one time, with a free trial |
 | Minimum macOS | 13 | 15.0 | 15 | 14 | not stated |
 | Needs a notch | no; the top edge of the screen instead | yes, "MacBook with notch" | no; a small bar without a notch | no; an island below the menu bar | no; a floating bar |
-| Notifications permission | none for a card | not stated | not stated for the Mac app | not stated | not stated |
 | Sets up agent hooks | no; recipes are snippets you paste | yes, on first launch | yes, with an Install hooks button that shows the diff | yes | "auto-configures" supported tools; how is not stated |
 | Agents | Claude Code, Codex and Gemini CLI with recipes; other tools through `drip run` or their own hooks | Claude Code and Codex | Claude Code, Cursor, Codex, Gemini CLI and more | Claude Code and Codex; Gemini CLI is watch only (beta) | 30 listed, among them Claude Code, Codex, Gemini CLI and Cursor |
 | Allow and Deny | optional, with the approve-from-card recipe: Claude Code and Codex, short one-line shell commands only | not stated | yes for Claude Code and Codex | yes, with "This session" and "Always allow" | yes for Claude Code |
-| Any shell command | `drip run` | not stated | not stated | not stated | not stated |
-| Documented exit codes | yes | not stated | not stated | not stated | not stated |
-| Follows Focus | no | not stated | not stated for agent alerts | not stated | not stated |
+| Scripting | `drip run` for any command, documented exit codes | not stated | not stated | not stated | not stated |
+
+drip's Notifications permission and Focus behaviour are in the first table.
 
 ## Command notifiers and hook helpers
 
@@ -47,7 +46,6 @@ Checked on Sunday 15 November 2026. These projects change, so check the source b
 | Agents | Claude Code, Codex, Gemini CLI | not stated | not stated | Claude Code |
 | Allow and Deny | optional, as above | not stated | not stated; action buttons are `view`, `broadcast`, `http` and `copy` | not stated |
 | Any shell command | `drip run` | yes: put `noti` before or after a command | yes: send with `curl` or its CLI | not stated |
-| Documented exit codes | yes | not stated | not stated | not stated |
 
 noti moved to Codeberg, and its GitHub repository has been archived since 1 May 2026.
 
