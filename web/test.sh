@@ -16,6 +16,15 @@ else
     wasmtime=$tools/$release/wasmtime
 fi
 
+# llms-full.txt is built from the docs and recipes: fail now if one is missing or a link stays relative.
+llms_full=$(mktemp)
+"$web/llms-full.sh" "$llms_full"
+if grep -E '\]\((\.|[a-z0-9-]+/|[a-z0-9-]+\.md)' "$llms_full"; then
+    echo "llms-full.txt has a relative link" >&2
+    exit 1
+fi
+rm -f "$llms_full"
+
 # The drip executable has nothing to do with these tests; see Package.swift.
 export DRIP_WASM_TESTS=1
 
