@@ -99,7 +99,7 @@ To show cards from a Linux machine on your Mac, see [remote notifications](docs/
 ## Why not ...
 
 - terminal-notifier and other Notification Center tools: they need the Notifications permission and follow Focus. drip draws its own card, and `drip run` wraps a command.
-- Notch apps for coding agents: they set up the hooks for you, so they are the easier choice if agent activity in the notch is all you want. drip is a command, so the same card works for a build, a deploy or a cron job, and a script can act on the answer.
+- Notch apps for coding agents: they set up the hooks for you, so they are the easier choice if agent activity in the notch is all you want. drip is a command, so the same card works for a build, a deploy or a long script, and a script can act on the answer.
 - The agent's own terminal notification: a drip card names the project, goes when you answer in the terminal, and a click brings that terminal back.
 
 See the [comparison](docs/comparison.md).
