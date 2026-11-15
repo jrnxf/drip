@@ -121,6 +121,18 @@ jobs:
       - run: swift build -c release
       - run: .build/release/drip --version
 
+  pages:
+    # The site's question pages are written by web/pages/build.mjs and committed. A page that is
+    # stale against its recipe, or has a broken link or JSON-LD, fails here. The wasm job's Swift
+    # image has no Node, so web/test.sh skips this check there.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: node --version
+      - run: node web/pages/build.mjs --check
+      - run: node web/pages/check.mjs
+
   wasm:
     # DripCore compiled to WebAssembly, as the web page runs it, with its tests under wasmtime, and
     # the DripWeb product built as web/build.sh builds it, so a change that breaks the page's

@@ -5,6 +5,9 @@
 set -eu
 . "$(dirname "$0")/tools.sh"
 
+# The question pages are written by web/pages/build.mjs and committed: fail on a stale or broken one.
+node "$web/pages/build.mjs" --check && node "$web/pages/check.mjs"
+
 BINARYEN_VERSION=133
 BINARYEN_SHA256=2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489
 
@@ -39,6 +42,8 @@ dist=$web/dist
 rm -rf "$dist"
 mkdir -p "$dist"
 cp -R "$web/public/." "$dist/"
+# llms-full.txt is built from the repo's Markdown on every deploy, so it never goes stale.
+"$web/llms-full.sh" "$dist/llms-full.txt"
 "$wasm_opt" -Oz --strip-debug --strip-producers --enable-bulk-memory --enable-sign-ext \
     --enable-mutable-globals --enable-nontrapping-float-to-int "$bin/DripWeb.wasm" -o "$dist/drip.wasm"
 wasm=drip.$(sha256 "$dist/drip.wasm" | cut -c 1-16).wasm

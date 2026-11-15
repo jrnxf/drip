@@ -4,6 +4,14 @@
 set -eu
 . "$(dirname "$0")/tools.sh"
 
+# The question pages are written by web/pages/build.mjs and committed: fail on a stale or broken one.
+# The Swift CI image has no Node, so there CI's pages job and build.sh run the check instead.
+if command -v node >/dev/null; then
+    node "$web/pages/build.mjs" --check && node "$web/pages/check.mjs"
+else
+    echo "node not found: skipping the question page checks (CI's pages job and build.sh run them)" >&2
+fi
+
 WASMTIME_VERSION=50.0.0
 WASMTIME_SHA256=77c19ee0437991f9ac7837b9c269d9c7076744f85dad263fea5214cc2723c7ff
 
@@ -15,6 +23,15 @@ else
         "$WASMTIME_SHA256" "$release"
     wasmtime=$tools/$release/wasmtime
 fi
+
+# llms-full.txt is built from the docs and recipes: fail now if one is missing or a link stays relative.
+llms_full=$(mktemp)
+"$web/llms-full.sh" "$llms_full"
+if grep -E '\]\((\.|[a-z0-9-]+/|[a-z0-9-]+\.md)' "$llms_full"; then
+    echo "llms-full.txt has a relative link" >&2
+    exit 1
+fi
+rm -f "$llms_full"
 
 # The drip executable has nothing to do with these tests; see Package.swift.
 export DRIP_WASM_TESTS=1

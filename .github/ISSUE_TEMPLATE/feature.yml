@@ -1,0 +1,25 @@
+name: Feature request
+description: A command or behaviour you wish drip had.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and why it is hard today.
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: The command you wish you could type
+      placeholder: drip ok "tests passed"
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today
+      description: The workaround you use now, if any.
+    validations:
+      required: true
