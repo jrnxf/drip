@@ -33,92 +33,6 @@ Requires macOS 13 or newer. Homebrew installs a prebuilt binary for Apple silico
 No Notifications permission: drip draws its own card. On a Mac without a notch, the card grows out of the top edge of the screen.
 See [installation](docs/install.md) for source builds and uninstall instructions.
 
-## Coding agents
-
-When the agent needs you, a card comes from the notch. Click it to go back to the agent's terminal.
-For Claude Code, add the [permission-cards](recipes/permission-cards/README.md) snippet to `~/.claude/settings.json`. If the file has `hooks` already, merge the events by hand:
-
-```json
-{
-  "hooks": {
-    "PermissionRequest": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "command -v drip >/dev/null && drip hook claude || true"
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "elicitation_dialog",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "command -v drip >/dev/null && drip hook claude || true"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "command -v drip >/dev/null && drip hook claude || true"
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "command -v drip >/dev/null && drip hook claude || true"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "command -v drip >/dev/null && drip hook claude || true"
-          }
-        ]
-      }
-    ],
-    "ElicitationResult": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "command -v drip >/dev/null && drip hook claude || true"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-This guarded command is safe to commit to a settings file you share, such as a project's `.claude/settings.json`: on a machine without drip it is silent.
-
-- Codex: the [Codex snippet](recipes/permission-cards/README.md#codex) goes in `~/.codex/hooks.json`.
-- Gemini CLI: the [Gemini CLI snippet](recipes/permission-cards/README.md#gemini-cli) goes in `~/.gemini/settings.json`.
-- Allow and Deny on the card, for Claude Code and Codex: [approve-from-card](recipes/approve-from-card/README.md).
-- More recipes, such as a done card for every turn: the [recipe catalog](recipes/README.md).
-
-Or ask your agent:
-
-```text
-Install drip with Homebrew (brew install jrnxf/tap/drip) and add the permission-cards recipe from https://github.com/jrnxf/drip/blob/main/recipes/permission-cards/README.md to my Claude Code settings. Keep my other hooks.
-```
-
 ## Compose it
 
 Pipe text into a card, give it an action, or use an answer to decide what happens next.
@@ -138,6 +52,24 @@ drip run make test
 ```
 
 See [usage](docs/usage.md) for more examples and [the contract](docs/contract.md) for exit codes and scripting guarantees.
+
+## Coding agents
+
+When the agent needs you, a card comes from the notch. Click it to go back to the agent's terminal.
+
+The fastest way: ask your agent.
+
+```text
+Install drip with Homebrew (brew install jrnxf/tap/drip) and add the permission-cards recipe from https://github.com/jrnxf/drip/blob/main/recipes/permission-cards/README.md to my Claude Code settings. Keep my other hooks.
+```
+
+- Claude Code by hand: paste the snippet from [permission-cards](recipes/permission-cards/README.md) into `~/.claude/settings.json`.
+- Codex: the [Codex snippet](recipes/permission-cards/README.md#codex) goes in `~/.codex/hooks.json`.
+- Gemini CLI: the [Gemini CLI snippet](recipes/permission-cards/README.md#gemini-cli) goes in `~/.gemini/settings.json`.
+- Allow and Deny on the card, for Claude Code and Codex: [approve-from-card](recipes/approve-from-card/README.md).
+
+For a shared settings file, use `command -v drip >/dev/null && drip hook claude || true` as the command. It is silent on a machine without drip, so a settings file shared across machines is safe.
+More recipes, such as a done card for every turn, are in the [recipe catalog](recipes/README.md).
 
 ## Make it yours
 
@@ -167,7 +99,7 @@ To show cards from a Linux machine on your Mac, see [remote notifications](docs/
 ## Why not ...
 
 - terminal-notifier and other Notification Center tools: they need the Notifications permission and follow Focus. drip draws its own card, and `drip run` wraps a command.
-- A notch app for coding agents: drip is a CLI. The same card comes from your builds, deploys, scripts and any agent with hooks.
+- Notch apps for coding agents: they set up the hooks for you, so they are the easier choice if agent activity in the notch is all you want. drip is a command, so the same card works for a build, a deploy or a cron job, and a script can act on the answer.
 - The agent's own terminal notification: a drip card names the project, goes when you answer in the terminal, and a click brings that terminal back.
 
 See the [comparison](docs/comparison.md).
