@@ -35,11 +35,8 @@ provide_program "https://github.com/tailwindlabs/tailwindcss/releases/download/v
     "$TAILWIND_SHA256" "$tailwind_dir" tailwindcss
 tailwind=$tools/$tailwind_dir/tailwindcss
 
-# DripWeb is only part of the package for a Wasm build.
-set -- -c release --package-path "$root" --scratch-path "$root/.build/web" \
-    --swift-sdks-path "$sdks" --swift-sdk "$sdk" --product DripWeb
-DRIP_WEB=1 swift build "$@"
-bin=$(DRIP_WEB=1 swift build "$@" --show-bin-path)
+compile_engine
+bin=$engine_bin
 
 dist=$web/dist
 rm -rf "$dist"
