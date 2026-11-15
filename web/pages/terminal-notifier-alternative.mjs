@@ -57,7 +57,7 @@ drip warn "Deploy to prod?" --yes Deploy --no Cancel && ./deploy.sh`)}
     "<b>Two words carry over.</b> The title is the bold text and <code>-d</code> is the gray text under it. The first word picks the look: <code>ok</code>, <code>warn</code>, <code>fail</code> or <code>info</code>.",
     "<b>A command can be wrapped.</b> <code>drip run</code> runs it, times it and picks green or red from the exit code. Scripts and <code>&amp;&amp;</code> chains work as before.",
     "<b>A question is an exit status.</b> <code>--yes</code> and <code>--no</code> add buttons, and drip exits 0 on yes, 1 on no and 5 when nobody answers.",
-    "<b>Nothing is lost while you are away.</b> <code>drip history</code> keeps the cards, and <code>drip history --missed</code> lists what came up while you were away.",
+    "<b>Cards wait while the screen is locked.</b> <code>drip history --missed</code> shows the cards that came up while the screen was locked or drip was paused.",
   ],
   faq: [
     [
