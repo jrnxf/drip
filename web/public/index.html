@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>drip - Mac notch alerts for builds, deploys and AI agents</title>
-<meta name="description" content="Free, open-source macOS CLI. One command shows a native card from the MacBook notch when a build, deploy, test or Claude Code session finishes or needs you.">
+<meta name="description" content="Scriptable notifications from the Mac notch. A CLI for builds, deploys and coding agents like Claude Code, Codex and Gemini CLI. Free and open source.">
 <link rel="canonical" href="https://drip.jrnxf.co/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="drip">
 <meta property="og:url" content="https://drip.jrnxf.co/">
 <meta property="og:title" content="drip - Mac notch alerts for builds, deploys and AI agents">
-<meta property="og:description" content="Free, open-source macOS CLI. One command shows a native card from the MacBook notch when a build, deploy, test or Claude Code session finishes or needs you.">
+<meta property="og:description" content="Scriptable notifications from the Mac notch. A CLI for builds, deploys and coding agents like Claude Code, Codex and Gemini CLI. Free and open source.">
 <meta property="og:image" content="https://drip.jrnxf.co/og.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
@@ -18,7 +18,7 @@
 <meta property="og:image:alt" content="drip's logo beside the words Notifications that work your way.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="drip - Mac notch alerts for builds, deploys and AI agents">
-<meta name="twitter:description" content="Free, open-source macOS CLI. One command shows a native card from the MacBook notch when a build, deploy, test or Claude Code session finishes or needs you.">
+<meta name="twitter:description" content="Scriptable notifications from the Mac notch. A CLI for builds, deploys and coding agents like Claude Code, Codex and Gemini CLI. Free and open source.">
 <meta name="twitter:image" content="https://drip.jrnxf.co/og.png">
 <meta name="twitter:image:alt" content="drip's logo beside the words Notifications that work your way.">
 <meta name="theme-color" content="#f3f2ee">
@@ -35,13 +35,14 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "drip",
-  "description": "A free, open-source macOS command-line tool that shows a native card from the MacBook notch when a build, deploy, test or coding agent finishes or needs you.",
+  "description": "Scriptable notifications from the Mac notch. A CLI for builds, deploys and coding agents like Claude Code, Codex and Gemini CLI. Free and open source for macOS.",
   "url": "https://drip.jrnxf.co/",
   "image": "https://drip.jrnxf.co/og.png",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "macOS 13 or later",
   "softwareRequirements": "macOS 13 or later; Homebrew to install",
   "license": "https://opensource.org/licenses/MIT",
+  "downloadUrl": "https://github.com/jrnxf/drip/releases/latest",
   "isAccessibleForFree": true,
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
   "author": { "@type": "Person", "name": "jrnxf", "url": "https://github.com/jrnxf" },
@@ -56,7 +57,7 @@
   <main id="top">
   <section class="hero">
     <h1>Notifications that work your way<span class="dot">.</span></h1>
-    <p class="lede">Small, scriptable cards that drip from your Mac’s notch. Connect them to your tools and control what deserves your attention.</p>
+    <p class="lede">Scriptable notifications from the Mac notch. A CLI for builds, deploys and coding agents like Claude Code, Codex and Gemini CLI.</p>
     <div class="plate"><code>brew install jrnxf/tap/drip</code><button class="copy" type="button" data-copy="brew install jrnxf/tap/drip" aria-label="Copy the install command">copy</button></div>
   </section>
 
@@ -73,6 +74,7 @@
       <li><h3>Install</h3><div><div class="plate"><code>brew install jrnxf/tap/drip</code><button class="copy" type="button" data-copy="brew install jrnxf/tap/drip" aria-label="Copy the install command">copy</button></div></div></li>
       <li><h3>Send a card</h3><div><p>No permission prompt. drip draws its own card, not a Notification Center banner.</p><div class="plate"><code>drip ok "hello"</code><button class="copy" type="button" data-copy='drip ok "hello"' aria-label="Copy the first command">copy</button></div></div></li>
       <li><h3>Pick a recipe</h3><div><p>Snippets to copy and adapt: <a href="https://github.com/jrnxf/drip/tree/main/recipes/zsh-slow-commands">slow shell commands</a>, <a href="https://github.com/jrnxf/drip/tree/main/recipes/permission-cards">coding-agent permission cards</a>, or <a href="https://github.com/jrnxf/drip/tree/main/recipes">all recipes</a>.</p></div></li>
+      <li><h3>Or ask your agent</h3><div><p>Paste this into Claude Code. It installs drip and adds the permission cards.</p><div class="plate prompt"><code>Install drip with Homebrew (brew install jrnxf/tap/drip) and add the permission-cards recipe from https://github.com/jrnxf/drip/blob/main/recipes/permission-cards/README.md to my Claude Code settings. Keep my other hooks.</code><button class="copy" type="button" data-copy="Install drip with Homebrew (brew install jrnxf/tap/drip) and add the permission-cards recipe from https://github.com/jrnxf/drip/blob/main/recipes/permission-cards/README.md to my Claude Code settings. Keep my other hooks." aria-label="Copy the prompt for your agent">copy</button></div></div></li>
     </ol>
   </section>
 
