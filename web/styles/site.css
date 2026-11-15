@@ -13,7 +13,7 @@
 ::selection { background: #ffd2bd; color: var(--color-ink); }
 :focus-visible { outline: 2px solid var(--color-orange); outline-offset: 2px; }
 
-.page { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+.page { --gutter: 32px; max-width: 1200px; margin: 0 auto; padding: 0 var(--gutter); }
 .lbl { font: 500 12px/1.2 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-ink-3); }
 h1 { text-wrap: balance; font: 200 clamp(42px, 5.6vw, 76px)/.98 var(--font-sans); font-stretch: 125%; letter-spacing: -.035em; margin: 0; }
 h1 .dot { color: var(--color-orange); }
@@ -34,7 +34,11 @@ nav.top .lockup { display: block; height: 30px; width: auto; }
 /* ---------- copyable commands ---------- */
 .plate { display: inline-flex; align-items: center; gap: 12px; margin-top: 24px; padding: 9px 10px 9px 14px; border-radius: 9px; background: var(--color-card); border: 1px solid var(--color-rule); max-width: 100%; }
 .plate code { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.copy { flex: none; border: 0; padding: 7px 10px; border-radius: 6px; background: var(--color-orange); color: #111; font: 600 12px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.copy { flex: none; border: 0; padding: 7px 10px; border-radius: 6px; background: linear-gradient(#ff6219, var(--color-orange)); color: #111; font: 600 12px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer;
+  /* A key: a light top edge, a darker orange side under it, and a soft shadow. A press sinks it onto that side. */
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .35), 0 2px 0 #c43c00, 0 3px 6px -1px rgb(0 0 0 / .22); transition: transform .08s ease-out, box-shadow .08s ease-out; }
+.copy:hover { background: linear-gradient(#ff6d29, #ff5a10); }
+.copy:active { transform: translateY(2px); box-shadow: inset 0 1px 2px rgb(0 0 0 / .18), 0 0 0 #c43c00, 0 1px 2px rgb(0 0 0 / .15); }
 
 /* ---------- the story: rows on the left, the laptop on the right ---------- */
 .story { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 64px; padding: 24px 0 96px; }
@@ -56,13 +60,8 @@ nav.top .lockup { display: block; height: 30px; width: auto; }
 .row .again { margin-top: 12px; align-self: flex-start; background: none; border: 0; padding: 0; font: 500 12px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-ink-2); cursor: pointer; visibility: hidden; }
 .row.on .again { visibility: visible; }
 .row .again:hover { color: var(--color-ink); }
-.try { display: flex; gap: 8px; margin-top: 4px; max-width: 52ch; }
-.try input { flex: 1; min-width: 0; font: 400 12.5px/1 var(--font-mono); padding: 11px 12px; border: 1px solid var(--color-rule); border-radius: 8px; background: var(--color-card); color: var(--color-ink); }
-.try input:focus { outline: 2px solid var(--color-orange); outline-offset: 1px; }
-.try button { border: 0; border-radius: 8px; padding: 0 16px; background: var(--color-ink); color: #fff; font: 600 12px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.chips button { border: 1px solid var(--color-rule); background: transparent; border-radius: 999px; padding: 6px 11px; font: 400 12px/1 var(--font-mono); color: var(--color-ink-2); cursor: pointer; }
-.chips button:hover { border-color: var(--color-ink-3); color: var(--color-ink); }
+/* The dots under the laptop show only where the rows are cards to swipe. */
+.dots { display: none; }
 
 /* ---------- the laptop: a space black MacBook ---------- */
 .lid { background: #0b0b0c; padding: 11px 11px 16px; border-radius: 20px 20px 6px 6px; box-shadow: inset 0 0 0 1px #2a2a2d, 0 0 0 1.5px #3a3b3f; }
@@ -105,14 +104,28 @@ footer .guides a:hover { color: var(--color-ink); text-decoration: underline; }
 @media (width <= 900px) {
   .hero { padding-top: 40px; }
   .story { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 8px; }
-  .sticky { top: 0; z-index: 5; padding: 8px 0 0; background: var(--color-bg); order: -1; }
-  .row { min-height: 0; padding: 28px 0 28px 18px; }
-  .row h2 { font-size: 22px; }
+  .story { padding-bottom: 48px; }
+  /* Narrow: the laptop, with the rows as cards to swipe under it. */
+  .sticky { position: static; order: -1; }
+  .dots { display: flex; justify-content: center; gap: 2px; margin-top: 14px; }
+  .dots button { border: 0; background: none; padding: 6px 2.5px; cursor: pointer; }
+  .dots button::before { content: ""; display: block; width: 6px; height: 6px; border-radius: 3px; background: var(--color-rule); transition: width .2s, background .2s; }
+  .dots button.on::before { width: 18px; background: var(--color-orange); }
+  /* Every card is as tall as the tallest, so a card is never cut off where it peeks in. */
+  .rows { display: flex; align-items: stretch; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin: 6px calc(-1 * var(--gutter)) 0; padding: 0 var(--gutter) 4px; scroll-padding: 0 var(--gutter); }
+  .rows::-webkit-scrollbar { display: none; }
+  .beam { display: none; }
+  .row, .row:first-of-type { flex: none; width: calc(100% - 28px); scroll-snap-align: start; min-height: 0; justify-content: flex-start; padding: 18px 16px 16px; border: 1px solid var(--color-rule); border-radius: 12px; background: var(--color-card); }
+  .row h2 { font-size: 21px; color: var(--color-ink); }
+  .row p { font-size: 15px; }
+  /* The command block takes the room a card has over its own content, so the space reads as blank lines. */
+  .row pre, .row:not(.on) pre { opacity: 1; max-width: none; background: var(--color-bg); flex: 1; }
+  .row .again { display: none; }
   .band { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .steps li { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 }
 @media (width <= 760px) {
-  .page { padding: 0 16px; }
+  .page { --gutter: 16px; }
   nav.top a.opt { display: none; }
   .deck { margin: 0 -10px; }
   footer { flex-direction: column; gap: 22px; }
