@@ -472,5 +472,55 @@ struct HarnessTests {
         #expect(entries.count == 4)
         #expect(entries.allSatisfy { $0["missed"] as? Bool == true })
     }
+
+    /// A stand-in for Codex in its terminal that takes the first prompt, then stops at its workspace's
+    /// spend-cap dialog and waits for a key, with no hook after the prompt's ever running: the session
+    /// never gets to ask before it runs the command, so this is the shape a check hits when the
+    /// account, not drip's hooks, is the problem.
+    static let codexAtItsSpendCap = """
+        case "$1" in --version) echo "codex-cli 0.0.0"; exit 0 ;; login) exit 0 ;; esac
+        hook() { printf '%s' "$1" | /bin/zsh -lc 'drip hook codex'; }
+        base="\\"session_id\\":\\"codex-session\\",\\"cwd\\":\\"$PWD\\""
+        echo "? for shortcuts"
+        read -r prompt
+        hook "{\\"hook_event_name\\":\\"UserPromptSubmit\\",$base,\\"turn_id\\":\\"t1\\",\\"prompt\\":\\"go\\"}"
+        echo "You hit your spend cap set by the owner of your workspace. Ask an owner to increase your spend cap to continue."
+        echo "Usage limit reached"
+        echo "Request a limit increase from your owner to continue using codex. Request increase?"
+        echo "1. Yes (y)"
+        echo "2. No (default) (n)"
+        exec sleep 600
+
+        """
+
+    /// The spend-cap dialog stops the check at once, as an account problem: not the five minutes'
+    /// wait, a failed turn or a drift on the hooks that never got the chance to run.
+    @Test(.enabled(if: tmux != nil && CGSessionCopyCurrentDictionary() != nil, "needs tmux and a GUI session, where drip records cards"))
+    func aCodexSpendCapDialogStopsTheCheckAtOnce() throws {
+        let cache = try Self.scratch()
+        defer { try? FileManager.default.removeItem(at: cache) }
+        let fake = cache.appendingPathComponent("fake")
+        try Self.script(Self.codexAtItsSpendCap, at: fake.appendingPathComponent("codex"))
+        let auth = fake.appendingPathComponent("auth.json")
+        try "{}\n".write(to: auth, atomically: true, encoding: .utf8)
+
+        let began = Date()
+        let status = try Self.execute(try Self.harness.get(), [
+            "run", "--repo", Self.repo.path, "--cache", cache.path, "--tools", fake.path, "--tmux", try #require(Self.tmux),
+            "--npm", try Self.npm(in: cache).path, "--drip", Self.drip.path, "--node-bin", "/usr/bin", "--only", "codex",
+            "--codex-auth", auth.path, "--gui-session", "yes",
+        ])
+        #expect(status == 2)
+        #expect(Date().timeIntervalSince(began) < 120)
+        let agents = try #require(try Self.last(cache)["agents"] as? [[String: Any]])
+        let codex = try #require(agents.first)
+        #expect(codex["status"] as? String == "skipped")
+        #expect(codex["reason"] as? String == "needs login: Codex hit its workspace spend cap")
+        #expect((codex["drift"] as? [Any])?.isEmpty == true)
+        // The prompt reached drip before the spend cap did; only the events after it are no drift.
+        let checks = try #require(codex["checks"] as? [[String: Any]])
+        #expect(checks.map { $0["name"] as? String } == ["turn 1: the prompt reaches drip"])
+        #expect(checks.allSatisfy { $0["ok"] as? Bool == true })
+    }
 }
 #endif
