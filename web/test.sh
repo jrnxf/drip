@@ -4,6 +4,14 @@
 set -eu
 . "$(dirname "$0")/tools.sh"
 
+# The question pages are written by web/pages/build.mjs and committed: fail on a stale or broken one.
+# The Swift CI image has no Node, so there CI's pages job and build.sh run the check instead.
+if command -v node >/dev/null; then
+    node "$web/pages/build.mjs" --check && node "$web/pages/check.mjs"
+else
+    echo "node not found: skipping the question page checks (CI's pages job and build.sh run them)" >&2
+fi
+
 WASMTIME_VERSION=50.0.0
 WASMTIME_SHA256=77c19ee0437991f9ac7837b9c269d9c7076744f85dad263fea5214cc2723c7ff
 
