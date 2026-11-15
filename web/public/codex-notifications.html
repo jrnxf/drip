@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Codex notifications on Mac, from the notch - drip</title>
+<meta name="description" content="Add a hook snippet to ~/.codex/hooks.json and Codex shows a card from your Mac&#x27;s notch when it wants to run something. Trust it with /hooks. Free, open source.">
+<link rel="canonical" href="https://drip.jrnxf.co/codex-notifications">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="drip">
+<meta property="og:url" content="https://drip.jrnxf.co/codex-notifications">
+<meta property="og:title" content="Codex notifications on Mac, from the notch - drip">
+<meta property="og:description" content="Add a hook snippet to ~/.codex/hooks.json and Codex shows a card from your Mac&#x27;s notch when it wants to run something. Trust it with /hooks. Free, open source.">
+<meta property="og:image" content="https://drip.jrnxf.co/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#d9d9d5" media="(prefers-color-scheme: light)">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="/archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/martian-mono.woff2" as="font" type="font/woff2" crossorigin>
+<!-- guide.css: build.sh puts the compiled styles here. -->
+<script>
+  // The home page's theme: ?theme=, then the visitor's last choice there, then the system's.
+  (() => {
+    const ok = (v) => (v === "dark" || v === "light" ? v : null);
+    let saved = null;
+    try { saved = localStorage.getItem("drip-theme"); } catch {}
+    document.documentElement.dataset.theme = ok(new URLSearchParams(location.search).get("theme")) ?? ok(saved)
+      ?? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  })();
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Codex notifications on Mac, from the notch.",
+      "description": "Add a hook snippet to ~/.codex/hooks.json and Codex shows a card from your Mac's notch when it wants to run something. Trust it with /hooks. Free, open source.",
+      "url": "https://drip.jrnxf.co/codex-notifications",
+      "about": {
+        "@type": "SoftwareApplication",
+        "name": "drip",
+        "url": "https://drip.jrnxf.co/",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS 13 or later"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "jrnxf",
+        "url": "https://github.com/jrnxf"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Do I need to change Codex's config.toml?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No, the hooks live in ~/.codex/hooks.json. Only if config.toml has an older notify = [\"drip\", \"hook\", \"codex\"] line, delete it, or each done card shows twice."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why does Codex show no card after I add the hooks?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Codex runs a new hook only once you trust it. Run /hooks in Codex and trust the drip hooks."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I get a card when Codex finishes?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Add a Stop hook that runs drip hook codex, as the everything recipe above does. The done card shows Codex's last message. To skip it for short turns, add --min-turn 30 to that hook, as the long-turns recipe does."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I allow or deny from the card?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, with the approve-from-card recipe, which runs drip hook codex --approve on PermissionRequest. Codex asks in its terminal only once the hook returns, so the card has Allow and Deny only while you are not watching that terminal. With nothing clicked in 9 minutes, the terminal asks as usual."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I get no cards from one Codex run?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Set DRIP_HOOK=off for that run, as in DRIP_HOOK=off codex exec \"fix the flaky test\". drip cannot tell a Codex session nobody attends, so the variable is how you say it."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body class="leading-[1.6]">
+<div class="mx-auto max-w-[860px] px-24 narrow:px-16">
+  <header class="flex h-58 items-center gap-22 narrow:gap-16">
+<a class="block text-ink" href="/" aria-label="drip, home"><svg class="block h-24 w-auto" viewBox="12 60 520 136" aria-hidden="true"><g><path d="M12 71H244V93A12 12 0 0 1 232 105H157.71A12 12 0 0 0 147.32 123A20 20 0 1 1 112.68 123A12 12 0 0 0 102.29 105H96.98A9 9 0 0 0 87.99 113.69A20 20 0 1 1 48.01 113.69A9 9 0 0 0 39.02 105H24A12 12 0 0 1 12 93Z" fill="currentColor"/><path d="M170 165A20 20 0 1 1 210 165A20 20 0 1 1 170 165Z" fill="#ff4f00"/></g><g transform="translate(296 48.64) scale(0.62)"><path d="M0 128A58 58 0 1 1 116 128A58 58 0 1 1 0 128ZM26 128A32 32 0 1 0 90 128A32 32 0 1 0 26 128ZM90 24H116V184H90Z" fill="currentColor"/><path d="M138 72H164V184H138ZM138 128A52 58 0 0 1 190 70V96A26 32 0 0 0 164 128Z" fill="currentColor"/><path d="M212 72H238V184H212Z" fill="currentColor"/><path d="M210 38A15 15 0 1 1 240 38A15 15 0 1 1 210 38Z" fill="currentColor"/><path d="M264 72H290V232H264ZM264 128A58 58 0 1 1 380 128A58 58 0 1 1 264 128ZM290 128A32 32 0 1 0 354 128A32 32 0 1 0 290 128Z" fill="currentColor"/></g></svg></a><span class="flex-1"></span><a class="lbl no-underline hover:text-ink" href="/#install">install</a><a class="lbl no-underline hover:text-ink" href="https://github.com/jrnxf/drip">source</a>
+  </header>
+  <main class="pt-48 pb-64 narrow:pt-28">
+    <article class="guide">
+      <div class="lbl">guide / coding agents</div>
+      <h1>Codex notifications on Mac, <b>from the notch.</b></h1>
+      <p class="answer">Add a hook snippet to <code>~/.codex/hooks.json</code> and Codex shows a card from your Mac's notch whenever it wants to run something. Install drip with <code>brew install jrnxf/tap/drip</code>, add the snippet, then run <code>/hooks</code> in Codex to trust it.</p>
+      <pre><code>brew install jrnxf/tap/drip</code></pre>
+<p>Add this to <code>~/.codex/hooks.json</code> (<code>$CODEX_HOME/hooks.json</code> if you set it). If the file has a <code>hooks</code> entry already, merge the events and keep your own hooks. This is the permission-cards recipe: a card when Codex needs you, and nothing else.</p>
+<pre><code>{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex"
+          }
+        ]
+      }
+    ]
+  }
+}</code></pre>
+<p>Codex runs a new hook only after you trust it: run <code>/hooks</code> in Codex. If your <code>config.toml</code> has an older <code>notify = ["drip", "hook", "codex"]</code> line, delete it, or each done card shows twice.</p>
+<p>drip is a free, open-source macOS CLI that shows scriptable notification cards from the MacBook notch, for builds, deploys and coding agents like Claude Code, Codex and Gemini CLI.</p>
+<h2>A card when a turn is done</h2>
+<p>The everything recipe adds a <code>Stop</code> hook. The done card shows Codex's last message and replaces the waiting card of that session in place. Use this file instead of the one above.</p>
+<pre><code>{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook codex"
+          }
+        ]
+      }
+    ]
+  }
+}</code></pre>
+      <h2>How it works</h2>
+      <ol>
+        <li><b>Hooks, not polling.</b> The snippet hooks Codex's <code>PermissionRequest</code> event, which fires when Codex wants to run something. <code>PostToolUse</code> and <code>UserPromptSubmit</code> are in it only to take the card away.</li>
+        <li><b>One card per request.</b> Each hook runs <code>drip hook codex</code>, which reads the hook's JSON and shows <code>my-app needs you</code> with what Codex wants, such as <code>Codex wants to run npm install</code>.</li>
+        <li><b>Gone once you answer.</b> Approve in the terminal, or send Codex a prompt, and the card that said it needs you goes.</li>
+        <li><b>Otherwise it stays</b> until you click it, the session's next card replaces it, or 10 minutes pass. A click brings forward the terminal Codex runs in.</li>
+        <li><b>Codex's own icon.</b> The card shows the icon of the Codex app or ChatGPT.app when one is installed, and the Codex mark that drip bundles when not.</li>
+      </ol>
+      <h2>FAQ</h2>
+      <h3>Do I need to change Codex's config.toml?</h3>
+      <p>No, the hooks live in <code>~/.codex/hooks.json</code>. Only if <code>config.toml</code> has an older <code>notify = ["drip", "hook", "codex"]</code> line, delete it, or each done card shows twice.</p>
+      <h3>Why does Codex show no card after I add the hooks?</h3>
+      <p>Codex runs a new hook only once you trust it. Run <code>/hooks</code> in Codex and trust the drip hooks.</p>
+      <h3>Can I get a card when Codex finishes?</h3>
+      <p>Yes. Add a <code>Stop</code> hook that runs <code>drip hook codex</code>, as the everything recipe above does. The done card shows Codex's last message. To skip it for short turns, add <code>--min-turn 30</code> to that hook, as the long-turns recipe does.</p>
+      <h3>Can I allow or deny from the card?</h3>
+      <p>Yes, with the approve-from-card recipe, which runs <code>drip hook codex --approve</code> on <code>PermissionRequest</code>. Codex asks in its terminal only once the hook returns, so the card has Allow and Deny only while you are not watching that terminal. With nothing clicked in 9 minutes, the terminal asks as usual.</p>
+      <h3>How do I get no cards from one Codex run?</h3>
+      <p>Set <code>DRIP_HOOK=off</code> for that run, as in <code>DRIP_HOOK=off codex exec "fix the flaky test"</code>. drip cannot tell a Codex session nobody attends, so the variable is how you say it.</p>
+      <h2>Related</h2>
+      <ul>
+        <li><a href="/claude-code-notifications">Claude Code notifications on Mac</a></li>
+        <li><a href="/notify-when-command-finishes">Alert when a terminal command finishes</a></li>
+        <li><a href="/gemini-cli-notifications">Gemini CLI notifications on Mac</a></li>
+        <li><a href="/claude-code-permission-prompt-notification">Claude Code permission prompt notification</a></li>
+        <li><a href="/opencode-notifications">opencode notifications on Mac</a></li>
+        <li><a href="/aider-notifications">Aider notifications on Mac</a></li>
+        <li><a href="/terminal-notifier-alternative">A terminal-notifier alternative for scripts</a></li>
+        <li><a href="/vs">drip vs terminal-notifier, osascript and alerter</a></li>
+        <li><a href="https://github.com/jrnxf/drip">drip on GitHub</a></li>
+      </ul>
+    </article>
+  </main>
+  <footer class="flex flex-wrap justify-between gap-x-24 gap-y-10 border-t border-t-rule pt-22 pb-50">
+    <span class="lbl">drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you · MIT</span>
+    <nav class="lbl flex flex-wrap gap-x-18 gap-y-10" aria-label="Guides"><a class="text-ink" href="/">home</a><a class="text-ink" href="/claude-code-notifications">Claude Code notifications</a><a class="text-ink" href="/notify-when-command-finishes">Alert when a command finishes</a><a class="text-ink" href="/vs">drip vs terminal-notifier</a></nav>
+  </footer>
+</div>
+</body>
+</html>

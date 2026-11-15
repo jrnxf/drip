@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Usage guide
+    url: https://github.com/jrnxf/drip/blob/main/docs/usage.md
+    about: How to run drip, its commands and its options.
+  - name: Troubleshooting
+    url: https://github.com/jrnxf/drip/blob/main/docs/troubleshooting.md
+    about: Why a card did or did not show. Start with drip doctor.
+  - name: Security policy
+    url: https://github.com/jrnxf/drip/security/policy
+    about: Report a vulnerability in private, not as a public issue.

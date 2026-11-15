@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Claude Code permission prompt notification on Mac - drip</title>
+<meta name="description" content="Get a card from your Mac&#x27;s notch when Claude Code asks for permission. It shows the command, and a short shell command gets Allow and Deny. Free, open source.">
+<link rel="canonical" href="https://drip.jrnxf.co/claude-code-permission-prompt-notification">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="drip">
+<meta property="og:url" content="https://drip.jrnxf.co/claude-code-permission-prompt-notification">
+<meta property="og:title" content="Claude Code permission prompt notification on Mac - drip">
+<meta property="og:description" content="Get a card from your Mac&#x27;s notch when Claude Code asks for permission. It shows the command, and a short shell command gets Allow and Deny. Free, open source.">
+<meta property="og:image" content="https://drip.jrnxf.co/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#d9d9d5" media="(prefers-color-scheme: light)">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="/archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/martian-mono.woff2" as="font" type="font/woff2" crossorigin>
+<!-- guide.css: build.sh puts the compiled styles here. -->
+<script>
+  // The home page's theme: ?theme=, then the visitor's last choice there, then the system's.
+  (() => {
+    const ok = (v) => (v === "dark" || v === "light" ? v : null);
+    let saved = null;
+    try { saved = localStorage.getItem("drip-theme"); } catch {}
+    document.documentElement.dataset.theme = ok(new URLSearchParams(location.search).get("theme")) ?? ok(saved)
+      ?? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  })();
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Get a notification when Claude Code asks for permission.",
+      "description": "Get a card from your Mac's notch when Claude Code asks for permission. It shows the command, and a short shell command gets Allow and Deny. Free, open source.",
+      "url": "https://drip.jrnxf.co/claude-code-permission-prompt-notification",
+      "about": {
+        "@type": "SoftwareApplication",
+        "name": "drip",
+        "url": "https://drip.jrnxf.co/",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS 13 or later"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "jrnxf",
+        "url": "https://github.com/jrnxf"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Can I allow a command from the card without seeing it?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. The card shows the command, file or tool, never only Claude Code's description of it, and Allow appears only for a short, single-line, plain-ASCII shell command that the card shows character for character."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What happens when the command does not fit on the card?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "There is no Allow button. The card only tells you, the hook returns at once and Claude Code asks in the terminal as it would without drip. The same holds for Write, Edit, WebFetch and MCP tools."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can a stray click allow a command?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "It can, which is why the buttons are off by default and you add --approve by choice. The buttons also take a click only once the card has been still for 0.4 seconds."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What if I do nothing about the card?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "After 9 minutes the hook prints nothing and the terminal asks as usual. A click on the card itself, or on the ×, does the same."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does it work when the screen is locked or from another machine?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The card then only tells. A permission card that comes up while the screen is locked or drip pause holds cards has no buttons, and neither has one from another machine, because --approve is local only."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body class="leading-[1.6]">
+<div class="mx-auto max-w-[860px] px-24 narrow:px-16">
+  <header class="flex h-58 items-center gap-22 narrow:gap-16">
+<a class="block text-ink" href="/" aria-label="drip, home"><svg class="block h-24 w-auto" viewBox="12 60 520 136" aria-hidden="true"><g><path d="M12 71H244V93A12 12 0 0 1 232 105H157.71A12 12 0 0 0 147.32 123A20 20 0 1 1 112.68 123A12 12 0 0 0 102.29 105H96.98A9 9 0 0 0 87.99 113.69A20 20 0 1 1 48.01 113.69A9 9 0 0 0 39.02 105H24A12 12 0 0 1 12 93Z" fill="currentColor"/><path d="M170 165A20 20 0 1 1 210 165A20 20 0 1 1 170 165Z" fill="#ff4f00"/></g><g transform="translate(296 48.64) scale(0.62)"><path d="M0 128A58 58 0 1 1 116 128A58 58 0 1 1 0 128ZM26 128A32 32 0 1 0 90 128A32 32 0 1 0 26 128ZM90 24H116V184H90Z" fill="currentColor"/><path d="M138 72H164V184H138ZM138 128A52 58 0 0 1 190 70V96A26 32 0 0 0 164 128Z" fill="currentColor"/><path d="M212 72H238V184H212Z" fill="currentColor"/><path d="M210 38A15 15 0 1 1 240 38A15 15 0 1 1 210 38Z" fill="currentColor"/><path d="M264 72H290V232H264ZM264 128A58 58 0 1 1 380 128A58 58 0 1 1 264 128ZM290 128A32 32 0 1 0 354 128A32 32 0 1 0 290 128Z" fill="currentColor"/></g></svg></a><span class="flex-1"></span><a class="lbl no-underline hover:text-ink" href="/#install">install</a><a class="lbl no-underline hover:text-ink" href="https://github.com/jrnxf/drip">source</a>
+  </header>
+  <main class="pt-48 pb-64 narrow:pt-28">
+    <article class="guide">
+      <div class="lbl">guide / coding agents</div>
+      <h1>Get a notification when Claude Code <b>asks for permission.</b></h1>
+      <p class="answer">Add the approve-from-card hooks to <code>~/.claude/settings.json</code> and a card from your Mac's notch shows what Claude Code wants to run. A short shell command gets Allow and Deny. Install drip first with <code>brew install jrnxf/tap/drip</code>.</p>
+      <pre><code>brew install jrnxf/tap/drip</code></pre>
+<p>Add this to <code>~/.claude/settings.json</code> (<code>$CLAUDE_CONFIG_DIR/settings.json</code> if you set it). If the file has a <code>hooks</code> entry already, merge the events and keep your own hooks. This is the approve-from-card recipe.</p>
+<pre><code>{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude --approve"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "drip hook claude"
+          }
+        ]
+      }
+    ]
+  }
+}</code></pre>
+<p>For a card that only tells you, with no buttons, use the permission-cards recipe: the same snippet with <code>drip hook claude</code> in place of <code>drip hook claude --approve</code> on <code>PermissionRequest</code>. If each card comes with a second notification from Claude Code itself, set Local notifications to disabled in its <code>/config</code>.</p>
+<p>drip is a free, open-source macOS CLI that shows scriptable notification cards from the MacBook notch, for builds, deploys and coding agents like Claude Code, Codex and Gemini CLI.</p>
+<h2>When the card has Allow and Deny</h2>
+<p>A permission card always shows what the call would do, read from the tool's own input: the command, else the file or the address, else the tool. It never shows only the agent's description of the call. Allow and Deny appear only for a shell command that is short, on one line, in plain ASCII, with no extra options. The card then shows the command character for character.</p>
+<p>Every other request is asked in the terminal. The card only tells, and the hook returns at once. That covers:</p>
+<ul>
+  <li>other tools, such as Write, Edit, WebFetch or an MCP tool</li>
+  <li>a command too long for the card</li>
+  <li>a command with a line break, a tab, a run of spaces or a character outside ASCII</li>
+  <li>a command with an option that can change what runs, such as <code>dangerouslyDisableSandbox</code></li>
+</ul>
+      <h2>How it works</h2>
+      <ol>
+        <li><b>The hook waits on the card.</b> The <code>PermissionRequest</code> hook runs <code>drip hook claude --approve</code>. A click on Allow or Deny is Claude Code's answer, and the tool runs or does not, without the terminal.</li>
+        <li><b>You see the command first.</b> The card is titled <code>my-app needs you</code> and shows the command, such as <code>npm install</code>. Allow shows only when the command fits the rules above.</li>
+        <li><b>Claude asks in the terminal too.</b> Claude Code asks there at the same time, and the first answer counts. A deny in the terminal takes the card away at once. An allow does, once the tool ends.</li>
+        <li><b>Buttons wait for a still card.</b> The buttons take a click only once the card has been still for 0.4 seconds, so a click meant for the card before never answers this one.</li>
+        <li><b>No click, no change.</b> Nothing clicked in 9 minutes prints nothing, and the terminal asks as it would without drip. So does a click on the card itself, which brings the terminal forward, and the ×.</li>
+      </ol>
+      <h2>FAQ</h2>
+      <h3>Can I allow a command from the card without seeing it?</h3>
+      <p>No. The card shows the command, file or tool, never only Claude Code's description of it, and Allow appears only for a short, single-line, plain-ASCII shell command that the card shows character for character.</p>
+      <h3>What happens when the command does not fit on the card?</h3>
+      <p>There is no Allow button. The card only tells you, the hook returns at once and Claude Code asks in the terminal as it would without drip. The same holds for Write, Edit, WebFetch and MCP tools.</p>
+      <h3>Can a stray click allow a command?</h3>
+      <p>It can, which is why the buttons are off by default and you add <code>--approve</code> by choice. The buttons also take a click only once the card has been still for 0.4 seconds.</p>
+      <h3>What if I do nothing about the card?</h3>
+      <p>After 9 minutes the hook prints nothing and the terminal asks as usual. A click on the card itself, or on the ×, does the same.</p>
+      <h3>Does it work when the screen is locked or from another machine?</h3>
+      <p>The card then only tells. A permission card that comes up while the screen is locked or <code>drip pause</code> holds cards has no buttons, and neither has one from another machine, because <code>--approve</code> is local only.</p>
+      <h2>Related</h2>
+      <ul>
+        <li><a href="/claude-code-notifications">Claude Code notifications on Mac</a></li>
+        <li><a href="/notify-when-command-finishes">Alert when a terminal command finishes</a></li>
+        <li><a href="/codex-notifications">Codex notifications on Mac</a></li>
+        <li><a href="/gemini-cli-notifications">Gemini CLI notifications on Mac</a></li>
+        <li><a href="/opencode-notifications">opencode notifications on Mac</a></li>
+        <li><a href="/aider-notifications">Aider notifications on Mac</a></li>
+        <li><a href="/terminal-notifier-alternative">A terminal-notifier alternative for scripts</a></li>
+        <li><a href="/vs">drip vs terminal-notifier, osascript and alerter</a></li>
+        <li><a href="https://github.com/jrnxf/drip">drip on GitHub</a></li>
+      </ul>
+    </article>
+  </main>
+  <footer class="flex flex-wrap justify-between gap-x-24 gap-y-10 border-t border-t-rule pt-22 pb-50">
+    <span class="lbl">drip shows a native card from your Mac's notch when a command or coding agent finishes or needs you · MIT</span>
+    <nav class="lbl flex flex-wrap gap-x-18 gap-y-10" aria-label="Guides"><a class="text-ink" href="/">home</a><a class="text-ink" href="/claude-code-notifications">Claude Code notifications</a><a class="text-ink" href="/notify-when-command-finishes">Alert when a command finishes</a><a class="text-ink" href="/vs">drip vs terminal-notifier</a></nav>
+  </footer>
+</div>
+</body>
+</html>
