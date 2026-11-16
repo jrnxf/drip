@@ -252,8 +252,11 @@ class Stage {
     this.clock = 0; this.fit = 1; this.widest = 640;
     this.frozen = null; this.visible = true; this.dirty = true; this.pointer = null;
     this.listeners = [];
+    // Until the engine arrives no frame loop runs, so the bare notch is painted here: the screen
+    // looks at rest while it loads.
     new ResizeObserver(() => {
       this.resize(); this.refit(); this.dirty = true;
+      if (!drip) this.paint();
     }).observe(this.canvas);
     new IntersectionObserver(([entry]) => { this.visible = entry.isIntersecting; this.dirty = true; }, { rootMargin: "80px" }).observe(screen);
     screen.addEventListener("pointermove", (event) => {
@@ -918,7 +921,7 @@ const WIFI = `<svg class="wifi" viewBox="0 0 20 15" aria-hidden="true"><path d="
 const BATT = `<svg viewBox="0 0 30 14" aria-hidden="true"><path d="M3 0h21a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H3a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3zm0 1.3A1.7 1.7 0 0 0 1.3 3v8A1.7 1.7 0 0 0 3 12.7h21a1.7 1.7 0 0 0 1.7-1.7V3A1.7 1.7 0 0 0 24 1.3zM3 3h17v8H3zM28 4.5h.6a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H28z"/></svg>`;
 
 const screen = document.getElementById("screen");
-screen.innerHTML = `<div class="menubar">${APPLE}<span class="r">${WIFI}${BATT}<span class="clock"></span></span></div><canvas class="stage-canvas"></canvas><div class="loading" id="loading">loading drip's engine</div>`;
+screen.innerHTML = `<div class="menubar">${APPLE}<span class="r">${WIFI}${BATT}<span class="clock"></span></span></div><canvas class="stage-canvas"></canvas>`;
 
 const term = new LineTerm();
 const stage = makeStage(screen, { term, zoom: (W) => Math.min(1, W / 560) });
@@ -1019,10 +1022,11 @@ try {
   let last = performance.now();
   const loop = (now) => { const dt = (now - last) / 1000; last = now; for (const s of allStages) if (s.visible) s.step(now, dt); requestAnimationFrame(loop); };
   requestAnimationFrame(loop);
-  document.getElementById("loading").remove();
   ready = true; if (narrow.matches) go(inView(), true); else { pick(); clearTimeout(wait); go(Math.max(active, 0), true); }
 } catch (error) {
-  document.getElementById("loading").textContent = "drip's engine did not load: " + error.message;
+  const failed = document.createElement("div"); failed.className = "failed"; failed.setAttribute("role", "alert");
+  failed.textContent = "drip's engine did not load: " + error.message;
+  screen.append(failed);
   console.error(error);
 }
 // Copy buttons.
