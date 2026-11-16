@@ -1,7 +1,8 @@
 #!/bin/sh
-# Builds the site into web/dist: the page from web/public with its styles from web/styles compiled
-# by Tailwind CSS and inlined, and drip's engine, DripCore compiled to WebAssembly from this
-# checkout, named by its content so browsers can keep it for good.
+# Builds the site into web/dist: the pages from web/public with their styles from web/styles
+# compiled by Tailwind CSS and inlined, and drip's engine, DripCore compiled to WebAssembly from
+# this checkout. The engine and the fonts are named by their content, so browsers can keep them for
+# good, and _headers says so and tells Cloudflare which fonts each page needs first.
 set -eu
 . "$(dirname "$0")/tools.sh"
 
@@ -46,19 +47,57 @@ cp -R "$web/public/." "$dist/"
 "$web/llms-full.sh" "$dist/llms-full.txt"
 "$wasm_opt" -Oz --strip-debug --strip-producers --enable-bulk-memory --enable-sign-ext \
     --enable-mutable-globals --enable-nontrapping-float-to-int "$bin/DripWeb.wasm" -o "$dist/drip.wasm"
-wasm=drip.$(sha256 "$dist/drip.wasm" | cut -c 1-16).wasm
-mv "$dist/drip.wasm" "$dist/$wasm"
+
+# Renames $dist/$1.$2 to $1.<the start of its sha256>.$2, and prints the new name.
+content_named() {
+    named=$1.$(sha256 "$dist/$1.$2" | cut -c 1-16).$2
+    mv "$dist/$1.$2" "$dist/$named"
+    echo "$named"
+}
+wasm=$(content_named drip wasm)
+archivo=$(content_named archivo woff2)
+martian=$(content_named martian-mono woff2)
+
+# A file named by its content never changes, so a browser need not ask for it again.
+headers=$dist/_headers
+for file in "$wasm" "$archivo" "$martian"; do
+    printf '/%s\n  Cache-Control: public, max-age=31536000, immutable\n' "$file"
+done > "$headers"
+# Cloudflare sends a page's Link headers ahead of the page as 103 Early Hints, so the browser has
+# the fonts by the time it has the page. They say what the page's own preload tags say.
+link="</$archivo>; rel=preload; as=font; type=\"font/woff2\"; crossorigin, </$martian>; rel=preload; as=font; type=\"font/woff2\"; crossorigin"
+
 css=$(mktemp -d)
 trap 'rm -rf "$css"' EXIT
-# Each page marks where its styles go, naming its stylesheet in web/styles, and names its engine.
+# Each page marks where its styles go, naming its stylesheet in web/styles, and names its engine
+# and its fonts, which get their built names here.
 for page in "$web"/public/*.html; do
+    name=${page##*/}
     style=$(sed -n 's/^<!-- \([a-z]*\)\.css: build\.sh puts the compiled styles here\. -->$/\1/p' "$page")
-    if [ -z "$style" ]; then echo "${page##*/} does not mark where its styles go" >&2; exit 1; fi
+    if [ -z "$style" ]; then echo "$name does not mark where its styles go" >&2; exit 1; fi
     # Not minified: the minifier rewrites some values to shorter ones that compute differently.
     [ -f "$css/$style.css" ] || "$tailwind" --input "$web/styles/$style.css" --output "$css/$style.css"
-    sed "s/__DRIP_WASM__/$wasm/g" "$page" | awk -v css="$css/$style.css" -v mark="<!-- $style.css: build.sh puts the compiled styles here. -->" '
+    awk -v css="$css/$style.css" -v mark="<!-- $style.css: build.sh puts the compiled styles here. -->" '
         $0 == mark { printf "<style>"; while ((getline line < css) > 0) print line; print "</style>"; next }
-        { print }' > "$dist/${page##*/}"
-    grep -q "^<style>" "$dist/${page##*/}"
+        { print }' "$page" |
+        sed "s/__DRIP_WASM__/$wasm/g; s/archivo\.woff2/$archivo/g; s/martian-mono\.woff2/$martian/g" > "$dist/$name"
+    grep -q "^<style>" "$dist/$name"
+    # A font the page asks for under its old name is a 404, and one it does not preload arrives
+    # after the first paint, which then shows the fallback font.
+    for font in "$archivo" "$martian"; do
+        if ! grep -q "^<link rel=\"preload\" href=\"/\{0,1\}$font\" as=\"font\" type=\"font/woff2\" crossorigin>$" "$dist/$name"; then
+            echo "$name does not preload $font" >&2; exit 1
+        fi
+        if [ "$(grep -c "url($font)" "$dist/$name")" != 1 ]; then
+            echo "$name's styles do not load $font" >&2; exit 1
+        fi
+    done
+    if grep -nE '(archivo|martian-mono)\.woff2' "$dist/$name"; then
+        echo "$name names a font without its hash" >&2; exit 1
+    fi
+    # Cloudflare serves index.html as / and every other page without its .html.
+    case $name in index.html) path=/ ;; *) path=/${name%.html} ;; esac
+    printf '%s\n  Link: %s\n' "$path" "$link" >> "$headers"
 done
 ls -l "$dist"
+cat "$headers"
