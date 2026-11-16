@@ -80,7 +80,7 @@ nav.top .lockup { display: block; height: 30px; width: auto; }
 .screen .menubar .r svg { height: calc(12px * var(--fit, 1)); width: auto; }
 .screen .menubar .wifi path { fill: none; stroke: rgba(255, 255, 255, .92); stroke-width: 2.1; stroke-linecap: round; }
 .screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; }
-.screen .loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 16px; text-align: center; font: 500 12px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: #fff; }
+.screen .failed { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 16px; text-align: center; font: 500 12px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: #fff; }
 
 /* ---------- setup and the details: a heading on the left, ruled rows on the right ---------- */
 .band { border-top: 1px solid var(--color-rule); padding: 56px 0 72px; display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 56px; align-items: start; }
