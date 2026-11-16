@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- The social card: web/public/og.png and the GitHub social preview. It is 1280x640 with everything
+     inside GitHub's 80px safe border, and is rendered at 2x. From the repo root:
+     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars \
+       --force-device-scale-factor=2 --window-size=1280,640 --screenshot="$PWD/web/public/og.png" \
+       "file://$PWD/docs/logo/drip-social.html" -->
+<meta charset="utf-8">
+<title>drip social card</title>
+<style>
+@font-face{font-family:Archivo;src:url(../../web/public/archivo.woff2) format("woff2");font-weight:100 900;font-stretch:62% 125%}
+html,body{margin:0}
+body{width:1280px;height:640px;background:#111111;color:#ECECE8;font-family:Archivo,sans-serif;position:relative;overflow:hidden;-webkit-font-smoothing:antialiased}
+.safe{position:absolute;inset:80px 96px;display:flex}
+.logo{display:block;flex:none}
+h1{margin:0;font-weight:200;font-stretch:125%;letter-spacing:-.035em;line-height:.98;white-space:nowrap}
+p{margin:0;font-weight:300;line-height:1.45;color:#b0b0aa}
+.safe{align-items:center;justify-content:space-between}.logo{height:112px;width:332px}h1{font-size:60px}p{font-size:24px;margin-top:26px}
+</style><div class="safe"><div class="txt"><h1>Notifications that<br>work your way.</h1><p>Small cards at your Mac’s notch.<br>Script them, connect them to your tools,<br>and decide what deserves your attention.</p></div><svg class="logo" viewBox="0 0 711 240" xmlns="http://www.w3.org/2000/svg"><g transform="scale(1.11)"><path d="M0 0H224V24A14 14 0 0 1 210 38H166.9A12 12 0 0 0 158.6 58.67A24 24 0 1 1 125.4 58.67A12 12 0 0 0 117.1 38H92.15A10 10 0 0 0 82.81 51.57A18 18 0 1 1 49.19 51.57A10 10 0 0 0 39.85 38H14A14 14 0 0 1 0 24Z" fill="currentColor"/><path d="M119 139A23 23 0 1 1 165 139A23 23 0 1 1 119 139Z" fill="#FF4F00"/></g><g transform="translate(308.89 0)"><path d="M0 120A61 61 0 1 1 122 120A61 61 0 1 1 0 120ZM28 120A33 33 0 1 0 94 120A33 33 0 1 0 28 120ZM94 0H122V180H94ZM146 60H174V180H146ZM146 122A62 62 0 0 1 208 59V87A34 34 0 0 0 174 122ZM226 60H254V180H226ZM280 60H308V240H280ZM280 120A61 61 0 1 1 402 120A61 61 0 1 1 280 120ZM308 120A33 33 0 1 0 374 120A33 33 0 1 0 308 120Z" fill="currentColor"/><path d="M224 28A16 16 0 1 1 256 28A16 16 0 1 1 224 28Z" fill="currentColor"/></g></svg></div>

@@ -16,7 +16,6 @@
 .page { --gutter: 32px; max-width: 1200px; margin: 0 auto; padding: 0 var(--gutter); }
 .lbl { font: 500 12px/1.2 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-ink-3); }
 h1 { text-wrap: balance; font: 200 clamp(42px, 5.6vw, 76px)/.98 var(--font-sans); font-stretch: 125%; letter-spacing: -.035em; margin: 0; }
-h1 .dot { color: var(--color-orange); }
 h2 { font: 200 clamp(30px, 3.4vw, 46px)/1.05 var(--font-sans); font-stretch: 125%; letter-spacing: -.03em; margin: 0 0 18px; text-wrap: balance; }
 .lede { color: var(--color-ink-2); font-size: 18px; margin: 18px 0 0; max-width: 46ch; text-wrap: pretty; }
 .sub { color: var(--color-ink-2); margin: 0; max-width: 40ch; text-wrap: pretty; }
