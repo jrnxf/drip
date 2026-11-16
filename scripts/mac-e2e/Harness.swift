@@ -1005,7 +1005,9 @@ if canClick {
             return
         }
         expect.expect(click(CGPoint(x: card.midX, y: card.midY)), "the helper clicks")
-        expect.within(1.5, wait(3) { !showing }, "it takes the card away")
+        // A plain click also asks Launch Services to bring Terminal forward, so the card goes later
+        // than after the clicks above: 0.8-0.95 s on CI, and 1.9 s once on a busy runner.
+        expect.within(2.5, wait(3) { !showing }, "it takes the card away")
         expect.within(3, wait(3) { frontApp() == "com.apple.Terminal" }, "Terminal, the app it came from, comes forward")
     }
 } else if options.only?.contains(3) ?? true {
