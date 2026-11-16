@@ -76,8 +76,8 @@ function render(slug, p) {
 <meta property="og:title" content="${attr(title)}">
 <meta property="og:description" content="${attr(desc)}">
 <meta property="og:image" content="${SITE}/og.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
+<meta property="og:image:width" content="2560">
+<meta property="og:image:height" content="1280">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#d9d9d5" media="(prefers-color-scheme: light)">
