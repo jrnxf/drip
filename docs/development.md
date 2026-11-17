@@ -6,7 +6,7 @@ swift test            # on Linux, or on a Mac with Xcode
 DRIP_FULL_SWEEP=1 swift test  # with every frame of the stack sweeps, as CI's test job runs them
 scripts/mac-check.sh  # on a Mac nobody works at, such as a VM, with DRIP_LIVE_CHECKS=isolated
 scripts/mac-e2e.sh    # the same, without a person; CI's live job runs it on every push
-scripts/record-demo.sh  # films docs/demo.mp4 and docs/demo.gif on a Mac; needs ffmpeg
+scripts/record-demo.sh  # films the README demo on a Mac; needs ffmpeg and img2webp
 scripts/sim-overflow.sh  # replays the overflow drop at the notch on a Mac, to film or to watch
 scripts/agent-contract.sh  # the agents' hooks, live, with the latest of each; needs node and tmux
 ```
@@ -50,11 +50,15 @@ Accessibility once: allow `drip e2e helper` when asked, or under System Settings
 with what it should look like, and a contact sheet of them all, for a person or a model to judge:
 `judge.md` in the screenshots' folder says how, and `--judge-check` reads the verdicts.
 
-`scripts/record-demo.sh` makes the animation at the top of the README by filming real cards: it plays
-a fixed sequence at the notch of the screen under the pointer, records that strip with `screencapture`
-at the screen's native pixels, and encodes `docs/demo.mp4` and `docs/demo.gif` with ffmpeg. Set a clean
-wallpaper first, and allow your terminal under System Settings > Privacy & Security > Screen & System
-Audio Recording the first time. Run it again for a new take.
+`scripts/record-demo.sh` makes the animation at the top of the README by filming real cards: it
+plays a fixed sequence at the notch of the screen under the pointer, records that strip with
+`screencapture` at the screen's native pixels, trims its height to the cards with a notch's height
+of space below them, and encodes `demo.mp4` and `demo.webp` into `.build/record-demo/` with ffmpeg
+and img2webp. It sets the README image's width to match. The README shows `drip/demo.webp` from the
+[jrnxf/assets](https://github.com/jrnxf/assets) repo, so the takes do not grow this repo's history:
+put a new take there to publish it. Set a clean wallpaper first, and allow your terminal under
+System Settings > Privacy & Security > Screen & System Audio Recording the first time. Run it again
+for a new take.
 
 `scripts/sim-overflow.sh` replays the overflow drop on a Mac: it sends more cards than the stack
 shows, a gap apart, so a drop forms under the last card, counts the cards waiting and goes back in
