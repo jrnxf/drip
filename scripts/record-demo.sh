@@ -133,8 +133,12 @@ else
     # 4. A question waits for a click. Nobody answers, so it times out after 3 seconds (exit 5).
     "$drip" warn "Ship v1.4.0 to prod?" -d "staging is healthy" --yes Ship --no Cancel --seconds 3 || true
 fi
-# The demo ends 1.5 seconds after the last card times out, enough for it to go.
+# The demo ends 1.5 seconds after the last card times out, enough for it to go. It starts 1.2
+# seconds in, so the first card grows about 0.3 seconds after it starts, not after the 1.5 seconds
+# the recording is given to start.
 length=$(awk -v start="$start" -v end="$(now)" 'BEGIN { printf "%.2f", end - start + 1.5 }')
+lead=1.2
+span=$(awk -v total="$length" -v lead="$lead" 'BEGIN { printf "%.2f", total - lead }')
 
 if ! kill -0 "$rec" 2>/dev/null; then
     wait "$rec" || die "screencapture failed. Check Screen Recording permission for this terminal"
@@ -227,7 +231,7 @@ trim="[0:v][1:v]overlay=$notchx:0,crop=$tw:$th:$tx:0"
 say "writing $out/demo.mp4"
 
 # Encode, cut at the end of the demo.
-ffmpeg -y -loglevel error -t "$length" -i "$work/take.mov" -i "$notchpng" -an -c:v libx264 -crf 14 \
+ffmpeg -y -loglevel error -ss "$lead" -t "$span" -i "$work/take.mov" -i "$notchpng" -an -c:v libx264 -crf 14 \
     -preset slow -pix_fmt yuv420p -filter_complex "$trim" -movflags +faststart "$out/demo.mp4"
 
 # The README animation: an animated WebP at 60 fps and 2x the points it is shown at, in full
@@ -240,7 +244,7 @@ points=$(awk -v tw="$tw" -v s="$scale" 'BEGIN { printf "%d", tw / s + 0.5 }')
 width=$((points * 2))
 say "writing the frames"
 mkdir "$work/frames"
-ffmpeg -y -loglevel error -t "$length" -i "$work/take.mov" -i "$notchpng" \
+ffmpeg -y -loglevel error -ss "$lead" -t "$span" -i "$work/take.mov" -i "$notchpng" \
     -filter_complex "$trim,fps=$fps,scale=$width:-2:flags=lanczos" "$work/frames/%05d.png"
 [ -n "$test" ] || sed -i '' "s|\(<img src=\"[^\"]*/drip/demo.webp\" width=\"\)[0-9]*\"|\1$points\"|" README.md
 set --
