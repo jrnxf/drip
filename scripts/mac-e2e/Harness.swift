@@ -1407,6 +1407,13 @@ let catcher: NSPanel = {
     return panel
 }()
 
+/// Waits for a click to reach `view`, up to 2 seconds on a busy runner, then a little longer, so a
+/// second click would be counted too.
+func settleClicks(_ view: CatcherView?) {
+    _ = wait(2) { (view?.clicks ?? 0) > 0 }
+    pause(0.2)
+}
+
 /// Clicks beside each of `cards` and under the last, inside drip's windows, and expects each click to
 /// reach the window behind while the cards stay.
 func clicksPassBeside(_ cards: [CGRect], _ expect: inout Expectations) {
@@ -1430,7 +1437,7 @@ func clicksPassBeside(_ cards: [CGRect], _ expect: inout Expectations) {
         let view = catcher.contentView as? CatcherView
         view?.clicks = 0
         expect.expect(click(point), "the helper clicks \(name)")
-        pause(0.4)
+        settleClicks(view)
         expect.expect(view?.clicks == 1, "a click \(name) reaches the window behind (\(view?.clicks ?? 0) of 1)")
     }
     expect.expect(showing && cardsOnScreen().count == cards.count, "the cards stay")
@@ -1453,11 +1460,14 @@ if canClick {
         check(12, variant.name) { expect in
             catcher.orderFrontRegardless()
             defer { catcher.orderOut(nil) }
+            // The first time it shows, the window server can take a moment to put it on screen, and a
+            // click before that lands on the backdrop: it failed the control once on CI.
+            _ = wait(3) { catcher.occlusionState.contains(.visible) }
             // With no card showing, the window behind takes a click: the control for the clicks below.
             let view = catcher.contentView as? CatcherView
             view?.clicks = 0
             _ = click(CGPoint(x: notchArea.midX + 200, y: notchArea.minY + 60))
-            pause(0.4)
+            settleClicks(view)
             expect.expect(view?.clicks == 1, "the window behind takes a click with no card showing (\(view?.clicks ?? 0) of 1)")
             for arguments in variant.cards {
                 dripRun(arguments + ["--id", fresh("through")], extra: variant.extra)
