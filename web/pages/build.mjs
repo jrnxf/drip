@@ -81,7 +81,7 @@ function render(slug, p) {
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#d9d9d5" media="(prefers-color-scheme: light)">
-<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preload" href="/archivo.woff2" as="font" type="font/woff2" crossorigin>
