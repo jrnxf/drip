@@ -31,9 +31,10 @@
 <link rel="manifest" href="site.webmanifest">
 <link rel="preload" href="archivo.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="martian-mono.woff2" as="font" type="font/woff2" crossorigin>
-<!-- The demo's engine and its loader: asked for here, they load with the page, not after the script. -->
+<!-- The demo's engine and its loader: asked for here, they load with the page, not after the script.
+     The engine is 3 MB, so it goes at low priority, behind the fonts. -->
 <link rel="modulepreload" href="drip-engine.js">
-<link rel="preload" href="__DRIP_WASM__" as="fetch" type="application/wasm" crossorigin>
+<link rel="preload" href="__DRIP_WASM__" as="fetch" type="application/wasm" crossorigin fetchpriority="low">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -66,9 +67,20 @@
   </section>
 
   <section class="story" aria-label="What drip does, played by its engine">
-    <div class="sticky">
+    <div class="sticky" aria-hidden="true">
       <div class="device"><div class="lid"><div class="screen" id="screen"><div class="menubar"><svg class="apple" viewBox="0 0 814 1000" aria-hidden="true"><path d="M788 341c-6 4-108 62-108 190 0 148 130 200 134 202-1 3-21 72-69 142-43 61-88 122-156 122s-86-40-164-40c-77 0-104 41-167 41s-106-57-156-127C44 789 0 668 0 553c0-184 120-282 238-282 63 0 115 41 155 41 38 0 97-44 168-44 27 0 124 3 188 73zM554 170c29-35 51-84 51-133 0-7-1-14-2-19-48 2-105 32-140 72-27 31-53 80-53 130 0 8 1 15 2 18 3 1 9 2 14 2 43 0 97-29 128-70z"/></svg><span class="r"><svg class="wifi" viewBox="0 0 20 15" aria-hidden="true"><path d="M2.2 5.4a11 11 0 0 1 15.6 0M5.3 8.6a6.6 6.6 0 0 1 9.4 0"/><circle cx="10" cy="12.3" r="1.7"/></svg><svg viewBox="0 0 30 14" aria-hidden="true"><path d="M3 0h21a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H3a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3zm0 1.3A1.7 1.7 0 0 0 1.3 3v8A1.7 1.7 0 0 0 3 12.7h21a1.7 1.7 0 0 0 1.7-1.7V3A1.7 1.7 0 0 0 24 1.3zM3 3h17v8H3zM28 4.5h.6a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H28z"/></svg><span class="clock"></span></span></div><canvas class="stage-canvas"></canvas></div></div><div class="deck"></div></div>
     </div>
+    <script>
+    // The menu bar paints at the size the stage keeps until the engine is in (Stage.refit), and with
+    // the visitor's own time, so neither changes once the page is up.
+    {
+      const screen = document.getElementById("screen"), w = screen.getBoundingClientRect().width;
+      screen.style.setProperty("--fit", Math.min(1, w / 560, (w - 16) / 380));
+      const clock = screen.querySelector(".clock");
+      const tick = () => clock.textContent = new Date().toLocaleTimeString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+      tick(); setInterval(tick, 15000);
+    }
+    </script>
     <div class="dots"><button type="button" aria-label="Wrap a command"></button><button type="button" aria-label="Update in place"></button><button type="button" aria-label="Open something from it"></button><button type="button" aria-label="Hear from coding agents"></button><button type="button" aria-label="Ask, then act"></button><button type="button" aria-label="Your own presets"></button><button type="button" aria-label="Three at once"></button></div>
     <div class="rows" id="rows">
       <div class="row" tabindex="0" data-key="run"><h2>Wrap a command</h2><p>drip runs it, times it and shows how it went: green on exit 0, red with the exit code otherwise.</p><pre><span class="p">$ </span>drip run make test</pre><button class="again" type="button">play again</button></div>
@@ -940,7 +952,9 @@ const play = player(stage, term), rows = document.getElementById("rows");
 const story = [...rows.querySelectorAll(":scope > .row")].map((r, n) => {
   r.onclick = (e) => { if (!e.target.closest("pre")) { clearTimeout(wait); slideTo(n); lightDots(n); go(n, true); } };
   r.onkeydown = (e) => { if (e.key === "Enter") go(n, true); };
-  return FEATURES.find((f) => f.key === r.dataset.key);
+  const feature = FEATURES.find((f) => f.key === r.dataset.key);
+  if (!feature) throw new Error(`no feature plays the row ${r.dataset.key}`);
+  return feature;
 });
 
 let active = -1, ready = false;
@@ -996,9 +1010,6 @@ narrow.addEventListener("change", () => { if (!ready) return; if (narrow.matches
 lightDots(0);
 const sticky = document.querySelector(".sticky");
 new ResizeObserver(() => sticky.style.setProperty("--lh", sticky.offsetHeight + "px")).observe(sticky);
-// The menu bar clock: the visitor's own time.
-function clock() { const t = () => { screen.querySelector(".clock").textContent = new Date().toLocaleTimeString([], { weekday: "short", hour: "numeric", minute: "2-digit" }); }; t(); setInterval(t, 15000); }
-clock();
 // Compiles the engine as it downloads. A server that sends it with another type than
 // application/wasm gets it compiled from its bytes instead.
 async function compileEngine() {

@@ -1,6 +1,7 @@
 // Checks every page in web/public: its JSON-LD parses, the FAQ in the JSON-LD says what the page
 // says, the title and description are the right length, the about sentence stands once, and every
-// internal link and sitemap entry names a page that exists.
+// internal link and sitemap entry names a page that exists, and each homepage story row has its dot
+// and its feature.
 //
 //   node web/pages/check.mjs
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -86,6 +87,18 @@ for (const file of questionPages) {
   const slug = file.replace(/\.html$/, "");
   const loc = slug === "index" ? "https://drip.jrnxf.co/" : `https://drip.jrnxf.co/${slug}`;
   if (!sitemap.includes(`<loc>${loc}</loc>`)) fail("sitemap.xml", `lacks ${loc}`);
+}
+
+// The homepage's story: each row has its dot, named for it, and a feature for the engine to play.
+{
+  const home = readFileSync(join(pub, "index.html"), "utf8");
+  const rows = [...home.matchAll(/<div class="row" tabindex="0" data-key="([a-z]+)"><h2>([^<]+)<\/h2>/g)];
+  const dots = home.match(/<div class="dots">(.*?)<\/div>/)?.[1] ?? "";
+  const labels = [...dots.matchAll(/aria-label="([^"]+)"/g)].map((m) => m[1]);
+  const keys = new Set([...home.matchAll(/^  \{ key: "([a-z]+)"/gm)].map((m) => m[1]));
+  if (!rows.length) fail("index.html", "has no story rows");
+  if (labels.join("|") !== rows.map((m) => m[2]).join("|")) fail("index.html", `the dots (${labels.join(", ")}) do not name the rows in order`);
+  for (const [, key] of rows) if (!keys.has(key)) fail("index.html", `no feature plays the row ${key}`);
 }
 
 if (errors.length) {
