@@ -1,10 +1,9 @@
 # Install
 
 Homebrew installs drip as a prebuilt universal binary, for Apple silicon and Intel Macs, in a few
-seconds: nothing to compile, and no Xcode. drip is still in development: until 0.1.0 is out, brew
-installs the latest development build, a pre-release such as 0.1.0-pre.1, and `brew upgrade`
-moves to the next one, then to 0.1.0. Install it with Homebrew rather than downloading the
-archive from the release page: the binary is signed with drip's own certificate, not one from
+seconds: nothing to compile, and no Xcode. `brew upgrade` moves you to each new release, and a
+copy from a pre-release such as 0.1.0-pre.33 moves to 0.1.0. Install it with Homebrew rather
+than downloading the archive from the release page: the binary is signed with drip's own certificate, not one from
 Apple, and not notarized, so Gatekeeper blocks a copy downloaded in a browser, while brew's
 download runs as it is. Every release is signed with that same certificate, so what you allow
 drip in System Settings, such as access to the local network, holds across `brew upgrade`;
@@ -13,8 +12,8 @@ build the latest `main` from source instead, run `brew install --HEAD jrnxf/tap/
 is signed ad hoc, so macOS asks again after each one.
 
 Homebrew installs the zsh, bash and fish completions, once your shell loads them
-([how](https://docs.brew.sh/Shell-Completion)). Releases after v0.1.0-pre.9 also install the man
-page, so `man drip` works. A `--HEAD` build has no man page. For a source build, run
+([how](https://docs.brew.sh/Shell-Completion)). It also installs the man page, so `man drip`
+works. A `--HEAD` build has no man page. For a source build, run
 `drip --generate-completion-script zsh` (or `bash`, `fish`) and save the output where your shell
 loads completions. The source build steps below also add the man page.
 
