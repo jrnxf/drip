@@ -162,10 +162,10 @@ step() {
 
 step "four kinds" \
     "ok, warn, fail and info, sent together to show as one stack." \
-    'drip ok "ok" -d "green check, Glass sound" --seconds 3
-drip warn "warn" -d "orange, Purr sound" --seconds 3
-drip fail "fail" -d "red, Basso sound" --seconds 3
-drip info "info" -d "blue, Tink sound" --seconds 3'
+    'drip ok "ok" -d "green check, Submarine sound" --seconds 3
+drip warn "warn" -d "orange, Bottle sound" --seconds 3
+drip fail "fail" -d "red, Sosumi sound" --seconds 3
+drip info "info" -d "blue, Blow sound" --seconds 3'
 
 step "icon, color, sound" \
     "One card with Claude's bundled mark, a purple color and the Hero sound." \

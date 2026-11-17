@@ -166,7 +166,7 @@ final class HistoryTests {
             + ##""time":"2027-01-15T08:00:00Z"}"##)
         let quiet = HistoryEntry(time: entry.time, missed: false, card: card("ok", kind: "ok"))
         #expect(try HistoryListing.publicJSON(quiet).contains(#""color":"green""#))
-        #expect(try HistoryListing.publicJSON(quiet).contains(#""sound":"Glass""#))
+        #expect(try HistoryListing.publicJSON(quiet).contains(#""sound":"Submarine""#))
         // Icons the way --icon takes them.
         var agent = card("my-app needs you")
         agent.icon = .app("com.anthropic.claudefordesktop")

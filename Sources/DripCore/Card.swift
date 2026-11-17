@@ -163,16 +163,16 @@ public struct Preset: Equatable, Sendable {
     }
 
     public static let ok = Preset(
-        name: "ok", icon: .symbol("checkmark.circle.fill"), color: .system(.green), sound: .named("Glass"),
+        name: "ok", icon: .symbol("checkmark.circle.fill"), color: .system(.green), sound: .named("Submarine"),
         glyph: "checkmark")
     public static let warn = Preset(
-        name: "warn", icon: .symbol("exclamationmark.circle.fill"), color: .system(.orange), sound: .named("Purr"),
+        name: "warn", icon: .symbol("exclamationmark.circle.fill"), color: .system(.orange), sound: .named("Bottle"),
         glyph: "exclamationmark")
     public static let fail = Preset(
-        name: "fail", icon: .symbol("xmark.circle.fill"), color: .system(.red), sound: .named("Basso"),
+        name: "fail", icon: .symbol("xmark.circle.fill"), color: .system(.red), sound: .named("Sosumi"),
         glyph: "xmark")
     public static let info = Preset(
-        name: "info", icon: .symbol("info.circle.fill"), color: .system(.blue), sound: .named("Tink"),
+        name: "info", icon: .symbol("info.circle.fill"), color: .system(.blue), sound: .named("Blow"),
         glyph: "info")
 
     /// The built-in presets, in the order help text lists them.

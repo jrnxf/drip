@@ -1048,7 +1048,7 @@ check(4, "approving in the terminal") { expect in
     let kept = recorded("claude:\(session)")
     expect.expect(kept.count == 1, "one card in the history (found \(kept.count))")
     expect.expect(kept.first?.card["detail"] as? String == "Run the tests", "it says what Claude wants: \(kept.first?.card["detail"] ?? "none")")
-    expect.expect(kept.first?.sound == "Tink", "it asks for its sound, Tink (\(kept.first?.sound ?? "none"))")
+    expect.expect(kept.first?.sound == "Blow", "it asks for its sound, Blow (\(kept.first?.sound ?? "none"))")
     claude("PostToolUse", ["session_id": session, "prompt_id": "p-\(tool)", "tool_name": "Bash", "tool_use_id": tool,
                            "tool_input": ["command": "swift test"], "tool_response": ["stdout": "ok"]])
     // On GitHub's macOS runner this path has taken up to 1.6 s, where the others stay under 1.1 s.
@@ -1316,7 +1316,7 @@ check(10, "approving a Codex command") { expect in
     keep("codex-card", "One black card: the Codex or ChatGPT app's icon, or OpenAI's mark, on the left; title "
         + "'e2e-app needs you'; grey detail 'Codex wants to run npm install'; a white dot on the right.", around: cards)
     let kept = recorded("codex:\(session)").first
-    expect.expect(kept?.sound == "Tink", "it asks for its sound, Tink (\(kept?.sound ?? "none"))")
+    expect.expect(kept?.sound == "Blow", "it asks for its sound, Blow (\(kept?.sound ?? "none"))")
     codex("PostToolUse", ["session_id": session, "turn_id": turn, "tool_name": "Bash", "tool_use_id": "call_1",
                           "tool_input": ["description": NSNull(), "command": "npm install"], "tool_response": "ok"])
     expect.within(1.5, wait(3) { !showing }, "running it takes the card away")
