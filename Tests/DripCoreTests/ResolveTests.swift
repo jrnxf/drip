@@ -56,7 +56,7 @@ struct ResolveTests {
         let card = try resolver.resolve(kind: "warn", title: "hi", flags: CardFlags())
         #expect(card.detail == nil)
         #expect(card.seconds == 4.5)
-        #expect(card.sound == .named("Purr"))
+        #expect(card.sound == .named("Bottle"))
         #expect(card.icon == .symbol("exclamationmark.circle.fill"))
         #expect(card.color == .system(.orange))
         #expect(card.size == .regular)
@@ -138,7 +138,7 @@ struct ResolveTests {
         #expect(card.kind == "ok")
         #expect(card.title == "make test finished")
         #expect(card.detail == "3m 12s")
-        #expect(card.sound == .named("Glass"))
+        #expect(card.sound == .named("Submarine"))
     }
 
     @Test func runCardForFailure() throws {

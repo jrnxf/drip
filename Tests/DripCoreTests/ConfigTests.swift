@@ -56,7 +56,7 @@ struct ConfigTests {
         let config = Config(presets: ["deploy": PresetOverride(color: .system(.purple))])
         let deploy = config.allPresets.first { $0.name == "deploy" }
         #expect(deploy == Preset(
-            name: "deploy", icon: .symbol("info.circle.fill"), color: .system(.purple), sound: .named("Tink")))
+            name: "deploy", icon: .symbol("info.circle.fill"), color: .system(.purple), sound: .named("Blow")))
     }
 
     @Test func presetSoundForms() throws {
@@ -351,7 +351,7 @@ struct PrecedenceTests {
         let card = try CardResolver().resolve(kind: "ok", title: "t", flags: CardFlags())
         #expect(card.seconds == 4.5)
         #expect(card.size == .regular)
-        #expect(card.sound == .named("Glass"))
+        #expect(card.sound == .named("Submarine"))
     }
 
     @Test func configBeatsDefaults() throws {

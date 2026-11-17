@@ -56,10 +56,10 @@ too.
 
 | Preset | Icon | Color | Sound |
 | --- | --- | --- | --- |
-| `ok` | `checkmark.circle.fill` | green | Glass |
-| `warn` | `exclamationmark.circle.fill` | orange | Purr |
-| `fail` | `xmark.circle.fill` | red | Basso |
-| `info` | `info.circle.fill` | blue | Tink |
+| `ok` | `checkmark.circle.fill` | green | Submarine |
+| `warn` | `exclamationmark.circle.fill` | orange | Bottle |
+| `fail` | `xmark.circle.fill` | red | Sosumi |
+| `info` | `info.circle.fill` | blue | Blow |
 
 The kind is the look; flags are the behavior. `--stay` keeps a card on screen, `--yes` and `--no`
 wait for an answer, and `--open` adds a link button. Every card keeps its icon, a question too.
@@ -273,7 +273,7 @@ writes each setting the way its flag takes it, and leaves out `detail`, `button`
 `activate` when the card had none:
 
 ```json
-{"card":{"button":"View run","color":"red","detail":"api 1.4.2","icon":"xmark.circle.fill","id":"deploy","kind":"fail","motion":"full","open":"https://example.com/run/1","seconds":8,"size":"regular","sound":"Basso","title":"deploy failed"},"missed":true,"time":"2026-10-18T13:02:41Z"}
+{"card":{"button":"View run","color":"red","detail":"api 1.4.2","icon":"xmark.circle.fill","id":"deploy","kind":"fail","motion":"full","open":"https://example.com/run/1","seconds":8,"size":"regular","sound":"Sosumi","title":"deploy failed"},"missed":true,"time":"2026-10-18T13:02:41Z"}
 ```
 
 `--replay` shows the cards again, in order, with any button that opens something; a question's button is

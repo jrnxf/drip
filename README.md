@@ -84,7 +84,7 @@ stack = "chain"           # chain | off
 [preset.deploy]
 icon  = "paperplane.fill"
 color = "#a78bfa"
-sound = "Submarine"
+sound = "Hero"
 ```
 
 Then `drip deploy "shipped"` uses the preset. [Configuration](docs/config.md) lists every setting and its `DRIP_*` environment variable.
