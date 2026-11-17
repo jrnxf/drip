@@ -45,8 +45,9 @@ nav.top .lockup { display: block; height: 30px; width: auto; }
 /* ---------- the story: rows on the left, the laptop on the right ---------- */
 .story { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 64px; padding: 24px 0 96px; }
 /* Once it sticks, the laptop sits in the middle of the view. Before that it starts level with the first row. */
-.sticky { position: sticky; top: max(24px, calc(50vh - var(--lh, 440px) / 2)); align-self: start; }
-.rows { position: relative; }
+.sticky { position: sticky; top: max(24px, calc(50vh - var(--lh, 440px) / 2)); align-self: start; grid-area: 1 / 2; }
+/* The laptop comes first in the HTML. On a phone it sits above the rows, so a slow page cannot paint the rows and then push them down. */
+.rows { position: relative; grid-area: 1 / 1; }
 .row { position: relative; padding: 28px 0 28px 28px; border-left: 2px solid var(--color-rule); min-height: 30vh; display: flex; flex-direction: column; justify-content: center; cursor: pointer; }
 .row:first-of-type { min-height: 0; justify-content: flex-start; padding-top: 8px; }
 /* The beam: one short orange stretch of the line, beside the row that plays. */
@@ -108,7 +109,8 @@ footer .guides a:hover { color: var(--color-ink); text-decoration: underline; }
   .story { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 8px; }
   .story { padding-bottom: 48px; }
   /* Narrow: the laptop, with the rows as cards to swipe under it. */
-  .sticky { position: static; order: -1; }
+  .sticky, .rows { grid-area: auto; }
+  .sticky { position: static; }
   .dots { display: flex; justify-content: center; gap: 2px; margin-top: 14px; }
   .dots button { border: 0; background: none; padding: 6px 2.5px; cursor: pointer; }
   .dots button::before { content: ""; display: block; width: 6px; height: 6px; border-radius: 3px; background: var(--color-rule); transition: width .2s, background .2s; }

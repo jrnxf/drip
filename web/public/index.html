@@ -22,14 +22,19 @@
 <meta name="twitter:image" content="https://drip.jrnxf.co/og.png">
 <meta name="twitter:image:alt" content="drip's logo beside the words Notifications that work your way.">
 <meta name="theme-color" content="#f3f2ee">
-<!-- The mark: the notch, two beads and a falling drop (masters in docs/logo). favicon.ico holds a
-     dedicated small-size drawing; favicon.svg turns the notch cream in a dark browser. -->
-<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<!-- The mark: the notch, two beads and a falling drop (masters in docs/logo). favicon.svg turns the
+     notch cream in a dark browser. favicon.ico is for browsers without SVG icons: its sizes say 32x32,
+     so a browser with SVG icons picks the SVG. -->
+<link rel="icon" href="favicon.ico" sizes="32x32">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="site.webmanifest">
 <link rel="preload" href="archivo.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="martian-mono.woff2" as="font" type="font/woff2" crossorigin>
+<!-- The demo's engine and its loader: asked for here, they load with the page, not after the script.
+     The engine is 3 MB, so it goes at low priority, behind the fonts. -->
+<link rel="modulepreload" href="drip-engine.js">
+<link rel="preload" href="__DRIP_WASM__" as="fetch" type="application/wasm" crossorigin fetchpriority="low">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -62,9 +67,38 @@
   </section>
 
   <section class="story" aria-label="What drip does, played by its engine">
-    <div class="rows" id="rows"></div>
-    <div class="sticky">
-      <div class="device"><div class="lid"><div class="screen" id="screen"></div></div><div class="deck"></div></div>
+    <div class="sticky" aria-hidden="true">
+      <div class="device"><div class="lid"><div class="screen" id="screen"><div class="menubar"><svg class="apple" viewBox="0 0 814 1000" aria-hidden="true"><path d="M788 341c-6 4-108 62-108 190 0 148 130 200 134 202-1 3-21 72-69 142-43 61-88 122-156 122s-86-40-164-40c-77 0-104 41-167 41s-106-57-156-127C44 789 0 668 0 553c0-184 120-282 238-282 63 0 115 41 155 41 38 0 97-44 168-44 27 0 124 3 188 73zM554 170c29-35 51-84 51-133 0-7-1-14-2-19-48 2-105 32-140 72-27 31-53 80-53 130 0 8 1 15 2 18 3 1 9 2 14 2 43 0 97-29 128-70z"/></svg><span class="r"><svg class="wifi" viewBox="0 0 20 15" aria-hidden="true"><path d="M2.2 5.4a11 11 0 0 1 15.6 0M5.3 8.6a6.6 6.6 0 0 1 9.4 0"/><circle cx="10" cy="12.3" r="1.7"/></svg><svg viewBox="0 0 30 14" aria-hidden="true"><path d="M3 0h21a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H3a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3zm0 1.3A1.7 1.7 0 0 0 1.3 3v8A1.7 1.7 0 0 0 3 12.7h21a1.7 1.7 0 0 0 1.7-1.7V3A1.7 1.7 0 0 0 24 1.3zM3 3h17v8H3zM28 4.5h.6a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H28z"/></svg><span class="clock"></span></span></div><canvas class="stage-canvas"></canvas></div></div><div class="deck"></div></div>
+    </div>
+    <script>
+    // The menu bar paints at the size the stage keeps until the engine is in (Stage.refit), and with
+    // the visitor's own time, so neither changes once the page is up.
+    {
+      const screen = document.getElementById("screen"), w = screen.getBoundingClientRect().width;
+      screen.style.setProperty("--fit", Math.min(1, w / 560, (w - 16) / 380));
+      const clock = screen.querySelector(".clock");
+      const tick = () => clock.textContent = new Date().toLocaleTimeString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+      tick(); setInterval(tick, 15000);
+    }
+    </script>
+    <div class="dots"><button type="button" aria-label="Wrap a command"></button><button type="button" aria-label="Update in place"></button><button type="button" aria-label="Open something from it"></button><button type="button" aria-label="Hear from coding agents"></button><button type="button" aria-label="Ask, then act"></button><button type="button" aria-label="Your own presets"></button><button type="button" aria-label="Three at once"></button></div>
+    <div class="rows" id="rows">
+      <div class="row" tabindex="0" data-key="run"><h2>Wrap a command</h2><p>drip runs it, times it and shows how it went: green on exit 0, red with the exit code otherwise.</p><pre><span class="p">$ </span>drip run make test</pre><button class="again" type="button">play again</button></div>
+      <div class="row" tabindex="0" data-key="id"><h2>Update in place</h2><p>Cards with the same --id replace each other. The card on screen springs to the new card's size.</p><pre><span class="p">$ </span>drip ok "Deployed" <span class="f">--id</span> deploy</pre><button class="again" type="button">play again</button></div>
+      <div class="row" tabindex="0" data-key="open"><h2>Open something from it</h2><p>--open puts a button on the card. A click opens a URL, a file or an app.</p><pre><span class="p">$ </span>drip ok "Report ready" <span class="f">--open</span> ./report.html <span class="f">--button</span> "View report"</pre><button class="again" type="button">play again</button></div>
+      <div class="row" tabindex="0" data-key="agent"><h2>Hear from coding agents</h2><p>A hook from a recipe names the project and what the agent needs, then says when it has finished.</p><pre><span class="c"># in ~/.claude/settings.json, from a recipe</span>
+<span class="p">$ </span>drip hook claude</pre><button class="again" type="button">play again</button></div>
+      <div class="row" tabindex="0" data-key="ask"><h2>Ask, then act</h2><p>--yes and --no wait for a click. drip exits 0 on yes, so &amp;&amp; runs the next step only then. Answer it here.</p><pre><span class="p">$ </span>drip ok "Merge drip #23?" <span class="f">--yes</span> Merge <span class="f">--no</span> Later &amp;&amp; gh pr merge 23</pre><button class="again" type="button">play again</button></div>
+      <div class="row" tabindex="0" data-key="preset"><h2>Your own presets</h2><p>Icons, colors, sounds and timing go in ~/.config/drip/config.toml. Here, a deploy preset.</p><pre><span class="c"># ~/.config/drip/config.toml</span>
+[preset.deploy]
+icon = "paperplane.fill"
+<span class="c"></span>
+<span class="p">$ </span>drip deploy "Shipped to prod"</pre><button class="again" type="button">play again</button></div>
+      <div class="row" tabindex="0" data-key="stack"><h2>Three at once</h2><p>Cards that arrive together stack, each out of the last. Past three, they wait in a drop that counts them.</p><pre><span class="p">$ </span>drip ok   "Build finished"
+<span class="p">$ </span>drip warn "Disk almost full"
+<span class="p">$ </span>drip fail "Deploy failed"
+<span class="p">$ </span>drip info "Backup done"
+<span class="p">$ </span>drip ok   "Release 1.4 is out"</pre><button class="again" type="button">play again</button></div>
     </div>
   </section>
 
@@ -875,25 +909,19 @@ async function execOne(stages, term, stage, config, alive) {
 class LineTerm { echo() {} print() {} done() {} waiting() {} clear() {} }
 const allStages = [];
 function makeStage(screen, opts = {}) { const s = new Stage(screen, opts); allStages.push(s); return s; }
-const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const CLAUDE = (event, extra) => JSON.stringify({ hook_event_name: event, cwd: "/work/my-app", session_id: "s1", ...extra });
-// The features, as real drip command lines that DripCore runs.
+// What each feature plays: real drip command lines that DripCore runs. The rows in the page hold the words.
 const FEATURES = [
-  { key: "run", tab: "wrap a command", title: "Wrap a command", text: "drip runs it, times it and shows how it went: green on exit 0, red with the exit code otherwise.",
-    shown: "drip run make test", steps: [{ line: "drip run make test" }] },
-  { key: "agent", tab: "coding agents", title: "Hear from coding agents", text: "A hook from a recipe names the project and what the agent needs, then says when it has finished.",
-    shown: "drip hook claude", steps: [
+  { key: "run", steps: [{ line: "drip run make test" }] },
+  { key: "open", steps: [{ line: 'drip ok "Report ready" -d "coverage 91%, 3 files changed" --open ./report.html --button "View report"', shown: 'drip ok "Report ready" --open ./report.html --button "View report"' }] },
+  { key: "agent", steps: [
       { line: `drip hook claude '${CLAUDE("PermissionRequest", { tool_name: "Bash", tool_input: { command: "npm test" }, tool_use_id: "toolu_1" })}'`, shown: "drip hook claude   # Claude asks to run npm test" },
       { sleep: 2.6 },
       { line: `drip hook claude '${CLAUDE("Stop", { last_assistant_message: "All **246** tests pass. Pushed `fix/notch`." })}'`, shown: "drip hook claude   # Claude has finished" }] },
-  { key: "id", tab: "update in place", title: "Update in place", text: "Cards with the same --id replace each other. The card on screen springs to the new card's size.",
-    shown: 'drip ok "Deployed" --id deploy', steps: [{ line: 'drip info "Deploying" -d "api 1.4.2 to production" --id deploy' }, { sleep: 2 }, { line: 'drip ok "Deployed" -d "api 1.4.2 is live" --id deploy' }] },
-  { key: "ask", tab: "ask, then act", title: "Ask, then act", text: "--yes and --no wait for a click. drip exits 0 on yes, so && runs the next step only then. Answer it here.",
-    shown: 'drip ok "Merge drip #23?" --yes Merge --no Later && gh pr merge 23', steps: [{ line: 'drip ok "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23' }] },
-  { key: "preset", tab: "your presets", title: "Your own presets", text: "Icons, colors, sounds and timing go in ~/.config/drip/config.toml. Here, a deploy preset.",
-    shown: 'drip deploy "Shipped to prod"', config: CONFIG, steps: [{ line: 'drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"' }] },
-  { key: "stack", tab: "three at once", title: "Three at once", text: "Cards that arrive together stack, each out of the last. Past three, they wait in a drop that counts them.",
-    shown: "drip ok; drip warn; drip fail; drip info; drip ok", steps: [
+  { key: "id", steps: [{ line: 'drip info "Deploying" -d "api 1.4.2 to production" --id deploy' }, { sleep: 2 }, { line: 'drip ok "Deployed" -d "api 1.4.2 is live" --id deploy' }] },
+  { key: "ask", steps: [{ line: 'drip ok "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23' }] },
+  { key: "preset", config: CONFIG, steps: [{ line: 'drip deploy "Shipped to prod" -d "api 1.4.2, 14 files changed"' }] },
+  { key: "stack", steps: [
       'drip ok "Build finished" -d "make test: 246 passed in 3.2s"', 'drip warn "Disk almost full" -d "12 GB left on Macintosh HD"',
       'drip fail "Deploy failed" -d "staging: health check timed out"', 'drip info "Backup done" -d "412 files, 3.1 GB"', 'drip ok "Release 1.4 is out" -d "14 files changed"',
     ].flatMap((line) => [{ line, gap: 0.12 }]) },
@@ -915,33 +943,18 @@ function player(stage, term) {
   };
 }
 
-
-const APPLE = `<svg class="apple" viewBox="0 0 814 1000" aria-hidden="true"><path d="M788 341c-6 4-108 62-108 190 0 148 130 200 134 202-1 3-21 72-69 142-43 61-88 122-156 122s-86-40-164-40c-77 0-104 41-167 41s-106-57-156-127C44 789 0 668 0 553c0-184 120-282 238-282 63 0 115 41 155 41 38 0 97-44 168-44 27 0 124 3 188 73zM554 170c29-35 51-84 51-133 0-7-1-14-2-19-48 2-105 32-140 72-27 31-53 80-53 130 0 8 1 15 2 18 3 1 9 2 14 2 43 0 97-29 128-70z"/></svg>`;
-const WIFI = `<svg class="wifi" viewBox="0 0 20 15" aria-hidden="true"><path d="M2.2 5.4a11 11 0 0 1 15.6 0M5.3 8.6a6.6 6.6 0 0 1 9.4 0"/><circle cx="10" cy="12.3" r="1.7"/></svg>`;
-const BATT = `<svg viewBox="0 0 30 14" aria-hidden="true"><path d="M3 0h21a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H3a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3zm0 1.3A1.7 1.7 0 0 0 1.3 3v8A1.7 1.7 0 0 0 3 12.7h21a1.7 1.7 0 0 0 1.7-1.7V3A1.7 1.7 0 0 0 24 1.3zM3 3h17v8H3zM28 4.5h.6a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H28z"/></svg>`;
-
 const screen = document.getElementById("screen");
-screen.innerHTML = `<div class="menubar">${APPLE}<span class="r">${WIFI}${BATT}<span class="clock"></span></span></div><canvas class="stage-canvas"></canvas>`;
-
 const term = new LineTerm();
 const stage = makeStage(screen, { term, zoom: (W) => Math.min(1, W / 560) });
 const play = player(stage, term), rows = document.getElementById("rows");
 
-// The story: the shared features, in an order that builds up, plus one that opens a file.
-const order = ["run", "id", "agent", "ask", "preset", "stack"];
-const story = order.map((k) => FEATURES.find((f) => f.key === k));
-story.splice(2, 0, { key: "open", title: "Open something from it", text: "--open puts a button on the card. A click opens a URL, a file or an app.",
-  shown: 'drip ok "Report ready" --open ./report.html --button "View report"',
-  steps: [{ line: 'drip ok "Report ready" -d "coverage 91%, 3 files changed" --open ./report.html --button "View report"', shown: 'drip ok "Report ready" --open ./report.html --button "View report"' }] });
-const pretty = { stack: 'drip ok   "Build finished"\ndrip warn "Disk almost full"\ndrip fail "Deploy failed"\ndrip info "Backup done"\ndrip ok   "Release 1.4 is out"',
-  agent: '# in ~/.claude/settings.json, from a recipe\ndrip hook claude', preset: '# ~/.config/drip/config.toml\n[preset.deploy]\nicon = "paperplane.fill"\n\ndrip deploy "Shipped to prod"' };
-const command = (text, key) => text.split("\n").map((l) => l.startsWith("#") || !l ? `<span class="c">${esc(l)}</span>` : key === "preset" && !l.startsWith("drip") ? esc(l) : `<span class="p">$ </span>${esc(l).replace(/(--?[\w-]+)/g, '<span class="f">$1</span>')}`).join("\n");
-story.forEach((f, n) => {
-  const r = document.createElement("div"); r.className = "row"; r.tabIndex = 0;
-  r.innerHTML = `<h2>${f.title}</h2><p>${esc(f.text)}</p><pre>${command(pretty[f.key] ?? f.shown, f.key)}</pre><button class="again" type="button">play again</button>`;
+// The story: the rows in the page give the order and the words. Each row plays the feature with its data-key.
+const story = [...rows.querySelectorAll(":scope > .row")].map((r, n) => {
   r.onclick = (e) => { if (!e.target.closest("pre")) { clearTimeout(wait); slideTo(n); lightDots(n); go(n, true); } };
   r.onkeydown = (e) => { if (e.key === "Enter") go(n, true); };
-  rows.append(r);
+  const feature = FEATURES.find((f) => f.key === r.dataset.key);
+  if (!feature) throw new Error(`no feature plays the row ${r.dataset.key}`);
+  return feature;
 });
 
 let active = -1, ready = false;
@@ -968,9 +981,7 @@ addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimat
 addEventListener("resize", placeBeam);
 // Narrow: the rows are cards to swipe under the laptop, and the card in view plays. Dots show where you are.
 const narrow = matchMedia("(width <= 900px)");
-const dots = document.createElement("div"); dots.className = "dots";
-dots.innerHTML = list().map((r) => `<button type="button" aria-label="${esc(r.querySelector("h2").textContent)}"></button>`).join("");
-rows.before(dots);
+const dots = document.querySelector(".story .dots");
 const inset = () => parseFloat(getComputedStyle(rows).paddingLeft);
 const restOf = (n) => list()[n].offsetLeft - inset();
 // A tap on a dot or a card slides straight to it, so the cards it passes on the way do not play.
@@ -999,9 +1010,6 @@ narrow.addEventListener("change", () => { if (!ready) return; if (narrow.matches
 lightDots(0);
 const sticky = document.querySelector(".sticky");
 new ResizeObserver(() => sticky.style.setProperty("--lh", sticky.offsetHeight + "px")).observe(sticky);
-// The menu bar clock: the visitor's own time.
-function clock() { const t = () => { screen.querySelector(".clock").textContent = new Date().toLocaleTimeString([], { weekday: "short", hour: "numeric", minute: "2-digit" }); }; t(); setInterval(t, 15000); }
-clock();
 // Compiles the engine as it downloads. A server that sends it with another type than
 // application/wasm gets it compiled from its bytes instead.
 async function compileEngine() {

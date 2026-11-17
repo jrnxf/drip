@@ -1,8 +1,8 @@
 #!/bin/sh
 # Builds the site into web/dist: the pages from web/public with their styles from web/styles
 # compiled by Tailwind CSS and inlined, and drip's engine, DripCore compiled to WebAssembly from
-# this checkout. The engine and the fonts are named by their content, so browsers can keep them for
-# good, and _headers says so and tells Cloudflare which fonts each page needs first.
+# this checkout. The engine, its loader and the fonts are named by their content, so browsers can
+# keep them for good, and _headers says so and tells Cloudflare which fonts each page needs first.
 set -eu
 . "$(dirname "$0")/tools.sh"
 
@@ -55,12 +55,13 @@ content_named() {
     echo "$named"
 }
 wasm=$(content_named drip wasm)
+engine=$(content_named drip-engine js)
 archivo=$(content_named archivo woff2)
 martian=$(content_named martian-mono woff2)
 
 # A file named by its content never changes, so a browser need not ask for it again.
 headers=$dist/_headers
-for file in "$wasm" "$archivo" "$martian"; do
+for file in "$wasm" "$engine" "$archivo" "$martian"; do
     printf '/%s\n  Cache-Control: public, max-age=31536000, immutable\n' "$file"
 done > "$headers"
 # Cloudflare sends a page's Link headers ahead of the page as 103 Early Hints, so the browser has
@@ -69,8 +70,8 @@ link="</$archivo>; rel=preload; as=font; type=\"font/woff2\"; crossorigin, </$ma
 
 css=$(mktemp -d)
 trap 'rm -rf "$css"' EXIT
-# Each page marks where its styles go, naming its stylesheet in web/styles, and names its engine
-# and its fonts, which get their built names here.
+# Each page marks where its styles go, naming its stylesheet in web/styles, and names its engine,
+# its loader and its fonts, which get their built names here.
 for page in "$web"/public/*.html; do
     name=${page##*/}
     style=$(sed -n 's/^<!-- \([a-z]*\)\.css: build\.sh puts the compiled styles here\. -->$/\1/p' "$page")
@@ -80,7 +81,7 @@ for page in "$web"/public/*.html; do
     awk -v css="$css/$style.css" -v mark="<!-- $style.css: build.sh puts the compiled styles here. -->" '
         $0 == mark { printf "<style>"; while ((getline line < css) > 0) print line; print "</style>"; next }
         { print }' "$page" |
-        sed "s/__DRIP_WASM__/$wasm/g; s/archivo\.woff2/$archivo/g; s/martian-mono\.woff2/$martian/g" > "$dist/$name"
+        sed "s/__DRIP_WASM__/$wasm/g; s/drip-engine\.js/$engine/g; s/archivo\.woff2/$archivo/g; s/martian-mono\.woff2/$martian/g" > "$dist/$name"
     grep -q "^<style>" "$dist/$name"
     # A font the page asks for under its old name is a 404, and one it does not preload arrives
     # after the first paint, which then shows the fallback font.
@@ -94,6 +95,9 @@ for page in "$web"/public/*.html; do
     done
     if grep -nE '(archivo|martian-mono)\.woff2' "$dist/$name"; then
         echo "$name names a font without its hash" >&2; exit 1
+    fi
+    if grep -nE '__DRIP_WASM__|drip-engine\.js' "$dist/$name"; then
+        echo "$name names the engine or its loader without its hash" >&2; exit 1
     fi
     # Cloudflare serves index.html as / and every other page without its .html.
     case $name in index.html) path=/ ;; *) path=/${name%.html} ;; esac
