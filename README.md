@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jrnxf/assets/main/drip/demo.webp" width="800" alt="drip cards growing out of the camera notch: Deploying v1.4.0 updates in place from building to tests passed, then turns green as Deployed to staging with a View button; Claude needs you, with the Claude mark, stacks under it, then Lint passed fills a stack of three while Disk almost full and e2e failed wait in a drop under it that counts them and grow out of it as cards leave; then the question Ship v1.4.0 to prod?, with Ship and Cancel buttons, until it times out">
+  <img src="https://raw.githubusercontent.com/jrnxf/assets/main/drip/demo.webp" width="800" alt="drip cards dropping out of the camera notch: Deploying v1.4.0 updates in place from building to tests passed, then turns green as Deployed to staging with a View button; Claude needs you, with the Claude mark, stacks under it, then Lint passed fills a stack of three while Disk almost full and e2e failed wait in a drop under it that counts them and come out of it as cards leave; then the question Ship v1.4.0 to prod?, with Ship and Cancel buttons, until it times out">
 </p>
 
 <p align="center"><a href="https://drip.jrnxf.co">Interactive demo</a> · <a href="docs/usage.md">Documentation</a></p>
@@ -30,7 +30,7 @@ drip ok "hello"
 ```
 
 Requires macOS 13 or newer. Tested on macOS 15 and 26. Homebrew installs a prebuilt binary for Apple silicon and Intel, with no Xcode needed.
-No Notifications permission: drip draws its own card. On a Mac without a notch, the card grows out of the top edge of the screen.
+No Notifications permission: drip draws its own card. On a Mac without a notch, the card drops out of the top edge of the screen.
 See [installation](docs/install.md) for source builds and uninstall instructions.
 
 ## Compose it
