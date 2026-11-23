@@ -1276,13 +1276,13 @@ const narrow = matchMedia("(width <= 760px)");
 const compact = matchMedia("(width <= 1100px)");
 // A display with its printer and the status beside DRIP. The notch and the cards are at their real
 // size, smaller only when the display is too small for them.
-function makeUnit(screen, tape, stat, { limit, zoom }) {
-  const term = new Term(tape, { max: 80, limit });
+function makeUnit(screen, tape, stat, { max = 80, limit, zoom }) {
+  const term = new Term(tape, { max, limit });
   return { stage: new Stage(screen, { term, zoom }), term, stat, word: stat.querySelector(".w"), time: stat.querySelector(".t"), running: 0, latest: 0 };
 }
 const machine = makeUnit(document.getElementById("hero-screen"), document.getElementById("hero-tape"), document.getElementById("run-stat"),
-  // The machine's paper stays short, clear of the story's display under it.
-  { limit: () => 250, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 600)) });
+  // The machine's paper keeps all it prints and grows over what is under it, until someone cuts it.
+  { max: Infinity, limit: () => Infinity, zoom: (W) => (narrow.matches ? 1 : Math.min(1, W / 600)) });
 const viewer = document.getElementById("viewer"), mini = viewer.querySelector(".device");
 // The story's paper is as long as the view has room for under its display: past that, the oldest print goes.
 const viewerUnit = makeUnit(document.getElementById("story-screen"), document.getElementById("story-tape"), document.getElementById("story-stat"),
