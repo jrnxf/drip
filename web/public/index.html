@@ -79,7 +79,7 @@
   <main id="top">
     <section class="hero" aria-label="drip">
       <div class="intro">
-        <h1 class="type-hero m-0">Notifications that work your way.</h1>
+        <h1 class="type-hero m-0"><span>Notifications</span> <span>that work</span> <span>your way.</span></h1>
         <p class="lede">Scriptable notifications from the Mac notch. A CLI for builds, deploys and coding agents like Claude Code, Codex and Gemini CLI.</p>
         <div class="plate"><code>brew install jrnxf/tap/drip</code><button type="button" class="copy-btn" data-copy="brew install jrnxf/tap/drip" aria-label="Copy the install command">copy</button></div>
       </div>
@@ -100,8 +100,8 @@
               <div class="dispnote" id="dispnote" aria-hidden="true"><span class="t"></span><span class="hint">press to run</span></div>
             </div>
           </div>
-          <div class="keys" id="keys" role="group" aria-label="Examples"></div>
-          <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>what ran</span></div><div class="log" id="hero-tape" aria-live="polite"></div></div></div></div>
+          <div class="keys" id="keys" role="group" aria-label="Examples"><div class="krow"><div class="kgroup" style="--n: 3;"><span class="grp" aria-hidden="true">cards</span><div class="kkeys"><button type="button" class="key" title="drip ok &quot;Build finished&quot; -d &quot;make test: 246 passed in 3.2s&quot;" aria-label="ok: a success card" style="--c: #30d158;"><span class="led"></span><span class="face"><b>ok</b><small>success</small></span></button><button type="button" class="key" title="drip fail &quot;Deploy failed&quot; -d &quot;staging: health check timed out after 30s&quot;" aria-label="fail: a failure card" style="--c: #ff453a;"><span class="led"></span><span class="face"><b>fail</b><small>failure</small></span></button><button type="button" class="key" title="drip warn &quot;Disk almost full&quot; -d &quot;12 GB left on Macintosh HD&quot;" aria-label="warn: a warning card" style="--c: #ff9f0a;"><span class="led"></span><span class="face"><b>warn</b><small>warning</small></span></button></div></div><div class="kgroup pair" style="--n: 2;"><span class="grp" aria-hidden="true">watch</span><div class="kkeys"><button type="button" class="key" title="drip run make test" aria-label="run: drip run make test" style="--c: #8e8e93;"><span class="led"></span><span class="face"><b>run</b><small>wraps a command</small></span></button><button type="button" class="key" title="drip hook claude   # Claude asks, then has finished" aria-label="agent: Claude needs you, then is done" style="--c: #0a84ff;"><span class="led"></span><span class="face"><b>agent</b><small>agent hook</small></span></button></div></div></div><div class="krow"><div class="kgroup" style="--n: 3;"><span class="grp" aria-hidden="true">behavior</span><div class="kkeys"><button type="button" class="key" title="drip ok &quot;Release 1.4 is out&quot; --button &quot;View&quot; --open https://github.com/jrnxf/drip" aria-label="--open: a card with a button" style="--c: #5e5ce6;"><span class="led"></span><span class="face"><b>--open</b><small>adds a button</small></span></button><button type="button" class="key" title="drip ok &quot;Merge drip #23?&quot; -d &quot;checks green, 1 approval&quot; --yes Merge --no Later &amp;&amp; gh pr merge 23" aria-label="--yes: a question with yes and no buttons" style="--c: #30d158;"><span class="led"></span><span class="face"><b>--yes</b><small>yes / no buttons</small></span></button><button type="button" class="key" title="drip fail &quot;Deploy failed&quot; -d &quot;rolled back to v1.3.9&quot; --stay" aria-label="--stay: a card that stays until clicked" style="--c: #ff453a;"><span class="led"></span><span class="face"><b>--stay</b><small>stays until clicked</small></span></button></div></div><div class="kgroup" style="--n: 3;"><span class="grp" aria-hidden="true">more</span><div class="kkeys"><button type="button" class="key" title="drip info &quot;Deploying&quot; -d &quot;api 1.4.2 to production&quot; --id deploy; sleep 1.6; drip ok &quot;Deployed&quot; -d &quot;api 1.4.2 is live&quot; --id deploy" aria-label="--id: a card replaced in place" style="--c: #0a84ff;"><span class="led"></span><span class="face"><b>--id</b><small>updates in place</small></span></button><button type="button" class="key" title="drip deploy &quot;Shipped to prod&quot; -d &quot;api 1.4.2, 14 files changed&quot;" aria-label="preset: your own preset" style="--c: #a78bfa;"><span class="led"></span><span class="face"><b>preset</b><small>your own look</small></span></button><button type="button" class="key" title="drip ok &quot;Build finished&quot;; drip warn &quot;Disk almost full&quot;; drip fail &quot;Deploy failed&quot;; drip info &quot;Backup done&quot;; drip ok &quot;Release 1.4 is out&quot;" aria-label="stack: five cards at once" style="--c: #d0d0cc;"><span class="led"></span><span class="face"><b>stack</b><small>3 at once</small></span></button></div></div></div></div>
+          <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="log" id="hero-tape" aria-live="polite"><div><div class="end"><div class="head"><span>drip</span><span>what ran</span></div><div class="stamp"></div></div></div></div></div></div></div>
         </div>
       </div>
     </section>
@@ -111,7 +111,7 @@
         <div class="device mini">
           <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
           <div class="display" id="story-screen" role="img" aria-label="A display that plays the row in view"><div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="run" id="story-stat"><span class="dot"></span><span class="w"></span><span class="t"></span></span><span class="clock"></span></div><canvas class="stage-canvas"></canvas></div>
-          <div class="printer" id="story-printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="head"><span>drip</span><span>what ran</span></div><div class="log" id="story-tape"></div></div></div></div>
+          <div class="printer" id="story-printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="log" id="story-tape"><div><div class="end"><div class="head"><span>drip</span><span>what ran</span></div><div class="stamp"></div></div></div></div></div></div></div>
         </div>
       </div>
         <div class="rows" id="rows">
@@ -182,7 +182,10 @@ icon = "paperplane.fill"
 <div class="absolute h-1 w-1 overflow-hidden whitespace-nowrap [clip:rect(0_0_0_0)]" aria-live="polite" id="announce"></div>
 
 <script type="module">
-import { loadDrip } from "./drip-engine.js";
+// The engine's loader is imported, not waited for: the rest of this script runs with the page, so
+// the keys, the clocks and the paper are set up before the engine is here, and nothing moves when it is.
+const engineLoader = import("./drip-engine.js");
+engineLoader.catch(() => {}); // a failure is reported where the engine is loaded, below
 
 // The engine, named by its content when the site is built (web/build.sh).
 const WASM = "__DRIP_WASM__";
@@ -320,6 +323,10 @@ const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let drip = null;
 // A two-line card each stage makes room for, measured once the engine loads.
 let reference = null;
+// The reference card's size as the engine lays it out, used until the engine is here, so the
+// screens have their scale, and the status beside DRIP its width, from the first paint. The engine's
+// own numbers replace these once it loads; while they agree, nothing moves.
+const REFERENCE_SIZE = { pillTop: 44, pillHeight: 59, dropSize: 26 };
 const notch = { width: 185, height: 32 };
 // The space between two cards of a stack (CardStack.gap).
 const STACK_GAP = 10;
@@ -404,10 +411,10 @@ class Stage {
   // change it, so the notch keeps its size; a card is laid out no wider than the screen shows across,
   // so long text wraps instead of running off it.
   refit() {
-    const { width, height } = this.canvas.getBoundingClientRect(), m = reference?.metrics;
+    const { width, height } = this.canvas.getBoundingClientRect(), m = reference?.metrics ?? REFERENCE_SIZE;
     const across = (width - 16) / 380;
     // With the overflow drop, 26 points round, under the last card.
-    const down = m ? (height - 10) / (m.pillTop + this.holds * m.pillHeight + this.holds * STACK_GAP + m.dropSize + 6) : Infinity;
+    const down = (height - 10) / (m.pillTop + this.holds * m.pillHeight + this.holds * STACK_GAP + m.dropSize + 6);
     this.fit = Math.min(this.zoom(width), across, down);
     this.widest = (width - 16) / this.fit - 16;
     this.screen.style.setProperty("--fit", this.fit);
@@ -833,10 +840,9 @@ class Term {
   // `limit`: how long the print may get, in CSS pixels; past it the oldest entries go.
   constructor(log, { max = 40, limit = () => Infinity } = {}) {
     this.log = log; this.max = max; this.limit = limit; this.entry = null; this.held = false;
-    this.feed = document.createElement("div"); log.append(this.feed);
-    this.end = document.createElement("div"); this.end.className = "end";
-    this.stamp = document.createElement("div"); this.stamp.className = "stamp";
-    this.end.append(log.parentElement.querySelector(".head"), this.stamp);
+    // The paper's head and stamp are in the page's markup, at the far end of the feed where they
+    // print, so the paper has its length before this script runs.
+    this.feed = log.firstElementChild; this.end = this.feed.querySelector(".end"); this.stamp = this.end.querySelector(".stamp");
     this.printing = Promise.resolve(); this.sheet = 0;
     this.fresh();
     this.paper = new Paper(log, this.feed);
@@ -921,7 +927,7 @@ class Term {
 // A printer's paper is as long as its print: each entry feeds it further out, over whatever is
 // below it, and nothing on the page moves. Drag the scissors across it and it is cut there; what
 // was under the cut falls away, and later print feeds the cut end out from where it was.
-const PAPER_TAIL = 20; // blank paper between the last line and the end, in CSS pixels
+const PAPER_TAIL = 10; // blank paper under the slip's padding, past its last line (.end has 10 more), in CSS pixels
 const CUT_STEP = 2; // a cut's edge is sampled every 2 px across the paper
 const scissors = scissorCursors();
 class Paper {
@@ -1310,8 +1316,6 @@ const CHIPS = [
   { key: "--yes", name: "a question with yes and no buttons", color: "#30d158", line: `drip ok "Merge drip #23?" -d "checks green, 1 approval" --yes Merge --no Later && gh pr merge 23`, group: "behavior", hint: "yes / no buttons", says: "--yes / --no: asks Merge or Later, and waits for your click" },
   { key: "--stay", name: "a card that stays until clicked", color: "#ff453a", line: `drip fail "Deploy failed" -d "rolled back to v1.3.9" --stay`, group: "behavior", hint: "stays until clicked", says: "--stay: a red card that stays until you click it" },
 ];
-// The keys' groups, in two rows.
-const KEYROWS = [["cards", "watch"], ["behavior", "more"]];
 
 // Runs a line on a unit, even while others run there. The paper prints it at once, as `shown`,
 // unless `print` is off; the display counts the latest run's time, then says how it ended; and the
@@ -1365,31 +1369,19 @@ function preview(chip) {
 function unpreview() { dispNote.classList.remove("on"); }
 
 const keyFor = new Map();
+// The keys are in the page's markup, so the panel paints with the page and nothing moves when this
+// script runs. Here each gets what it does, found by its label.
 const keysBox = document.getElementById("keys");
-const groupBox = new Map();
-for (const row of KEYROWS) {
-  const r = document.createElement("div"); r.className = "krow";
-  for (const name of row) {
-    const n = CHIPS.filter((chip) => chip.group === name).length;
-    const g = document.createElement("div"); g.className = `kgroup${n === 2 ? " pair" : ""}`; g.style.setProperty("--n", n);
-    g.innerHTML = `<span class="grp" aria-hidden="true"></span><div class="kkeys"></div>`;
-    g.querySelector(".grp").textContent = name;
-    r.append(g); groupBox.set(name, g.querySelector(".kkeys"));
-  }
-  keysBox.append(r);
-}
+const keyButtons = new Map([...keysBox.querySelectorAll(".key")].map((b) => [b.getAttribute("aria-label"), b]));
 for (const chip of CHIPS) {
-  const b = document.createElement("button");
-  b.type = "button"; b.className = "key"; b.title = chip.shown ?? chip.line; b.style.setProperty("--c", chip.color);
-  b.setAttribute("aria-label", `${chip.key}: ${chip.name}`);
-  b.innerHTML = `<span class="led"></span><span class="face"><b></b><small></small></span>`;
-  b.querySelector("b").textContent = chip.key; b.querySelector("small").textContent = chip.hint;
+  const b = keyButtons.get(`${chip.key}: ${chip.name}`);
+  if (!b) { console.error(`the page has no key for ${chip.key}`); continue; }
   b.addEventListener("pointerenter", () => preview(chip));
   b.addEventListener("focus", () => preview(chip));
   b.addEventListener("pointerleave", unpreview);
   b.addEventListener("blur", unpreview);
   b.addEventListener("click", () => { if (drip) runHero(chip); });
-  groupBox.get(chip.group).append(b); keyFor.set(chip, b);
+  keyFor.set(chip, b);
 }
 
 // Until the visitor presses a key, the machine plays a few cards by itself.
@@ -1631,7 +1623,7 @@ async function compileEngine() {
 }
 try {
   const t0 = performance.now();
-  const module = await compileEngine();
+  const [module, { loadDrip }] = await Promise.all([compileEngine(), engineLoader]);
   const t1 = performance.now();
   drip = await loadDrip(module, measure);
   reference = drip.command({ args: ["ok", "Build finished", "-d", "make test: 246 passed in 3.2s"], env: {}, config: "", notch }).deliveries[0].cards[0];
@@ -1647,8 +1639,10 @@ try {
   if (new URLSearchParams(location.search).get("attract") === "0") stopAttract();
   await runHero(CHIPS[0], { fromUser: false });
 } catch (error) {
-  document.getElementById("loading").textContent = "drip's engine did not load: " + error.message;
   console.error(error);
+  // The note is gone once the engine is up; a failure after that is only for the console.
+  const note = document.getElementById("loading");
+  if (note) note.textContent = "drip's engine did not load: " + error.message;
 }
 </script>
 </body>

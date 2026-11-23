@@ -25,6 +25,9 @@
   .hero .devwrap { grid-area: device; align-self: center; }
   .lede { margin: 22px 0 0; max-width: 44ch; font-size: 18px; color: var(--color-ink-2); text-wrap: pretty; }
   .intro .plate { max-width: 420px; }
+  /* The headline is three lines beside the machine, in its own font or the one shown while it loads,
+     so the words do not move when the font arrives. */
+  .intro h1 span { display: block; }
 
   /* ---------- the story: rows on the left, the machine's display on the right ---------- */
   .story { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); column-gap: 64px; border-top: 1px solid var(--color-rule); padding: 72px 0 0; }
@@ -117,12 +120,15 @@
   .printer { position: relative; z-index: 2; height: 10px; }
   .device > .printer { max-width: 620px; margin: 20px auto 0; }
   .slot { position: relative; z-index: 1; height: 10px; border-radius: 5px; background: #0d0d0d; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--color-lip); }
-  .printer .paper { position: absolute; top: 5px; left: 10px; right: 10px; height: var(--paper-len, var(--paper-h)); transform-origin: 50% 0; clip-path: polygon(-80px 0, calc(100% + 80px) 0, calc(100% + 80px) calc(100% + 80px), -80px calc(100% + 80px)); }
+  .printer .paper { position: absolute; top: 5px; left: 10px; right: 10px; height: var(--paper-len, auto); transform-origin: 50% 0; clip-path: polygon(-80px 0, calc(100% + 80px) 0, calc(100% + 80px) calc(100% + 80px), -80px calc(100% + 80px)); }
   /* The slot's shadow on the paper stays at the slot as the paper feeds through it. */
   .printer .paper::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 12px; z-index: 1; background: linear-gradient(rgba(0,0,0,.16), transparent); pointer-events: none; }
   .printer .slip { height: 100%; display: flex; flex-direction: column; padding: 16px 18px 10px; }
   .printer .head { padding: 10px 0 4px; border-bottom: 0; border-top: 2px solid var(--color-paper-ink); }
-  .printer .stamp { font: 400 10px/1.5 var(--font-mono); opacity: .6; }
+  /* The stamp keeps its line before the script prints the time in it, and the end leaves blank
+     paper under it: the paper is as long without the script (auto) as the script measures it. */
+  .printer .stamp { min-height: 15px; font: 400 10px/1.5 var(--font-mono); opacity: .6; }
+  .printer .end { padding-bottom: 10px; }
   /* The paper is as long as what is printed on it, so print stops only where the paper was cut. */
   .log { flex: 1; min-height: 0; overflow: hidden; }
   /* The scissors work over the paper and a little past its sides, so a cut can start in the air and
@@ -216,6 +222,7 @@
 
   @media (width <= 1100px) {
     .intro { padding: 0; }
+    .intro h1 span { display: inline; }
     .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "device"; row-gap: 8px; min-height: 0; padding-top: 32px; }
     .devwrap { padding-top: 22px; }
     .callouts { display: none; }
