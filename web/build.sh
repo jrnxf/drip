@@ -70,6 +70,9 @@ link="</$archivo>; rel=preload; as=font; type=\"font/woff2\"; crossorigin, </$ma
 
 css=$(mktemp -d)
 trap 'rm -rf "$css"' EXIT
+# Cloudflare Web Analytics counts visits without cookies. Every page gets its beacon before </body>.
+beacon="<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{\"token\": \"f46f3dc0630e4000b27c0c5ae6fd26c5\"}'></script><!-- End Cloudflare Web Analytics -->"
+
 # Each page marks where its styles go, naming its stylesheet in web/styles, and names its engine,
 # its loader and its fonts, which get their built names here.
 for page in "$web"/public/*.html; do
@@ -78,11 +81,15 @@ for page in "$web"/public/*.html; do
     if [ -z "$style" ]; then echo "$name does not mark where its styles go" >&2; exit 1; fi
     # Not minified: the minifier rewrites some values to shorter ones that compute differently.
     [ -f "$css/$style.css" ] || "$tailwind" --input "$web/styles/$style.css" --output "$css/$style.css"
-    awk -v css="$css/$style.css" -v mark="<!-- $style.css: build.sh puts the compiled styles here. -->" '
+    awk -v css="$css/$style.css" -v beacon="$beacon" -v mark="<!-- $style.css: build.sh puts the compiled styles here. -->" '
         $0 == mark { printf "<style>"; while ((getline line < css) > 0) print line; print "</style>"; next }
+        $0 == "</body>" { print beacon }
         { print }' "$page" |
         sed "s/__DRIP_WASM__/$wasm/g; s/drip-engine\.js/$engine/g; s/archivo\.woff2/$archivo/g; s/martian-mono\.woff2/$martian/g" > "$dist/$name"
     grep -q "^<style>" "$dist/$name"
+    if [ "$(grep -c 'static.cloudflareinsights.com/beacon.min.js' "$dist/$name")" != 1 ]; then
+        echo "$name does not load the Web Analytics beacon once" >&2; exit 1
+    fi
     # A font the page asks for under its old name is a 404, and one it does not preload arrives
     # after the first paint, which then shows the fallback font.
     for font in "$archivo" "$martian"; do
