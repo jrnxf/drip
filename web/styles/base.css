@@ -19,13 +19,24 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* One orange. Only these tokens exist: Tailwind's defaults are cleared. The colors are the dark
-   theme's; the light theme sets them again below, and the home page sets its own light ones. */
+/* Until the fonts load, system fonts stand in with their metrics, so nothing moves when they arrive.
+   Each stand-in has its font's ascent and descent (Archivo 878 and 210, Martian Mono 1000 and 200,
+   per 1000 units), so its letters sit where the font's will. Martian Mono's letters are all 0.70em
+   wide, at every weight, so its stand-in is a monospace font scaled to that width: Menlo, DejaVu Sans
+   Mono, Liberation Mono and Courier New are 0.60em wide, and Consolas 0.55em. The ascent and descent
+   are of the scaled size, so they are divided by the scale. */
+@font-face { font-family: "Archivo Fallback"; src: local("Helvetica Neue"), local("Arial"), local("Liberation Sans"); ascent-override: 87.8%; descent-override: 21%; line-gap-override: 0%; }
+@font-face { font-family: "Martian Mono Fallback"; src: local("Menlo"), local("DejaVu Sans Mono"), local("Liberation Mono"), local("Courier New"); size-adjust: 116.3%; ascent-override: 86%; descent-override: 17.2%; line-gap-override: 0%; }
+@font-face { font-family: "Martian Mono Fallback Narrow"; src: local("Consolas"); size-adjust: 127.3%; ascent-override: 78.6%; descent-override: 15.7%; line-gap-override: 0%; }
+
+/* drip drawn as a small piece of hardware: a display that runs the engine, keys you press and
+   a printer that prints what ran. One orange. Only these tokens exist: Tailwind's defaults are
+   cleared. The colors are the dark theme's; the light theme sets them again below. */
 @theme static {
   --*: initial;
   --spacing: 1px;
-  --font-sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "Martian Mono", ui-monospace, Menlo, monospace;
+  --font-sans: "Archivo", "Archivo Fallback", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Martian Mono", "Martian Mono Fallback", "Martian Mono Fallback Narrow", ui-monospace, Menlo, monospace;
   /* The cards are macOS UI: their text is measured and painted in the system font. */
   --font-sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   --ease-out: cubic-bezier(.23, 1, .32, 1);
@@ -40,7 +51,7 @@
 /* Type styles that set the whole font, so nothing is inherited from around them. */
 @utility lbl { font: 500 10.5px/1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); }
 @utility type-tag { font: 600 10.5px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
-@utility type-hero { font: 200 clamp(46px, 5vw, 84px)/.98 var(--font-sans); font-stretch: 125%; letter-spacing: -.035em; }
+@utility type-hero { font: 200 clamp(42px, 5.6vw, 76px)/.98 var(--font-sans); font-stretch: 125%; letter-spacing: -.035em; text-wrap: balance; }
 @utility type-title { font: 200 clamp(36px, 3.6vw, 58px)/1 var(--font-sans); font-stretch: 125%; letter-spacing: -.03em; }
 @utility type-feature { font: 600 19px/1.25 var(--font-sans); font-stretch: 112%; letter-spacing: -.01em; }
 @utility type-num { font: 500 10.5px/1 var(--font-mono); letter-spacing: .1em; }
