@@ -95,12 +95,12 @@
             <div class="display" id="hero-screen" role="img" aria-label="A display where drip's cards drop out of the notch">
               <div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="run" id="run-stat"><span class="dot"></span><span class="w"></span><span class="t"></span></span><span class="clock"></span></div>
               <canvas class="stage-canvas"></canvas>
-              <p class="still"><code>$ drip ok &quot;Build finished&quot; -d &quot;make test: 246 passed in 3.2s&quot;</code>a green card from the notch: Build finished</p>
-              <div class="loading" id="loading">loading drip's engine</div>
-              <div class="dispnote" id="dispnote" aria-hidden="true"><span class="t"></span><span class="hint">press to run</span></div>
+              <div class="fakenotch" aria-hidden="true"></div>
+              <div class="boot" id="boot" aria-hidden="true"><div class="at">&gt; fetching drip's engine <span class="n"></span></div><div></div><div></div></div>
+              <div class="dispnote" id="dispnote" aria-hidden="true"><span class="t"></span></div>
             </div>
           </div>
-          <div class="keys" id="keys" role="group" aria-label="Examples"><div class="krow"><div class="kgroup" style="--n: 3;"><span class="grp" aria-hidden="true">cards</span><div class="kkeys"><button type="button" class="key" title="drip ok &quot;Build finished&quot; -d &quot;make test: 246 passed in 3.2s&quot;" aria-label="ok: a success card" style="--c: #30d158;"><span class="led"></span><span class="face"><b>ok</b><small>success</small></span></button><button type="button" class="key" title="drip fail &quot;Deploy failed&quot; -d &quot;staging: health check timed out after 30s&quot;" aria-label="fail: a failure card" style="--c: #ff453a;"><span class="led"></span><span class="face"><b>fail</b><small>failure</small></span></button><button type="button" class="key" title="drip warn &quot;Disk almost full&quot; -d &quot;12 GB left on Macintosh HD&quot;" aria-label="warn: a warning card" style="--c: #ff9f0a;"><span class="led"></span><span class="face"><b>warn</b><small>warning</small></span></button></div></div><div class="kgroup pair" style="--n: 2;"><span class="grp" aria-hidden="true">watch</span><div class="kkeys"><button type="button" class="key" title="drip run make test" aria-label="run: drip run make test" style="--c: #8e8e93;"><span class="led"></span><span class="face"><b>run</b><small>wraps a command</small></span></button><button type="button" class="key" title="drip hook claude   # Claude asks, then has finished" aria-label="agent: Claude needs you, then is done" style="--c: #0a84ff;"><span class="led"></span><span class="face"><b>agent</b><small>agent hook</small></span></button></div></div></div><div class="krow"><div class="kgroup" style="--n: 3;"><span class="grp" aria-hidden="true">behavior</span><div class="kkeys"><button type="button" class="key" title="drip ok &quot;Release 1.4 is out&quot; --button &quot;View&quot; --open https://github.com/jrnxf/drip" aria-label="--open: a card with a button" style="--c: #5e5ce6;"><span class="led"></span><span class="face"><b>--open</b><small>adds a button</small></span></button><button type="button" class="key" title="drip ok &quot;Merge drip #23?&quot; -d &quot;checks green, 1 approval&quot; --yes Merge --no Later &amp;&amp; gh pr merge 23" aria-label="--yes: a question with yes and no buttons" style="--c: #30d158;"><span class="led"></span><span class="face"><b>--yes</b><small>yes / no buttons</small></span></button><button type="button" class="key" title="drip fail &quot;Deploy failed&quot; -d &quot;rolled back to v1.3.9&quot; --stay" aria-label="--stay: a card that stays until clicked" style="--c: #ff453a;"><span class="led"></span><span class="face"><b>--stay</b><small>stays until clicked</small></span></button></div></div><div class="kgroup" style="--n: 3;"><span class="grp" aria-hidden="true">more</span><div class="kkeys"><button type="button" class="key" title="drip info &quot;Deploying&quot; -d &quot;api 1.4.2 to production&quot; --id deploy; sleep 1.6; drip ok &quot;Deployed&quot; -d &quot;api 1.4.2 is live&quot; --id deploy" aria-label="--id: a card replaced in place" style="--c: #0a84ff;"><span class="led"></span><span class="face"><b>--id</b><small>updates in place</small></span></button><button type="button" class="key" title="drip deploy &quot;Shipped to prod&quot; -d &quot;api 1.4.2, 14 files changed&quot;" aria-label="preset: your own preset" style="--c: #a78bfa;"><span class="led"></span><span class="face"><b>preset</b><small>your own look</small></span></button><button type="button" class="key" title="drip ok &quot;Build finished&quot;; drip warn &quot;Disk almost full&quot;; drip fail &quot;Deploy failed&quot;; drip info &quot;Backup done&quot;; drip ok &quot;Release 1.4 is out&quot;" aria-label="stack: five cards at once" style="--c: #d0d0cc;"><span class="led"></span><span class="face"><b>stack</b><small>3 at once</small></span></button></div></div></div></div>
+          <div class="keys" id="keys" role="group" aria-label="Examples"><span class="trykey" id="trykey" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M6 1v9M2 6.5 6 10.5 10 6.5"/></svg>try a key</span><div class="krow"><div class="kgroup" style="--n: 3;"><span class="grp" aria-hidden="true">cards</span><div class="kkeys"><button type="button" class="key" title="drip ok &quot;Build finished&quot; -d &quot;make test: 246 passed in 3.2s&quot;" aria-label="ok: a success card" style="--c: #30d158;"><span class="led"></span><span class="face"><b>ok</b><small>success</small></span></button><button type="button" class="key" title="drip fail &quot;Deploy failed&quot; -d &quot;staging: health check timed out after 30s&quot;" aria-label="fail: a failure card" style="--c: #ff453a;"><span class="led"></span><span class="face"><b>fail</b><small>failure</small></span></button><button type="button" class="key" title="drip warn &quot;Disk almost full&quot; -d &quot;12 GB left on Macintosh HD&quot;" aria-label="warn: a warning card" style="--c: #ff9f0a;"><span class="led"></span><span class="face"><b>warn</b><small>warning</small></span></button></div></div><div class="kgroup pair" style="--n: 2;"><span class="grp" aria-hidden="true">watch</span><div class="kkeys"><button type="button" class="key" title="drip run make test" aria-label="run: drip run make test" style="--c: #8e8e93;"><span class="led"></span><span class="face"><b>run</b><small>wraps a command</small></span></button><button type="button" class="key" title="drip hook claude   # Claude asks, then has finished" aria-label="agent: Claude needs you, then is done" style="--c: #0a84ff;"><span class="led"></span><span class="face"><b>agent</b><small>agent hook</small></span></button></div></div></div><div class="krow"><div class="kgroup" style="--n: 3;"><span class="grp" aria-hidden="true">behavior</span><div class="kkeys"><button type="button" class="key" title="drip ok &quot;Release 1.4 is out&quot; --button &quot;View&quot; --open https://github.com/jrnxf/drip" aria-label="--open: a card with a button" style="--c: #5e5ce6;"><span class="led"></span><span class="face"><b>--open</b><small>adds a button</small></span></button><button type="button" class="key" title="drip ok &quot;Merge drip #23?&quot; -d &quot;checks green, 1 approval&quot; --yes Merge --no Later &amp;&amp; gh pr merge 23" aria-label="--yes: a question with yes and no buttons" style="--c: #30d158;"><span class="led"></span><span class="face"><b>--yes</b><small>yes / no buttons</small></span></button><button type="button" class="key" title="drip fail &quot;Deploy failed&quot; -d &quot;rolled back to v1.3.9&quot; --stay" aria-label="--stay: a card that stays until clicked" style="--c: #ff453a;"><span class="led"></span><span class="face"><b>--stay</b><small>stays until clicked</small></span></button></div></div><div class="kgroup" style="--n: 3;"><span class="grp" aria-hidden="true">more</span><div class="kkeys"><button type="button" class="key" title="drip info &quot;Deploying&quot; -d &quot;api 1.4.2 to production&quot; --id deploy; sleep 1.6; drip ok &quot;Deployed&quot; -d &quot;api 1.4.2 is live&quot; --id deploy" aria-label="--id: a card replaced in place" style="--c: #0a84ff;"><span class="led"></span><span class="face"><b>--id</b><small>updates in place</small></span></button><button type="button" class="key" title="drip deploy &quot;Shipped to prod&quot; -d &quot;api 1.4.2, 14 files changed&quot;" aria-label="preset: your own preset" style="--c: #a78bfa;"><span class="led"></span><span class="face"><b>preset</b><small>your own look</small></span></button><button type="button" class="key" title="drip ok &quot;Build finished&quot;; drip warn &quot;Disk almost full&quot;; drip fail &quot;Deploy failed&quot;; drip info &quot;Backup done&quot;; drip ok &quot;Release 1.4 is out&quot;" aria-label="stack: five cards at once" style="--c: #d0d0cc;"><span class="led"></span><span class="face"><b>stack</b><small>3 at once</small></span></button></div></div></div></div>
           <div class="printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="log" id="hero-tape" aria-live="polite"><div><div class="end"><div class="head"><span>drip</span><span>what ran</span></div><div class="stamp"></div></div></div></div></div></div></div>
         </div>
       </div>
@@ -110,7 +110,7 @@
       <div class="viewer" id="viewer">
         <div class="device mini">
           <span class="screw a"></span><span class="screw b"></span><span class="screw c"></span><span class="screw d"></span>
-          <div class="display" id="story-screen" role="img" aria-label="A display that plays the row in view"><div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="run" id="story-stat"><span class="dot"></span><span class="w"></span><span class="t"></span></span><span class="clock"></span></div><canvas class="stage-canvas"></canvas></div>
+          <div class="display" id="story-screen" role="img" aria-label="A display that plays the row in view"><div class="fakenotch" aria-hidden="true"></div><div class="glyphs" aria-hidden="true"><span>DRIP</span><span class="run" id="story-stat"><span class="dot"></span><span class="w"></span><span class="t"></span></span><span class="clock"></span></div><canvas class="stage-canvas"></canvas></div>
           <div class="printer" id="story-printer"><div class="slot"></div><div class="paper"><div class="slip"><div class="log" id="story-tape"><div><div class="end"><div class="head"><span>drip</span><span>what ran</span></div><div class="stamp"></div></div></div></div></div></div></div>
         </div>
       </div>
@@ -1356,7 +1356,7 @@ async function runOn(unit, line, { key = null, shown = line, config = CONFIG, al
 }
 // A key's line on the hero's machine.
 function runHero(chip, { fromUser = true } = {}) {
-  if (fromUser) stopAttract();
+  if (fromUser) { stopAttract(); document.getElementById("trykey").classList.remove("on"); }
   return runOn(machine, chip.line, { key: keyFor.get(chip), shown: chip.shown ?? chip.line });
 }
 
@@ -1388,6 +1388,7 @@ for (const chip of CHIPS) {
 const ATTRACT = ["run", "--id", "--open", "stack", "agent", "preset", "fail", "ok"].map((key) => CHIPS.find((chip) => chip.key === key));
 let attractOn = true, attractTimer = 0, attractIndex = 0;
 function stopAttract() { attractOn = false; clearTimeout(attractTimer); }
+function attractStopped() { return !attractOn; }
 function scheduleAttract(delay) {
   clearTimeout(attractTimer);
   if (!attractOn || reduceMotion.matches) return;
@@ -1610,13 +1611,31 @@ window.__drip = {
 // ===== Load the engine =====
 // Compiles the engine as it downloads; a server that sends it with another type than
 // application/wasm gets it compiled from its bytes instead.
+// The boot lines on the hero's display: what the page is doing, with the bytes it has.
+const boot = document.getElementById("boot"), bootLines = [...boot.children];
+function bootLine(i, text) {
+  for (const line of bootLines) line.classList.remove("at");
+  bootLines[i].textContent = "> " + text; bootLines[i].classList.add("at");
+}
+function megabytes(n) { return (n / 1048576).toFixed(1) + " MB"; }
+// The engine's bytes, counted on their way to the compiler.
+function counted(response) {
+  if (!response.ok || !response.body) return response;
+  const count = boot.querySelector(".n");
+  let bytes = 0;
+  const body = response.body.pipeThrough(new TransformStream({
+    transform(chunk, out) { bytes += chunk.byteLength; if (count) count.textContent = megabytes(bytes); out.enqueue(chunk); },
+    flush() { bootLine(1, `compiling ${megabytes(bytes)} to WebAssembly`); },
+  }));
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+}
 async function compileEngine() {
   const url = new URL(WASM, location.href).href;
   try {
-    return await WebAssembly.compileStreaming(fetch(url));
+    return await WebAssembly.compileStreaming(fetch(url).then(counted));
   } catch (error) {
     console.warn("streaming compile failed, compiling from the bytes:", error);
-    const response = await fetch(url);
+    const response = counted(await fetch(url));
     if (!response.ok) throw new Error(`${WASM}: HTTP ${response.status}`);
     return await WebAssembly.compile(await response.arrayBuffer());
   }
@@ -1625,6 +1644,7 @@ try {
   const t0 = performance.now();
   const [module, { loadDrip }] = await Promise.all([compileEngine(), engineLoader]);
   const t1 = performance.now();
+  bootLine(2, "starting");
   drip = await loadDrip(module, measure);
   reference = drip.command({ args: ["ok", "Build finished", "-d", "make test: 246 passed in 3.2s"], env: {}, config: "", notch }).deliveries[0].cards[0];
   drip.release(reference.handle);
@@ -1632,17 +1652,17 @@ try {
   const t2 = performance.now();
   const timing = performance.getEntriesByName(new URL(WASM, location.href).href).at(-1);
   window.__dripLoad = { download: t1 - t0, start: t2 - t1, transferSize: timing?.transferSize, decodedBodySize: timing?.decodedBodySize };
-  document.getElementById("loading").remove();
-  for (const still of document.querySelectorAll(".still")) still.remove();
+  boot.classList.add("done");
+  setTimeout(() => boot.remove(), 400);
+  if (!attractStopped()) document.getElementById("trykey").classList.add("on");
   machine.term.print(`drip ${drip.version}, compiled to WebAssembly, started in ${Math.round(t2 - t0)} ms.`, "dim");
   ready = true; pick();
   if (new URLSearchParams(location.search).get("attract") === "0") stopAttract();
   await runHero(CHIPS[0], { fromUser: false });
 } catch (error) {
   console.error(error);
-  // The note is gone once the engine is up; a failure after that is only for the console.
-  const note = document.getElementById("loading");
-  if (note) note.textContent = "drip's engine did not load: " + error.message;
+  // The boot lines are gone once the engine is up; a failure after that is only for the console.
+  if (boot.isConnected && !boot.classList.contains("done")) bootLine(bootLines.findIndex((line) => line.classList.contains("at")), "drip's engine did not load: " + error.message);
 }
 </script>
 </body>

@@ -100,11 +100,14 @@
     font: 500 10.5px/1.4 var(--font-mono); letter-spacing: .04em; color: var(--color-lcd-ink); opacity: 0; transform: translateY(3px); transition: opacity .15s, transform .15s var(--ease-out); }
   .dispnote.on { opacity: .8; transform: none; }
   .dispnote .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dispnote .hint { flex: none; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; padding: 4px 6px 3px; border-radius: 4px; border: 1px solid currentColor; }
   /* What a display shows until drip's engine draws in it, and all a reader without JavaScript gets. */
-  .still { position: absolute; inset: 32px 0 0; margin: 0; display: grid; place-content: center; gap: 8px; padding: 0 16px; text-align: center; font: 500 10.5px/1.5 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-lcd-ink); opacity: .7; }
-  .still code { text-transform: none; letter-spacing: 0; font-size: 11.5px; overflow-wrap: anywhere; }
-  .loading { position: absolute; inset: auto 0 0; padding: 0 16px 14px; text-align: center; z-index: 4; font: 500 11px/1.5 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-lcd-ink); }
+  /* The notch, drawn in the page so it is there before the engine's canvas paints over it. */
+  .fakenotch { position: absolute; top: 0; left: 50%; width: 185px; height: 32px; margin-left: -92.5px; background: #000; border-radius: 0 0 10px 10px; transform: scale(var(--fit, 1)); transform-origin: 50% 0; }
+  /* What the page does while drip's engine loads, as a machine's boot lines. */
+  .boot { position: absolute; left: 14px; right: 14px; bottom: 12px; z-index: 4; font: 500 11px/1.7 var(--font-mono); letter-spacing: .04em; color: var(--color-lcd-ink); opacity: .85; font-variant-numeric: tabular-nums; transition: opacity .3s; }
+  .boot > div { min-height: 1.7em; overflow-wrap: anywhere; }
+  .boot > .at::after { content: ""; display: inline-block; width: 7px; height: 12px; margin-left: 6px; background: currentColor; vertical-align: -2px; animation: blinkdot 1s steps(2, jump-none) infinite; }
+  .boot.done { opacity: 0; }
   /* Paper: the install receipt, and what each printer prints. A head and a bold rule, entries
      between dashed rules, and an end torn off along its perforation or cut with scissors (tear()
      and cutEnd() in the script draw it). */
@@ -158,11 +161,18 @@
   .entry .out.err { opacity: 1; text-decoration: underline wavy; text-underline-offset: 2px; }
   /* The keys: short keycaps under silkscreened group labels, each with its flag or name and a
      hint. A key is never narrower than its text, so a narrow device wraps whole groups instead. */
-  .keys { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .keys { position: relative; margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .keys .krow { display: flex; flex-wrap: wrap; gap: 12px 16px; min-width: 0; }
   .keys .kgroup { display: grid; grid-template-rows: auto 1fr; gap: 6px; min-width: max-content; flex: var(--n) 1 0; }
   .keys .kkeys { display: flex; flex-wrap: nowrap; gap: 8px; min-width: 0; }
   .keys .grp { display: flex; align-items: center; gap: 8px; font: 500 9.5px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--color-ink-3); white-space: nowrap; min-width: 0; }
+  /* Over the first key until the visitor presses one. */
+  .trykey { position: absolute; z-index: 5; left: 4px; top: -36px; display: flex; align-items: center; gap: 7px; padding: 6px 10px 6px 9px; border-radius: 999px; background: var(--color-ink); color: var(--color-bg); font: 600 10.5px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; box-shadow: 0 6px 16px -6px rgba(0,0,0,.6); pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .25s, visibility 0s .25s; animation: bob 1.6s ease-in-out infinite; }
+  .trykey.on { opacity: 1; visibility: visible; transition: opacity .25s; }
+  .devgrid:has(.dispnote.on) + .keys .trykey { opacity: 0; }
+  .trykey::after { content: ""; position: absolute; left: 22px; bottom: -5px; width: 10px; height: 10px; background: inherit; transform: rotate(45deg); border-radius: 0 0 2px 0; }
+  .trykey svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+  @keyframes bob { 50% { transform: translateY(-4px); } }
   .keys .grp::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: .45; }
   .key {
     position: relative; flex: 1 1 0; min-width: max-content; height: 50px; border-radius: 8px; border: 1px solid var(--color-edge); cursor: pointer; padding: 0 22px 0 10px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
@@ -193,7 +203,7 @@
   .callout:last-child { justify-content: flex-end; }
   .callout i { display: block; height: 1px; background: currentColor; flex: 1 0 8px; max-width: var(--w, 40px); }
 
-  @media (prefers-reduced-motion: reduce) { .glyphs .run.going .dot, .key.running.exec .led { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .glyphs .run.going .dot, .key.running.exec .led, .boot > .at::after, .trykey { animation: none; } }
 
   /* Details: the table. */
   table.spec { width: 100%; border-collapse: collapse; }
