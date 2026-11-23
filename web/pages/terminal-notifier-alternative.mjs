@@ -53,7 +53,7 @@ drip warn "Deploy to prod?" --yes Deploy --no Cancel && ./deploy.sh`)}
 </ul>
 `,
   steps: [
-    "<b>drip draws its own card.</b> It grows out of the camera notch, or out of the top edge of a screen without one, so it needs no Notifications permission and does not use Notification Center.",
+    "<b>drip draws its own card.</b> It drops out of the camera notch, or out of the top edge of a screen without one, so it needs no Notifications permission and does not use Notification Center.",
     "<b>Two words carry over.</b> The title is the bold text and <code>-d</code> is the gray text under it. The first word picks the look: <code>ok</code>, <code>warn</code>, <code>fail</code> or <code>info</code>.",
     "<b>A command can be wrapped.</b> <code>drip run</code> runs it, times it and picks green or red from the exit code. Scripts and <code>&amp;&amp;</code> chains work as before.",
     "<b>A question is an exit status.</b> <code>--yes</code> and <code>--no</code> add buttons, and drip exits 0 on yes, 1 on no and 5 when nobody answers.",
