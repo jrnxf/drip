@@ -1053,15 +1053,13 @@ class Paper {
     const edge = ys.map((y, i) => `${Math.min(i * CUT_STEP, w).toFixed(1)}px ${y.toFixed(1)}px`).join(", ");
     piece.style.clipPath = `polygon(-60px ${ys[0].toFixed(1)}px, ${edge}, ${w + 60}px ${ys.at(-1).toFixed(1)}px, ${w + 60}px ${length + 80}px, -60px ${length + 80}px)`;
     document.body.append(piece);
-    // What was printed below the cut is gone with the piece.
-    // The paper left in the printer ends level, where the stroke was highest: an end that follows a
-    // slanted stroke is a long sliver of paper with half its print gone.
-    const level = ys.map((_, c) => top + 1.2 + Math.sin(c / 9) * 0.8);
-    this.cut = Math.ceil(top + 2);
-    for (const entry of [...this.feed.children]) if (entry.offsetTop >= top) entry.remove();
+    // The paper left in the printer ends along the cut, so it keeps the trace of where the scissors
+    // went. What was printed wholly below the cut is gone with the piece.
+    this.cut = Math.ceil(bottom);
+    for (const entry of [...this.feed.children]) if (entry.offsetTop >= bottom) entry.remove();
     // What went with the piece is not print taken back: the cut stays where the scissors made it.
     this.fed = this.feed.offsetHeight;
-    cutEnd(this.slip, { ys: level, width: w, top: top - 1 });
+    cutEnd(this.slip, { ys, width: w, top: top - 1 });
     this.slit.firstChild.setAttribute("d", "");
     this.measure(0);
     if (reduceMotion.matches) { piece.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).finished.then(() => piece.remove()); return; }
